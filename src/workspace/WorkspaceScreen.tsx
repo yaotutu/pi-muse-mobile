@@ -3,7 +3,7 @@
  * 侧栏位于聊天前景下面；头像面板挂到根层，不能复用向上弹出的通用 Sheet。
  */
 import {
-  ArrowUp, Check, LogOut, Menu, MessageCircle, Mic, PanelsTopLeft,
+  ArrowUp, Check, Download, Menu, MessageCircle, Mic, PanelsTopLeft,
   Moon, Plus, Shapes, Square, SquareCheck, SquarePen, Sun, X, type LucideIcon,
 } from 'lucide-react-native';
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
@@ -14,23 +14,24 @@ import {
   StyleSheet, Text, TextInput, View, useWindowDimensions, type TextStyle,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { previewTheme, spacing, sizing, type PreviewColors } from '../ui/tokens';
-import { PreviewSessionPanel } from './PreviewSessionPanel';
-import { PreviewThemeProvider, usePreviewTheme } from './PreviewTheme';
+import { useAppUpdate } from '../update/UpdateProvider';
+import { workspaceTheme, spacing, sizing, type WorkspaceColors } from '../ui/tokens';
+import { SessionPanel } from './SessionPanel';
+import { WorkspaceThemeProvider, useWorkspaceTheme } from './WorkspaceTheme';
 import {
-  MAIN_PREVIEW_THREAD, createPreviewState, previewReducer,
-  type PreviewPage, type PreviewThread,
-} from './preview-state';
+  MAIN_SAMPLE_THREAD, createSampleState, sampleReducer,
+  type WorkspacePage, type SampleThread,
+} from './sample-state';
 
-const { layout: l, radius: r, typography: t } = previewTheme;
+const { layout: l, radius: r, typography: t } = workspaceTheme;
 
-function usePreviewStyles() {
-  const { colors } = usePreviewTheme();
+function useWorkspaceStyles() {
+  const { colors } = useWorkspaceTheme();
   return useMemo(() => createStyles(colors), [colors]);
 }
-const AVATAR = require('../../assets/preview/reference-avatar.png');
-const CHARACTERS = require('../../assets/preview/reference-characters.jpg');
-const NAV: { id: PreviewPage; label: string; icon: LucideIcon }[] = [
+const AVATAR = require('../../assets/sample/reference-avatar.png');
+const CHARACTERS = require('../../assets/sample/reference-characters.jpg');
+const NAV: { id: WorkspacePage; label: string; icon: LucideIcon }[] = [
   { id: 'chat', label: '聊天', icon: MessageCircle },
   { id: 'activity', label: '任务', icon: PanelsTopLeft },
   { id: 'goals', label: '目标', icon: SquareCheck },
@@ -40,8 +41,8 @@ const NAV: { id: PreviewPage; label: string; icon: LucideIcon }[] = [
 function RoundButton({ icon: Icon, label, onPress, testID }: {
   icon: LucideIcon; label: string; onPress: () => void; testID?: string;
 }) {
-  const { colors: c } = usePreviewTheme();
-  const styles = usePreviewStyles();
+  const { colors: c } = useWorkspaceTheme();
+  const styles = useWorkspaceStyles();
   return <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress}
     testID={testID} style={({ pressed }) => [styles.roundButton, pressed && styles.pressed]}>
     <Icon size={l.iconSize} strokeWidth={1.7} color={c.ink} />
@@ -49,19 +50,19 @@ function RoundButton({ icon: Icon, label, onPress, testID }: {
 }
 
 function TypingIndicator() {
-  const styles = usePreviewStyles();
+  const styles = useWorkspaceStyles();
   return <View accessibilityLabel="正在生成示例回复" style={styles.typing}>
     {[0, 1, 2].map((dot) => <View key={dot} style={styles.typingDot} />)}
   </View>;
 }
 
-function ChatMessages({ thread, scrollRef, imageSize }: { thread: PreviewThread; scrollRef: React.RefObject<ScrollView | null>; imageSize: number }) {
-  const styles = usePreviewStyles();
+function ChatMessages({ thread, scrollRef, imageSize }: { thread: SampleThread; scrollRef: React.RefObject<ScrollView | null>; imageSize: number }) {
+  const styles = useWorkspaceStyles();
   return <ScrollView ref={scrollRef} style={styles.chatScroll} keyboardShouldPersistTaps="handled"
     showsVerticalScrollIndicator={false} contentContainerStyle={styles.messageList}>
     {thread.messages.length === 0 && <View style={styles.emptyChat}>
       <Text style={styles.emptyTitle}>开始一段新的对话</Text>
-      <Text style={styles.mutedText}>本地 UI 预览，你的输入不会发送给服务端。</Text>
+      <Text style={styles.mutedText}>当前使用示例数据，你的输入不会发送给服务端。</Text>
     </View>}
     {thread.messages.map((message) => <View key={message.id} style={styles.messageBlock}>
       {!!message.text && <View style={[styles.message, message.role === 'user' ? styles.userMessage : styles.assistantMessage]}>
@@ -74,9 +75,10 @@ function ChatMessages({ thread, scrollRef, imageSize }: { thread: PreviewThread;
   </ScrollView>;
 }
 
-function PlaceholderPage({ page, thread, onExit }: { page: PreviewPage; thread: PreviewThread; onExit: () => void }) {
-  const { colors: c } = usePreviewTheme();
-  const styles = usePreviewStyles();
+function SecondaryPage({ page, thread }: { page: WorkspacePage; thread: SampleThread }) {
+  const { colors: c } = useWorkspaceTheme();
+  const styles = useWorkspaceStyles();
+  const update = useAppUpdate();
   if (page === 'activity') return <ScrollView contentContainerStyle={styles.otherPage}>
     <Text style={styles.pageTitle}>任务</Text>
     <Text style={styles.mutedText}>当前会话的示例任务</Text>
@@ -88,30 +90,33 @@ function PlaceholderPage({ page, thread, onExit }: { page: PreviewPage; thread: 
   </ScrollView>;
   if (page === 'goals') return <View style={styles.otherPage}>
     <Text style={styles.pageTitle}>目标</Text>
-    <Text style={styles.mutedText}>本轮先验收聊天、会话侧栏与头像面板，不连接真实目标。</Text>
+    <Text style={styles.mutedText}>目标功能尚未接入；当前界面使用示例数据。</Text>
   </View>;
   return <View style={styles.otherPage}>
     <Text style={styles.pageTitle}>应用</Text>
     <View style={styles.exampleCard}>
-      <Text style={styles.itemTitle}>截图 UI 预览</Text>
-      <Text style={styles.mutedText}>假会话只保存在内存中；未读取或写入真实服务数据。</Text>
-      <Text style={styles.caption}>头像与插图暂用你提供的截图裁剪，仅用于本轮视觉对照。</Text>
+      <Text style={styles.itemTitle}>Pi Muse</Text>
+      <Text style={styles.mutedText}>当前使用本地示例数据，尚未对接真实服务；刷新后恢复示例状态。</Text>
+      <Text style={styles.caption}>头像与插图暂用参考截图裁剪，不代表正式品牌素材。</Text>
     </View>
-    <Pressable accessibilityRole="button" onPress={onExit} style={styles.exitRow}>
-      <LogOut size={l.iconSize} color={c.ink} />
-      <Text style={styles.itemTitle}>退出 UI 预览</Text>
-    </Pressable>
+    {update && <Pressable accessibilityRole="button" accessibilityLabel="应用更新" onPress={update.open} style={styles.settingsRow}>
+      <Download size={l.iconSize} color={c.ink} />
+      <View style={styles.threadText}>
+        <Text style={styles.itemTitle}>应用更新</Text>
+        <Text style={styles.caption}>{update.snapshot.status === 'unsupported' ? '当前环境不支持自动安装' : '检查版本、下载与安装进度'}</Text>
+      </View>
+    </Pressable>}
   </View>;
 }
 
-export function PreviewRoot({ onExit }: { onExit: () => void }) {
-  return <PreviewThemeProvider><PreviewWorkspace onExit={onExit} /></PreviewThemeProvider>;
+export function WorkspaceScreen() {
+  return <WorkspaceThemeProvider><WorkspaceView /></WorkspaceThemeProvider>;
 }
 
-function PreviewWorkspace({ onExit }: { onExit: () => void }) {
-  const { colors: c, mode, toggle } = usePreviewTheme();
-  const styles = usePreviewStyles();
-  const [state, dispatch] = useReducer(previewReducer, undefined, createPreviewState);
+function WorkspaceView() {
+  const { colors: c, mode, toggle } = useWorkspaceTheme();
+  const styles = useWorkspaceStyles();
+  const [state, dispatch] = useReducer(sampleReducer, undefined, createSampleState);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [notice, setNotice] = useState('');
   const [inputHeight, setInputHeight] = useState(l.composerHeight - l.composerPadding * 2);
@@ -134,7 +139,7 @@ function PreviewWorkspace({ onExit }: { onExit: () => void }) {
     if (state.drawerOpen) Keyboard.dismiss();
     const animation = Animated.timing(drawerProgress, {
       toValue: state.drawerOpen ? 1 : 0,
-      duration: reducedMotion ? 0 : previewTheme.motion.drawerDuration,
+      duration: reducedMotion ? 0 : workspaceTheme.motion.drawerDuration,
       easing: Easing.out(Easing.cubic), useNativeDriver: true,
     });
     animation.start();
@@ -161,7 +166,7 @@ function PreviewWorkspace({ onExit }: { onExit: () => void }) {
   const hint = (text: string) => {
     clearTimeout(noticeTimer.current);
     setNotice(text);
-    noticeTimer.current = setTimeout(() => setNotice(''), previewTheme.motion.feedbackDuration);
+    noticeTimer.current = setTimeout(() => setNotice(''), workspaceTheme.motion.feedbackDuration);
   };
   const openDrawer = () => { Keyboard.dismiss(); dispatch({ type: 'open-drawer' }); };
   const selectThread = (id: string) => {
@@ -183,7 +188,7 @@ function PreviewWorkspace({ onExit }: { onExit: () => void }) {
     completionTimers.current.set(threadId, setTimeout(() => {
       completionTimers.current.delete(threadId);
       dispatch({ type: 'complete', threadId });
-    }, previewTheme.motion.replyDuration));
+    }, workspaceTheme.motion.replyDuration));
     requestAnimationFrame(() => chatRef.current?.scrollToEnd({ animated: !reducedMotion }));
   };
   const stop = () => {
@@ -202,7 +207,7 @@ function PreviewWorkspace({ onExit }: { onExit: () => void }) {
     },
   });
 
-  return <View style={styles.root} testID="ui-preview">
+  return <View style={styles.root} testID="workspace-screen">
     <StatusBar style={mode === 'light' ? 'dark' : 'light'} />
     <View style={[styles.viewport, { width: contentWidth }]} {...pan.panHandlers}>
       <SafeAreaView style={[styles.drawer, { width: drawerWidth }]} edges={['top', 'bottom', 'left']}
@@ -217,23 +222,19 @@ function PreviewWorkspace({ onExit }: { onExit: () => void }) {
         <Text style={styles.drawerSection}>会话</Text>
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.drawerList}>
           {state.threads.map((item) => <Pressable key={item.id} accessibilityRole="button"
-            accessibilityLabel={item.id === MAIN_PREVIEW_THREAD ? '主会话' : item.name}
+            accessibilityLabel={item.id === MAIN_SAMPLE_THREAD ? '主会话' : item.name}
             accessibilityState={{ selected: item.id === thread.id }} onPress={() => selectThread(item.id)}
             style={[styles.threadRow, item.id === thread.id && styles.threadSelected]}>
             <MessageCircle size={l.navigationIconSize} color={c.ink} fill={item.id === thread.id ? c.ink : 'none'} strokeWidth={1.7} />
             <View style={styles.threadText}>
-              <Text numberOfLines={1} style={styles.itemTitle}>{item.id === MAIN_PREVIEW_THREAD ? '主会话' : item.name}</Text>
+              <Text numberOfLines={1} style={styles.itemTitle}>{item.id === MAIN_SAMPLE_THREAD ? '主会话' : item.name}</Text>
               <Text numberOfLines={1} style={styles.caption}>{item.status}</Text>
             </View>
             {item.id === thread.id && <Check size={sizing[18]} color={c.muted} />}
           </Pressable>)}
         </ScrollView>
         <View style={styles.drawerFooter}>
-          <Pressable accessibilityRole="button" accessibilityLabel="退出 UI 预览" onPress={onExit} style={styles.drawerExit}>
-            <LogOut size={l.iconSize} color={c.muted} />
-            <Text style={styles.caption}>退出预览</Text>
-          </Pressable>
-          <RoundButton icon={SquarePen} label="新建会话" onPress={createThread} testID="preview-create-thread" />
+          <RoundButton icon={SquarePen} label="新建会话" onPress={createThread} testID="workspace-create-thread" />
         </View>
       </SafeAreaView>
       <Animated.View style={[styles.foreground, state.drawerOpen && styles.foregroundRounded,
@@ -242,31 +243,31 @@ function PreviewWorkspace({ onExit }: { onExit: () => void }) {
         <SafeAreaView style={styles.screen} edges={['top', 'bottom', 'left', 'right']} aria-hidden={state.drawerOpen}
           {...(Platform.OS === 'web' && state.drawerOpen ? { inert: true } : {})}>
           <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled={Platform.OS !== 'web'}>
-            <View style={styles.previewLabel}><Text style={styles.previewLabelText}>UI 预览 · 假数据</Text></View>
+            <View style={styles.sampleLabel}><Text style={styles.sampleLabelText}>示例数据 · 尚未连接服务端</Text></View>
             <View style={styles.chatBody} pointerEvents={state.drawerOpen ? 'none' : 'auto'}>
               {state.page === 'chat' ? <ChatMessages thread={thread} scrollRef={chatRef} imageSize={contentWidth * l.imageRatio - l.sidePadding} />
-                : <PlaceholderPage page={state.page} thread={thread} onExit={onExit} />}
+                : <SecondaryPage page={state.page} thread={thread} />}
             </View>
             <View style={styles.floatingHeader} pointerEvents="box-none">
-              <View style={styles.headerLeft}><RoundButton icon={Menu} label="打开会话侧栏" onPress={openDrawer} testID="preview-open-drawer" /></View>
+              <View style={styles.headerLeft}><RoundButton icon={Menu} label="打开会话侧栏" onPress={openDrawer} testID="workspace-open-drawer" /></View>
               <Pressable accessibilityRole="button" accessibilityLabel="打开当前会话面板"
-                accessibilityHint="全屏显示当前会话的动态、审批、工作区和历史" testID="preview-open-session"
+                accessibilityHint="全屏显示当前会话的动态、审批、工作区和历史" testID="workspace-open-session"
                 style={styles.identity} onPress={() => { Keyboard.dismiss(); dispatch({ type: 'open-session' }); }}>
-                <Image source={AVATAR} style={styles.headerAvatar} accessibilityLabel="预览助手头像" />
+                <Image source={AVATAR} style={styles.headerAvatar} accessibilityLabel="助手头像" />
                 <View style={styles.identityLabel}>
                   <Text style={styles.identityName}>{thread.name}</Text>
                   <Text numberOfLines={1} style={styles.identityStatus}>🔬 {thread.status}</Text>
                 </View>
               </Pressable>
               <View style={styles.headerRight}><RoundButton icon={mode === 'light' ? Moon : Sun}
-                label={mode === 'light' ? '切换到暗色主题' : '切换到亮色主题'} onPress={toggle} testID="preview-theme-toggle" /></View>
+                label={mode === 'light' ? '切换到暗色主题' : '切换到亮色主题'} onPress={toggle} testID="workspace-theme-toggle" /></View>
             </View>
             {!!notice && <Text accessibilityRole="alert" style={styles.notice}>{notice}</Text>}
             {state.page === 'chat' && <View style={styles.composer}>
-              <Pressable accessibilityRole="button" accessibilityLabel="添加附件（预览）" onPress={() => hint('此轮只预览附件入口，不会访问照片或文件。')} style={styles.composerControl}>
+              <Pressable accessibilityRole="button" accessibilityLabel="添加附件（示例）" onPress={() => hint('当前仅展示附件入口，不会访问照片或文件。')} style={styles.composerControl}>
                 <Plus size={l.iconSize} color={c.ink} />
               </Pressable>
-              <TextInput accessibilityLabel="预览消息输入框" placeholder="消息" placeholderTextColor={c.faint}
+              <TextInput accessibilityLabel="消息输入框" placeholder="消息" placeholderTextColor={c.faint}
                 value={thread.draft} onChangeText={(text) => dispatch({ type: 'set-draft', text })} multiline
                 onContentSizeChange={(event) => setInputHeight(Math.max(l.composerHeight - l.composerPadding * 2, Math.min(l.composerMaxHeight, event.nativeEvent.contentSize.height)))}
                 onKeyPress={Platform.OS === 'web' ? (event) => {
@@ -275,7 +276,7 @@ function PreviewWorkspace({ onExit }: { onExit: () => void }) {
                 } : undefined}
                 style={[styles.input, { height: thread.draft ? inputHeight : l.composerHeight - l.composerPadding * 2 },
                   Platform.OS === 'web' && ({ outlineStyle: 'none' } as unknown as TextStyle)]} />
-              {!thread.draft && <Pressable accessibilityRole="button" accessibilityLabel="语音输入（预览）" onPress={() => hint('此轮只预览语音入口，不会启用麦克风。')} style={styles.composerControl}>
+              {!thread.draft && <Pressable accessibilityRole="button" accessibilityLabel="语音输入（示例）" onPress={() => hint('当前仅展示语音入口，不会启用麦克风。')} style={styles.composerControl}>
                 <Mic size={l.iconSize} color={c.faint} />
               </Pressable>}
               <Pressable accessibilityRole="button" accessibilityLabel={thread.running ? '停止示例回复' : '发送示例消息'}
@@ -298,21 +299,21 @@ function PreviewWorkspace({ onExit }: { onExit: () => void }) {
           onPress={() => dispatch({ type: 'close-drawer' })} style={styles.foregroundCover} />}
       </Animated.View>
     </View>
-    {state.sessionOpen && <PreviewSessionPanel thread={thread} tab={state.sessionTab}
+    {state.sessionOpen && <SessionPanel thread={thread} tab={state.sessionTab}
       onTab={(tab) => dispatch({ type: 'set-session-tab', tab })} onClose={() => dispatch({ type: 'close-session' })}
       onDecide={(id, decision) => dispatch({ type: 'decide', id, decision })} reducedMotion={reducedMotion} />}
   </View>;
 }
 
-const createStyles = (c: PreviewColors) => StyleSheet.create({
+const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: c.canvas },
   viewport: { flex: 1, alignSelf: 'center', overflow: 'hidden', backgroundColor: c.canvas },
   screen: { flex: 1, backgroundColor: c.canvas },
   foreground: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: c.canvas, overflow: 'hidden' },
   foregroundRounded: { borderRadius: r.drawerForeground },
   foregroundCover: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: c.overlay },
-  previewLabel: { alignItems: 'center', paddingTop: l.previewLabelTop },
-  previewLabelText: { ...t.caption, fontSize: l.previewLabelSize, color: c.faint },
+  sampleLabel: { alignItems: 'center', paddingTop: l.sampleLabelTop },
+  sampleLabelText: { ...t.caption, fontSize: l.sampleLabelSize, color: c.faint },
   chatBody: { flex: 1, minHeight: 0 },
   chatScroll: { flex: 1 },
   messageList: { paddingTop: l.chatContentTop, paddingHorizontal: l.sidePadding, paddingBottom: spacing[24], gap: l.messageGap },
@@ -350,15 +351,14 @@ const createStyles = (c: PreviewColors) => StyleSheet.create({
   threadRow: { minHeight: l.drawerRowHeight, flexDirection: 'row', alignItems: 'center', gap: spacing[14], paddingHorizontal: spacing[14], paddingVertical: spacing[8], borderRadius: r.listItem },
   threadSelected: { backgroundColor: c.surface },
   threadText: { flex: 1, gap: spacing[2] },
-  drawerFooter: { height: l.drawerFooterHeight, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  drawerExit: { flexDirection: 'row', gap: spacing[8], alignItems: 'center', minHeight: l.controlSize },
+  drawerFooter: { height: l.drawerFooterHeight, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' },
   otherPage: { paddingTop: l.headerHeight, paddingHorizontal: l.sidePadding, paddingBottom: spacing[24], gap: spacing[16] },
   pageTitle: { ...t.heroName, color: c.ink },
   itemTitle: { ...t.itemTitle, color: c.ink },
   mutedText: { ...t.detail, color: c.muted },
   caption: { ...t.caption, color: c.faint },
   exampleCard: { backgroundColor: c.surface, borderRadius: r.card, padding: spacing[20], gap: spacing[8] },
-  exitRow: { flexDirection: 'row', alignItems: 'center', gap: spacing[12], minHeight: l.controlSize },
+  settingsRow: { flexDirection: 'row', alignItems: 'center', gap: spacing[12], minHeight: l.controlSize },
   emptyChat: { paddingVertical: spacing[40], gap: spacing[12] },
   emptyTitle: { ...t.heroName, color: c.ink },
   notice: { ...t.caption, color: c.muted, paddingHorizontal: l.sidePadding, paddingVertical: spacing[8] },

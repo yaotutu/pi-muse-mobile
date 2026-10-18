@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import './register-source.mjs';
 import test from 'node:test';
 
-const { DemoApiClient } = await import('../src/demo/DemoApiClient.ts');
+const { DemoApiClient } = await import('./helpers/demo-api-client.ts');
 
 /**
  * DemoApiClient 的行为锁定用例：全部在内存中运行，tickMs=1 把演示节奏压到最短。

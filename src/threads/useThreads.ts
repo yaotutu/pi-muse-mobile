@@ -2,12 +2,10 @@ import { useEffect, useState } from 'react';
 import { isRequestCancelled } from '../api/errors';
 import { useApi } from '../api/ApiProvider';
 import type { ThreadInfo } from '../api/types';
-import { useDemo } from '../demo/DemoProvider';
 import { MAIN_THREAD, mainThread, newThread } from './thread-state';
 
 export function useThreads(enabled = true, refreshVersion = 0) {
   const api = useApi();
-  const demo = useDemo();
   const [threads, setThreads] = useState<ThreadInfo[]>([]);
   const [localThreads, setLocalThreads] = useState<ThreadInfo[]>([]);
   const [currentThread, selectThread] = useState(MAIN_THREAD);
@@ -26,7 +24,6 @@ export function useThreads(enabled = true, refreshVersion = 0) {
 
   const createThread = () => {
     const thread = newThread();
-    demo?.client.renameThread(thread.id, '新的会话');
     setLocalThreads((previous) => [thread, ...previous]);
     selectThread(thread.id);
   };

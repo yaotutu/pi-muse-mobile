@@ -1,6 +1,6 @@
 /**
  * 容器/表面原语：图标底盒、卡片、胶囊标签。
- * 本层不认识任何业务枚举——语义色由调用方以 bg/fg 传入（见 src/shared/StatusBadge）。
+ * 本层不认识业务枚举，语义色由调用方以 bg/fg 传入。
  */
 
 import type { LucideIcon } from 'lucide-react-native';

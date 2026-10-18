@@ -1,8 +1,8 @@
 /**
- * PreviewSessionPanel —— 全屏会话预览面板（截图还原）。
+ * 全屏当前会话面板；同层 Tab 切换不重建会话。
  *
  * 边界：不持服务端/存储；仅消费 props；切 Tab 不重建 Modal/Header；
- * 颜色来自 PreviewTheme context（亮/暗双套），布局/字号/圆角仍取 src/ui/tokens.ts 的 previewTheme 静态值。
+ * 颜色来自 WorkspaceTheme context（亮/暗双套），布局/字号/圆角仍取 src/ui/tokens.ts 的 workspaceTheme 静态值。
  */
 
 import { useMemo } from 'react';
@@ -32,60 +32,60 @@ import {
   X,
 } from 'lucide-react-native';
 
-import { previewTheme, sizing, spacing, type PreviewColors } from '../ui/tokens';
-import { usePreviewTheme } from './PreviewTheme';
+import { workspaceTheme, sizing, spacing, type WorkspaceColors } from '../ui/tokens';
+import { useWorkspaceTheme } from './WorkspaceTheme';
 import type {
-  PreviewActivity,
-  PreviewApproval,
-  PreviewFile,
-  PreviewHistory,
-  PreviewTab,
-  PreviewThread,
-} from './preview-state';
+  SampleActivity,
+  SampleApproval,
+  SampleFile,
+  SampleHistory,
+  SessionTab,
+  SampleThread,
+} from './sample-state';
 
-const TAB_ORDER: readonly PreviewTab[] = ['activity', 'approvals', 'workspace', 'history'] as const;
+const TAB_ORDER: readonly SessionTab[] = ['activity', 'approvals', 'workspace', 'history'] as const;
 
-const TAB_ICONS: Record<PreviewTab, LucideIcon> = {
+const TAB_ICONS: Record<SessionTab, LucideIcon> = {
   activity: List,
   approvals: ShieldCheck,
   workspace: Monitor,
   history: Clock,
 };
 
-const TAB_LABELS: Record<PreviewTab, string> = {
+const TAB_LABELS: Record<SessionTab, string> = {
   activity: '动态',
   approvals: '审批',
   workspace: '工作区',
   history: '历史',
 };
 
-const TAB_NOTICE: Record<PreviewTab, string> = {
-  activity: 'UI 预览 · 假数据',
+const TAB_NOTICE: Record<SessionTab, string> = {
+  activity: '示例数据 · 尚未连接服务端',
   approvals: '本地示例 · 不会真正授权',
   workspace: '示例文件，仅用于布局演示',
-  history: 'UI 预览 · 不计入统计',
+  history: '示例历史 · 不计入统计',
 };
 
-const AVATAR_SOURCE: ImageSourcePropType = require('../../assets/preview/reference-avatar.png');
+const AVATAR_SOURCE: ImageSourcePropType = require('../../assets/sample/reference-avatar.png');
 
-export interface PreviewSessionPanelProps {
-  thread: PreviewThread;
-  tab: PreviewTab;
-  onTab: (tab: PreviewTab) => void;
+export interface SessionPanelProps {
+  thread: SampleThread;
+  tab: SessionTab;
+  onTab: (tab: SessionTab) => void;
   onClose: () => void;
   onDecide: (id: string, decision: 'approved' | 'denied') => void;
   reducedMotion: boolean;
 }
 
-// 子组件共用：读 context -> useMemo 出当前主题下的 StyleSheet。颜色覆盖来自 PreviewTheme，布局/字号仍走 previewTheme 静态值。
+// 子组件共用：读 context -> useMemo 出当前主题下的 StyleSheet。颜色覆盖来自 WorkspaceTheme，布局/字号仍走 workspaceTheme 静态值。
 function usePanelStyles() {
-  const { colors } = usePreviewTheme();
+  const { colors } = useWorkspaceTheme();
   return useMemo(() => createStyles(colors), [colors]);
 }
 
-function createStyles(colors: PreviewColors) {
+function createStyles(colors: WorkspaceColors) {
   const tabInnerHeight =
-    previewTheme.layout.sessionTabsHeight - previewTheme.layout.sessionTabInset * 2;
+    workspaceTheme.layout.sessionTabsHeight - workspaceTheme.layout.sessionTabInset * 2;
   return StyleSheet.create({
     root: {
       flex: 1,
@@ -94,21 +94,21 @@ function createStyles(colors: PreviewColors) {
     column: {
       flex: 1,
       width: '100%',
-      maxWidth: previewTheme.layout.maxWidth,
+      maxWidth: workspaceTheme.layout.maxWidth,
       alignSelf: 'center',
     },
 
     header: {
       flexDirection: 'row',
       alignItems: 'flex-start',
-      paddingHorizontal: previewTheme.layout.sidePadding,
-      paddingTop: previewTheme.layout.sessionTop,
-      paddingBottom: previewTheme.layout.sessionHeaderBottom,
+      paddingHorizontal: workspaceTheme.layout.sidePadding,
+      paddingTop: workspaceTheme.layout.sessionTop,
+      paddingBottom: workspaceTheme.layout.sessionHeaderBottom,
     },
     headerSideButton: {
-      width: previewTheme.layout.controlSize,
-      height: previewTheme.layout.controlSize,
-      borderRadius: previewTheme.layout.controlSize / 2,
+      width: workspaceTheme.layout.controlSize,
+      height: workspaceTheme.layout.controlSize,
+      borderRadius: workspaceTheme.layout.controlSize / 2,
       backgroundColor: colors.control,
       alignItems: 'center',
       justifyContent: 'center',
@@ -120,9 +120,9 @@ function createStyles(colors: PreviewColors) {
       justifyContent: 'flex-start',
     },
     avatarRing: {
-      width: previewTheme.layout.sessionAvatar,
-      height: previewTheme.layout.sessionAvatar,
-      borderRadius: previewTheme.layout.sessionAvatar / 2,
+      width: workspaceTheme.layout.sessionAvatar,
+      height: workspaceTheme.layout.sessionAvatar,
+      borderRadius: workspaceTheme.layout.sessionAvatar / 2,
       backgroundColor: colors.avatar,
       overflow: 'hidden',
     },
@@ -131,26 +131,26 @@ function createStyles(colors: PreviewColors) {
       height: '100%',
     },
     name: {
-      marginTop: previewTheme.layout.sessionNameTop,
-      ...previewTheme.typography.heroName,
+      marginTop: workspaceTheme.layout.sessionNameTop,
+      ...workspaceTheme.typography.heroName,
       color: colors.ink,
     },
     status: {
       marginTop: spacing.xs,
-      ...previewTheme.typography.heroStatus,
+      ...workspaceTheme.typography.heroStatus,
       color: colors.muted,
     },
 
     tablistWrap: {
-      paddingHorizontal: previewTheme.layout.sidePadding,
-      marginBottom: previewTheme.layout.contentTop,
+      paddingHorizontal: workspaceTheme.layout.sidePadding,
+      marginBottom: workspaceTheme.layout.contentTop,
     },
     tablist: {
-      height: previewTheme.layout.sessionTabsHeight,
+      height: workspaceTheme.layout.sessionTabsHeight,
       flexDirection: 'row',
       backgroundColor: colors.surface,
-      borderRadius: previewTheme.radius.tab,
-      padding: previewTheme.layout.sessionTabInset,
+      borderRadius: workspaceTheme.radius.tab,
+      padding: workspaceTheme.layout.sessionTabInset,
       alignItems: 'center',
       justifyContent: 'space-between',
     },
@@ -169,30 +169,30 @@ function createStyles(colors: PreviewColors) {
       flex: 1,
     },
     content: {
-      paddingHorizontal: previewTheme.layout.sidePadding,
-      paddingBottom: previewTheme.layout.sessionHeaderBottom,
+      paddingHorizontal: workspaceTheme.layout.sidePadding,
+      paddingBottom: workspaceTheme.layout.sessionHeaderBottom,
     },
 
     section: {
-      ...previewTheme.typography.section,
+      ...workspaceTheme.typography.section,
       color: colors.ink,
       fontWeight: '600',
     },
-    previewLabel: {
-      ...previewTheme.typography.caption,
+    sampleLabel: {
+      ...workspaceTheme.typography.caption,
       color: colors.faint,
-      marginTop: previewTheme.layout.previewLabelTop,
+      marginTop: workspaceTheme.layout.sampleLabelTop,
       marginBottom: spacing.lg,
     },
 
     timelineRow: {
       flexDirection: 'row',
       alignItems: 'flex-start',
-      marginBottom: previewTheme.layout.listItemGap,
+      marginBottom: workspaceTheme.layout.listItemGap,
     },
     timelineIcon: {
-      width: previewTheme.layout.timelineIconWidth,
-      height: previewTheme.layout.timelineIconWidth,
+      width: workspaceTheme.layout.timelineIconWidth,
+      height: workspaceTheme.layout.timelineIconWidth,
       alignItems: 'center',
       justifyContent: 'center',
       marginRight: spacing.md,
@@ -201,26 +201,26 @@ function createStyles(colors: PreviewColors) {
       flex: 1,
     },
     rowTitle: {
-      ...previewTheme.typography.itemTitle,
+      ...workspaceTheme.typography.itemTitle,
       color: colors.ink,
       fontWeight: '500',
     },
     rowDetail: {
-      ...previewTheme.typography.detail,
+      ...workspaceTheme.typography.detail,
       color: colors.muted,
       marginTop: spacing.xxs,
     },
     rowTime: {
-      ...previewTheme.typography.detail,
+      ...workspaceTheme.typography.detail,
       color: colors.faint,
       marginTop: spacing.xs,
     },
 
     card: {
       backgroundColor: colors.surface,
-      borderRadius: previewTheme.radius.card,
-      padding: previewTheme.layout.sidePadding,
-      marginBottom: previewTheme.layout.listItemGap,
+      borderRadius: workspaceTheme.radius.card,
+      padding: workspaceTheme.layout.sidePadding,
+      marginBottom: workspaceTheme.layout.listItemGap,
     },
     approvalButtons: {
       flexDirection: 'row',
@@ -231,8 +231,8 @@ function createStyles(colors: PreviewColors) {
     approvalButton: {
       paddingHorizontal: spacing.lg,
       paddingVertical: spacing.sm,
-      borderRadius: previewTheme.radius.round,
-      minHeight: previewTheme.layout.smallControl,
+      borderRadius: workspaceTheme.radius.round,
+      minHeight: workspaceTheme.layout.smallControl,
       alignItems: 'center',
       justifyContent: 'center',
     },
@@ -243,22 +243,22 @@ function createStyles(colors: PreviewColors) {
     },
     approvalButtonDenyText: {
       color: colors.danger,
-      ...previewTheme.typography.detail,
+      ...workspaceTheme.typography.detail,
       fontWeight: '500',
     },
     approvalButtonApprove: {
       backgroundColor: colors.blue,
     },
     approvalButtonApproveText: {
-      // 蓝底按钮字色固定白，不随 ink 翻转；PreviewColors.onAccent 由 PreviewTheme 提供。
+      // 蓝底按钮字色固定白，不随 ink 翻转；WorkspaceColors.onAccent 由 WorkspaceTheme 提供。
       color: colors.onAccent,
-      ...previewTheme.typography.detail,
+      ...workspaceTheme.typography.detail,
       fontWeight: '600',
     },
     approvalState: {
       marginTop: spacing.md,
       color: colors.faint,
-      ...previewTheme.typography.detail,
+      ...workspaceTheme.typography.detail,
     },
 
     historyRow: {
@@ -274,21 +274,21 @@ function createStyles(colors: PreviewColors) {
     },
     emptyText: {
       color: colors.faint,
-      ...previewTheme.typography.detail,
+      ...workspaceTheme.typography.detail,
     },
   });
 }
 
-export function PreviewSessionPanel({
+export function SessionPanel({
   thread,
   tab,
   onTab,
   onClose,
   onDecide,
   reducedMotion,
-}: PreviewSessionPanelProps) {
+}: SessionPanelProps) {
   const styles = usePanelStyles();
-  const { mode, toggle, colors } = usePreviewTheme();
+  const { mode, toggle, colors } = useWorkspaceTheme();
 
   // Web 类型约束：RN View 类型不包含 onKeyDown，必须以断言方式注入；原生端忽略。
   const webKeyProps = useMemo(() => {
@@ -331,7 +331,7 @@ export function PreviewSessionPanel({
       onRequestClose={onClose}
       statusBarTranslucent
       navigationBarTranslucent
-      testID="preview-session-modal"
+      testID="workspace-session-modal"
     >
       <StatusBar style={statusBarStyle} />
       <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
@@ -343,10 +343,10 @@ export function PreviewSessionPanel({
               accessibilityLabel="关闭会话面板"
               hitSlop={spacing.md}
               style={styles.headerSideButton}
-              testID="preview-session-close"
+              testID="workspace-session-close"
             >
               <X
-                size={previewTheme.layout.navigationIconSize}
+                size={workspaceTheme.layout.navigationIconSize}
                 color={colors.ink}
                 strokeWidth={2}
               />
@@ -375,10 +375,10 @@ export function PreviewSessionPanel({
               accessibilityLabel={themeToggleLabel}
               hitSlop={spacing.md}
               style={styles.headerSideButton}
-              testID="preview-session-theme-toggle"
+              testID="workspace-session-theme-toggle"
             >
               <ThemeIcon
-                size={previewTheme.layout.navigationIconSize}
+                size={workspaceTheme.layout.navigationIconSize}
                 color={colors.ink}
                 strokeWidth={2}
               />
@@ -403,10 +403,10 @@ export function PreviewSessionPanel({
                     accessibilityState={{ selected }}
                     aria-selected={selected}
                     style={[styles.tab, selected && styles.tabSelected]}
-                    testID={`preview-session-tab-${t}`}
+                    testID={`workspace-session-tab-${t}`}
                   >
                     <Icon
-                      size={previewTheme.layout.iconSize}
+                      size={workspaceTheme.layout.iconSize}
                       color={colors.ink}
                       strokeWidth={selected ? 2 : 1.6}
                     />
@@ -434,12 +434,12 @@ export function PreviewSessionPanel({
   );
 }
 
-function ActivityPanel({ thread }: { thread: PreviewThread }) {
+function ActivityPanel({ thread }: { thread: SampleThread }) {
   const styles = usePanelStyles();
   return (
     <View>
       <Text style={styles.section}>{'今天'}</Text>
-      <Text style={styles.previewLabel}>{TAB_NOTICE.activity}</Text>
+      <Text style={styles.sampleLabel}>{TAB_NOTICE.activity}</Text>
       {thread.activities.length === 0 ? (
         <EmptyState text="暂无动态" />
       ) : (
@@ -451,9 +451,9 @@ function ActivityPanel({ thread }: { thread: PreviewThread }) {
   );
 }
 
-function ActivityRow({ item }: { item: PreviewActivity }) {
+function ActivityRow({ item }: { item: SampleActivity }) {
   const styles = usePanelStyles();
-  const { colors } = usePreviewTheme();
+  const { colors } = useWorkspaceTheme();
   const isRunning = item.status === 'running';
   return (
     <View style={styles.timelineRow} accessibilityRole="text">
@@ -481,14 +481,14 @@ function ApprovalsPanel({
   thread,
   onDecide,
 }: {
-  thread: PreviewThread;
-  onDecide: PreviewSessionPanelProps['onDecide'];
+  thread: SampleThread;
+  onDecide: SessionPanelProps['onDecide'];
 }) {
   const styles = usePanelStyles();
   return (
     <View>
       <Text style={styles.section}>{'审批'}</Text>
-      <Text style={styles.previewLabel}>{TAB_NOTICE.approvals}</Text>
+      <Text style={styles.sampleLabel}>{TAB_NOTICE.approvals}</Text>
       {thread.approvals.length === 0 ? (
         <EmptyState text="暂无审批请求" />
       ) : (
@@ -504,8 +504,8 @@ function ApprovalRow({
   item,
   onDecide,
 }: {
-  item: PreviewApproval;
-  onDecide: PreviewSessionPanelProps['onDecide'];
+  item: SampleApproval;
+  onDecide: SessionPanelProps['onDecide'];
 }) {
   const styles = usePanelStyles();
   const decided = item.status !== 'pending';
@@ -541,12 +541,12 @@ function ApprovalRow({
   );
 }
 
-function WorkspacePanel({ thread }: { thread: PreviewThread }) {
+function WorkspacePanel({ thread }: { thread: SampleThread }) {
   const styles = usePanelStyles();
   return (
     <View>
       <Text style={styles.section}>{'工作区'}</Text>
-      <Text style={styles.previewLabel}>{TAB_NOTICE.workspace}</Text>
+      <Text style={styles.sampleLabel}>{TAB_NOTICE.workspace}</Text>
       {thread.files.length === 0 ? (
         <EmptyState text="暂无文件" />
       ) : (
@@ -557,7 +557,7 @@ function WorkspacePanel({ thread }: { thread: PreviewThread }) {
 }
 
 // 仅展示假文件，不附加 onPress，避免伪造"打开文件"的副作用。
-function FileRow({ item }: { item: PreviewFile }) {
+function FileRow({ item }: { item: SampleFile }) {
   const styles = usePanelStyles();
   return (
     <View style={styles.card}>
@@ -567,12 +567,12 @@ function FileRow({ item }: { item: PreviewFile }) {
   );
 }
 
-function HistoryPanel({ thread }: { thread: PreviewThread }) {
+function HistoryPanel({ thread }: { thread: SampleThread }) {
   const styles = usePanelStyles();
   return (
     <View>
       <Text style={styles.section}>{'历史'}</Text>
-      <Text style={styles.previewLabel}>{TAB_NOTICE.history}</Text>
+      <Text style={styles.sampleLabel}>{TAB_NOTICE.history}</Text>
       {thread.history.length === 0 ? (
         <EmptyState text="暂无历史" />
       ) : (
@@ -584,7 +584,7 @@ function HistoryPanel({ thread }: { thread: PreviewThread }) {
   );
 }
 
-function HistoryRow({ item }: { item: PreviewHistory }) {
+function HistoryRow({ item }: { item: SampleHistory }) {
   const styles = usePanelStyles();
   return (
     <View style={styles.historyRow}>

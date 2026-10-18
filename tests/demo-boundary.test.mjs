@@ -1,7 +1,7 @@
 import './register-source.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { DemoApiClient } from '../src/demo/DemoApiClient.ts';
+import { DemoApiClient } from './helpers/demo-api-client.ts';
 import { taskActions, taskMatches } from '../src/activity/task-presentation.ts';
 import { goalCategoryLabel } from '../src/goals/presentation.ts';
 

@@ -1,4 +1,4 @@
-# UI 预览临时素材
+# 示例界面临时素材
 
 - `reference-avatar.png`：从用户在本次 UI 还原任务中提供的手机截图裁剪。
 - `reference-characters.jpg`：同一截图中的示例角色插图裁剪。

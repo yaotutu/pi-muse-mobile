@@ -311,8 +311,8 @@ export const shadows = {
   },
 } as const;
 
-/** UI 预览共享几何与暗色基线；正式工作区主题不受预览外观影响。 */
-export const previewTheme = {
+/** 新版工作区共享几何与暗色基线。 */
+export const workspaceTheme = {
   colors: {
     canvas: '#050505',
     surface: '#202020',
@@ -376,8 +376,8 @@ export const previewTheme = {
     typingHeight: 48,
     timelineIconWidth: 42,
     listItemGap: 22,
-    previewLabelTop: 8,
-    previewLabelSize: 10,
+    sampleLabelTop: 8,
+    sampleLabelSize: 10,
   },
   radius: {
     round: 999,
@@ -404,12 +404,12 @@ export const previewTheme = {
   motion: { drawerDuration: 280, feedbackDuration: 1800, replyDuration: 3600 },
 } as const;
 
-export type PreviewAppearance = 'light' | 'dark';
-export type PreviewColors = { readonly [Key in keyof typeof previewTheme.colors]: string };
+export type WorkspaceAppearance = 'light' | 'dark';
+export type WorkspaceColors = { readonly [Key in keyof typeof workspaceTheme.colors]: string };
 
 /** 两种外观共用相同组件树和排版；蓝色气泡的前景色独立于普通正文。 */
-export const previewPalettes: Record<PreviewAppearance, PreviewColors> = {
-  dark: previewTheme.colors,
+export const workspacePalettes: Record<WorkspaceAppearance, WorkspaceColors> = {
+  dark: workspaceTheme.colors,
   light: {
     canvas: '#FFFFFF',
     surface: '#F2F3F5',

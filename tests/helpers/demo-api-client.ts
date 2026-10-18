@@ -1,7 +1,7 @@
-import type { ApiClient, ApprovalDecision, GoalInput, IdentityInput, MonitorAction, Profile, RunInput, TaskAction, TaskControlTarget } from '../api/contracts';
-import { ApiError } from '../api/errors';
-import type { AgentTask, AgUiEvent, ApprovalNotification, ConversationMessage, Goal, GoalStatus, MemoryItem, Monitor, TaskDetails, WorkspaceSnapshot } from '../api/types';
-import { demoWorkspace } from './fixtures';
+import type { ApiClient, ApprovalDecision, GoalInput, IdentityInput, MonitorAction, Profile, RunInput, TaskAction, TaskControlTarget } from '../../src/api/contracts';
+import { ApiError } from '../../src/api/errors';
+import type { AgentTask, AgUiEvent, ApprovalNotification, ConversationMessage, Goal, GoalStatus, MemoryItem, Monitor, TaskDetails, WorkspaceSnapshot } from '../../src/api/types';
+import { demoWorkspace } from './demo-fixtures';
 
 type DemoThread = { id: string; title: string; archived: boolean; updatedAt: string; version: number; messages: ConversationMessage[] };
 type ActiveRun = { id: string; controller: AbortController };

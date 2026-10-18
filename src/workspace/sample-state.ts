@@ -1,19 +1,19 @@
 /**
- * 预览数据仅存于内存，与业务 API、持久化和正式会话完全隔离。
+ * 示例数据仅存于内存，与业务 API、持久化和正式会话完全隔离。
  * 每次创建都返回新的嵌套数据；reducer 不得原地改写已有会话或跨会话审批。
  */
 
-export type PreviewTab = 'activity' | 'approvals' | 'workspace' | 'history';
-export type PreviewPage = 'chat' | 'activity' | 'goals' | 'apps';
+export type SessionTab = 'activity' | 'approvals' | 'workspace' | 'history';
+export type WorkspacePage = 'chat' | 'activity' | 'goals' | 'apps';
 
-export interface PreviewMessage {
+export interface SampleMessage {
   id: string;
   role: 'user' | 'assistant';
   text: string;
   image?: 'characters';
 }
 
-export interface PreviewActivity {
+export interface SampleActivity {
   id: string;
   title: string;
   detail: string;
@@ -21,61 +21,61 @@ export interface PreviewActivity {
   status: 'running' | 'done';
 }
 
-export interface PreviewApproval {
+export interface SampleApproval {
   id: string;
   title: string;
   detail: string;
   status: 'pending' | 'approved' | 'denied';
 }
 
-export interface PreviewHistory {
+export interface SampleHistory {
   id: string;
   title: string;
   detail: string;
   time: string;
 }
 
-export interface PreviewFile {
+export interface SampleFile {
   id: string;
   name: string;
   detail: string;
 }
 
 /** 单个会话视图：草稿、消息流、活动、审批、历史、文件均归属于此会话。 */
-export interface PreviewThread {
+export interface SampleThread {
   id: string;
   name: string;
   status: string;
-  messages: PreviewMessage[];
-  activities: PreviewActivity[];
-  approvals: PreviewApproval[];
-  history: PreviewHistory[];
-  files: PreviewFile[];
+  messages: SampleMessage[];
+  activities: SampleActivity[];
+  approvals: SampleApproval[];
+  history: SampleHistory[];
+  files: SampleFile[];
   draft: string;
   running: boolean;
 }
 
-export interface PreviewState {
-  threads: PreviewThread[];
+export interface SampleState {
+  threads: SampleThread[];
   currentThreadId: string;
   drawerOpen: boolean;
   sessionOpen: boolean;
-  sessionTab: PreviewTab;
-  page: PreviewPage;
+  sessionTab: SessionTab;
+  page: WorkspacePage;
   nextId: number;
 }
 
-export const MAIN_PREVIEW_THREAD = 'preview-main';
+export const MAIN_SAMPLE_THREAD = 'sample-main';
 
-export type PreviewAction =
+export type SampleAction =
   | { type: 'open-drawer' }
   | { type: 'close-drawer' }
   | { type: 'select-thread'; id: string }
   | { type: 'create-thread' }
   | { type: 'open-session' }
   | { type: 'close-session' }
-  | { type: 'set-session-tab'; tab: PreviewTab }
-  | { type: 'set-page'; page: PreviewPage }
+  | { type: 'set-session-tab'; tab: SessionTab }
+  | { type: 'set-page'; page: WorkspacePage }
   | { type: 'set-draft'; text: string }
   | { type: 'send' }
   | { type: 'stop' }
@@ -87,9 +87,9 @@ function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value));
 }
 
-function previewMainThread(): PreviewThread {
+function sampleMainThread(): SampleThread {
   return {
-    id: MAIN_PREVIEW_THREAD,
+    id: MAIN_SAMPLE_THREAD,
     name: 'Pi Muse',
     status: '调研生态圈',
     running: true,
@@ -98,7 +98,7 @@ function previewMainThread(): PreviewThread {
       {
         id: 'm1',
         role: 'assistant',
-        text: '欢迎使用 Pi Muse 本地预览（示例数据，未连接服务端）。左侧按钮可切换/新建会话；点击中央头像可打开当前会话面板（动态/审批/工作区/历史 4 个 Tab）。',
+        text: '欢迎使用 Pi Muse 本地演示（示例数据，未连接服务端）。左侧按钮可切换/新建会话；点击中央头像可打开当前会话面板（动态/审批/工作区/历史 4 个 Tab）。',
         image: 'characters',
       },
       {
@@ -145,9 +145,9 @@ function previewMainThread(): PreviewThread {
   };
 }
 
-function previewSecondThread(): PreviewThread {
+function sampleSecondThread(): SampleThread {
   return {
-    id: 'preview-travel',
+    id: 'sample-travel',
     name: '旅行计划',
     status: '示例数据',
     running: false,
@@ -156,7 +156,7 @@ function previewSecondThread(): PreviewThread {
       {
         id: 'm1',
         role: 'assistant',
-        text: '这是本地预览的另一个示例会话（与主会话内容不同），可自由尝试 UI。',
+        text: '这是本地演示的另一个示例会话（与主会话内容不同），可自由尝试 UI。',
       },
       {
         id: 'm2',
@@ -182,7 +182,7 @@ function previewSecondThread(): PreviewThread {
       {
         id: 'h1',
         title: '周末出行清单',
-        detail: '示例会话创建于本地预览',
+        detail: '示例会话创建于本地演示',
         time: '5:12pm',
       },
     ],
@@ -193,17 +193,17 @@ function previewSecondThread(): PreviewThread {
 }
 
 /**
- * 创建初始预览状态：每次返回全新深拷贝，互不污染。
+ * 创建初始示例状态：每次返回全新深拷贝，互不污染。
  * 起始 nextId 选 1000，防止与 fixture 内现有 ID 冲突。
  */
-export function createPreviewState(): PreviewState {
-  const threads: PreviewThread[] = [
-    clone(previewMainThread()),
-    clone(previewSecondThread()),
+export function createSampleState(): SampleState {
+  const threads: SampleThread[] = [
+    clone(sampleMainThread()),
+    clone(sampleSecondThread()),
   ];
   return {
     threads,
-    currentThreadId: MAIN_PREVIEW_THREAD,
+    currentThreadId: MAIN_SAMPLE_THREAD,
     drawerOpen: false,
     sessionOpen: false,
     sessionTab: 'activity',
@@ -212,7 +212,7 @@ export function createPreviewState(): PreviewState {
   };
 }
 
-export function previewReducer(state: PreviewState, action: PreviewAction): PreviewState {
+export function sampleReducer(state: SampleState, action: SampleAction): SampleState {
   switch (action.type) {
     case 'open-drawer':
       // 互斥：打开抽屉时强制收起 session，保证主屏层只有一项保持可见。
@@ -241,8 +241,8 @@ export function previewReducer(state: PreviewState, action: PreviewAction): Prev
     }
 
     case 'create-thread': {
-      const newId = `preview-${state.nextId}`;
-      const fresh: PreviewThread = {
+      const newId = `sample-${state.nextId}`;
+      const fresh: SampleThread = {
         id: newId,
         name: '新会话',
         status: '示例数据',
@@ -295,19 +295,19 @@ export function previewReducer(state: PreviewState, action: PreviewAction): Prev
       if (!current || current.running) return state;
       const text = current.draft.trim();
       if (text.length === 0) return state;
-      const userMsg: PreviewMessage = {
+      const userMsg: SampleMessage = {
         id: `msg-${state.nextId}`,
         role: 'user',
         text,
       };
-      const newActivity: PreviewActivity = {
+      const newActivity: SampleActivity = {
         id: `act-${state.nextId + 1}`,
         title: text,
         detail: `正在处理：${text}`,
         time: '刚刚',
         status: 'running',
       };
-      const newHistory: PreviewHistory = {
+      const newHistory: SampleHistory = {
         id: `hist-${state.nextId + 2}`,
         title: text,
         detail: '任务开始处理（示例）',
@@ -359,10 +359,10 @@ export function previewReducer(state: PreviewState, action: PreviewAction): Prev
       // 显式 threadId：仅对仍在 running 的线程追加示例回复 + 活动收尾，其它情况 no-op。
       const target = state.threads.find((t) => t.id === action.threadId);
       if (!target || !target.running) return state;
-      const assistantReply: PreviewMessage = {
+      const assistantReply: SampleMessage = {
         id: `msg-${state.nextId}`,
         role: 'assistant',
-        text: '（示例回复）这是 Pi Muse 本地预览的占位文本，可截图演示，未连接服务端。',
+        text: '（示例回复）这是 Pi Muse 本地演示的占位文本，可截图演示，未连接服务端。',
       };
       return {
         ...state,
