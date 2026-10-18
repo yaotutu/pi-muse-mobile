@@ -41,7 +41,7 @@ export type ConversationSnapshot = { revision: string; messages: ConversationMes
 
 /**
  * 服务端事件契约的客户端子集：type 必有，其余字段按事件类型按需出现
- * （passthrough 风格，对齐 personal-bot web/src/api/contracts.ts 的 SseEvent）。
+ * （passthrough 风格，对齐 pi-muse web/src/api/contracts.ts 的 SseEvent）。
  */
 export type AgUiEvent = {
   type: string;

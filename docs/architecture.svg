@@ -113,7 +113,7 @@
   <!-- 左: 红 -->
   <rect x="50" y="892" width="305" height="260" rx="10" fill="#FBEFED" stroke="#AA4A45" stroke-width="2"/>
   <text x="70" y="918" font-size="13" font-weight="700" fill="#AA4A45">⚠ 边界红线</text>
-  <text x="70" y="942" font-size="10" fill="#11191C">• ~/Desktop/code/personal-bot</text>
+  <text x="70" y="942" font-size="10" fill="#11191C">• ~/Desktop/code/pi-muse</text>
   <text x="80" y="956" font-size="10" fill="#697176">(只读, 唯一允许 pnpm dev:mock)</text>
   <text x="70" y="978" font-size="10" fill="#11191C">• expo.version / versionCode / buildNumber</text>
   <text x="80" y="992" font-size="10" fill="#697176">(只能 tools/bump-version.js)</text>

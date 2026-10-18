@@ -1,7 +1,7 @@
 /**
  * 聊天运行时状态：把 AG-UI 事件流聚合为可渲染的消息视图。
  *
- * 逻辑翻译自 personal-bot web/src/chat/chat-state.ts（已验证的实现），
+ * 逻辑翻译自 pi-muse web/src/chat/chat-state.ts（已验证的实现），
  * 按本项目类型系统重写。协议要点：
  * - 运行期由聚合器维护乐观视图；RUN_FINISHED 后调用方应拉取
  *   GET /api/conversation 权威历史整体替换，避免双份事实；

@@ -30,8 +30,8 @@ Pi Muse 的官方移动客户端（iOS / Android / 平板）。Expo + React Nati
 联调时如需启动服务端 mock 与本地代理：
 
 ```sh
-# 1. 启动服务端 mock（另一个仓库，只读使用；mock 数据隔离在 .personal-bot/mock，端口 8788）
-cd ~/Desktop/code/personal-bot && pnpm dev:mock
+# 1. 启动服务端 mock（另一个仓库，只读使用；mock 数据隔离在 .pi-muse/mock，端口 8788）
+cd ~/Desktop/code/pi-muse && pnpm dev:mock
 
 # 2. 启动本地 Web 联调代理（8791 → 127.0.0.1:8788，并注入 CORS 响应头）
 cd ~/Desktop/code/pi-muse-mobile && npm run proxy

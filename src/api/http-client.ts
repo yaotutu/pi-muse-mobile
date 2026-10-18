@@ -5,7 +5,7 @@
  * - 统一错误形状 {error}；401 由构造方注入的 onUnauthorized 处理
  *   （清 token 回登录门）；
  * - run 只发送新用户消息与历史版本，服务端负责历史一致性及冲突检测；
- * - SSE 用 parseSseFrames 按 \n\n 分帧（翻译自 personal-bot web/src/lib/api.ts），
+ * - SSE 用 parseSseFrames 按 \n\n 分帧（翻译自 pi-muse web/src/lib/api.ts），
  *   非 JSON 帧忽略，协议错误由 RUN_ERROR 事件表达。
  */
 

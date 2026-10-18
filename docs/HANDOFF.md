@@ -84,7 +84,7 @@ pi-muse 的官方移动客户端（iOS / Android / 平板）。Expo SDK 57 + Rea
 
 ## 协同协议（详见 AGENTS.md，此处摘要）
 
-- 服务端仓库 `~/Desktop/code/personal-bot` 由另一个 agent 维护，**本仓库对它严格只读**（唯一允许：跑 `pnpm dev:mock` 联调，8788）。
+- 服务端仓库 `~/Desktop/code/pi-muse` 由另一个 agent 维护，**本仓库对它严格只读**（唯一允许：跑 `pnpm dev:mock` 联调，8788）。
 - 接口事实来源 = 服务端 OpenAPI 文档。本轮已通过 `curl` 实际读取 `http://127.0.0.1:8790/openapi.json`；它与客户端本地 mock 8788 是不同服务实例。服务端仓库只读，不做任何修改或 Git 操作。
 - **遇到不合理接口 → 停下来报告用户，用户介入协调服务端**。不自行改服务端，不迁就硬写。问题记录进 `docs/notes.md`。
 - 服务端自己的测试 web 页面与我们无关。
@@ -116,7 +116,7 @@ pi-muse 的官方移动客户端（iOS / Android / 平板）。Expo SDK 57 + Rea
 - **顶栏**：左汉堡（开"会话 Sheet"：主会话 / side chats / 新建 / 重命名，参照 OpenMuse ThreadsSheet）；中 agent 名（identity.name）+ 一行动态状态（就绪 / 思考中… / N 项待审批）；右铃铛（pendingActions > 0 显示未读小点，点开审批 Sheet：write/edit 的 approve/deny）。
 - **聊天页**：用户浅蓝气泡右对齐 maxWidth 85%、右下角收 7；助手灰气泡左对齐 maxWidth 95%、左下角收 7；含工具调用的消息占 95%。流式三点指示（透明度 0.4/0.75/0.5 装入 28 圆角灰胶囊）。输入区白色 pill（圆角 32、聚焦描边 #C7E4F9 + 阴影加深、textarea 高 44→140 自适应、Web 态 Enter 发送 Shift+Enter 换行）、右侧 44×44 圆形发送(↑)/停止(■)同位切换。智能滚动：距底 <100px 才跟随，脱离后悬浮"回到最新"按钮。空态大标题 + 3 个建议 prompt。运行结束拉 `GET /api/conversation` 用权威历史替换聚合视图（翻译 web/ 的既有做法，失败保留聚合视图）。
 - **任务页（activity）**：定时 + 后台任务混合列表（状态徽章、结果/错误折叠、暂停/恢复/取消/重试）+ **监控区块**（monitors 列表 + 暂停/恢复/停止；创建走聊天 `monitor` 工具，页面放引导提示）。
-- **目标页**：目标 CRUD + 里程碑勾选 + 进度条（参照 personal-bot `web/src/goals/GoalsView.tsx` 的交互，换新视觉）。
+- **目标页**：目标 CRUD + 里程碑勾选 + 进度条（参照 pi-muse `web/src/goals/GoalsView.tsx` 的交互，换新视觉）。
 - **应用页（apps）**：身份卡（名字输入 + tone 三选一 chips：warm/concise/thoughtful）+ 记忆卡（行内编辑 / 忘记 / 新增，显示来源与时间戳）+ SOUL/USER 折叠编辑区（等宽字体）。
 - **工具卡清单**（专用 renderer，其余走通配卡）：search_web（来源链接列表）、memory（保存成功 + 跳应用）、schedule / monitor（保存成功 + 跳任务）、delegate_task（任务状态 + 跳任务）、get_weather（专用文本卡；结构化数据受服务端契约阻塞）、write / edit（展示工具结果并提供查看审批入口；具体审批决定仅在审批列表准确呈现，不按工具调用猜测）、read / grep / find / ls / web_fetch（文件或网页预览，截断 + 展开）、currentTime（轻量单行）。
 
