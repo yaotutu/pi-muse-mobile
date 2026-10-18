@@ -8,7 +8,7 @@
 | 2026-10-15 | notifications.payload（GET /api/agent） | 类型为 `Record<string, string>`，键名未定义。审批卡需要知道键名（如 file_write→content、file_edit→before/after）才能友好渲染写入预览 | 文档明确各 kind 的 payload 键名枚举 | 待澄清；过渡期从 personal-bot 源码只读提取实际键名 |
 | 2026-10-15 | tasks.plan / tasks.evidence（GET /api/agent、任务详情） | 元素结构未定义（`items: {}`），无法类型安全渲染 | 文档给出元素结构 | 低优先：任务详情已有 events 时间线（结构完整）可渲染，plan/evidence 可通用展示或不渲染 |
 | 2026-10-15 | 全端点 CORS | OPTIONS 预检返回 204 并回 allow-methods/allow-headers，但**任何响应都不带 `Access-Control-Allow-Origin`**，浏览器跨域全被拦（原生 App 不受影响） | 跨域响应补 `Access-Control-Allow-Origin`（如回显 Origin 白名单） | 已告知用户；过渡期本仓库自带本地代理（tools/dev-proxy.mjs，8791→8788 注入 CORS 头）供 Web 调试，服务端修复后退役 |
-| 2026-10-18 | GET /api/agent & /api/events（工作区状态同步） | 客户端目前每 5 秒盲轮询快照，耗电且切后台感知不及时 | 提供轻量全局事件通知（SSE /api/events）或 ETag（304）支持，详见 docs/backlog.md | 待定（方案探讨中） |
+| 2026-10-18 | GET /api/agent & /api/events（工作区状态同步） | 客户端目前每 5 秒盲轮询全量快照，高耗电且切后台感知不及时 | 提供全局轻量 SSE（/api/events）+ 默认 7 天活跃快照与 Cursor 分页 + 远程推送唤醒，详见 docs/backlog.md | 方案已定，待服务端协同 |
 
 ## 本轮核对（2026-10-15）
 
