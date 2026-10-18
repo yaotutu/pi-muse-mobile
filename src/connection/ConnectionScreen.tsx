@@ -31,6 +31,7 @@ export function ConnectionScreen({
   onSaveOffline,
   onChangeServer,
   onDemo,
+  onPreview,
 }: ConnectionScreenProps) {
   const update = useAppUpdate();
   const [draftUrl, setDraftUrl] = useState(mode === 'initial' ? '' : serverUrl ?? '');
@@ -218,6 +219,7 @@ export function ConnectionScreen({
             </Card>
 
             <View style={styles.demoRow}>
+              {onPreview && <Button primary onPress={onPreview} disabled={busy}>新 UI 预览</Button>}
               <Button onPress={onDemo} disabled={busy}>
                 体验演示工作区
               </Button>

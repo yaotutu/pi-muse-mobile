@@ -31,6 +31,7 @@ export type ConnectionScreenProps = {
   onSaveOffline: (serverUrl: string, accessKey: string) => Promise<void>;
   onChangeServer: () => void;
   onDemo: () => void;
+  onPreview?: () => void;
 };
 
 export type ServerSettingsScreenProps = {

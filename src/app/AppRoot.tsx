@@ -19,9 +19,10 @@ import { colors, layout, spacing, typography } from '../ui/tokens';
 import { UpdateProvider } from '../update/UpdateProvider';
 import type { UpdateManager } from '../update/update-manager';
 import { useWorkspaceSnapshot } from '../workspace/useWorkspaceSnapshot';
+import { PreviewRoot } from '../preview/PreviewRoot';
 import { AppShell } from './AppShell';
 
-function Workspace({ onDemo }: { onDemo: () => void }) {
+function Workspace({ onDemo, onPreview }: { onDemo: () => void; onPreview: () => void }) {
   const api = useApi();
   const connection = useServiceConnection();
   const enabled = connection?.enabled ?? true;
@@ -30,10 +31,10 @@ function Workspace({ onDemo }: { onDemo: () => void }) {
   const { threads, currentThread, selectThread, createThread, error: threadsError, reload } = useThreads(enabled, refreshVersion);
   return <AppShell snapshot={snapshot} snapshotError={error} refresh={() => void refresh()}
     threads={threads} currentThread={currentThread} threadsError={threadsError} reloadThreads={reload}
-    onSelectThread={selectThread} onCreateThread={createThread} onDemo={onDemo} />;
+    onSelectThread={selectThread} onCreateThread={createThread} onDemo={onDemo} onPreview={onPreview} />;
 }
 
-function ServiceRoot({ active, onDemo }: { active: boolean; onDemo: () => void }) {
+function ServiceRoot({ active, onDemo, onPreview }: { active: boolean; onDemo: () => void; onPreview: () => void }) {
   const [editing, setEditing] = useState(false);
   const { manager, snapshot, client, enabled } = useConnection(active && !editing);
   const changeServer = useCallback(() => {
@@ -48,6 +49,12 @@ function ServiceRoot({ active, onDemo }: { active: boolean; onDemo: () => void }
     manager.cancelTest();
     onDemo();
   }, [manager, onDemo]);
+  const enterPreview = useCallback(() => {
+    if (manager.isCritical()) return;
+    manager.setActive(false);
+    manager.cancelTest();
+    onPreview();
+  }, [manager, onPreview]);
   const save = useCallback(async (url: string, key: string, test?: ConnectionTest) => {
     await manager.saveServer(url, key, test);
     setEditing(false);
@@ -61,7 +68,7 @@ function ServiceRoot({ active, onDemo }: { active: boolean; onDemo: () => void }
       {client && snapshot.workspaceReady && <ApiProvider client={client}>
         <OverlayVisibilityProvider visible={showWorkspace && active}>
           <View style={{ flex: 1, display: showWorkspace ? 'flex' : 'none' }}>
-            <ToastProvider key={snapshot.workspaceKey}><Workspace key={snapshot.workspaceKey} onDemo={enterDemo} /></ToastProvider>
+            <ToastProvider key={snapshot.workspaceKey}><Workspace key={snapshot.workspaceKey} onDemo={enterDemo} onPreview={enterPreview} /></ToastProvider>
           </View>
         </OverlayVisibilityProvider>
       </ApiProvider>}
@@ -76,6 +83,7 @@ function ServiceRoot({ active, onDemo }: { active: boolean; onDemo: () => void }
             {snapshot.status === 'storage-error' && <Button onPress={() => void manager.start()}>重试读取配置</Button>}
             {snapshot.status === 'reset-error' && <Button onPress={manager.retryReset}>重试清理本地数据</Button>}
             {!snapshot.busy && <Button onPress={changeServer}>更改服务器</Button>}
+            <Button disabled={snapshot.busy} onPress={enterPreview}>新 UI 预览</Button>
             <Button disabled={snapshot.busy} onPress={enterDemo}>体验演示工作区</Button>
           </View>
         </SafeAreaView>
@@ -83,26 +91,33 @@ function ServiceRoot({ active, onDemo }: { active: boolean; onDemo: () => void }
             mode={!snapshot.serverUrl ? 'initial' : snapshot.workspaceReady ? 'authenticate' : 'configured'}
             serverUrl={snapshot.serverUrl} initialAccessKey={manager.getPendingKey()} busy={snapshot.busy} error={snapshot.error}
             onTest={manager.testConnection} onCancelTest={manager.cancelTest} onConnect={manager.connect}
-            onSaveOffline={manager.saveServer} onChangeServer={changeServer} onDemo={enterDemo} />}
+            onSaveOffline={manager.saveServer} onChangeServer={changeServer} onDemo={enterDemo} onPreview={enterPreview} />}
     </View>
   </ConnectionProvider>;
 }
 
-function DemoRoot({ client, reset, exit }: { client: DemoApiClient; reset: (empty?: boolean) => void; exit: () => void }) {
+function DemoRoot({ client, reset, exit, preview, active }: { client: DemoApiClient; reset: (empty?: boolean) => void; exit: () => void; preview: () => void; active: boolean }) {
   useEffect(() => () => client.dispose(), [client]);
-  return <DemoProvider value={{ client, reset, exit }}>
-    <ApiProvider client={client}><ToastProvider><Workspace onDemo={() => reset()} /></ToastProvider></ApiProvider>
+  return <DemoProvider value={{ client, reset, exit, preview }}>
+    <ApiProvider client={client}><OverlayVisibilityProvider visible={active}>
+      <ToastProvider><Workspace onDemo={() => reset()} onPreview={preview} /></ToastProvider>
+    </OverlayVisibilityProvider></ApiProvider>
   </DemoProvider>;
 }
 
 export default function AppRoot({ updateManager }: { updateManager?: UpdateManager } = {}) {
   const [demo, setDemo] = useState<{ client: DemoApiClient; generation: number }>();
+  const [preview, setPreview] = useState(false);
   const enterDemo = useCallback((empty = false) => setDemo((previous) => ({ client: new DemoApiClient(empty), generation: (previous?.generation ?? 0) + 1 })), []);
+  const enterPreview = useCallback(() => setPreview(true), []);
   return <SafeAreaProvider><ErrorBoundary title="应用运行异常"><UpdateProvider manager={updateManager}>
-    <StatusBar style="dark" />
+    <StatusBar style={preview ? 'light' : 'dark'} />
     <View style={{ flex: 1 }}>
-      <View style={{ flex: 1, display: demo ? 'none' : 'flex' }}><ServiceRoot active={!demo} onDemo={enterDemo} /></View>
-      {demo && <DemoRoot key={demo.generation} client={demo.client} reset={enterDemo} exit={() => setDemo(undefined)} />}
+      <View style={{ flex: 1, display: demo || preview ? 'none' : 'flex' }}><ServiceRoot active={!demo && !preview} onDemo={enterDemo} onPreview={enterPreview} /></View>
+      {demo && <View style={{ flex: 1, display: preview ? 'none' : 'flex' }}>
+        <DemoRoot key={demo.generation} client={demo.client} reset={enterDemo} exit={() => setDemo(undefined)} preview={enterPreview} active={!preview} />
+      </View>}
+      {preview && <PreviewRoot onExit={() => setPreview(false)} />}
     </View>
   </UpdateProvider></ErrorBoundary></SafeAreaProvider>;
 }

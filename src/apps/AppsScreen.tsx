@@ -1,6 +1,6 @@
 // 编辑器按入口互斥挂载，关闭弹层即丢弃未保存草稿。
 
-import { Bot, Brain, ChevronRight, FileText, Server, type LucideIcon } from 'lucide-react-native';
+import { Bot, Brain, ChevronRight, FileText, PanelsTopLeft, Server, type LucideIcon } from 'lucide-react-native';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { MemoryItem, WorkspaceSnapshot } from '../api/types';
@@ -33,9 +33,11 @@ const PROFILE_SUMMARY = 'SOUL 助手人设 / USER 用户画像';
 export function AppsScreen({
   snapshot,
   refresh,
+  onPreview,
 }: {
   snapshot: WorkspaceSnapshot | undefined;
   refresh: () => void;
+  onPreview?: () => void;
 }) {
   const [open, setOpen] = useState<Entry>();
   const connection = useServiceConnection();
@@ -75,6 +77,16 @@ export function AppsScreen({
 
   return (
     <View style={{ gap: spacing.lg }}>
+      {onPreview && <Card>
+        <Pressable accessibilityRole="button" accessibilityLabel="新 UI 预览" onPress={onPreview} style={styles.row}>
+          <IconBox icon={PanelsTopLeft} size={sizing[36]} tint={colors.avatarLilac} />
+          <View style={styles.rowText}>
+            <Text style={{ ...typography.text, fontWeight: '600', color: colors.ink }}>新 UI 预览</Text>
+            <Text style={{ ...typography.small, color: colors.muted }}>截图还原 · 独立假数据，不影响当前工作区</Text>
+          </View>
+          <ChevronRight size={sizing[15]} color={colors.muted} />
+        </Pressable>
+      </Card>}
       {connection?.snapshot.serverUrl && <Card>
         <Pressable accessibilityRole="button" onPress={connection.changeServer} style={styles.row}>
           <IconBox icon={Server} size={sizing[36]} tint={colors.sky} />

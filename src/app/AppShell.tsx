@@ -79,6 +79,7 @@ export function AppShell({
   threadsError,
   reloadThreads,
   onDemo,
+  onPreview,
 }: {
   /** /api/agent 快照（App 层轮询下发）；未就绪时顶栏回落默认文案 */
   snapshot: WorkspaceSnapshot | undefined;
@@ -92,6 +93,7 @@ export function AppShell({
   threadsError?: string;
   reloadThreads: () => void;
   onDemo: () => void;
+  onPreview: () => void;
 }) {
   const view = useUiStore((s) => s.currentTab);
   const setView = useUiStore((s) => s.setCurrentTab);
@@ -158,7 +160,7 @@ export function AppShell({
               {!snapshot && <Text style={{ ...typography.muted, color: colors.muted }}>{snapshotError ? '暂时无法连接工作区，请重试刷新。' : '正在载入工作区…'}</Text>}
               {snapshot && view === 'activity' && <ActivityScreen snapshot={snapshot} refresh={refresh} />}
               {snapshot && view === 'goals' && <GoalsScreen snapshot={snapshot} refresh={refresh} />}
-              {view === 'apps' && <AppsScreen snapshot={snapshot} refresh={refresh} />}
+              {view === 'apps' && <AppsScreen snapshot={snapshot} refresh={refresh} onPreview={onPreview} />}
             </ScrollView>
           )}
           <View
