@@ -208,7 +208,7 @@ export class ThreadSessionStore {
       try { result = await this.api.deleteThread(id); }
       catch (error) {
         if (!(error instanceof ApiError) || error.status !== 404) throw error;
-        result = { ok: true, removed: { jobs: 0, monitors: 0, tasks: 0 } };
+        result = { ok: true, removed: { jobs: 0, monitors: 0 } };
       }
       this.clear(id);
       return result;

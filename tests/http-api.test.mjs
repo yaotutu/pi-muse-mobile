@@ -446,7 +446,7 @@ test('deleteThread 编码 threadId 且为 DELETE 方法，body=null 表示不会
   let observed;
   await withFetch(async (url, init) => {
     observed = { url, method: init.method, body: init.body };
-    return jsonResponse({ ok: true, removed: { jobs: 1, monitors: 0, tasks: 2 } });
+    return jsonResponse({ ok: true, removed: { jobs: 1, monitors: 0 } });
   }, async () => {
     const client = new HttpApiClient(BASE, () => 'token-1', () => {});
     await client.deleteThread('thread/一');
@@ -472,6 +472,173 @@ test('deleteThread 在 404/409 上保留 ApiError 语义且不重试', async () 
     });
   });
   assert.equal(calls, 1, '副作用请求不应自动重试');
+});
+
+test('deleteThread 成功响应只校验 jobs/monitors 为非负整数，无需 removed.tasks', async () => {
+  const successPayloads = [
+    { ok: true, removed: { jobs: 0, monitors: 0 } },
+    { ok: true, removed: { jobs: 1, monitors: 0 } },
+    { ok: true, removed: { jobs: 0, monitors: 2 } },
+    { ok: true, removed: { jobs: 3, monitors: 5 } },
+  ];
+  for (const payload of successPayloads) {
+    await withFetch(async () => jsonResponse(payload), async () => {
+      const client = new HttpApiClient(BASE, () => 'token-1', () => {});
+      assert.deepEqual(await client.deleteThread('thread-1'), payload);
+    });
+  }
+});
+
+test('deleteThread 缺 jobs 或 monitors 时抛 502', async () => {
+  const badPayloads = [
+    { ok: true, removed: { monitors: 0 } },
+    { ok: true, removed: { jobs: 1 } },
+    { ok: true },
+    { ok: true, removed: {} },
+  ];
+  for (const payload of badPayloads) {
+    await withFetch(async () => jsonResponse(payload), async () => {
+      const client = new HttpApiClient(BASE, () => 'token-1', () => {});
+      await assert.rejects(client.deleteThread('thread-1'), (error) => {
+        assert.ok(error instanceof ApiError);
+        assert.equal(error.status, 502);
+        return true;
+      });
+    });
+  }
+});
+
+test('deleteThread jobs/monitors 不是非负安全整数时抛 502', async () => {
+  const badPayloads = [
+    { ok: true, removed: { jobs: '1', monitors: 0 } },
+    { ok: true, removed: { jobs: 0, monitors: '0' } },
+    { ok: true, removed: { jobs: -1, monitors: 0 } },
+    { ok: true, removed: { jobs: 0, monitors: -1 } },
+    { ok: true, removed: { jobs: 1.5, monitors: 0 } },
+    { ok: true, removed: { jobs: 0, monitors: 0.5 } },
+    { ok: true, removed: { jobs: Number.MAX_SAFE_INTEGER + 1, monitors: 0 } },
+    { ok: true, removed: { jobs: 0, monitors: Number.MAX_SAFE_INTEGER + 1 } },
+  ];
+  for (const payload of badPayloads) {
+    await withFetch(async () => jsonResponse(payload), async () => {
+      const client = new HttpApiClient(BASE, () => 'token-1', () => {});
+      await assert.rejects(client.deleteThread('thread-1'), (error) => {
+        assert.ok(error instanceof ApiError);
+        assert.equal(error.status, 502);
+        return true;
+      });
+    });
+  }
+});
+
+test('deleteThread 对 THREAD_DELETING 409 抛 ApiError 仅一次并保留 code', async () => {
+  let calls = 0;
+  await withFetch(async (_url, init) => {
+    calls += 1;
+    assert.equal(init.method, 'DELETE');
+    return jsonResponse({ error: '会话正在删除中', code: 'THREAD_DELETING' }, 409);
+  }, async () => {
+    const client = new HttpApiClient(BASE, () => 'token-1', () => {});
+    await assert.rejects(client.deleteThread('thread-1'), (error) => {
+      assert.ok(error instanceof ApiError);
+      assert.equal(error.status, 409);
+      assert.equal(error.code, 'THREAD_DELETING');
+      assert.equal(error.message, '会话正在删除，请刷新会话列表后重新选择，不要重试原会话');
+      return true;
+    });
+  });
+  assert.equal(calls, 1, 'THREAD_DELETING 不应自动重试');
+});
+
+test('runAgent 对 THREAD_DELETING 409 抛 ApiError 仅一次并保留 code', async () => {
+  const runInput = {
+    threadId: 'thread-1',
+    runId: 'run-1',
+    expectedRevision: 'rev-17',
+    message: { id: 'message-1', content: '你好' },
+  };
+  let calls = 0;
+  await withFetch(async (_url, init) => {
+    calls += 1;
+    assert.equal(init.method, 'POST');
+    assert.equal(init.headers.authorization, 'Bearer token-1');
+    return jsonResponse({ error: '会话正在删除中', code: 'THREAD_DELETING' }, 409);
+  }, async () => {
+    const client = new HttpApiClient(BASE, () => 'token-1', () => {});
+    await assert.rejects(client.runAgent(runInput, () => {}), (error) => {
+      assert.ok(error instanceof ApiError);
+      assert.equal(error.status, 409);
+      assert.equal(error.code, 'THREAD_DELETING');
+      assert.equal(error.message, '会话正在删除，请刷新会话列表后重新选择，不要重试原会话');
+      return true;
+    });
+  });
+  assert.equal(calls, 1, 'run THREAD_DELETING 不应自动重试');
+});
+
+test('saveThreadInstructions 对 THREAD_DELETING 409 抛 ApiError 仅一次并保留 code', async () => {
+  let calls = 0;
+  await withFetch(async (_url, init) => {
+    calls += 1;
+    assert.equal(init.method, 'PUT');
+    assert.equal(init.headers.authorization, 'Bearer token-1');
+    return jsonResponse({ error: '会话正在删除中', code: 'THREAD_DELETING' }, 409);
+  }, async () => {
+    const client = new HttpApiClient(BASE, () => 'token-1', () => {});
+    await assert.rejects(client.saveThreadInstructions('thread/一', '新指令'), (error) => {
+      assert.ok(error instanceof ApiError);
+      assert.equal(error.status, 409);
+      assert.equal(error.code, 'THREAD_DELETING');
+      assert.equal(error.message, '会话正在删除，请刷新会话列表后重新选择，不要重试原会话');
+      return true;
+    });
+  });
+  assert.equal(calls, 1, 'instructions PUT THREAD_DELETING 不应自动重试');
+});
+
+test('saveThreadSkills 对 THREAD_DELETING 409 抛 ApiError 仅一次并保留 code', async () => {
+  let calls = 0;
+  await withFetch(async (_url, init) => {
+    calls += 1;
+    assert.equal(init.method, 'PUT');
+    return jsonResponse({ error: '会话正在删除中', code: 'THREAD_DELETING' }, 409);
+  }, async () => {
+    const client = new HttpApiClient(BASE, () => 'token-1', () => {});
+    await assert.rejects(client.saveThreadSkills('thread/一', {}), (error) => {
+      assert.ok(error instanceof ApiError);
+      assert.equal(error.status, 409);
+      assert.equal(error.code, 'THREAD_DELETING');
+      assert.equal(error.message, '会话正在删除，请刷新会话列表后重新选择，不要重试原会话');
+      return true;
+    });
+  });
+  assert.equal(calls, 1, 'skills PUT THREAD_DELETING 不应自动重试');
+});
+
+test('runAgent 普通 revision 409 透传 server code 且不重试', async () => {
+  // 非 THREAD_DELETING 的 409 仍透传 server code；恢复历史策略由上层决定，客户端不代为决策。
+  const runInput = {
+    threadId: 'thread-1',
+    runId: 'run-1',
+    expectedRevision: 'rev-17',
+    message: { id: 'message-1', content: '你好' },
+  };
+  let calls = 0;
+  await withFetch(async () => {
+    calls += 1;
+    return jsonResponse({ error: '历史版本不一致', code: 'REVISION_CONFLICT' }, 409);
+  }, async () => {
+    const client = new HttpApiClient(BASE, () => 'token-1', () => {});
+    await assert.rejects(client.runAgent(runInput, () => {}), (error) => {
+      assert.ok(error instanceof ApiError);
+      assert.equal(error.status, 409);
+      assert.equal(error.code, 'REVISION_CONFLICT');
+      // 普通 409 走 fallback 之外的 server error 字符串原样透传；恢复策略由上层决定。
+      assert.equal(error.message, '历史版本不一致');
+      return true;
+    });
+  });
+  assert.equal(calls, 1, 'revision 409 不应自动重试');
 });
 
 test('会话配置端点把 400/401/404/500 都映射成 ApiError 状态码', async () => {
@@ -565,7 +732,7 @@ test('会话配置端点的 signal 取消：调用前取消抛 requestCancelled,
   let tailCalls = 0;
   await withFetch(async () => {
     tailCalls += 1;
-    return jsonResponse({ ok: true, removed: { jobs: 0, monitors: 0, tasks: 0 } });
+    return jsonResponse({ ok: true, removed: { jobs: 0, monitors: 0 } });
   }, async () => {
     const client = new HttpApiClient(BASE, () => 'token-1', () => {});
     const controller = new AbortController();

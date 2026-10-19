@@ -151,6 +151,22 @@ test('RUN_ERROR 暴露受控错误并结束所有 streaming，保留已有回复
   assert.equal(aggregate([{ type: 'RUN_ERROR' }]).error, '运行失败');
 });
 
+test('历史允许无正文的纯工具消息，空正文不影响按调用 ID 关联', () => {
+  const history = [
+    { id: 'assistant-tools', role: 'assistant', toolCalls: [
+      { id: 'lookup-1', type: 'function', function: { name: 'lookup', arguments: '{}' } },
+    ] },
+    { id: 'tool-result', role: 'tool', toolCallId: 'lookup-1' },
+  ];
+  const views = projectHistory(history);
+  assert.deepEqual(views, [{
+    id: 'assistant-tools', role: 'assistant', text: '',
+    toolCalls: [{ id: 'lookup-1', name: 'lookup', args: '{}', result: '' }],
+  }]);
+  assert.equal('content' in history[0], false);
+  assert.equal('content' in history[1], false);
+});
+
 test('历史投影按调用 ID 回填结果且不修改输入，settle 可重复收尾', () => {
   const history = [
     { id: 'user', role: 'user', content: '问题' },

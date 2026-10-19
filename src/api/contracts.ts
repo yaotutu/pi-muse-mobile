@@ -35,7 +35,7 @@ export interface ApiClient {
   createSession(accessKey?: string): Promise<{ token: string; mode: string }>;
   /** GET /api/threads（按活跃倒序） */
   listThreads(signal?: AbortSignal): Promise<ThreadInfo[]>;
-  /** GET /api/conversation?threadId= 权威历史（只读，不回写） */
+  /** GET /api/conversation?threadId= 权威历史；empty 不代表会话存在，存在性以列表为准。 */
   getConversation(threadId: string, signal?: AbortSignal): Promise<ConversationSnapshot>;
   /** 发起一轮对话：SSE 流式回调 AG-UI 事件；signal 中断即停止消费 */
   runAgent(

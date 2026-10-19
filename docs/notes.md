@@ -10,6 +10,14 @@
 | 2026-10-15 | 全端点 CORS | OPTIONS 预检返回 204 并回 allow-methods/allow-headers，但**任何响应都不带 `Access-Control-Allow-Origin`**，浏览器跨域全被拦（原生 App 不受影响） | 跨域响应补 `Access-Control-Allow-Origin`（如回显 Origin 白名单） | 已告知用户；过渡期本仓库自带本地代理（tools/dev-proxy.mjs，8791→8788 注入 CORS 头）供 Web 调试，服务端修复后退役 |
 | 2026-10-18 | GET /api/agent & /api/events（工作区状态同步） | 保留的数据层仍以 5 秒盲轮询全量快照（新版根入口当前未挂载），高耗电且切后台感知不及时 | 提供全局轻量 SSE（/api/events）+ 默认 7 天活跃快照与 Cursor 分页 + 远程推送唤醒，详见 docs/backlog.md | 方案已定，待服务端协同；据交接说明 `/api/events` 已由服务端提交 `473213f` 交付，但本仓库尚未定位修订正文，客户端未接入 |
 
+## 会话与聊天适配核对（2026-10-19）
+
+- 本轮只适配会话与聊天数据层，以在线 `/openapi.json` 为准；删除响应已移除 `removed.tasks` 要求，`THREAD_DELETING` 与普通 revision 冲突区别处理。配置保存保留草稿且不自动重试；测试夹具不再用历史 GET 重建会话。没有接入新全局 SSE／审批或恢复真实 UI 连接。
+- 新在线契约已明确：不存在、已删除或正在删除的合法会话历史只读返回 `{revision:"empty",messages:[]}`；会话是否存在以列表为准。2026-10-18 下方的复现属于旧部署，不能继续当作当前服务仍有同样故障的证据；本轮未对正式会话做写入／删除复验。
+- **隔离联调阻塞已解除**：首次 `pnpm dev:mock` 在读取旧审批数据时抛 `Invalid actions document`。只读定位确认 `.pi-muse/mock/actions.json` 共7条旧终态记录，缺少新版 `revision/resolvedAt` 与关联字段；不是17890实际服务未启动。用户明确授权直接重置且不备份后，仅重置该文件为空数组，未改服务端源码、配置或其他已有 mock 数据；官方 mock 成功恢复17891监听。
+- **补做联调**：真实 `HttpApiClient + ThreadSessionStore` 对17891完成19项检查，全部通过；覆盖规则／技能、历史只读、聊天流、幂等／revision冲突、精确Stop、删除响应／当前轮收尾、迟到请求和同名新会话。临时会话经API全部清理，原会话列表保持不变，证据 `/tmp/pi-muse-session-live.r5o8kM/`（无Token）。17890健康检查正常，本轮未对其发送业务写入或调用真实模型。
+- 本地 lint、typecheck、299/299 回归与 diff 检查通过；新版 UI 和原生运行仍未接入验收，其他模块的历史问题暂未在本轮重新验收。
+
 ## 会话与隔离工作区接口验收（2026-10-18）
 
 ### 结论与范围

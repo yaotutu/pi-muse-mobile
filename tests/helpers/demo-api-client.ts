@@ -88,7 +88,11 @@ export class DemoApiClient implements ApiClient {
   renameThread(id: string, title: string) { this.thread(id).title = title.trim() || '新的会话'; }
   archiveThread(id: string, archived: boolean) { if (id !== 'local-main') this.thread(id).archived = archived; }
   async getConversation(id: string) {
-    const thread = this.thread(id);
+    // 空历史不能证明会话存在；只有显式写入才建立会话。
+    if (this.deleting.has(id)) return { revision: 'empty', messages: [] };
+    const thread = this.threads.get(id);
+    if (!thread) return { revision: 'empty', messages: [] };
+    if (thread.messages.length === 0) return { revision: 'empty', messages: [] };
     return { revision: `demo:${thread.version}`, messages: copy(thread.messages) };
   }
   async getSnapshot() { return copy({ ...this.workspace, notifications: this.workspace.notifications.filter((n) => n.status === 'pending') }); }
@@ -110,7 +114,7 @@ export class DemoApiClient implements ApiClient {
   /** 保存设置不推进聊天 revision，也不把设置修改时间当作聊天活跃时间。 */
   async saveThreadInstructions(threadId: string, instructions: string, signal?: AbortSignal) {
     rejectIfAborted(signal);
-    if (this.deleting.has(threadId)) throw new ApiError(409, '会话正在删除');
+    if (this.deleting.has(threadId)) throw new ApiError(409, '会话正在删除', 'THREAD_DELETING');
     const result = this.settings.saveInstructions(threadId, instructions);
     this.thread(threadId);
     return result;
@@ -128,7 +132,7 @@ export class DemoApiClient implements ApiClient {
    */
   async saveThreadSkills(threadId: string, overrides: Record<string, boolean>, signal?: AbortSignal) {
     rejectIfAborted(signal);
-    if (this.deleting.has(threadId)) throw new ApiError(409, '会话正在删除');
+    if (this.deleting.has(threadId)) throw new ApiError(409, '会话正在删除', 'THREAD_DELETING');
     const result = this.settings.saveSkills(threadId, overrides);
     this.thread(threadId);
     return result;
@@ -162,7 +166,7 @@ export class DemoApiClient implements ApiClient {
       }
 
       // --- 级联清理 ---
-      const removed = { jobs: 0, monitors: 0, tasks: 0 };
+      const removed = { jobs: 0, monitors: 0 };
       const survivingTasks: AgentTask[] = [];
       for (const task of this.workspace.tasks) {
         const origin = this.taskOrigins.get(task.id);
@@ -176,7 +180,6 @@ export class DemoApiClient implements ApiClient {
             if (task.status === 'queued' || task.status === 'running') {
               task.status = 'cancelled';
               task.updatedAt = stamp();
-              removed.tasks++;
               const events = this.timelines.get(task.id) ?? [];
               events.push({
                 id: this.id('event'),
@@ -227,7 +230,7 @@ export class DemoApiClient implements ApiClient {
       // 清理线程设置与私有索引。
       this.settings.clear(threadId);
 
-      // 最后一步：摘除线程记录。deleting 集合在 finally 释放，使后续访问得到 404。
+      // 只读访问不能重建此条目；显式写入须等删除锁在 finally 释放后再建立新会话。
       this.threads.delete(threadId);
 
       return { ok: true, removed };
@@ -237,7 +240,18 @@ export class DemoApiClient implements ApiClient {
   }
 
   async runAgent(input: RunInput, onEvent: (event: AgUiEvent) => void, signal?: AbortSignal) {
-    const thread = this.thread(input.threadId);
+    if (this.deleting.has(input.threadId)) {
+      throw new ApiError(409, '会话正在删除', 'THREAD_DELETING');
+    }
+    const existing = this.threads.get(input.threadId);
+    let thread: DemoThread;
+    if (existing) {
+      thread = existing;
+    } else {
+      if (input.expectedRevision !== 'empty') throw new ApiError(409, '演示会话已更新，请重新加载');
+      thread = this.thread(input.threadId);
+    }
+    const expectedRev = thread.messages.length === 0 ? 'empty' : `demo:${thread.version}`;
     const key = `${input.threadId}:${input.runId}`;
     const signature = JSON.stringify(input);
     if (this.finished.has(key)) {
@@ -246,7 +260,7 @@ export class DemoApiClient implements ApiClient {
       onEvent({ type: 'RUN_FINISHED', threadId: input.threadId, runId: input.runId });
       return;
     }
-    if (input.expectedRevision !== `demo:${thread.version}` || this.runs.has(input.threadId)) throw new ApiError(409, '演示会话已更新，请重新加载');
+    if (input.expectedRevision !== expectedRev || this.runs.has(input.threadId)) throw new ApiError(409, '演示会话已更新，请重新加载');
     const controller = new AbortController();
     const abort = () => controller.abort();
     signal?.addEventListener('abort', abort, { once: true });
@@ -263,7 +277,7 @@ export class DemoApiClient implements ApiClient {
     const text = async (value: string) => {
       for (const delta of value.match(/.{1,8}/gs) ?? []) {
         await pause(this.tickMs, controller.signal);
-        assistant.content += delta;
+        assistant.content = (assistant.content ?? '') + delta;
         emit({ type: 'TEXT_MESSAGE_CONTENT', messageId: assistant.id, delta });
       }
     };
@@ -362,6 +376,7 @@ export class DemoApiClient implements ApiClient {
   }
 
   async stopRun(threadId: string, runId: string) {
+    if (this.deleting.has(threadId)) return false;
     const run = this.runs.get(threadId);
     if (!run || run.id !== runId || run.controller.signal.aborted) return false;
     run.controller.abort(); return true;

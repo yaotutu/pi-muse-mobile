@@ -139,7 +139,7 @@ test('write 工具挂起审批：批准与拒绝都能放行本轮并产出工�
   // --- 批准 ---
   const approveRun = collect();
   const first = client.runAgent(
-    { threadId, runId: 'run-write-approve', expectedRevision: 'demo:0', message: { id: 'm-w1', content: '请把周末计划写入文件' } },
+    { threadId, runId: 'run-write-approve', expectedRevision: 'empty', message: { id: 'm-w1', content: '请把周末计划写入文件' } },
     approveRun.onEvent,
   );
   const approval = await waitForApproval(client, 'run-write-approve');
@@ -201,7 +201,7 @@ test('revision 冲突与同线程并发占用都返回 409', async (t) => {
   const client = new DemoApiClient(true, TICK);
   t.after(() => client.dispose());
   const threadId = 'local-main';
-  const run = (runId, content, revision = 'demo:0', onEvent = () => {}) =>
+  const run = (runId, content, revision = 'empty', onEvent = () => {}) =>
     client.runAgent({ threadId, runId, expectedRevision: revision, message: { id: `m-${runId}`, content } }, onEvent);
 
   // 过期 revision。
@@ -209,7 +209,7 @@ test('revision 冲突与同线程并发占用都返回 409', async (t) => {
 
   // runAgent 在第一个 await 之前就登记了运行，同线程第二次请求立即冲突。
   const slow = collect();
-  const first = run('run-first', '慢流', 'demo:0', slow.onEvent);
+  const first = run('run-first', '慢流', 'empty', slow.onEvent);
   await assert.rejects(run('run-second', '你好'), isApiError(409, /会话已更新/));
   assert.deepEqual(slow.types(), ['RUN_STARTED', 'TEXT_MESSAGE_START']);
 
@@ -218,7 +218,7 @@ test('revision 冲突与同线程并发占用都返回 409', async (t) => {
 
   // 中止同样会推进版本号，因此旧 revision 继续冲突，最新 revision 可正常发起。
   const current = await client.getConversation(threadId);
-  await assert.rejects(run('run-stale-2', '你好', 'demo:0'), isApiError(409, /会话已更新/));
+  await assert.rejects(run('run-stale-2', '你好', 'empty'), isApiError(409, /会话已更新/));
   await run('run-ok', '你好', current.revision);
   const after = await client.getConversation(threadId);
   assert.notEqual(after.revision, current.revision);
@@ -230,7 +230,7 @@ test('工具调用事件完整成对：START/ARGS/END/RESULT 关联同一个 too
   t.after(() => client.dispose());
   const stream = collect();
   await client.runAgent(
-    { threadId: 'local-main', runId: 'run-tool', expectedRevision: 'demo:0', message: { id: 'm-tool', content: '杭州今天天气怎么样' } },
+    { threadId: 'local-main', runId: 'run-tool', expectedRevision: 'empty', message: { id: 'm-tool', content: '杭州今天天气怎么样' } },
     stream.onEvent,
   );
 
@@ -265,7 +265,7 @@ test('权威历史能重建工具卡：丢失增量流也能凭 getConversation 
   t.after(() => client.dispose());
   const stream = collect();
   await client.runAgent(
-    { threadId: 'local-main', runId: 'run-recover', expectedRevision: 'demo:0', message: { id: 'm-recover', content: '帮我创建一个后台任务' } },
+    { threadId: 'local-main', runId: 'run-recover', expectedRevision: 'empty', message: { id: 'm-recover', content: '帮我创建一个后台任务' } },
     stream.onEvent,
   );
 
@@ -311,7 +311,7 @@ test('stopRun 用错误的 runId 返回 false 且不打断进行中的运行', a
   const stream = collect();
   let wrongStop;
   const run = client.runAgent(
-    { threadId: 'local-main', runId: 'run-real', expectedRevision: 'demo:0', message: { id: 'm-stop-wrong', content: '慢流' } },
+    { threadId: 'local-main', runId: 'run-real', expectedRevision: 'empty', message: { id: 'm-stop-wrong', content: '慢流' } },
     (event) => {
       stream.events.push(event);
       if (event.type === 'TEXT_MESSAGE_CONTENT' && !wrongStop) wrongStop = client.stopRun('local-main', 'run-typo');
@@ -335,7 +335,7 @@ test('stopRun 用正确 runId 中止运行：抛 AbortError、不发 RUN_FINISHE
   const stream = collect();
   let stopped;
   const run = client.runAgent(
-    { threadId: 'local-main', runId: 'run-stop', expectedRevision: 'demo:0', message: { id: 'm-stop', content: '慢流' } },
+    { threadId: 'local-main', runId: 'run-stop', expectedRevision: 'empty', message: { id: 'm-stop', content: '慢流' } },
     (event) => {
       stream.events.push(event);
       if (event.type === 'TEXT_MESSAGE_CONTENT' && !stopped) stopped = client.stopRun('local-main', 'run-stop');
@@ -363,7 +363,7 @@ test('外部 AbortSignal 中断运行，中止后的历史不伪造空助手消�
   const controller = new AbortController();
   const stream = collect();
   const run = client.runAgent(
-    { threadId: 'local-main', runId: 'run-signal', expectedRevision: 'demo:0', message: { id: 'm-signal', content: '慢流' } },
+    { threadId: 'local-main', runId: 'run-signal', expectedRevision: 'empty', message: { id: 'm-signal', content: '慢流' } },
     (event) => {
       stream.events.push(event);
       if (event.type === 'TEXT_MESSAGE_CONTENT') controller.abort();
@@ -380,13 +380,13 @@ test('外部 AbortSignal 中断运行，中止后的历史不伪造空助手消�
   assert.equal(user.length, 1, '用户消息仍然入库');
   assert.equal(assistant.length, 1, '已产出正文片段的助手消息保留');
   assert.ok(assistant[0].content.length > 0);
-  assert.notEqual(conversation.revision, 'demo:0', '中止也会推进 revision');
+  assert.notEqual(conversation.revision, 'empty', '中止也会推进 revision');
 });
 
 test('已完成的 run 可幂等重放且不重复副作用，同 runId 不同输入 409', async (t) => {
   const client = new DemoApiClient(true, TICK);
   t.after(() => client.dispose());
-  const input = { threadId: 'local-main', runId: 'run-idem', expectedRevision: 'demo:0', message: { id: 'm-idem', content: '帮我创建一个后台任务' } };
+  const input = { threadId: 'local-main', runId: 'run-idem', expectedRevision: 'empty', message: { id: 'm-idem', content: '帮我创建一个后台任务' } };
 
   const first = collect();
   await client.runAgent(input, first.onEvent);
@@ -418,7 +418,7 @@ test('dispose 停掉挂起的 write 审批并把审批标记为 cancelled', asyn
   const client = new DemoApiClient(true, TICK);
   const stream = collect();
   const run = client.runAgent(
-    { threadId: 'local-main', runId: 'run-dispose', expectedRevision: 'demo:0', message: { id: 'm-dispose', content: '请把周末计划写入文件' } },
+    { threadId: 'local-main', runId: 'run-dispose', expectedRevision: 'empty', message: { id: 'm-dispose', content: '请把周末计划写入文件' } },
     stream.onEvent,
   );
 
@@ -619,10 +619,10 @@ test('deleteThread 中止挂起 write 审批：run 落盘后线程消失，不�
   for (const skill of skills.skills) assert.equal(skill.enabled, skill.defaultEnabled);
 
   // finally 没有复活：旧 run 的助手消息不应出现在任何线程历史里。
-  // 删除后 getConversation 返回全新空会话（thread() helper 自动建空条目），assistant 不应被 commit。
+  // 删除后 getConversation 严格只读，直接给空修订与空消息；assistant 不应被 commit 到任何线程。
   const refreshedConv = await client.getConversation('custom-thread');
   assert.equal(refreshedConv.messages.length, 0, '删除后旧 run 的助手消息不应复活');
-  assert.equal(refreshedConv.revision, 'demo:0');
+  assert.equal(refreshedConv.revision, 'empty');
 });
 
 test('deleteThread 级联：绑定 job/monitor 直接删除；绑定 task queued/running 取消并保留终态', async () => {
@@ -632,7 +632,7 @@ test('deleteThread 级联：绑定 job/monitor 直接删除；绑定 task queued
   // delegate_task（受 task 技能门控）→ 创建 task（origin=cascade-thread）
   const taskStream = collect();
   await client.runAgent(
-    { threadId: 'cascade-thread', runId: 'run-cascade-task', expectedRevision: 'demo:0', message: { id: 'm-cascade-2', content: '请创建一个后台任务整理计划' } },
+    { threadId: 'cascade-thread', runId: 'run-cascade-task', expectedRevision: 'empty', message: { id: 'm-cascade-2', content: '请创建一个后台任务整理计划' } },
     taskStream.onEvent,
   );
   const snapshot1 = await client.getSnapshot();
@@ -671,7 +671,6 @@ test('deleteThread 级联：绑定 job/monitor 直接删除；绑定 task queued
   assert.equal(removed.ok, true);
   assert.equal(removed.removed.jobs, 1);
   assert.equal(removed.removed.monitors, 1);
-  assert.equal(removed.removed.tasks, 1, 'task queued/running 计入 removed.tasks');
 
   const after = await client.getSnapshot();
   // task：保留为终态 cancelled。
@@ -690,7 +689,7 @@ test('deleteThread 清理 finished 签名：新会话不复用旧 runId', async 
   const client = new DemoApiClient(true, TICK);
   await client.saveThreadInstructions('replay-thread', '幂等测试');
   await client.runAgent(
-    { threadId: 'replay-thread', runId: 'run-replay-1', expectedRevision: 'demo:0', message: { id: 'm-r1', content: '你好' } },
+    { threadId: 'replay-thread', runId: 'run-replay-1', expectedRevision: 'empty', message: { id: 'm-r1', content: '你好' } },
     () => {},
   );
 
@@ -707,6 +706,102 @@ test('deleteThread 清理 finished 签名：新会话不复用旧 runId', async 
   );
   assert.deepEqual(events.filter((t) => t === 'MESSAGES_SNAPSHOT'), [], 'finished 被清空，不应直接走重放分支');
   assert.equal(events.at(-1), 'RUN_FINISHED');
+});
+
+test('未知/已删除线程的 getConversation 返回 empty 不创建；迟到 stopRun 不污染列表', async () => {
+  const client = new DemoApiClient(true, TICK);
+
+  // 未知线程：GET 严格只读，重复读取与列表都保持原样。
+  const initial = await client.listThreads();
+  const unknown1 = await client.getConversation('phantom-thread');
+  const unknown2 = await client.getConversation('phantom-thread');
+  assert.deepEqual(unknown1, { revision: 'empty', messages: [] });
+  assert.deepEqual(unknown2, { revision: 'empty', messages: [] });
+  assert.deepEqual(await client.listThreads(), initial, 'GET 不应出现在活跃列表');
+
+  // 删后再次 GET：thread 已被清空，禁止重建。
+  await client.saveThreadInstructions('doomed-thread', '待删除');
+  await client.deleteThread('doomed-thread');
+  const afterDelete = await client.getConversation('doomed-thread');
+  assert.deepEqual(afterDelete, { revision: 'empty', messages: [] });
+
+  // 迟到 stopRun 一律 false：不挂起新 run，也不把线程带回列表。
+  assert.equal(await client.stopRun('doomed-thread', 'run-anything'), false);
+  assert.equal(await client.stopRun('doomed-thread', 'run-other'), false);
+
+  const finalList = await client.listThreads();
+  assert.equal(finalList.some((t) => t.id === 'doomed-thread'), false, '删除后线程不应被迟到 stop 复活');
+});
+
+test('删除进行中 settings save/run 拒绝带 code THREAD_DELETING；GET 返回 empty', async (t) => {
+  const client = new DemoApiClient(true, TICK);
+  t.after(() => client.dispose());
+  await client.saveThreadInstructions('deleting-thread', 'x');
+  const stream = collect();
+  let deletePromise;
+  const run = client.runAgent(
+    { threadId: 'deleting-thread', runId: 'run-slow', expectedRevision: 'empty', message: { id: 'm-slow', content: '慢流' } },
+    (event) => {
+      stream.onEvent(event);
+      // 在运行回调内启动删除，固定住等待当前轮收尾的窗口，不依赖计时器竞速。
+      if (event.type === 'RUN_STARTED') deletePromise = client.deleteThread('deleting-thread');
+    },
+  );
+  const runAborted = assert.rejects(run, isAbort);
+  assert.ok(deletePromise);
+  const deleting = (error) => error.name === 'ApiError' && error.status === 409 && error.code === 'THREAD_DELETING';
+  const checks = [
+    assert.rejects(client.saveThreadInstructions('deleting-thread', '新规则'), deleting),
+    assert.rejects(client.saveThreadSkills('deleting-thread', { memory: false }), deleting),
+    assert.rejects(client.runAgent(
+      { threadId: 'deleting-thread', runId: 'run-during-delete', expectedRevision: 'empty', message: { id: 'm-during', content: 'x' } },
+      () => {},
+    ), deleting),
+    client.getConversation('deleting-thread').then((history) => assert.deepEqual(history, { revision: 'empty', messages: [] })),
+    client.stopRun('deleting-thread', 'run-slow').then((stopped) => assert.equal(stopped, false)),
+  ];
+  await Promise.all([...checks, deletePromise, runAborted]);
+  assert.equal((await client.listThreads()).some((thread) => thread.id === 'deleting-thread'), false);
+});
+
+test('同名线程删除后，显式 run 用 empty revision 创建新会话且无旧历史', async () => {
+  const client = new DemoApiClient(true, TICK);
+
+  // 首版：建会话，跑一轮产生历史。
+  await client.saveThreadInstructions('reused-id', '首版规则');
+  await client.runAgent(
+    { threadId: 'reused-id', runId: 'run-original', expectedRevision: 'empty', message: { id: 'm-o1', content: '帮我创建一个后台任务' } },
+    () => {},
+  );
+
+  const before = await client.getConversation('reused-id');
+  assert.notEqual(before.revision, 'empty', '首轮 run 后会话应进入 demo:N');
+  assert.ok(before.messages.some((m) => m.role === 'user' && m.content === '帮我创建一个后台任务'));
+  assert.ok(before.messages.some((m) => m.role === 'assistant'));
+
+  // 删除后 GET 返回 empty；线程不会复活。
+  await client.deleteThread('reused-id');
+  assert.deepEqual(await client.getConversation('reused-id'), { revision: 'empty', messages: [] });
+
+  // 同名显式新 run：expectedRevision='empty'，新 runId。
+  const stream = collect();
+  await client.runAgent(
+    { threadId: 'reused-id', runId: 'run-fresh', expectedRevision: 'empty', message: { id: 'm-fresh', content: '全新一轮' } },
+    stream.onEvent,
+  );
+
+  const fresh = await client.getConversation('reused-id');
+  assert.notEqual(fresh.revision, 'empty', '新 run 后会话进入 demo:N');
+  const userMessages = fresh.messages.filter((m) => m.role === 'user');
+  const assistantMessages = fresh.messages.filter((m) => m.role === 'assistant');
+  assert.equal(userMessages.length, 1);
+  assert.equal(assistantMessages.length, 1);
+  assert.equal(userMessages[0].content, '全新一轮');
+  assert.equal(
+    fresh.messages.find((m) => m.role === 'user' && m.content === '帮我创建一个后台任务'),
+    undefined,
+    '新会话不应残留旧历史',
+  );
 });
 
 test('createTask origin 快照：技能快照独立于会话后续变更，不影响 chat revision', async () => {
@@ -761,7 +856,7 @@ test('createTask title 空时回落 prompt，保持原行为', async () => {
 test('advanceTask 通知改变权威聊天历史必须 version++', async () => {
   const client = new DemoApiClient(true, TICK);
   await client.runAgent(
-    { threadId: 'local-main', runId: 'run-task-create', expectedRevision: 'demo:0', message: { id: 'm-task', content: '请创建一个后台任务整理计划' } },
+    { threadId: 'local-main', runId: 'run-task-create', expectedRevision: 'empty', message: { id: 'm-task', content: '请创建一个后台任务整理计划' } },
     () => {},
   );
   const task = (await client.getSnapshot()).tasks.find((t) => t.prompt.includes('轻松的周末旅行计划'));
@@ -788,7 +883,7 @@ test('runAgent 技能关闭时不派发对应工具，仅产普通回复', async
 
   const stream = collect();
   await client.runAgent(
-    { threadId: 'local-main', runId: 'run-skill-off', expectedRevision: 'demo:0', message: { id: 'm-skill-off', content: '请帮我记住今天去爬山' } },
+    { threadId: 'local-main', runId: 'run-skill-off', expectedRevision: 'empty', message: { id: 'm-skill-off', content: '请帮我记住今天去爬山' } },
     stream.onEvent,
   );
 

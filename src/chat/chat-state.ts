@@ -82,7 +82,7 @@ export class StreamAggregator {
    * 显式消息 ID 是协议中的归属依据，不能因为 current 指向别处就回退到它。
    * 仅缺失 ID 的兼容事件沿用 current；限定 assistant，避免污染用户历史。
    */
-  private findMessage(id?: string): MessageView | undefined {
+  private findMessage(id?: string | null): MessageView | undefined {
     return id == null
       ? this.current
       : this.messages.find((message) => message.role === 'assistant' && message.id === id);

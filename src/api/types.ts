@@ -27,7 +27,7 @@ export type ToolCallProjection = {
 export type ConversationMessage = {
   id: string;
   role: ChatRole;
-  content: string;
+  content?: string;
   toolCalls?: ToolCallProjection[];
   toolCallId?: string;
 };
@@ -57,7 +57,7 @@ export type AgUiEvent = {
   /** TOOL_CALL_* */
   toolCallId?: string;
   toolCallName?: string;
-  parentMessageId?: string;
+  parentMessageId?: string | null;
   content?: string;
   /** RUN_ERROR */
   code?: string;
@@ -163,10 +163,10 @@ export type ThreadSkills = {
   diagnostics?: { path: string; message: string }[];
 };
 
-/** DELETE /api/threads/:id 返回的清点结果，用于确认会话清理的副作用范围 */
+/** 删除会话仅清点级联移除的定时任务与监控。 */
 export type DeleteThreadResult = {
   ok: true;
-  removed: { jobs: number; monitors: number; tasks: number };
+  removed: { jobs: number; monitors: number };
 };
 
 export type MemoryItem = {

@@ -39,7 +39,7 @@ import {
   type TaskAction,
   type TaskControlTarget,
 } from './contracts';
-import { ApiError, isRequestCancelled, requestCancelled } from './errors';
+import { ApiError, isRequestCancelled, requestCancelled, responseError } from './errors';
 import { parseSseFrames } from './sse';
 
 export type TransportState = { kind: 'online' | 'offline'; token?: string; error?: string };
@@ -158,12 +158,9 @@ export class HttpApiClient implements ApiClient {
       if (!response.ok) {
         const text = await response.text();
         control.assertActive();
-        let message = `请求失败 (${response.status})`;
-        try {
-          const data = JSON.parse(text) as { error?: unknown };
-          if (typeof data.error === 'string') message = data.error;
-        } catch { /* 非JSON错误正文不替代HTTP状态。 */ }
-        throw new ApiError(response.status, message);
+        let payload: unknown;
+        try { payload = JSON.parse(text); } catch { /* 非JSON错误正文不替代HTTP状态。 */ }
+        throw responseError(response.status, payload);
       }
       const data = await response.json() as T;
       control.assertActive();
@@ -251,7 +248,13 @@ export class HttpApiClient implements ApiClient {
   async deleteThread(threadId: string, signal?: AbortSignal): Promise<DeleteThreadResult> {
     const path = `/api/threads/${encodeURIComponent(threadId)}`;
     const data = await this.request<DeleteThreadResult>(path, { method: 'DELETE', signal });
-    if (data?.ok !== true || !data.removed || typeof data.removed.jobs !== 'number' || typeof data.removed.monitors !== 'number' || typeof data.removed.tasks !== 'number') {
+    const removed = data?.removed;
+    if (
+      data?.ok !== true ||
+      !removed ||
+      !Number.isSafeInteger(removed.jobs) || removed.jobs < 0 ||
+      !Number.isSafeInteger(removed.monitors) || removed.monitors < 0
+    ) {
       throw new ApiError(502, '服务器没有返回有效会话删除结果，请确认服务器版本与地址');
     }
     return data;
@@ -290,10 +293,11 @@ export class HttpApiClient implements ApiClient {
         throw new ApiError(401, '当前凭证未被服务器接受，请重新认证');
       }
       if (!response.ok) {
-        if (response.status === 409) throw new ApiError(409, '会话状态已更新或仍在运行，请重新加载后重试');
-        const data = await response.json().catch(() => undefined) as { error?: unknown } | undefined;
+        // 删除中的会话与普通版本冲突必须保留区别，不能引导重试旧 ID。
+        const payload = await response.json().catch(() => undefined);
         control.assertActive();
-        throw new ApiError(response.status, typeof data?.error === 'string' ? data.error : `请求失败 (${response.status})`);
+        const fallback = response.status === 409 ? '会话状态已更新或仍在运行，请重新加载后重试' : undefined;
+        throw responseError(response.status, payload, fallback);
       }
       if (!response.body) throw new ApiError(502, '回复连接未返回数据流');
       // 只限制握手等待，已经建立的模型长流不按整轮时长超时。

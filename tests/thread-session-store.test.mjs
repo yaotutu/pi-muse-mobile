@@ -383,7 +383,7 @@ test('deleteThread 在 hasSettingsWrite 时返回 undefined；inFlight 后第二
   // 现在发起真正的 delete。
   let resolveDelete;
   const gateDel = new Promise((res) => { resolveDelete = res; });
-  stub.enqueue('deleteThread', ({ resolve }) => resolve({ ok: true, removed: { jobs: 0, monitors: 0, tasks: 0 } }));
+  stub.enqueue('deleteThread', ({ resolve }) => resolve({ ok: true, removed: { jobs: 0, monitors: 0 } }));
   const firstDelete = store.deleteThread('a');
 
   // 等待 deleting=true 后，第二次 delete 进入应观察到 deleting=true 路径。
@@ -423,9 +423,57 @@ test('deleteThread 收到 404 时也清空 entry', async () => {
   store.setDraft('a', 'placeholder');
   stub.enqueue('deleteThread', rejectWith(new ApiError(404, '会话不存在')));
   const result = await store.deleteThread('a');
-  assert.deepEqual(result, { ok: true, removed: { jobs: 0, monitors: 0, tasks: 0 } });
+  assert.deepEqual(result, { ok: true, removed: { jobs: 0, monitors: 0 } });
   assert.equal(store.canWrite('a'), false);
 });
+
+test('删除中的 409 保留草稿和代次，不把冲突当作删除成功或自动重试', async () => {
+  const stub = makeStub();
+  const store = new ThreadSessionStore(stub.api);
+  store.setDraft('a', '待发送消息');
+  store.setInstructions('a', '未保存规则');
+  const epoch = store.get('a').epoch;
+  stub.enqueue('deleteThread', rejectWith(new ApiError(409, '会话正在删除', 'THREAD_DELETING')));
+  await assert.rejects(store.deleteThread('a'), (error) => error.status === 409 && error.code === 'THREAD_DELETING');
+  assert.equal(stub.callCount('deleteThread'), 1);
+  assert.equal(store.get('a').deleting, false);
+  assert.equal(store.get('a').deleted, false);
+  assert.equal(store.isCurrent('a', epoch), true);
+  assert.equal(store.get('a').draft, '待发送消息');
+  assert.equal(store.get('a').instructions.draft, '未保存规则');
+});
+
+for (const kind of ['instructions', 'skills']) {
+  test(`${kind} 保存遇到删除中的 409 保留草稿，不刷新目录或自动重试`, async () => {
+    const stub = makeStub();
+    const store = new ThreadSessionStore(stub.api);
+    const load = kind === 'instructions' ? 'getThreadInstructions' : 'getThreadSkills';
+    const save = kind === 'instructions' ? 'saveThreadInstructions' : 'saveThreadSkills';
+    stub.enqueue(load, resolveWith(kind === 'instructions'
+      ? { instructions: '原规则' }
+      : { skills: [makeSkill('web', true, true)] }));
+    if (kind === 'instructions') {
+      await store.loadInstructions('a');
+      store.setInstructions('a', '新规则');
+    } else {
+      await store.loadSkills('a');
+      store.setSkill('a', 'web', false);
+    }
+    const draft = structuredClone(store.get('a')[kind].draft);
+    const saved = structuredClone(store.get('a')[kind].saved);
+    const epoch = store.get('a').epoch;
+    stub.enqueue(save, rejectWith(new ApiError(409, '会话正在删除，请刷新会话列表后重新选择', 'THREAD_DELETING')));
+    const result = kind === 'instructions' ? await store.saveInstructions('a') : await store.saveSkills('a');
+    assert.equal(result, false);
+    assert.equal(stub.callCount(load), 1);
+    assert.equal(stub.callCount(save), 1);
+    assert.equal(store.hasSettingsWrite('a'), false);
+    assert.equal(store.isCurrent('a', epoch), true);
+    assert.deepEqual(store.get('a')[kind].draft, draft);
+    assert.deepEqual(store.get('a')[kind].saved, saved);
+    assert.match(store.get('a')[kind].error, /刷新会话列表后重新选择/);
+  });
+}
 
 // --- 9. 500 保留草稿 + 解除锁 + 不伪成功 ---
 
@@ -469,10 +517,10 @@ test('deleteThread 期间 read 已经中途发出、忽略 signal 仍 resolve �
   // 启动 delete：delete 把 in-flight reads abort+移除。
   stub.enqueue('deleteThread', ({ resolve }) => {
     // 等到 GET 完全 resolve 后再继续，避免读到 epoch 旧状态。
-    setTimeout(() => resolve({ ok: true, removed: { jobs: 0, monitors: 0, tasks: 0 } }), 0);
+    setTimeout(() => resolve({ ok: true, removed: { jobs: 0, monitors: 0 } }), 0);
   });
   const result = await store.deleteThread('a');
-  assert.deepEqual(result, { ok: true, removed: { jobs: 0, monitors: 0, tasks: 0 } });
+  assert.deepEqual(result, { ok: true, removed: { jobs: 0, monitors: 0 } });
   assert.equal(store.canWrite('a'), false);
 
   // 晚到的 GET 终于返回。
@@ -514,9 +562,9 @@ test('saveSkills 进行中触发 deleteThread 应直接 undefined', async () => 
   resolveSave({ skills: [makeSkill('a', false)] });
   await savePromise;
   // 再发起 delete 应成功（不残留 settings write 锁）。
-  stub.enqueue('deleteThread', ({ resolve }) => resolve({ ok: true, removed: { jobs: 0, monitors: 0, tasks: 0 } }));
+  stub.enqueue('deleteThread', ({ resolve }) => resolve({ ok: true, removed: { jobs: 0, monitors: 0 } }));
   const ok2 = await store.deleteThread('a');
-  assert.deepEqual(ok2, { ok: true, removed: { jobs: 0, monitors: 0, tasks: 0 } });
+  assert.deepEqual(ok2, { ok: true, removed: { jobs: 0, monitors: 0 } });
 });
 
 // --- 12. dispose 取消所有进行中的 GET ---
