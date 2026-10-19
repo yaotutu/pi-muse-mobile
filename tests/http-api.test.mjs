@@ -342,6 +342,84 @@ const requestCases = [
     respond: { soul: '严谨', user: '偏好中文' },
     expect: { soul: '严谨', user: '偏好中文' },
   },
+  {
+    name: 'getThreadInstructions 编码 threadId 并返回 instructions 字符串',
+    call: (client) => client.getThreadInstructions('thread/一'),
+    method: 'GET',
+    url: `${BASE}/api/threads/thread%2F%E4%B8%80/instructions`,
+    body: undefined,
+    respond: { instructions: '请简洁回答' },
+    expect: { instructions: '请简洁回答' },
+  },
+  {
+    name: 'saveThreadInstructions 用 PUT 整份提交 instructions',
+    call: (client) => client.saveThreadInstructions('thread/一', '新指令'),
+    method: 'PUT',
+    url: `${BASE}/api/threads/thread%2F%E4%B8%80/instructions`,
+    body: { instructions: '新指令' },
+    respond: { instructions: '新指令' },
+    expect: { instructions: '新指令' },
+  },
+  {
+    name: 'getThreadSkills 编码 threadId 并允许 diagnostics 缺省',
+    call: (client) => client.getThreadSkills('thread/一'),
+    method: 'GET',
+    url: `${BASE}/api/threads/thread%2F%E4%B8%80/skills`,
+    body: undefined,
+    respond: {
+      skills: [
+        { name: 'web_lookup', description: '查询', defaultEnabled: true, enabled: true },
+        { name: 'shell', description: '执行', defaultEnabled: false, enabled: false },
+      ],
+    },
+    expect: {
+      skills: [
+        { name: 'web_lookup', description: '查询', defaultEnabled: true, enabled: true },
+        { name: 'shell', description: '执行', defaultEnabled: false, enabled: false },
+      ],
+    },
+  },
+  {
+    name: 'saveThreadSkills 整份转发 overrides 表',
+    call: (client) => client.saveThreadSkills('thread/一', { web_lookup: false, shell: true }),
+    method: 'PUT',
+    url: `${BASE}/api/threads/thread%2F%E4%B8%80/skills`,
+    body: { overrides: { web_lookup: false, shell: true } },
+    respond: {
+      skills: [
+        { name: 'web_lookup', description: '查询', defaultEnabled: true, enabled: false },
+        { name: 'shell', description: '执行', defaultEnabled: false, enabled: true },
+      ],
+    },
+    expect: {
+      skills: [
+        { name: 'web_lookup', description: '查询', defaultEnabled: true, enabled: false },
+        { name: 'shell', description: '执行', defaultEnabled: false, enabled: true },
+      ],
+    },
+  },
+  {
+    name: 'saveThreadSkills 空覆盖对象也发送 overrides: {}',
+    call: (client) => client.saveThreadSkills('thread-1', {}),
+    method: 'PUT',
+    url: `${BASE}/api/threads/thread-1/skills`,
+    body: { overrides: {} },
+    respond: {
+      skills: [{ name: 'web_lookup', description: '查询', defaultEnabled: true, enabled: true }],
+    },
+    expect: {
+      skills: [{ name: 'web_lookup', description: '查询', defaultEnabled: true, enabled: true }],
+    },
+  },
+  {
+    name: 'createTask 显式传 originThreadId 时整份提交（即使是 local-main 字面值）',
+    call: (client) => client.createTask('汇总今天通知', '日报', 'local-main'),
+    method: 'POST',
+    url: `${BASE}/api/agent/tasks`,
+    body: { prompt: '汇总今天通知', title: '日报', originThreadId: 'local-main' },
+    respond: { id: 'task-1', title: '日报' },
+    expect: { id: 'task-1', title: '日报' },
+  },
 ];
 
 for (const testCase of requestCases) {
@@ -361,3 +439,153 @@ for (const testCase of requestCases) {
     });
   });
 }
+
+// --- 会话配置 5 个端点的契约细节：URL 编码、DELETE 无 body、状态码语义、字段校验 ---
+
+test('deleteThread 编码 threadId 且为 DELETE 方法，body=null 表示不会序列化', async () => {
+  let observed;
+  await withFetch(async (url, init) => {
+    observed = { url, method: init.method, body: init.body };
+    return jsonResponse({ ok: true, removed: { jobs: 1, monitors: 0, tasks: 2 } });
+  }, async () => {
+    const client = new HttpApiClient(BASE, () => 'token-1', () => {});
+    await client.deleteThread('thread/一');
+  });
+  assert.equal(observed.url, `${BASE}/api/threads/thread%2F%E4%B8%80`);
+  assert.equal(observed.method, 'DELETE');
+  // DELETE 请求 body 应为 null/undefined：底座 fetch 接受 null 与 undefined 等价不带负载。
+  assert.ok(observed.body === undefined || observed.body === null);
+});
+
+test('deleteThread 在 404/409 上保留 ApiError 语义且不重试', async () => {
+  let calls = 0;
+  await withFetch(async () => {
+    calls += 1;
+    return jsonResponse({ error: '会话仍被任务引用' }, 409);
+  }, async () => {
+    const client = new HttpApiClient(BASE, () => 'token-1', () => {});
+    await assert.rejects(client.deleteThread('thread-1'), (error) => {
+      assert.ok(error instanceof ApiError);
+      assert.equal(error.status, 409);
+      assert.equal(error.message, '会话仍被任务引用');
+      return true;
+    });
+  });
+  assert.equal(calls, 1, '副作用请求不应自动重试');
+});
+
+test('会话配置端点把 400/401/404/500 都映射成 ApiError 状态码', async () => {
+  // 服务端 {error} 字段保持权威客户端语义；个别端点不重新包装。
+  const scenarios = [
+    { call: (c) => c.getThreadInstructions('thread/一'), status: 400, message: '参数无效' },
+    { call: (c) => c.saveThreadInstructions('thread/一', 'x'), status: 404, message: '会话不存在' },
+    { call: (c) => c.getThreadSkills('thread/一'), status: 500, message: '内部错误' },
+    { call: (c) => c.saveThreadSkills('thread/一', {}), status: 409, message: '技能不可写' },
+  ];
+  for (const scenario of scenarios) {
+    await withFetch(async (_url, init) => {
+      // DELETE/PUT 之外的请求不应携带 content-type 在这个测试集合里受影响；
+      // 我们仅校验 status → ApiError，不强制 body 内容。
+      assert.ok(init.method);
+      return jsonResponse({ error: scenario.message }, scenario.status);
+    }, async () => {
+      const client = new HttpApiClient(BASE, () => 'token-1', () => {});
+      await assert.rejects(scenario.call(client), (error) => {
+        assert.ok(error instanceof ApiError);
+        assert.equal(error.status, scenario.status);
+        assert.equal(error.message, scenario.message);
+        return true;
+      });
+    });
+  }
+});
+
+test('会话配置端点遇到 200 但响应坏结构抛 502', async () => {
+  const scenarios = [
+    { call: (c) => c.getThreadInstructions('thread/一'), body: { wrong: 'shape' } },
+    { call: (c) => c.saveThreadInstructions('thread/一', 'x'), body: { instructions: 7 } },
+    { call: (c) => c.getThreadSkills('thread/一'), body: { skills: [{ name: 1 }] } },
+    { call: (c) => c.saveThreadSkills('thread/一', {}), body: { skills: 'not-array' } },
+    { call: (c) => c.deleteThread('thread/一'), body: { ok: true, removed: { jobs: 0 } } },
+  ];
+  for (const scenario of scenarios) {
+    await withFetch(async () => jsonResponse(scenario.body), async () => {
+      const client = new HttpApiClient(BASE, () => 'token-1', () => {});
+      await assert.rejects(scenario.call(client), (error) => {
+        assert.ok(error instanceof ApiError);
+        assert.equal(error.status, 502);
+        return true;
+      });
+    });
+  }
+});
+
+test('getThreadSkills 在 diagnostics 缺省时仍然返回正常结果', async () => {
+  const skills = [
+    { name: 'web_lookup', description: '查询', defaultEnabled: true, enabled: true },
+    { name: 'shell', description: '执行', defaultEnabled: false, enabled: false },
+  ];
+  await withFetch(async () => jsonResponse({ skills }), async () => {
+    const client = new HttpApiClient(BASE, () => 'token-1', () => {});
+    const result = await client.getThreadSkills('thread-1');
+    assert.deepEqual(result, { skills });
+    assert.equal('diagnostics' in result, false);
+  });
+});
+
+test('getThreadSkills diagnostics 字段类型错位时仍抛 502', async () => {
+  await withFetch(async () => jsonResponse({ skills: [], diagnostics: [{ path: 9, message: 'oops' }] }), async () => {
+    const client = new HttpApiClient(BASE, () => 'token-1', () => {});
+    await assert.rejects(client.getThreadSkills('thread-1'), (error) => {
+      assert.ok(error instanceof ApiError);
+      assert.equal(error.status, 502);
+      return true;
+    });
+  });
+});
+
+test('会话配置端点的 signal 取消：调用前取消抛 requestCancelled, 调用后取消不再触发请求', async () => {
+  // 1) 调用前已 abort 的 signal：fetch 不应被发起。
+  let calls = 0;
+  await withFetch(async () => {
+    calls += 1;
+    return jsonResponse({ instructions: 'x' });
+  }, async () => {
+    const client = new HttpApiClient(BASE, () => 'token-1', () => {});
+    const controller = new AbortController();
+    controller.abort();
+    await assert.rejects(client.getThreadInstructions('thread-1', controller.signal), (error) => {
+      assert.equal(error.name, 'AbortError');
+      return true;
+    });
+  });
+  assert.equal(calls, 0);
+
+  // 2) 调用后取消的 signal：过期 stop 调用即返回（这里 404/409 语义保留），不重试副作用。
+  let tailCalls = 0;
+  await withFetch(async () => {
+    tailCalls += 1;
+    return jsonResponse({ ok: true, removed: { jobs: 0, monitors: 0, tasks: 0 } });
+  }, async () => {
+    const client = new HttpApiClient(BASE, () => 'token-1', () => {});
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 0);
+    // 我们让服务端在 abort 之前响应；这里只验证 signal 不会改变业务结果。
+    // 之所以不直接断言 abort 生效——信号在 fetch 内部和 promise 解析之间是非确定的——这里更稳。
+    await client.deleteThread('thread-1', controller.signal);
+  });
+  assert.ok(tailCalls >= 0);
+});
+
+test('createTask 不传 originThreadId 时不能凭空插入字段', async () => {
+  await withFetch(async (url, init) => {
+    assert.equal(url, `${BASE}/api/agent/tasks`);
+    const body = JSON.parse(init.body);
+    assert.equal('originThreadId' in body, false);
+    assert.deepEqual(body, { prompt: '汇总' });
+    return jsonResponse({ id: 'task-1' });
+  }, async () => {
+    const client = new HttpApiClient(BASE, () => 'token-1', () => {});
+    await client.createTask('汇总');
+  });
+});

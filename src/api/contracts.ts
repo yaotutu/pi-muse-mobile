@@ -4,6 +4,7 @@ import type {
   AgUiEvent,
   ApprovalNotification,
   ConversationSnapshot,
+  DeleteThreadResult,
   Goal,
   GoalStatus,
   Identity,
@@ -11,6 +12,8 @@ import type {
   Monitor,
   TaskDetails,
   ThreadInfo,
+  ThreadInstructions,
+  ThreadSkills,
   WorkspaceSnapshot,
 } from './types';
 
@@ -45,10 +48,27 @@ export interface ApiClient {
   /** GET /api/agent 全量快照（顶栏状态/审批/工作台页共用） */
   getSnapshot(signal?: AbortSignal): Promise<WorkspaceSnapshot>;
 
+  // --- 会话配置（线程级 SKILL/指令/删除） ---
+
+  /** GET /api/threads/:id/instructions 读取线程指令 */
+  getThreadInstructions(threadId: string, signal?: AbortSignal): Promise<ThreadInstructions>;
+  /** PUT /api/threads/:id/instructions 写入线程指令；空串允许（等价"清空"） */
+  saveThreadInstructions(threadId: string, instructions: string, signal?: AbortSignal): Promise<ThreadInstructions>;
+  /** GET /api/threads/:id/skills 读取线程级技能覆盖；diagnostics 缺省视为无诊断 */
+  getThreadSkills(threadId: string, signal?: AbortSignal): Promise<ThreadSkills>;
+  /** PUT /api/threads/:id/skills 用名称→启用态覆盖写入；空对象等价"恢复默认" */
+  saveThreadSkills(
+    threadId: string,
+    overrides: Record<string, boolean>,
+    signal?: AbortSignal,
+  ): Promise<ThreadSkills>;
+  /** DELETE /api/threads/:id 删除线程并清点副作用；服务端 401/404/409 语义保留 */
+  deleteThread(threadId: string, signal?: AbortSignal): Promise<DeleteThreadResult>;
+
   // --- 任务（POST /api/agent/tasks 系列） ---
 
-  /** 创建后台任务（立即排队执行） */
-  createTask(prompt: string, title?: string): Promise<AgentTask>;
+  /** 创建后台任务（立即排队执行）；originThreadId 显式传入以回填会话来源，缺省值与"local-main"同等处理 */
+  createTask(prompt: string, title?: string, originThreadId?: string): Promise<AgentTask>;
   /** 任务详情（含时间线 events） */
   getTask(id: string): Promise<TaskDetails>;
   /**

@@ -1,4 +1,4 @@
-import type { WorkspaceSnapshot } from '../api/types';
+import type { WorkspaceSnapshot } from '../../src/api/types';
 
 /** 演示素材只存于客户端内存，不对应真实任务、记忆或审批。 */
 export function demoWorkspace(empty = false): WorkspaceSnapshot {

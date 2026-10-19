@@ -23,14 +23,21 @@ pi-muse 的官方移动客户端（iOS / Android / 平板，Expo + React Native 
 - 服务端 agent 自己维护的测试 web 页面与本仓库无关，不关心、不维护、不评价。
 - 添加详细中文注释，重点解释职责边界、协议契约和安全约束，不逐行复述代码。
 
+## 界面术语（统一命名）
+
+- **会话信息区**：聊天页顶部正中间，由头像、名称和当前状态组成的整块可点击区域，不只是头像图片。描述整块区域时统一使用此名称；仅指图片本身时才称为「头像」。
+- **会话面板**：点击「会话信息区」后打开的全屏当前会话页面，内部通过胶囊 Tab 平级切换内容。它不是会话信息区本身，也不是底部 Sheet。
+- **顶栏**：聊天页整个顶部区域，包含左侧会话切换按钮、中间会话信息区和右侧按钮。
+
+后续需求讨论、文档与代码注释统一使用以上名称，避免混淆区域、入口和打开后的页面。
+
 ## 技术决策（定稿，勿偏离）
 
-- **无导航库**：tab 状态机 + Sheet 层（OpenMuse 同款模式），见下节。
+- **无导航库**：4 个主 tab 状态机；左侧会话栏揭示并推动聊天前景右移；点击会话信息区打开根层全屏会话面板，内部胶囊 Tab 平级切换。旧工作区及旁路预览入口已删除，以用户确认截图和 `src/workspace/` 为准。
 - **SSE 消费**：`expo/fetch`（原生流式支持）+ 自研 AG-UI 事件解析/聚合，翻译 pi-muse 的 `web/src/lib/api.ts`（分帧）与 `web/src/chat/chat-state.ts`（StreamAggregator）。
-- **工具卡**：自研 `Map<toolName, ToolRenderer>` 注册表 + `"*"` 通配兜底（借鉴 OpenMuse useRenderTool 形态）。
-- **markdown**：react-native-markdown-display + 链接 http/https 协议白名单；无语法高亮。
-- **状态管理**：useState/Context + 快照 3-5s 轮询，不引状态库。
-- **视觉**：一切颜色/圆角/字号/布局常量从 `src/ui/tokens.ts` 取（值源自 OpenMuse ui.tsx），禁止组件里散写魔法值。
+- **工具卡与 markdown**：真实消费 UI 已随旧工作区删除；HTTP/SSE、工具展示纯逻辑与回归测试保留，后续接入新版时继续使用自研渲染，不引 CopilotKit SDK。链接仍须限制 http/https。
+- **状态管理**：useState/Context + 本地示例 reducer；新版当前不挂载真实连接、会话恢复或快照轮询。后续真实对接再恢复相应生命周期，不得把示例数据冒充服务端数据。
+- **视觉**：一切颜色/圆角/字号/布局常量从 `src/ui/tokens.ts` 取；新版使用 `workspaceTheme`/`workspacePalettes`，支持亮暗主题，禁止组件里散写魔法值。
 - Expo Web dev 端口固定 **8082**（避开 openmuse 的 8081）。
 
 进度、阶段计划与页面规格见 `docs/HANDOFF.md`。
@@ -96,7 +103,7 @@ iOS 构建、OTA 自动更新、Play Store 自动上架。后期接 OTA 时再�
 更新模块 `src/update/` 由 `src/app/AppRoot.tsx` 根级持有，独立于服务端鉴权与 `EXPO_PUBLIC_API_BASE_URL`，不读、不缓存、不上报用户服务地址。
 
 - 检测源：公开 GitHub `yaotutu/pi-muse-mobile` 的 `releases/latest`，仅识别稳定正式 `app-release.apk`；预发布 / draft / 其它 asset 不纳入。
-- 触发时机：冷启动及 Android 前台按一小时间隔检查，回到前台超过间隔也检查。手动入口：应用页「应用更新」、连接页「检查应用更新」。
+- 触发时机：冷启动及 Android 前台按一小时间隔检查，回到前台超过间隔也检查。手动入口：新版应用页「应用更新」；旧连接页已删除，不再作为入口。
 - 下载 / 安装：发现新版自动下载，进度可收起继续使用应用，完成后自动唤起系统安装器；不提供额外下载确认 / 应用层 checksum / 校验页；系统签名校验、未知来源授权、最终安装确认必须保留（不静默安装）；本次会话取消安装后留包可继续安装，系统清理缓存后需重下；下载可取消、失败可重试。
 - 进程与流量：OS 杀后台后下载不保证继续，仅前台唤起安装；下载消耗用户网络流量。
 - 平台边界：仅 Android 独立包生效，Expo Go / Web / iOS 不支持 APK 安装，**不等同于 Expo OTA**。
@@ -134,8 +141,8 @@ Run lint and typecheck before declaring any task done.
 
 ## Navigation & Routing
 
-- **本项目不使用 Expo Router / react-navigation**（pi-muse 技术决策）：4 个主 tab 用状态机切换（`View = chat | activity | goals | apps`），详情与弹层用自研 Sheet 组件（<600px 底部抽屉 / 桌面居中模态），与 OpenMuse 的 App.tsx 模式一致。
-- 因此不存在 `src/app/` 路由目录；页面代码放 `src/chat/`、`src/activity/`、`src/goals/`、`src/apps/`。
+- **本项目不使用 Expo Router / react-navigation**：4 个主 tab 用状态机切换（`chat | activity | goals | apps`）；左侧会话入口只负责切换/新建，以揭示式侧栏推动聊天前景右移。点击会话信息区打开全屏当前会话面板，内部动态/审批/工作区/历史 Tab 同层切换，不用底部 Sheet 或树形导航。
+- `src/app/` 只组装 Provider 与唯一 `WorkspaceScreen`；新版页面、主题和示例数据在 `src/workspace/`。旧 `AppShell`、旧 Screen/Sheet 与产品演示分支已删除，禁止再恢复双界面入口。`ui/Sheet` 当前仅供独立应用更新使用。
 
 ## Building with EAS
 

@@ -9,7 +9,7 @@ type Dependencies = { store: ConnectionStore; clearWorkspaceData: () => Promise<
 type Probe = ConnectionTest & { token: string; key: string };
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
 
-/** 一个ServiceRoot拥有一个管理器；连接状态变化不能重建业务数据域。 */
+/** 管理器归属单个连接数据域；连接状态变化不能重建业务数据域。 */
 export class ConnectionManager {
   private record?: ConnectionRecord;
   private client?: HttpApiClient;
