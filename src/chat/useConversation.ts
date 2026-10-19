@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { useApi } from '../api/ApiProvider';
-import { useThreadSessionStore } from '../threads/ThreadSessionProvider';
+import { useThreadSession, useThreadSessionStore } from '../threads/ThreadSessionProvider';
 import { isRequestCancelled, requestCancelled } from '../api/errors';
 import { useServiceConnection } from '../connection/ConnectionProvider';
 import { StreamAggregator, projectHistory, type MessageView } from './chat-state';
@@ -10,8 +10,8 @@ import { StreamAggregator, projectHistory, type MessageView } from './chat-state
 export function useConversation(threadId: string, refreshKey = 0) {
   const api = useApi();
   const sessions = useThreadSessionStore();
-  const epoch = sessions.get(threadId).epoch;
-  const writable = sessions.canWrite(threadId);
+  const { epoch, deleted, deleting } = useThreadSession(threadId);
+  const writable = !deleted && !deleting;
   const connection = useServiceConnection();
   const enabled = connection?.enabled ?? true;
   const refreshVersion = connection?.snapshot.refreshVersion ?? 0;
@@ -136,7 +136,7 @@ export function useConversation(threadId: string, refreshKey = 0) {
         (event) => {
           if (!current() || controller.signal.aborted) return;
           aggregator.push(event);
-          if (event.type === 'RUN_ERROR') setError(event.message ?? '助手运行失败，请重试');
+          if (event.type === 'RUN_ERROR') setError(event.code === 'STOPPED' ? undefined : event.message ?? '助手运行失败，请重试');
           setViews([...aggregator.messages]);
         },
         controller.signal,

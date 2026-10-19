@@ -4,7 +4,7 @@ import { UpdateProvider } from '../update/UpdateProvider';
 import type { UpdateManager } from '../update/update-manager';
 import { WorkspaceScreen } from '../workspace/WorkspaceScreen';
 
-/** 只挂载新版工作区；真实服务接入前不恢复凭据或启动业务轮询。 */
+/** 唯一新版工作区持有真实连接；Android 更新仍与业务服务器和凭据隔离。 */
 export default function AppRoot({ updateManager }: { updateManager?: UpdateManager } = {}) {
   return <SafeAreaProvider>
     <ErrorBoundary title="应用运行异常">

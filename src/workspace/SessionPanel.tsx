@@ -5,11 +5,8 @@
  * 颜色来自 WorkspaceTheme context（亮/暗双套），布局/字号/圆角仍取 src/ui/tokens.ts 的 workspaceTheme 静态值。
  */
 
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import {
-  ActivityIndicator,
-  Image,
-  type ImageSourcePropType,
   Modal,
   Platform,
   Pressable,
@@ -22,7 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import type { LucideIcon } from 'lucide-react-native';
 import {
-  Check,
+  Bot,
   Clock,
   List,
   Monitor,
@@ -34,14 +31,10 @@ import {
 
 import { workspaceTheme, sizing, spacing, type WorkspaceColors } from '../ui/tokens';
 import { useWorkspaceTheme } from './WorkspaceTheme';
-import type {
-  SampleActivity,
-  SampleApproval,
-  SampleFile,
-  SampleHistory,
-  SessionTab,
-  SampleThread,
-} from './sample-state';
+import { CurrentExecution } from './CurrentExecution';
+import { MAIN_THREAD } from '../threads/thread-state';
+
+export type SessionTab = 'activity' | 'approvals' | 'workspace' | 'history';
 
 const TAB_ORDER: readonly SessionTab[] = ['activity', 'approvals', 'workspace', 'history'] as const;
 
@@ -59,21 +52,17 @@ const TAB_LABELS: Record<SessionTab, string> = {
   history: '历史',
 };
 
-const TAB_NOTICE: Record<SessionTab, string> = {
-  activity: '示例数据 · 尚未连接服务端',
-  approvals: '本地示例 · 不会真正授权',
-  workspace: '示例文件，仅用于布局演示',
-  history: '示例历史 · 不计入统计',
-};
-
-const AVATAR_SOURCE: ImageSourcePropType = require('../../assets/sample/reference-avatar.png');
-
 export interface SessionPanelProps {
-  thread: SampleThread;
+  threadId: string;
+  threadName: string;
+  status: string;
   tab: SessionTab;
   onTab: (tab: SessionTab) => void;
   onClose: () => void;
-  onDecide: (id: string, decision: 'approved' | 'denied') => void;
+  onDelete?: () => void;
+  onSettled?: () => void;
+  settings?: ReactNode;
+  deleting?: boolean;
   reducedMotion: boolean;
 }
 
@@ -124,6 +113,8 @@ function createStyles(colors: WorkspaceColors) {
       height: workspaceTheme.layout.sessionAvatar,
       borderRadius: workspaceTheme.layout.sessionAvatar / 2,
       backgroundColor: colors.avatar,
+      alignItems: 'center',
+      justifyContent: 'center',
       overflow: 'hidden',
     },
     avatar: {
@@ -280,11 +271,16 @@ function createStyles(colors: WorkspaceColors) {
 }
 
 export function SessionPanel({
-  thread,
+  threadId,
+  threadName,
+  status,
   tab,
   onTab,
   onClose,
-  onDecide,
+  onDelete,
+  onSettled,
+  settings,
+  deleting,
   reducedMotion,
 }: SessionPanelProps) {
   const styles = usePanelStyles();
@@ -358,14 +354,13 @@ export function SessionPanel({
                 accessibilityLabel="会话头像"
                 accessibilityRole="image"
               >
-                <Image source={AVATAR_SOURCE} style={styles.avatar} resizeMode="cover" />
+                <Bot size={workspaceTheme.layout.sessionAvatar / 2} color={colors.ink} strokeWidth={1.5} />
               </View>
               <Text style={styles.name} numberOfLines={1}>
-                {thread.name}
+                {threadName}
               </Text>
               <Text style={styles.status} numberOfLines={1}>
-                {'🔬 '}
-                {thread.status}
+                {status}
               </Text>
             </View>
 
@@ -421,177 +416,22 @@ export function SessionPanel({
             contentContainerStyle={styles.content}
             showsVerticalScrollIndicator={false}
           >
-            {tab === 'activity' && <ActivityPanel thread={thread} />}
-            {tab === 'approvals' && (
-              <ApprovalsPanel thread={thread} onDecide={onDecide} />
-            )}
-            {tab === 'workspace' && <WorkspacePanel thread={thread} />}
-            {tab === 'history' && <HistoryPanel thread={thread} />}
+            {tab === 'activity' && <CurrentExecution threadId={threadId} onSettled={onSettled} />}
+            {tab === 'approvals' && <EmptyState text="审批尚未接入；当前执行中的等待审批状态仍可查看。" />}
+            {tab === 'workspace' && <>
+              {settings}
+              <EmptyState text="工作区文件尚未接入" />
+              {threadId !== MAIN_THREAD && onDelete && <Pressable accessibilityRole="button" accessibilityLabel="删除当前会话"
+                disabled={deleting} onPress={onDelete} style={styles.card}>
+                <Text style={[styles.rowTitle, { color: colors.danger }]}>{deleting ? '正在删除会话…' : '删除当前会话'}</Text>
+                <Text style={styles.rowDetail}>删除此会话及其绑定的定时任务与监控，不可恢复。</Text>
+              </Pressable>}
+            </>}
+            {tab === 'history' && <EmptyState text="活动与执行历史尚未接入；聊天记录已在聊天页同步。" />}
           </ScrollView>
         </View>
       </SafeAreaView>
     </Modal>
-  );
-}
-
-function ActivityPanel({ thread }: { thread: SampleThread }) {
-  const styles = usePanelStyles();
-  return (
-    <View>
-      <Text style={styles.section}>{'今天'}</Text>
-      <Text style={styles.sampleLabel}>{TAB_NOTICE.activity}</Text>
-      {thread.activities.length === 0 ? (
-        <EmptyState text="暂无动态" />
-      ) : (
-        thread.activities.map((item) => (
-          <ActivityRow key={item.id} item={item} />
-        ))
-      )}
-    </View>
-  );
-}
-
-function ActivityRow({ item }: { item: SampleActivity }) {
-  const styles = usePanelStyles();
-  const { colors } = useWorkspaceTheme();
-  const isRunning = item.status === 'running';
-  return (
-    <View style={styles.timelineRow} accessibilityRole="text">
-      <View style={styles.timelineIcon}>
-        {isRunning ? (
-          <ActivityIndicator size="small" color={colors.muted} />
-        ) : (
-          <Check
-            size={sizing[22]}
-            color={colors.success}
-            strokeWidth={2}
-          />
-        )}
-      </View>
-      <View style={styles.rowBody}>
-        <Text style={styles.rowTitle}>{item.title}</Text>
-        <Text style={styles.rowDetail}>{item.detail}</Text>
-        <Text style={styles.rowTime}>{item.time}</Text>
-      </View>
-    </View>
-  );
-}
-
-function ApprovalsPanel({
-  thread,
-  onDecide,
-}: {
-  thread: SampleThread;
-  onDecide: SessionPanelProps['onDecide'];
-}) {
-  const styles = usePanelStyles();
-  return (
-    <View>
-      <Text style={styles.section}>{'审批'}</Text>
-      <Text style={styles.sampleLabel}>{TAB_NOTICE.approvals}</Text>
-      {thread.approvals.length === 0 ? (
-        <EmptyState text="暂无审批请求" />
-      ) : (
-        thread.approvals.map((item) => (
-          <ApprovalRow key={item.id} item={item} onDecide={onDecide} />
-        ))
-      )}
-    </View>
-  );
-}
-
-function ApprovalRow({
-  item,
-  onDecide,
-}: {
-  item: SampleApproval;
-  onDecide: SessionPanelProps['onDecide'];
-}) {
-  const styles = usePanelStyles();
-  const decided = item.status !== 'pending';
-  return (
-    <View style={styles.card}>
-      <Text style={styles.rowTitle}>{item.title}</Text>
-      <Text style={styles.rowDetail}>{item.detail}</Text>
-      {decided ? (
-        <Text style={styles.approvalState}>
-          {item.status === 'approved' ? '已批准' : '已拒绝'}
-        </Text>
-      ) : (
-        <View style={styles.approvalButtons}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`拒绝 ${item.title}`}
-            onPress={() => onDecide(item.id, 'denied')}
-            style={[styles.approvalButton, styles.approvalButtonDeny]}
-          >
-            <Text style={styles.approvalButtonDenyText}>{'拒绝'}</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`批准 ${item.title}`}
-            onPress={() => onDecide(item.id, 'approved')}
-            style={[styles.approvalButton, styles.approvalButtonApprove]}
-          >
-            <Text style={styles.approvalButtonApproveText}>{'批准'}</Text>
-          </Pressable>
-        </View>
-      )}
-    </View>
-  );
-}
-
-function WorkspacePanel({ thread }: { thread: SampleThread }) {
-  const styles = usePanelStyles();
-  return (
-    <View>
-      <Text style={styles.section}>{'工作区'}</Text>
-      <Text style={styles.sampleLabel}>{TAB_NOTICE.workspace}</Text>
-      {thread.files.length === 0 ? (
-        <EmptyState text="暂无文件" />
-      ) : (
-        thread.files.map((item) => <FileRow key={item.id} item={item} />)
-      )}
-    </View>
-  );
-}
-
-// 仅展示假文件，不附加 onPress，避免伪造"打开文件"的副作用。
-function FileRow({ item }: { item: SampleFile }) {
-  const styles = usePanelStyles();
-  return (
-    <View style={styles.card}>
-      <Text style={styles.rowTitle}>{item.name}</Text>
-      <Text style={styles.rowDetail}>{item.detail}</Text>
-    </View>
-  );
-}
-
-function HistoryPanel({ thread }: { thread: SampleThread }) {
-  const styles = usePanelStyles();
-  return (
-    <View>
-      <Text style={styles.section}>{'历史'}</Text>
-      <Text style={styles.sampleLabel}>{TAB_NOTICE.history}</Text>
-      {thread.history.length === 0 ? (
-        <EmptyState text="暂无历史" />
-      ) : (
-        thread.history.map((item) => (
-          <HistoryRow key={item.id} item={item} />
-        ))
-      )}
-    </View>
-  );
-}
-
-function HistoryRow({ item }: { item: SampleHistory }) {
-  const styles = usePanelStyles();
-  return (
-    <View style={styles.historyRow}>
-      <Text style={styles.rowTitle}>{item.title}</Text>
-      <Text style={styles.rowTime}>{item.time}</Text>
-      <Text style={styles.rowDetail}>{item.detail}</Text>
-    </View>
   );
 }
 

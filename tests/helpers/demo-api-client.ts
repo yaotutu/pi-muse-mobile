@@ -1,6 +1,7 @@
 import type { ApiClient, ApprovalDecision, GoalInput, IdentityInput, MonitorAction, Profile, RunInput, TaskAction, TaskControlTarget } from '../../src/api/contracts';
 import { ApiError, requestCancelled } from '../../src/api/errors';
 import type { AgentTask, AgUiEvent, ApprovalNotification, ConversationMessage, DeleteThreadResult, Goal, GoalStatus, MemoryItem, Monitor, TaskDetails, WorkspaceSnapshot } from '../../src/api/types';
+import type { AgentStatusResponse, RuntimeEvent } from '../../src/runtime/types';
 import { demoWorkspace } from './demo-fixtures';
 import { ThreadSettings } from './demo-thread-settings';
 
@@ -484,4 +485,12 @@ export class DemoApiClient implements ApiClient {
   async forgetMemory(id: string) { this.find(this.workspace.memories, id); this.workspace.memories = this.workspace.memories.filter((item) => item.id !== id); }
   async getProfile() { return copy(this.profile); }
   async saveProfile(profile: Profile) { this.profile = copy(profile); return copy(this.profile); }
+
+  // --- 运行状态：演示模式不提供全局运行状态流；抛 501 让 UI 走非连接分支，不冒充真实运行 ---
+  async getAgentStatus(_threadId: string, _runId: string, _signal?: AbortSignal): Promise<AgentStatusResponse> {
+    throw new ApiError(501, '演示模式不提供运行状态查询');
+  }
+  async subscribeRuntime(_onEvent: (event: RuntimeEvent) => void, _signal?: AbortSignal): Promise<void> {
+    throw new ApiError(501, '演示模式不提供运行状态推送');
+  }
 }

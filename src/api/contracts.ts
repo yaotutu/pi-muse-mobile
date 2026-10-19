@@ -16,6 +16,7 @@ import type {
   ThreadSkills,
   WorkspaceSnapshot,
 } from './types';
+import type { AgentStatusResponse, RuntimeEvent } from '../runtime/types';
 
 /** 增量聊天只提交一条新用户消息；历史与工具消息始终由服务端持有。 */
 export type RunInput = {
@@ -109,6 +110,17 @@ export interface ApiClient {
   /** SOUL/USER 人设文本（空串=未设置） */
   getProfile(): Promise<Profile>;
   saveProfile(profile: Profile): Promise<Profile>;
+
+  // --- 运行状态（GET /api/agent/status + GET /api/events） ---
+
+  /** 单点查询指定 (threadId, runId) 的最新状态；运行不存在或被清理返回 404。 */
+  getAgentStatus(threadId: string, runId: string, signal?: AbortSignal): Promise<AgentStatusResponse>;
+  /**
+   * 订阅工作区实时状态推送；首个 ready 帧必为恰一次，后续为 agent_status_updated。
+   * 连接自然结束（EOF）视为正常，调用方按服务端约定重连；
+   * signal 触发不会调用聊天 Stop，订阅生命周期与聊天独立。
+   */
+  subscribeRuntime(onEvent: (event: RuntimeEvent) => void, signal?: AbortSignal): Promise<void>;
 }
 
 export type TaskAction = 'pause' | 'resume' | 'cancel' | 'retry';

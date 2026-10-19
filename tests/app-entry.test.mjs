@@ -39,11 +39,23 @@ test('旧工作区、旧演示与旁路预览源码已移除，不保留可回�
   }
 });
 
-test('新版侧栏没有退出旧工作区路径，应用页保留独立更新入口', () => {
+test('新版侧栏职责不变，真实连接与更新从应用页进入', () => {
   const source = read('src/workspace/WorkspaceScreen.tsx');
-  assert.doesNotMatch(source, /onExit|退出预览|新 UI 预览|退出 UI|onPreview|useApi|useConnection/);
+  assert.doesNotMatch(source, /onExit|退出预览|新 UI 预览|退出 UI|onPreview|sampleReducer|createSampleState/);
   assert.match(source, /accessibilityLabel="应用更新"\s+onPress=\{update.open\}/);
-  assert.match(source, /示例数据 · 尚未连接服务端/);
+  assert.match(source, /accessibilityLabel="服务器连接"\s+onPress=\{openConnection\}/);
+  assert.match(source, /<RuntimeProvider>/);
+  assert.match(source, /<ThreadSessionProvider>/);
+  assert.match(source, /<ApiProvider client=\{connection.client\}/);
+  assert.doesNotMatch(source, /getSnapshot\(|useWorkspaceSnapshot/);
+});
+
+test('会话面板当前执行与未接模块边界明确，不消费示例数组', () => {
+  const source = read('src/workspace/SessionPanel.tsx');
+  assert.doesNotMatch(source, /sample-state|SampleThread|SampleActivity|thread\.approvals|thread\.files|thread\.history/);
+  assert.match(source, /<CurrentExecution threadId=\{threadId\}/);
+  assert.match(source, /审批尚未接入/);
+  assert.match(source, /工作区文件尚未接入/);
 });
 
 test('旧演示客户端只作为测试辅助源码，不成为运行入口', () => {

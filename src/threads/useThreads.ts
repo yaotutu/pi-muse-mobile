@@ -31,7 +31,7 @@ export function useThreads(enabled = true, refreshVersion = 0) {
     const controller = new AbortController();
     request.current = controller;
     try {
-      const items = (await api.listThreads(controller.signal)).filter((item) => !item.id.startsWith('task-') && !removed.current.has(item.id));
+      const items = (await api.listThreads(controller.signal)).filter((item) => !removed.current.has(item.id));
       if (controller.signal.aborted || generation.current !== version) return;
       const authoritative = items.some((item) => item.id === MAIN_THREAD) ? items : [mainThread(), ...items];
       setThreads(authoritative);

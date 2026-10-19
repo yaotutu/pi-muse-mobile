@@ -19,6 +19,14 @@ test('工作区两种主题拥有相同颜色语义，不修改几何或正式�
   assert.notEqual(workspacePalettes.light.canvas, workspacePalettes.dark.canvas);
 });
 
+test('真实聊天正文避开会话信息区，头像图标在两种主题均清晰', () => {
+  assert.ok(workspaceTheme.layout.chatContentTop >= workspaceTheme.layout.headerHeight);
+  for (const mode of ['light', 'dark']) {
+    const c = workspacePalettes[mode];
+    assert.ok(contrast(c.ink, c.avatar) >= 4.5, `${mode} avatar icon`);
+  }
+});
+
 for (const mode of ['light', 'dark']) {
   test(`${mode} 普通文字与表面保持可读对比`, () => {
     const c = workspacePalettes[mode];
