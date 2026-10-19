@@ -14,6 +14,7 @@ import type {
   AgentTask,
   ApprovalNotification,
   ConversationSnapshot,
+  DeleteThreadResult,
   Goal,
   GoalStatus,
   Identity,
@@ -21,6 +22,9 @@ import type {
   Monitor,
   TaskDetails,
   ThreadInfo,
+  ThreadInstructions,
+  ThreadSkill,
+  ThreadSkills,
   WorkspaceSnapshot,
   WorkspaceData,
 } from './types';
@@ -194,6 +198,74 @@ export class HttpApiClient implements ApiClient {
     return this.request<ConversationSnapshot>(`/api/conversation?threadId=${encodeURIComponent(threadId)}`, { signal });
   }
 
+  // --- 会话配置：响应字段必须存在且类型正确，200 但结构错位报 502（与服务端快照校验一致） ---
+
+  async getThreadInstructions(threadId: string, signal?: AbortSignal): Promise<ThreadInstructions> {
+    const path = `/api/threads/${encodeURIComponent(threadId)}/instructions`;
+    const data = await this.request<ThreadInstructions>(path, { signal });
+    if (typeof data?.instructions !== 'string') {
+      throw new ApiError(502, '服务器没有返回有效会话指令，请确认服务器版本与地址');
+    }
+    return data;
+  }
+
+  async saveThreadInstructions(threadId: string, instructions: string, signal?: AbortSignal): Promise<ThreadInstructions> {
+    const path = `/api/threads/${encodeURIComponent(threadId)}/instructions`;
+    const data = await this.request<ThreadInstructions>(path, { method: 'PUT', body: { instructions }, signal });
+    if (typeof data?.instructions !== 'string') {
+      throw new ApiError(502, '服务器没有返回有效会话指令，请确认服务器版本与地址');
+    }
+    return data;
+  }
+
+  // diagnostics 可缺省；skills 字段必须为条目数组，每条字段类型严格。
+  async getThreadSkills(threadId: string, signal?: AbortSignal): Promise<ThreadSkills> {
+    const path = `/api/threads/${encodeURIComponent(threadId)}/skills`;
+    const data = await this.request<ThreadSkills>(path, { signal });
+    if (!Array.isArray(data?.skills) || data.skills.some((item) => !this.isValidThreadSkill(item))) {
+      throw new ApiError(502, '服务器没有返回有效会话技能列表，请确认服务器版本与地址');
+    }
+    if (data.diagnostics !== undefined && (!Array.isArray(data.diagnostics) || data.diagnostics.some((item) => typeof item?.path !== 'string' || typeof item?.message !== 'string'))) {
+      throw new ApiError(502, '服务器没有返回有效会话技能列表，请确认服务器版本与地址');
+    }
+    return data;
+  }
+
+  async saveThreadSkills(
+    threadId: string,
+    overrides: Record<string, boolean>,
+    signal?: AbortSignal,
+  ): Promise<ThreadSkills> {
+    const path = `/api/threads/${encodeURIComponent(threadId)}/skills`;
+    const data = await this.request<ThreadSkills>(path, { method: 'PUT', body: { overrides }, signal });
+    if (!Array.isArray(data?.skills) || data.skills.some((item) => !this.isValidThreadSkill(item))) {
+      throw new ApiError(502, '服务器没有返回有效会话技能列表，请确认服务器版本与地址');
+    }
+    if (data.diagnostics !== undefined && (!Array.isArray(data.diagnostics) || data.diagnostics.some((item) => typeof item?.path !== 'string' || typeof item?.message !== 'string'))) {
+      throw new ApiError(502, '服务器没有返回有效会话技能列表，请确认服务器版本与地址');
+    }
+    return data;
+  }
+
+  // DELETE 必须无 body；服务端 404/409 语义保留，不做自动重试副作用。
+  async deleteThread(threadId: string, signal?: AbortSignal): Promise<DeleteThreadResult> {
+    const path = `/api/threads/${encodeURIComponent(threadId)}`;
+    const data = await this.request<DeleteThreadResult>(path, { method: 'DELETE', signal });
+    if (data?.ok !== true || !data.removed || typeof data.removed.jobs !== 'number' || typeof data.removed.monitors !== 'number' || typeof data.removed.tasks !== 'number') {
+      throw new ApiError(502, '服务器没有返回有效会话删除结果，请确认服务器版本与地址');
+    }
+    return data;
+  }
+
+  private isValidThreadSkill(item: unknown): item is ThreadSkill {
+    if (!item || typeof item !== 'object') return false;
+    const skill = item as ThreadSkill;
+    return typeof skill.name === 'string'
+      && typeof skill.description === 'string'
+      && typeof skill.defaultEnabled === 'boolean'
+      && typeof skill.enabled === 'boolean';
+  }
+
   async runAgent(
     input: RunInput,
     onEvent: (event: import('./types').AgUiEvent) => void,
@@ -278,10 +350,14 @@ export class HttpApiClient implements ApiClient {
     return { ...workspace, notifications: pending.actions };
   }
 
-  async createTask(prompt: string, title?: string): Promise<AgentTask> {
+  async createTask(prompt: string, title?: string, originThreadId?: string): Promise<AgentTask> {
+    // title/originThreadId 仅在显式传值时落入 body：传 'local-main' 也算值，服务端据此回填会话来源。
+    const body: { prompt: string; title?: string; originThreadId?: string } = { prompt };
+    if (title !== undefined) body.title = title;
+    if (originThreadId !== undefined) body.originThreadId = originThreadId;
     return this.request<AgentTask>('/api/agent/tasks', {
       method: 'POST',
-      body: title ? { prompt, title } : { prompt },
+      body,
     });
   }
 

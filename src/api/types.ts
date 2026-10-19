@@ -142,6 +142,31 @@ export type Monitor = {
   lastCheckedAt?: string;
   checks: number;
   error?: string;
+  /** 服务端回填来源会话 ID；未跨会话导出时缺省 */
+  originThreadId?: string;
+};
+
+/** 会话自定义指令（SOUL/GUIDELINES 等场景），空串视为"已设置但不写内容" */
+export type ThreadInstructions = { instructions: string };
+
+/** 单条线程级技能；name 为后端注册键，defaultEnabled 来自服务端列表，enabled 为当前覆盖值 */
+export type ThreadSkill = {
+  name: string;
+  description: string;
+  defaultEnabled: boolean;
+  enabled: boolean;
+};
+
+/** GET /api/threads/:id/skills 返回结果：技能列表 + 服务端可选诊断（如本地 YAML 读取失败等） */
+export type ThreadSkills = {
+  skills: ThreadSkill[];
+  diagnostics?: { path: string; message: string }[];
+};
+
+/** DELETE /api/threads/:id 返回的清点结果，用于确认会话清理的副作用范围 */
+export type DeleteThreadResult = {
+  ok: true;
+  removed: { jobs: number; monitors: number; tasks: number };
 };
 
 export type MemoryItem = {
