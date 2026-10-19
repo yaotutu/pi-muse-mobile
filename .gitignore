@@ -45,4 +45,5 @@ yarn-error.*
 *.keystore
 .zcode/
 .claude/
+.idea/
 
