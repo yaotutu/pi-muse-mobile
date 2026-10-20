@@ -211,15 +211,6 @@ const requestCases = [
     expect: { id: 'monitor/一', status: 'paused' },
   },
   {
-    name: 'decideAction 编码审批 ID 并提交 decision',
-    call: (client) => client.decideAction('approval/1', 'approve'),
-    method: 'POST',
-    url: `${BASE}/api/actions/approval%2F1/decide`,
-    body: { decision: 'approve' },
-    respond: { id: 'approval/1', status: 'approved' },
-    expect: { id: 'approval/1', status: 'approved' },
-  },
-  {
     name: 'createGoal 原样提交含里程碑的创建载荷',
     call: (client) => client.createGoal({
       title: '完成 v1',

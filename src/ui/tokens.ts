@@ -378,6 +378,7 @@ export const workspaceTheme = {
     listItemGap: 22,
     sampleLabelTop: 8,
     sampleLabelSize: 10,
+    approvalPreviewMaxHeight: 300,
   },
   radius: {
     round: 999,
@@ -402,6 +403,7 @@ export const workspaceTheme = {
     input: { fontSize: 18, lineHeight: 26 },
   },
   motion: { drawerDuration: 280, feedbackDuration: 1800, replyDuration: 3600 },
+  interaction: { disabledOpacity: 0.4 },
 } as const;
 
 export type WorkspaceAppearance = 'light' | 'dark';

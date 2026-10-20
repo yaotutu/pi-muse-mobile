@@ -3,6 +3,8 @@ import { AppState, Platform } from 'react-native';
 import { useApi } from '../api/ApiProvider';
 import { useServiceConnection } from '../connection/ConnectionProvider';
 import { RuntimeStore, threadRuntime } from './runtime-store';
+import { ApprovalStore } from '../approvals/approval-store';
+import { ApprovalProvider } from '../approvals/ApprovalProvider';
 
 const Context = createContext<RuntimeStore | null>(null);
 
@@ -11,15 +13,19 @@ export function RuntimeProvider({ children }: { children: ReactNode }) {
   const api = useApi();
   const connection = useServiceConnection();
   const [foreground, setForeground] = useState(AppState.currentState === 'active');
-  const store = useMemo(() => new RuntimeStore(api), [api]);
+  const approvals = useMemo(() => new ApprovalStore(api), [api]);
+  const store = useMemo(() => new RuntimeStore(api, { onEvent: approvals.receive, onConnection: approvals.setConnection }), [api, approvals]);
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => setForeground(state === 'active'));
     return () => subscription.remove();
   }, []);
   const enabled = !!connection?.enabled && (Platform.OS === 'web' || foreground);
-  useEffect(() => { store.setActive(enabled); return () => store.setActive(false); }, [store, enabled, connection?.snapshot.refreshVersion]);
-  useEffect(() => () => store.dispose(), [store]);
-  return <Context.Provider value={store}>{children}</Context.Provider>;
+  useEffect(() => {
+    approvals.setActive(enabled); store.setActive(enabled);
+    return () => { store.setActive(false); approvals.setActive(false); };
+  }, [store, approvals, enabled, connection?.snapshot.refreshVersion]);
+  useEffect(() => () => { store.dispose(); approvals.dispose(); }, [store, approvals]);
+  return <Context.Provider value={store}><ApprovalProvider store={approvals}>{children}</ApprovalProvider></Context.Provider>;
 }
 
 export function useRuntimeStore() {

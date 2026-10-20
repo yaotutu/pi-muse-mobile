@@ -3,9 +3,11 @@ import test from 'node:test';
 import './register-source.mjs';
 import { RuntimeStore, threadRuntime } from '../src/runtime/runtime-store.ts';
 import { ApiError } from '../src/api/errors.ts';
+import { ApprovalStore } from '../src/approvals/approval-store.ts';
+import { approvalFixture, approvalResolution } from './helpers/approval-fixtures.ts';
 
 const status = (overrides = {}) => ({ activityId: null, threadId: 'a', runId: 'run-a', revision: 1, source: 'chat', jobId: null, title: '当前执行', status: 'running', phase: 'waiting_model', label: '等待模型响应', tools: [], subagents: [], pendingApprovalIds: [], startedAt: '2026-10-19T10:00:00.000Z', updatedAt: '2026-10-19T10:00:00.000Z', endedAt: null, ...overrides });
-const ready = (runs = [], instanceId = 'instance-a') => ({ event: 'ready', data: { instanceId, serverTime: '2026-10-19T10:00:00.000Z', agentStatuses: runs } });
+const ready = (runs = [], instanceId = 'instance-a') => ({ event: 'ready', data: { instanceId, serverTime: '2026-10-19T10:00:00.000Z', agentStatuses: runs, pendingApprovals: [] } });
 const update = (run, instanceId = 'instance-a') => ({ event: 'agent_status_updated', data: { ...run, instanceId } });
 const tick = () => new Promise(setImmediate);
 function fixture() {
@@ -35,6 +37,19 @@ test('通知流仅一条且按会话隔离，低版本和重复帧不倒退', ()
   assert.equal(threadRuntime(store.getSnapshot(), 'b').label, 'B 状态');
   assert.equal(threadRuntime(store.getSnapshot(), 'missing').label, '就绪');
   store.dispose();
+});
+
+test('运行与审批共享一条通知连接，审批事件不被误合并为运行，断流同时禁用决定', async () => {
+  const { client, connections } = fixture();
+  const approvals = new ApprovalStore({ getApproval: async () => approvalFixture() });
+  approvals.setActive(true);
+  const runtime = new RuntimeStore(client, { onEvent: approvals.receive, onConnection: approvals.setConnection, retryDelay: () => 10000 });
+  runtime.setActive(true); const first = ready([status()]); first.data.pendingApprovals = [approvalFixture()];
+  connections[0].onEvent(first); assert.equal(approvals.canDecide('approval-a'), true);
+  connections[0].onEvent({ event: 'approval_updated', data: { ...approvalResolution(), instanceId: 'instance-a' } });
+  assert.equal(runtime.getSnapshot().runs.length, 1); assert.equal(approvals.getSnapshot().records['approval-a'].status, 'approved');
+  assert.equal(connections.length, 1); connections[0].resolve(); await tick();
+  assert.equal(approvals.getSnapshot().synchronized, false); runtime.dispose(); approvals.dispose();
 });
 
 test('通知断流保留最后观测但不能伪装就绪，退避后ready整体替换并补查消失运行', async () => {

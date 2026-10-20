@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { HttpApiClient } from '../src/api/http-client.ts';
 import { ApiError } from '../src/api/errors.ts';
+import { approvalFixture, approvalResolution } from './helpers/approval-fixtures.ts';
 
 const BASE = 'https://server-a';
 const json = (value, status = 200, headers = {}) => new Response(JSON.stringify(value), {
@@ -57,7 +58,7 @@ const agentStatus = (overrides = {}) => ({
   ...overrides,
 });
 
-const frame = (event, payload, newline = '\n') => `event: ${event}\ndata: ${JSON.stringify(payload)}${newline}${newline}`;
+const frame = (event, payload, newline = '\n') => `event: ${event}\ndata: ${JSON.stringify(event === 'ready' ? { pendingApprovals: [], ...payload } : payload)}${newline}${newline}`;
 
 // ---------------------------------------------------------------------------
 // getAgentStatus
@@ -174,16 +175,16 @@ test('subscribeRuntime 首帧 ready 解析后触发状态更新回调', async ()
   });
 });
 
-test('subscribeRuntime ready 中 pendingApprovals 即使很大也由解析器承载，不当作运行状态', async () => {
+test('subscribeRuntime ready 保留完整大审批预览，与运行状态分开消费', async () => {
   const stream = makeStream();
-  // pendingApprovals 故意填一个超长字符串，模拟服务端在大快照里塞大量审批预览。
+  // 完整预览跨 chunk 承载，不截断审批正文，也不混入运行集合。
   const bigPending = 'x'.repeat(64 * 1024);
   await withFetch(async () => {
     stream.push(frame('ready', {
       instanceId: 'inst-1',
       serverTime: '2026-10-19T00:00:00.000Z',
       agentStatuses: [agentStatus()],
-      pendingApprovals: [{ id: 'ap-1', preview: bigPending }],
+      pendingApprovals: [approvalFixture({ preview: { ...approvalFixture().preview, after: bigPending } })],
     }));
     stream.close();
     return new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } });
@@ -193,17 +194,17 @@ test('subscribeRuntime ready 中 pendingApprovals 即使很大也由解析器承
     await api.subscribeRuntime((event) => received.push(event));
     assert.equal(received.length, 1);
     assert.equal(received[0].event, 'ready');
-    // 客户端契约不暴露 pendingApprovals；agentStatuses 仍然完整带过来。
+    assert.equal(received[0].data.pendingApprovals[0].preview.after, bigPending);
     assert.equal(received[0].data.agentStatuses.length, 1);
   });
 });
 
-test('subscribeRuntime approval_pending/approval_updated 静默跳过，不进回调', async () => {
+test('subscribeRuntime 消费审批新增与轻量回执，不额外拉快照', async () => {
   const stream = makeStream();
   await withFetch(async () => {
     stream.push(frame('ready', { instanceId: 'inst-1', serverTime: '2026-10-19T00:00:00.000Z', agentStatuses: [] }));
-    stream.push(frame('approval_pending', { instanceId: 'inst-1', id: 'ap-1', title: 'should not pass' }));
-    stream.push(frame('approval_updated', { instanceId: 'inst-1', id: 'ap-1', status: 'approved' }));
+    stream.push(frame('approval_pending', { ...approvalFixture(), instanceId: 'inst-1' }));
+    stream.push(frame('approval_updated', { ...approvalResolution(), instanceId: 'inst-1' }));
     stream.push(frame('agent_status_updated', { ...agentStatus({ revision: 2 }), instanceId: 'inst-1' }));
     stream.close();
     return new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } });
@@ -211,10 +212,32 @@ test('subscribeRuntime approval_pending/approval_updated 静默跳过，不进�
     const api = new HttpApiClient(BASE, () => 'token-1', () => {});
     const received = [];
     await api.subscribeRuntime((event) => received.push(event));
-    assert.equal(received.length, 2);
+    assert.equal(received.length, 4);
     assert.equal(received[0].event, 'ready');
-    assert.equal(received[1].event, 'agent_status_updated');
+    assert.equal(received[1].event, 'approval_pending');
+    assert.equal(received[2].event, 'approval_updated');
+    assert.equal('preview' in received[2].data, false);
+    assert.equal(received[3].event, 'agent_status_updated');
   });
+});
+
+test('subscribeRuntime 坏审批、缺 pending 集合及跨实例审批帧必须断流报 502', async () => {
+  const cases = [
+    [['ready', { instanceId: 'inst-1', serverTime: 't', agentStatuses: [], pendingApprovals: undefined }]],
+    [['ready', { instanceId: 'inst-1', serverTime: 't', agentStatuses: [] }], ['approval_pending', { ...approvalFixture(), preview: {}, instanceId: 'inst-1' }]],
+    [['ready', { instanceId: 'inst-1', serverTime: 't', agentStatuses: [] }], ['approval_pending', { ...approvalFixture(), instanceId: 'other' }]],
+    [['ready', { instanceId: 'inst-1', serverTime: 't', agentStatuses: [] }], ['approval_updated', { ...approvalFixture(), instanceId: 'inst-1' }]],
+  ];
+  for (const events of cases) {
+    const stream = makeStream();
+    await withFetch(async () => {
+      for (const [event, data] of events) stream.push(frame(event, data));
+      stream.close(); return new Response(stream);
+    }, async () => {
+      const api = new HttpApiClient(BASE, () => 'token-1', () => {});
+      await assert.rejects(api.subscribeRuntime(() => {}), (error) => error.status === 502);
+    });
+  }
 });
 
 test('subscribeRuntime 心跳注释不触发回调', async () => {

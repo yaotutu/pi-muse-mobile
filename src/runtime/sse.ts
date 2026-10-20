@@ -109,10 +109,10 @@ function parseFrame(frame: string): ParsedRuntimeFrame | null {
 /**
  * 把 ParsedRuntimeFrame 翻译为 RuntimeEvent；不识别的事件返回 null，传输层静默跳过。
  *
- * 无法解码的运行状态不能静默丢弃，否则连接看似在线却永久漏掉一次状态变化。
+ * 已接入领域的事件无法解码时不能静默丢弃，否则连接看似在线却漏掉状态或审批变化。
  */
 export function decodeRuntimeFrame(frame: ParsedRuntimeFrame): RuntimeEvent | null {
-  if (frame.event !== 'ready' && frame.event !== 'agent_status_updated') return null;
+  if (!['ready', 'agent_status_updated', 'approval_pending', 'approval_updated'].includes(frame.event)) return null;
   let payload: unknown;
   try {
     payload = JSON.parse(frame.data);
@@ -121,5 +121,5 @@ export function decodeRuntimeFrame(frame: ParsedRuntimeFrame): RuntimeEvent | nu
   }
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new RuntimeSseParseError('invalid_json', '运行状态事件不是对象，需要重新同步');
   if (frame.event === 'ready') return { event: 'ready', data: payload as Extract<RuntimeEvent, { event: 'ready' }>['data'] };
-  return { event: 'agent_status_updated', data: payload as Extract<RuntimeEvent, { event: 'agent_status_updated' }>['data'] };
+  return { event: frame.event, data: payload } as RuntimeEvent;
 }

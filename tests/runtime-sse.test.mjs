@@ -144,7 +144,7 @@ test('decodeRuntimeFrame：ready/agent_status_updated 解码为 RuntimeEvent，�
   const out = decodeRuntimeFrame(readyFrame);
   assert.equal(out.event, 'ready');
   assert.equal(out.data.instanceId, 'i1');
-  const unknown = decodeRuntimeFrame({ event: 'approval_pending', data: '{}' });
+  const unknown = decodeRuntimeFrame({ event: 'future_event', data: '{}' });
   assert.equal(unknown, null);
   // 无 event 字段的事件：分派层直接忽略。
   assert.equal(decodeRuntimeFrame({ event: '', data: '{}' }), null);

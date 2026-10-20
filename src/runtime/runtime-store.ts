@@ -15,6 +15,9 @@ export type RuntimeSnapshot = {
 };
 export type RuntimeStoreOptions = {
   retryDelay?: (attempt: number) => number;
+  /** 领域观察者共享本通知连接，不为审批再建立第二条 SSE。 */
+  onEvent?: (event: RuntimeEvent) => void;
+  onConnection?: (connection: RuntimeConnection) => void;
 };
 const keyFor = (threadId: string, runId: string) => JSON.stringify([threadId, runId]);
 const MAX_REMEMBERED_RUNS = 128;
@@ -39,6 +42,7 @@ export class RuntimeStore {
   };
   private publish(patch: Partial<RuntimeSnapshot>) {
     this.state = { ...this.state, ...patch };
+    if (patch.connection) this.options.onConnection?.(patch.connection);
     for (const listener of this.listeners) listener();
   }
   private current(generation: number, signal: AbortSignal) {
@@ -84,8 +88,9 @@ export class RuntimeStore {
           for (const run of missing) void this.reconcile(run.threadId, run.runId, generation, controller.signal);
         } else {
           if (event.data.instanceId !== this.state.instanceId) throw new ApiError(502, '运行状态实例已变化，请重新同步');
-          this.merge(event.data);
+          if (event.event === 'agent_status_updated') this.merge(event.data);
         }
+        this.options.onEvent?.(event);
       }, controller.signal);
       if (this.current(generation, controller.signal)) throw new ApiError(0, '状态连接已断开，正在重新同步');
     } catch (error) {

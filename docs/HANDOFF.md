@@ -1,6 +1,36 @@
 # pi-muse-mobile 交接文档
 
-> **当前入口（2026-10-19）**：会话聊天与运行状态已通过实际服务 `http://192.168.55.201:17890` 的协议、浏览器界面和 Android 模拟器原生验收。原生环境为 Android 16/API36 x86_64 + Expo Go 57.0.9，23组检查通过；物理真机、正式独立APK和iOS原生仍未验收。审批操作、活动历史、文件、目标及记忆未接入。旧示例界面仅作历史，不恢复旧 UI。
+> **当前入口（2026-10-20，用户确认服务稳定后）**：审批四个 HTTP 接口及共享 SSE 已全部接入；在固定部署 `5b83d3b4cc58...` 上重新通过真实接口与 Android 模拟器的批准落盘、拒绝不执行、完整预览、执行回执、重连／前后台恢复、Stop 和历史筛选，上一轮的部署变更阻塞已解除。**整模块仍待自动过期的真实接口验收**：本轮独立会话仍在约120秒收到服务端模型响应超时，审批先 cancelled，未到5分钟 expiresAt。活动历史、文件浏览、目标及记忆仍未接入，不恢复旧 UI。
+
+### 固定部署的真实接口与模拟器复验（2026-10-20，11:59起）
+
+- **部署与接口覆盖**：实际17890的 docs/OpenAPI/health 全部正常，OpenAPI `x-service-version` 与 health 一致；开始、过程及收尾均为 `version=0.1.0`、commit `83f33c47ee5c2e40847cdcf8b8e92d1076e9583b`、dirty source、sourceHash `5b83d3b4cc5806d438a09d5fac5fcad9988ef8b49d9edc8398b20eaf2ac9434e`。四个审批 HTTP 端点及共享通知、聊天／Stop 文档与上一轮最终快照逐项比较未变；客户端无遗漏的审批端点，不需要新增兼容分支。本轮未修改产品源码、服务端、版本字段或CI，未提交／推送。
+- **真实 HTTP/SSE 主流程通过**：实际 `HttpApiClient + RuntimeStore + ApprovalStore` 消费真实模型、HTTP 与通知流，不拦截／伪造响应。pending 通知与两种完整 HTTP 视图一致，通知重连不停止聊天；批准后真实 execution=succeeded，同决定幂等、反向决定409；拒绝后下一次预览仍为v1；精确Stop后cancelled、decidedAt/execution=null；终态历史游标／状态／会话过滤、取消后的晚到409、缺失404与坏游标400均通过。`protocol/results.json` 的 `corePassed=true`、`overall=passed`，过期在独立会话单测，没有混成该脚本的通过项。
+- **Android 模拟器主流程通过**：API36 x86_64、Expo Go57.0.9、1080×2400/density420，直接连接实际17890。专用会话的模型请求由真实 API 发起，原生实际选中该会话并消费共享 SSE；审批二次确认、批准后的真实成功回执、编辑前后全文及拒绝均通过。暗色详情退后台再恢复，旧拒绝确认失效，重新确认后才提交；第三次45行覆盖的 before 仍为v1，证明拒绝未落盘。嵌套预览实际从LINE_01滚到LINE_45，原生聊天Stop使该审批cancelled。当前会话历史的全部／approved／denied／cancelled可见列表前缀与实际HTTP的ID和顺序一致；历史详情保留完整预览、无决定控件。`native/results.json`、`native/ui-checks.json`、`native/ui-history-assertions.json` 均通过，JS/fatal错误日志为空。不是物理设备、独立APK或iOS验收。
+- **仍阻塞：真实自动过期**：新建独立会话，审批 `a7da45b3-9960-476b-80b8-6349ac772902` 于 `04:01:23.410Z` 登记，expiresAt为 `04:06:23.410Z`，却于 `04:03:21.148Z` 先变cancelled，decidedAt/execution=null；聊天真实收到 `RUN_ERROR`，提示 `Model response timed out`。客户端只限制流式握手时间，建立长流后已停止该计时，没有发Stop或决定来促成此结果。该场景 `expiry/results.json` 明确 `success=false`；真实 expired、晚到 expired 409 及原生 expired 更新仍未验通。需要服务端侧协调一个能合法覆盖完整审批有效期的运行窗口；不改服务端时限、不绕过审批，也不把cancelled改称expired。
+- **本地／mock／清理与证据**：405/405测试、lint、typecheck和diff检查通过；本轮没有运行17891 mock，fixture不替代真实结果。三个本轮专用会话均经实际API删除，私有文件随会话清理；独立回读仅剩原 `local-main`，无本轮pending，7条终态审批历史按契约保留，未动用户原有数据。证据入口 `/tmp/pimuse-approvals-stable.ke9alykw/`（指向系统临时目录），含部署快照、契约差异、客户端源码哈希、三组真实结果、原生截图、验收脚本及 `cleanup-audit.json`。MB级预览性能、shared写入、多端并发及真实执行失败／文件版本冲突等此前列明边界仍未动态验收，不以本次主流程通过宣称它们完成。
+
+### 再次真实服务与模拟器验证（2026-10-20，10:22起）
+
+- **证据与部署变化**：全部证据在 `/tmp/pimuse-approvals-recheck.7xpbTT/`，包括在线 docs/OpenAPI/health、真实结果、原生截图、脚本和客户端源码 SHA-256。本轮开始的 sourceHash 为 `6fd5c53fade38850e345713275ec0722e0d0f117d91adbd2d8e7aa56ac00f87c`，收尾核对变为 `9f6e391c95ea0390ea53feb1e41f66529014b99f47d682a2506b6fb6d787f33d`，补跑原生等待审批期间又变为 `331dab79177fdded42942d0ac4d0cbffcd2f379ed0a6e8437b3d0cc7ae5e5004`。三次均 `version=0.1.0`、commit `83f33c47ee5c2e40847cdcf8b8e92d1076e9583b`、dirty source；相关审批、通知、聊天/Stop文档契约逐项比较未变，但不能据此假定业务实现未变或将旧结果套用到最新部署。
+- **真实接口主流程**：使用实际 `HttpApiClient + RuntimeStore + ApprovalStore` 和真实模型，不代理、不拦截响应、不用mock。首轮和 `9f6e...` 补跑均实测 pending SSE/HTTP固定全文一致、通知重连不停止聊天、批准后真实 execution=succeeded、同决定幂等/反向409、拒绝后下一次预览证明文件未改、精确Stop变cancelled且decidedAt/execution=null、历史游标/状态/会话过滤、撤销后晚到决定409、缺失详情404与坏游标400。`protocol/results.json`、`latest/protocol/results.json` 保留完整场景结果，不能写成两个脚本全绿：首轮过期场景未验通，补跑最后一次新过期请求未产生审批，模型直接结束。
+- **Android原生主流程**：API36 x86_64，1080×2400/density420，Expo Go57.0.9，直接消费实际17890。首轮由模拟器“新建会话”和聊天输入真正发起写/编辑请求，再从当前执行入口进入审批；批准二次确认后界面显示真实“文件写入成功”，拒绝后execution=null。保留暗色主题与同一详情的前后台恢复中，旧拒绝确认失效、原待审批恢复，重新确认才提交。第三次45行覆盖预览的before仍为v1，证明拒绝未落盘；原生嵌套滚动从LINE_01读到LINE_45（`native/long-preview-start.png`、`native/long-history-preview-end.png`），实际点击“停止当前运行”后该审批cancelled且历史仍可完整阅读、没有决定按钮。现场JS/fatal日志为空；没有物理真机、独立APK或iOS验收。
+- **原生历史复核与脚本限制**：`native/ui-history-assertions.json` 的7次可见列表核对通过：全部会话/当前主会话以及approved/denied/cancelled筛选的可见首项与实际HTTP响应ID及顺序一致，当时主会话权威结果为空。Android只暴露视口内卡片，这不是“16条历史同时可见”或已遍历整页的断言。首轮长ADB输入被截断，改为分段输入并回读全文后继续；首轮观察脚本最终因等待历史UI门闩超时而`success=false`，错误的离屏坐标/全列表可见假设修正后另跑上述核对通过。原始失败证据保留，不能把脚本超时当产品缺陷或把整脚本改写成通过。
+- **最新补跑未完成**：`latest/native-prompt-attempt/` 因模型生成预览与用例字面内容不符而中止，未批准，已清理。随后正确生成的审批 `3e7c11a8-4436-4e7e-87f9-f17d191e0518` 在 `02:50:49.861Z` 登记、`02:55:49.861Z` 到期，却在 `02:51:26.933Z` 变cancelled，decidedAt/execution=null；模拟器如实显示已撤销并移除决定按钮，未提交批准。同一时间窗口观察到上述第三份部署快照；不在无服务端日志证据时断言撤销的内部原因，但此项明确不是批准验收通过。`latest/native/results.json` 保留 `success=false`；最新 `331dab...` 仅作docs/health与清理回读，没有完整写入/界面链路验收。
+- **自动过期与协调**：首轮真实等待中，父运行从 `02:25:22.547Z` 到 `02:27:22.553Z` 约120秒便结束，聊天RUN_ERROR明确提示模型响应超时，而审批expiresAt是 `02:30:24.838Z`；最终为cancelled而非expired。`9f6e...` 的补测请求模型未登记新审批，仍不能据此验证expired。需要先由用户协调稳定部署和能覆盖5分钟有效期的合法验收窗口；本仓库不改服务端时限、不造审批、不延长授权。
+- **本地/mock/清理**：本轮405/405测试、lint、typecheck和diff检查通过，产品源码未因验收而修改；本轮没有跑17891 mock，fixture不能替代真实结果。`cleanup-audit.json` 从实际接口确认本轮5个专用会话均不存在、无本轮pending，私有测试文件随会话删除，终态历史按契约保留；没有删除用户原有数据或直接操作服务端存储。未改服务端源码/配置/Git、版本号或CI，未提交/推送。当前结论是“已验证主流程，但最新部署待稳定版本最终验收”，不是“所有场景完成”。MB级预览性能、shared写入、多端并发与真实执行失败/版本冲突等边界仍未动态验收。
+
+### 审批接入与实际服务验收（2026-10-20）
+
+- **契约与实现**：以在线 `/docs`、`/openapi.json` 为准，核对 health/OpenAPI 的部署标识一致：`version=0.1.0`、`commit=83f33c47ee5c2e40847cdcf8b8e92d1076e9583b`、`dirty=true`、`mode=source`、`sourceHash=6fd5c53fade38850e345713275ec0722e0d0f117d91adbd2d8e7aa56ac00f87c`。接入 `GET /api/approvals`、`GET /api/approvals/pending`、`GET /api/approvals/:id` 和 `POST /api/approvals/:id/decision`；旧 `/api/actions/:id/decision` 消费已移除。
+- **状态与安全边界**：`src/approvals/` 持有连接内存状态，复用 `src/runtime/` 唯一 SSE 的 `ready.pendingApprovals`、`approval_pending` 与轻量 `approval_updated`，不新增连接、不轮询、不持久化预览。ready 完整替换 pending，断线缺失项补读详情，不猜测终态；HTTP/SSE 按持久 revision 合并。过期／失联／缺正文／提交未明时禁止决定，409 读取权威审批且不重发 POST，前后台／切服取消在途消费。确认绑定 id/revision/重连代次，不能把旧确认用于重连后的授权。
+- **界面**：点击会话信息区进入会话面板“审批”，动态的“查看待审批”也可直达；默认全部会话，可切当前会话。待审批与审批历史分开，历史支持状态筛选与不透明游标加载更多。详情显示来源、归属、不可变的修改前／计划写入全文（原样文本、可滚动，不执行 HTML/Markdown）及独立执行回执；批准／拒绝均二次确认，明确“批准仅授权，不等于写入成功”。沿用亮暗主题及统一 token。
+- **本地自动化**：405/405 测试、`npm run lint`、`npm run typecheck` 与 `git diff --check` 通过。回归覆盖严格协议解析、共享 SSE、乱序/重复/跨实例版本、重连、迟到请求、409、404、提交超时不重试、过期禁用、历史分页与范围隔离、预览缓存及实际根入口。故障注入与 fixture 只作自动化证据，不冒充真实场景验收。
+- **真实协议**：实际 `HttpApiClient + RuntimeStore + ApprovalStore` 观测真实模型的私有文件写入/精确编辑审批；固定全文在通知、pending HTTP 和详情一致，重连恢复 pending 且聊天运行不中断，批准后 execution 由 running 到 succeeded；同决定幂等、反向决定 409，拒绝后下一次预览证实文件未改，精确 Stop 后 cancelled 且无人工作决定，历史游标/状态/会话筛选正确。证据 `/tmp/pimuse-approvals-real-1792461917831/results.json`；其中最后的过期断言未通过，整个脚本 `success=false`，不能写成全项通过。
+- **Android 原生**：Android 16/API36 x86_64 + Expo Go57，1080×2400/density420，直接连接实际17890服务。通过专用会话验证列表事件入屏、完整字面预览（含 `<script>` 字符串）、批准二次确认及真实成功回执、编辑 before 等于已写入内容、拒绝二次确认且 execution=null、已拒绝历史筛选、全部/当前会话隔离、历史完整详情无决定按钮，以及亮暗切换保留详情；当前进程 JS/fatal 错误日志为空。证据 `/tmp/pimuse-approvals-native-1792462308026/` 的 `results.json`、`ui-checks.json` 与截图。
+- **清理与未验范围**：本轮自建会话和私有测试文件均经实际 API 删除，只保留服务端不可变终态审批历史；不动用户既有会话、配置和底层存储，Token 仅内存。自动过期测试最终观测为 cancelled 而不是 expired，晚到过期决定409仍待真实接口验收，不自行延长运行或改服务端配置。shared 实际写入、多端同时争抢决定、真实执行失败/版本冲突、巨型预览原生滚动与审批专属前后台恢复仍未做动态验收；对应客户端防护有自动化但不能替代真实联调。本轮未跑17891 mock，未完成浏览器审批交互验收；无物理手机、正式签名APK或iOS原生验收。未改服务端、版本字段或CI，未提交/推送。
+
+下方保留 10-19 及更早阶段记录，其中“审批尚未接入”等只描述当时状态。
 
 ### Android 原生实际服务验收（2026-10-19）
 

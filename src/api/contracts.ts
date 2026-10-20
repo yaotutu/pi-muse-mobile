@@ -2,7 +2,6 @@
 import type {
   AgentTask,
   AgUiEvent,
-  ApprovalNotification,
   ConversationSnapshot,
   DeleteThreadResult,
   Goal,
@@ -17,6 +16,7 @@ import type {
   WorkspaceSnapshot,
 } from './types';
 import type { AgentStatusResponse, RuntimeEvent } from '../runtime/types';
+import type { ApprovalClient } from '../approvals/types';
 
 /** 增量聊天只提交一条新用户消息；历史与工具消息始终由服务端持有。 */
 export type RunInput = {
@@ -31,7 +31,7 @@ export type RunInput = {
 /**
  * 客户端接口：页面只依赖此抽象，不感知 mock/HTTP 差异。
  */
-export interface ApiClient {
+export interface ApiClient extends ApprovalClient {
   /** POST /api/session → {token, mode}；客户端不按时间过期，失效以服务端401为准。 */
   createSession(accessKey?: string): Promise<{ token: string; mode: string }>;
   /** GET /api/threads（按活跃倒序） */
@@ -86,11 +86,6 @@ export interface ApiClient {
 
   controlMonitor(id: string, action: MonitorAction): Promise<Monitor>;
 
-  // --- 审批 ---
-
-  /** 决定挂起中的写操作；仅 pending 可决定（重复决定服务端 409） */
-  decideAction(id: string, decision: ApprovalDecision): Promise<ApprovalNotification>;
-
   // --- 目标 ---
 
   createGoal(input: GoalInput): Promise<Goal>;
@@ -116,7 +111,8 @@ export interface ApiClient {
   /** 单点查询指定 (threadId, runId) 的最新状态；运行不存在或被清理返回 404。 */
   getAgentStatus(threadId: string, runId: string, signal?: AbortSignal): Promise<AgentStatusResponse>;
   /**
-   * 订阅工作区实时状态推送；首个 ready 帧必为恰一次，后续为 agent_status_updated。
+   * 订阅唯一工作区通知流；首帧 ready 同时给出运行和待审批完整集合。
+   * 后续运行状态与审批新增／回执事件交由各自领域消费，不额外建立审批 SSE。
    * 连接自然结束（EOF）视为正常，调用方按服务端约定重连；
    * signal 触发不会调用聊天 Stop，订阅生命周期与聊天独立。
    */
@@ -126,7 +122,7 @@ export interface ApiClient {
 export type TaskAction = 'pause' | 'resume' | 'cancel' | 'retry';
 export type TaskControlTarget = 'job' | 'task';
 export type MonitorAction = 'pause' | 'resume' | 'stop';
-export type ApprovalDecision = 'approve' | 'deny';
+export type { ApprovalDecision } from '../approvals/types';
 export type GoalInput = {
   title: string;
   description?: string;

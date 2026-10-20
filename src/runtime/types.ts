@@ -2,8 +2,9 @@
  * 运行状态流（GET /api/events）+ 单点状态查询（GET /api/agent/status）契约。
  *
  * 数据来源是服务端工作区推送；与聊天 AG-UI 流（POST /api/conversation/run）独立。
- * 本轮只消费运行状态；审批流由独立端点维护，事件帧解析可以跳过，本类型不暴露。
+ * 运行与审批共用一条通知连接，分别交给各自的内存 store；用户决定仍走独立 HTTP。
  */
+import type { ApprovalResolution, ApprovalView } from '../approvals/types';
 
 export type RunSource = 'chat' | 'job';
 
@@ -78,13 +79,14 @@ export type AgentStatusResponse = {
   status: AgentStatus;
 };
 
-/** ready 首帧只暴露运行集合；审批快照按服务端约定不在 UI 处理。 */
+/** 两个集合都必须完整替换；审批 revision 跨实例有效，不能跟随运行缓存一起清零。 */
 export type RuntimeReadyEvent = {
   event: 'ready';
   data: {
     instanceId: string;
     serverTime: string;
     agentStatuses: AgentStatus[];
+    pendingApprovals: ApprovalView[];
   };
 };
 
@@ -94,4 +96,6 @@ export type RuntimeAgentStatusUpdatedEvent = {
 };
 
 /** 本轮订阅对外契约；未知事件由传输层直接跳过，不向上抛。 */
-export type RuntimeEvent = RuntimeReadyEvent | RuntimeAgentStatusUpdatedEvent;
+export type RuntimeEvent = RuntimeReadyEvent | RuntimeAgentStatusUpdatedEvent
+  | { event: 'approval_pending'; data: ApprovalView & { instanceId: string } }
+  | { event: 'approval_updated'; data: ApprovalResolution & { instanceId: string } };

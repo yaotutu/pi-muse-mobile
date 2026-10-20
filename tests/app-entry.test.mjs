@@ -54,7 +54,8 @@ test('会话面板当前执行与未接模块边界明确，不消费示例数�
   const source = read('src/workspace/SessionPanel.tsx');
   assert.doesNotMatch(source, /sample-state|SampleThread|SampleActivity|thread\.approvals|thread\.files|thread\.history/);
   assert.match(source, /<CurrentExecution threadId=\{threadId\}/);
-  assert.match(source, /审批尚未接入/);
+  assert.match(source, /<ApprovalPanel key=\{threadId\} threadId=\{threadId\}/);
+  assert.doesNotMatch(source, /审批尚未接入/);
   assert.match(source, /工作区文件尚未接入/);
 });
 
@@ -62,4 +63,14 @@ test('旧演示客户端只作为测试辅助源码，不成为运行入口', ()
   assert.equal(existsSync(new URL('tests/helpers/demo-api-client.ts', root)), true);
   assert.equal(existsSync(new URL('src/demo/DemoApiClient.ts', root)), false);
   assert.match(read('tests/demo-api.test.mjs'), /\.\/helpers\/demo-api-client\.ts/);
+});
+
+test('审批页面只渲染固定全文，决定需完整预览与新同步边界，不执行正文中的标记', () => {
+  const source = read('src/workspace/ApprovalPanel.tsx');
+  assert.match(source, /content === '' \? empty : content/);
+  assert.doesNotMatch(source, /numberOfLines|dangerouslySetInnerHTML|<WebView|<Markdown|\.slice\(|\.substring\(/);
+  assert.match(source, /confirmation\.syncVersion !== store\.getSnapshot\(\)\.syncVersion/);
+  assert.match(source, /确认批准/);
+  assert.match(source, /确认拒绝/);
+  assert.match(source, /hasApprovalPreview\(selected\)/);
 });

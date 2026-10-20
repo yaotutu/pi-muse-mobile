@@ -1,5 +1,5 @@
 export class ApiError extends Error {
-  constructor(readonly status: number, message: string, readonly code?: string) {
+  constructor(readonly status: number, message: string, readonly code?: string, readonly payload?: unknown) {
     super(message);
     this.name = 'ApiError';
   }
@@ -12,7 +12,8 @@ export function responseError(status: number, payload: unknown, fallback = `请�
   const message = status === 409 && code === 'THREAD_DELETING'
     ? '会话正在删除，请刷新会话列表后重新选择，不要重试原会话'
     : typeof data?.error === 'string' ? data.error : fallback;
-  return new ApiError(status, message, code);
+  // 审批 409 含当前完整视图；由审批边界校验后消费，不日志记录或持久化错误正文。
+  return new ApiError(status, message, code, status === 409 ? payload : undefined);
 }
 
 export function requestCancelled() {

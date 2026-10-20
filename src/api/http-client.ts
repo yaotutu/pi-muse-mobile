@@ -49,6 +49,8 @@ import type {
   SubagentPhase,
 } from '../runtime/types';
 import { RuntimeSseParser, RuntimeSseParseError, decodeRuntimeFrame } from '../runtime/sse';
+import type { ApprovalPage, ApprovalQuery, ApprovalView } from '../approvals/types';
+import { ApprovalConflictError, parseApprovalPage, parseApprovalResolution, parseApprovalView, parsePendingApprovals } from '../approvals/contracts';
 
 export type TransportState = { kind: 'online' | 'offline'; token?: string; error?: string };
 export type HttpApiOptions = { onTransportState?: (state: TransportState) => void; timeoutMs?: number; headerTimeoutMs?: number };
@@ -391,11 +393,43 @@ export class HttpApiClient implements ApiClient {
     });
   }
 
-  async decideAction(id: string, decision: ApprovalDecision): Promise<ApprovalNotification> {
-    return this.request<ApprovalNotification>(`/api/actions/${encodeURIComponent(id)}/decide`, {
-      method: 'POST',
-      body: { decision },
-    });
+  async listApprovals(query: ApprovalQuery = {}, signal?: AbortSignal): Promise<ApprovalPage> {
+    const params = new URLSearchParams();
+    for (const key of ['limit', 'cursor', 'status', 'threadId', 'activityId'] as const) {
+      const value = query[key];
+      if (value !== undefined) params.set(key, String(value));
+    }
+    const suffix = params.toString();
+    return parseApprovalPage(await this.request<unknown>(`/api/approvals${suffix ? `?${suffix}` : ''}`, { signal }));
+  }
+
+  async getPendingApprovals(signal?: AbortSignal): Promise<ApprovalView[]> {
+    return parsePendingApprovals(await this.request<unknown>('/api/approvals/pending', { signal }));
+  }
+
+  async getApproval(id: string, signal?: AbortSignal): Promise<ApprovalView> {
+    const approval = parseApprovalView(await this.request<unknown>(`/api/approvals/${encodeURIComponent(id)}`, { signal }));
+    if (approval.id !== id) throw new ApiError(502, '服务器返回了其他审批的详情');
+    return approval;
+  }
+
+  async decideApproval(id: string, decision: ApprovalDecision, signal?: AbortSignal): Promise<ApprovalView> {
+    try {
+      const approval = parseApprovalView(await this.request<unknown>(`/api/approvals/${encodeURIComponent(id)}/decision`, {
+        method: 'POST', body: { decision }, signal,
+      }));
+      if (approval.id !== id) throw new ApiError(502, '服务器返回了其他审批的决定结果');
+      if (approval.status !== (decision === 'approve' ? 'approved' : 'denied')) throw new ApiError(502, '审批决定响应与本次操作不一致，请重新核对');
+      return approval;
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409) {
+        const payload = error.payload as { approval?: unknown } | undefined;
+        const approval = parseApprovalView(payload?.approval);
+        if (approval.id !== id) throw new ApiError(502, '审批冲突响应的归属不正确');
+        throw new ApprovalConflictError(approval);
+      }
+      throw error;
+    }
   }
 
   async createGoal(input: GoalInput): Promise<Goal> {
@@ -572,8 +606,15 @@ export class HttpApiClient implements ApiClient {
             // 首帧必须是 ready；没有 ready 就先收到状态帧，视为非法帧。
             throw new ApiError(502, '运行状态推送缺少 ready 首帧');
           }
-          const parsed = parseAgentStatusUpdate(decoded.data, readyInstanceId);
-          try { onEvent({ event: 'agent_status_updated', data: parsed }); } catch (error) { markCallbackFailed(); throw error; }
+          if (decoded.data.instanceId !== readyInstanceId) throw new ApiError(502, '推送事件与 ready 的 instanceId 不一致');
+          let event: RuntimeEvent;
+          if (decoded.event === 'agent_status_updated') event = { event: decoded.event, data: parseAgentStatusUpdate(decoded.data, readyInstanceId) };
+          else if (decoded.event === 'approval_pending') {
+            const approval = parseApprovalView(decoded.data);
+            if (approval.status !== 'pending') throw new ApiError(502, '待审批事件不是 pending 状态');
+            event = { event: decoded.event, data: { ...approval, instanceId: readyInstanceId } };
+          } else event = { event: 'approval_updated', data: { ...parseApprovalResolution(decoded.data), instanceId: readyInstanceId } };
+          try { onEvent(event); } catch (error) { markCallbackFailed(); throw error; }
         }
       }
       parser.end();
@@ -714,7 +755,7 @@ function parseAgentStatusResponse(value: unknown): AgentStatusResponse {
   return { instanceId, status: ensureAgentStatus(entry.status) };
 }
 
-function parseRuntimeReady(value: unknown): { instanceId: string; serverTime: string; agentStatuses: AgentStatus[] } {
+function parseRuntimeReady(value: unknown): Extract<RuntimeEvent, { event: 'ready' }>['data'] {
   if (!value || typeof value !== 'object') throw new ApiError(502, 'ready 事件 data 不是对象');
   const entry = value as Record<string, unknown>;
   const instanceId = ensureString(entry.instanceId, 'ready.data.instanceId');
@@ -724,6 +765,7 @@ function parseRuntimeReady(value: unknown): { instanceId: string; serverTime: st
     instanceId,
     serverTime,
     agentStatuses: entry.agentStatuses.map(ensureAgentStatus),
+    pendingApprovals: parsePendingApprovals({ approvals: entry.pendingApprovals }),
   };
 }
 

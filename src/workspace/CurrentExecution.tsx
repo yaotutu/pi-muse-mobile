@@ -6,7 +6,7 @@ import { useThreadRuntime } from '../runtime/RuntimeProvider';
 import type { AgentStatus } from '../runtime/types';
 import { useServiceConnection } from '../connection/ConnectionProvider';
 
-export function CurrentExecution({ threadId, onSettled }: { threadId: string; onSettled?: () => void }) {
+export function CurrentExecution({ threadId, onSettled, onApprovals }: { threadId: string; onSettled?: () => void; onApprovals?: () => void }) {
   const runtime = useThreadRuntime(threadId);
   const connection = useServiceConnection();
   const { colors } = useWorkspaceTheme();
@@ -63,7 +63,9 @@ export function CurrentExecution({ threadId, onSettled }: { threadId: string; on
           <Text style={styles.caption}>{subagentStatus(child.status)}</Text>
         </View>)}
       </View>}
-      {!!run.pendingApprovalIds.length && <Text style={styles.caption}>等待 {run.pendingApprovalIds.length} 项审批 · 审批操作尚未接入</Text>}
+      {!!run.pendingApprovalIds.length && <View style={styles.body}><Text style={styles.caption}>等待 {run.pendingApprovalIds.length} 项审批</Text>
+        {onApprovals && <Pressable accessibilityRole="button" accessibilityLabel="查看待审批" onPress={onApprovals} style={styles.button}><Text style={styles.buttonText}>查看待审批</Text></Pressable>}
+      </View>}
     </View>)}
     <Text style={styles.caption}>活动历史尚未接入；本轮正常结束不等于整项工作完成。</Text>
   </View>;

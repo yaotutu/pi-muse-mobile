@@ -2,6 +2,7 @@ import type { ApiClient, ApprovalDecision, GoalInput, IdentityInput, MonitorActi
 import { ApiError, requestCancelled } from '../../src/api/errors';
 import type { AgentTask, AgUiEvent, ApprovalNotification, ConversationMessage, DeleteThreadResult, Goal, GoalStatus, MemoryItem, Monitor, TaskDetails, WorkspaceSnapshot } from '../../src/api/types';
 import type { AgentStatusResponse, RuntimeEvent } from '../../src/runtime/types';
+import type { ApprovalPage, ApprovalView } from '../../src/approvals/types';
 import { demoWorkspace } from './demo-fixtures';
 import { ThreadSettings } from './demo-thread-settings';
 
@@ -34,6 +35,11 @@ function rejectIfAborted(signal?: AbortSignal) {
 
 /** 无网络、无持久化；额外演示操作不扩展真实 ApiClient 的服务端契约。 */
 export class DemoApiClient implements ApiClient {
+  // 旧演示只保留历史回归；新版审批不能借用旧 payload 伪造真实预览或执行结果。
+  async listApprovals(): Promise<ApprovalPage> { throw new ApiError(501, '旧演示未实现新版审批'); }
+  async getPendingApprovals(): Promise<ApprovalView[]> { throw new ApiError(501, '旧演示未实现新版审批'); }
+  async getApproval(): Promise<ApprovalView> { throw new ApiError(501, '旧演示未实现新版审批'); }
+  async decideApproval(): Promise<ApprovalView> { throw new ApiError(501, '旧演示未实现新版审批'); }
   private workspace: WorkspaceSnapshot;
   private profile: Profile = { soul: '温和、清晰。先给结论，再给可执行的下一步。', user: '这是演示用户画像，不包含真实个人信息。' };
   private threads = new Map<string, DemoThread>();

@@ -32,6 +32,7 @@ import {
 import { workspaceTheme, sizing, spacing, type WorkspaceColors } from '../ui/tokens';
 import { useWorkspaceTheme } from './WorkspaceTheme';
 import { CurrentExecution } from './CurrentExecution';
+import { ApprovalPanel } from './ApprovalPanel';
 import { MAIN_THREAD } from '../threads/thread-state';
 
 export type SessionTab = 'activity' | 'approvals' | 'workspace' | 'history';
@@ -416,8 +417,8 @@ export function SessionPanel({
             contentContainerStyle={styles.content}
             showsVerticalScrollIndicator={false}
           >
-            {tab === 'activity' && <CurrentExecution threadId={threadId} onSettled={onSettled} />}
-            {tab === 'approvals' && <EmptyState text="审批尚未接入；当前执行中的等待审批状态仍可查看。" />}
+            {tab === 'activity' && <CurrentExecution threadId={threadId} onSettled={onSettled} onApprovals={() => onTab('approvals')} />}
+            {tab === 'approvals' && <ApprovalPanel key={threadId} threadId={threadId} />}
             {tab === 'workspace' && <>
               {settings}
               <EmptyState text="工作区文件尚未接入" />
