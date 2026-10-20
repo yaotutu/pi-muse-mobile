@@ -44,7 +44,7 @@ pi-muse 的官方移动客户端（iOS / Android / 平板，Expo + React Native 
 - **无导航库**：4 个主 tab 状态机；左侧会话栏揭示并推动聊天前景右移；点击会话信息区打开根层全屏会话面板，内部胶囊 Tab 平级切换。旧工作区及旁路预览入口已删除，以用户确认截图和 `src/workspace/` 为准。
 - **SSE 消费**：`expo/fetch`（原生流式支持）+ 自研 AG-UI 事件解析/聚合，翻译 pi-muse 的 `web/src/lib/api.ts`（分帧）与 `web/src/chat/chat-state.ts`（StreamAggregator）。
 - **工具卡与 markdown**：真实消费 UI 已随旧工作区删除；HTTP/SSE、工具展示纯逻辑与回归测试保留，后续接入新版时继续使用自研渲染，不引 CopilotKit SDK。链接仍须限制 http/https。
-- **状态管理**：useState/Context + 连接内存store；新版已挂载真实连接、会话恢复、聊天、运行状态（`src/runtime/`）与审批（`src/approvals/`）。运行状态与审批共用唯一通知流；不恢复旧 `getSnapshot`／五秒轮询。活动历史及其他未接领域明确标“尚未接入”，不得混入示例数据冒充服务端数据。
+- **状态管理**：useState/Context + 连接内存store；新版已挂载真实连接、会话恢复、聊天、运行状态（`src/runtime/`）、审批（`src/approvals/`）与只读活动历史（`src/activities/`）。三者共用唯一通知流；活动以通知失效及打开／前台／聊天结束／手动刷新回读，不承诺严格实时、不恢复旧 `getSnapshot`／五秒轮询。活动只覆盖模型登记的工作，不冒充全部聊天run的持久历史；其余未接领域明确标“尚未接入”，不得混入示例数据冒充服务端数据。
 - **视觉**：一切颜色/圆角/字号/布局常量从 `src/ui/tokens.ts` 取；新版使用 `workspaceTheme`/`workspacePalettes`，支持亮暗主题，禁止组件里散写魔法值。
 - Expo Web dev 端口固定 **8082**（避开 openmuse 的 8081）。
 

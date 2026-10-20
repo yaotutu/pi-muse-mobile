@@ -5,7 +5,7 @@
  * 颜色来自 WorkspaceTheme context（亮/暗双套），布局/字号/圆角仍取 src/ui/tokens.ts 的 workspaceTheme 静态值。
  */
 
-import { useMemo, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import {
   Modal,
   Platform,
@@ -33,6 +33,7 @@ import { workspaceTheme, sizing, spacing, type WorkspaceColors } from '../ui/tok
 import { useWorkspaceTheme } from './WorkspaceTheme';
 import { CurrentExecution } from './CurrentExecution';
 import { ApprovalPanel } from './ApprovalPanel';
+import { ActivityPanel } from './ActivityPanel';
 import { MAIN_THREAD } from '../threads/thread-state';
 
 export type SessionTab = 'activity' | 'approvals' | 'workspace' | 'history';
@@ -286,6 +287,7 @@ export function SessionPanel({
 }: SessionPanelProps) {
   const styles = usePanelStyles();
   const { mode, toggle, colors } = useWorkspaceTheme();
+  const [historyActivityId, setHistoryActivityId] = useState<string>();
 
   // Web 类型约束：RN View 类型不包含 onKeyDown，必须以断言方式注入；原生端忽略。
   const webKeyProps = useMemo(() => {
@@ -393,7 +395,7 @@ export function SessionPanel({
                 return (
                   <Pressable
                     key={t}
-                    onPress={() => onTab(t)}
+                    onPress={() => { if (t === 'history') setHistoryActivityId(undefined); onTab(t); }}
                     accessibilityRole="tab"
                     accessibilityLabel={TAB_LABELS[t]}
                     accessibilityState={{ selected }}
@@ -417,7 +419,7 @@ export function SessionPanel({
             contentContainerStyle={styles.content}
             showsVerticalScrollIndicator={false}
           >
-            {tab === 'activity' && <CurrentExecution threadId={threadId} onSettled={onSettled} onApprovals={() => onTab('approvals')} />}
+            {tab === 'activity' && <CurrentExecution threadId={threadId} onSettled={onSettled} onApprovals={() => onTab('approvals')} onHistory={(id) => { setHistoryActivityId(id); onTab('history'); }} />}
             {tab === 'approvals' && <ApprovalPanel key={threadId} threadId={threadId} />}
             {tab === 'workspace' && <>
               {settings}
@@ -428,7 +430,7 @@ export function SessionPanel({
                 <Text style={styles.rowDetail}>删除此会话及其绑定的定时任务与监控，不可恢复。</Text>
               </Pressable>}
             </>}
-            {tab === 'history' && <EmptyState text="活动与执行历史尚未接入；聊天记录已在聊天页同步。" />}
+            {tab === 'history' && <ActivityPanel key={threadId} threadId={threadId} initialActivityId={historyActivityId} />}
           </ScrollView>
         </View>
       </SafeAreaView>

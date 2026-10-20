@@ -11,12 +11,14 @@ import { useConnection } from '../connection/useConnection';
 import type { ConnectionManager } from '../connection/connection-manager';
 import type { ConnectionSnapshot } from '../connection/types';
 import { RuntimeProvider, useRuntimeStore, useThreadRuntime } from '../runtime/RuntimeProvider';
+import { useActivityStore } from '../activities/ActivityProvider';
 import { ThreadSessionProvider, useThreadSession, useThreadSessionStore } from '../threads/ThreadSessionProvider';
 import { MAIN_THREAD } from '../threads/thread-state';
 import { useThreads } from '../threads/useThreads';
 import { useAppUpdate } from '../update/UpdateProvider';
 import { spacing, sizing, workspaceTheme, type WorkspaceColors } from '../ui/tokens';
 import { ConnectionPanel } from './ConnectionPanel';
+import { ActivityPanel } from './ActivityPanel';
 import { SessionPanel, type SessionTab } from './SessionPanel';
 import { ThreadSettings } from './ThreadSettings';
 import { WorkspaceThemeProvider, useWorkspaceTheme } from './WorkspaceTheme';
@@ -108,6 +110,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
   const threads = useThreads(!!connection?.enabled, snapshot.refreshVersion);
   const session = useThreadSession(threads.currentThread);
   const sessions = useThreadSessionStore(); const runtimeStore = useRuntimeStore();
+  const activities = useActivityStore();
   const runtime = useThreadRuntime(threads.currentThread);
   const [page, setPage] = useState<WorkspacePage>('chat');
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -125,7 +128,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
     ? connectionLabel(snapshot) : runtime.label;
   const name = threads.currentThread === MAIN_THREAD ? 'Pi Muse' : threads.currentThread;
   const reloadThreads = threads.reload;
-  const refresh = useCallback(() => { void reloadThreads(); setHistoryRefresh((value) => value + 1); }, [reloadThreads]);
+  const refresh = useCallback(() => { void reloadThreads(); activities.invalidate(); setHistoryRefresh((value) => value + 1); }, [reloadThreads, activities]);
   useEffect(() => {
     let active = true;
     void AccessibilityInfo.isReduceMotionEnabled().then((enabled) => { if (active) setReducedMotion(enabled); });
@@ -148,14 +151,14 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
     try {
       const result = await sessions.deleteThread(id);
       if (!result) return;
-      runtimeStore.forgetThread(id); threads.removeThread(id); setSessionOpen(false); setDeleteConfirm(false); setNotice(''); await threads.reload();
+      runtimeStore.forgetThread(id); activities.forgetThread(id); threads.removeThread(id); setSessionOpen(false); setDeleteConfirm(false); setNotice(''); await threads.reload();
     } catch (error) { setNotice(error instanceof Error ? error.message : String(error)); setDeleteConfirm(false); }
   };
   const pan = PanResponder.create({
     onMoveShouldSetPanResponder: (event, gesture) => Math.abs(gesture.dx) > l.gestureThreshold && Math.abs(gesture.dx) > Math.abs(gesture.dy) * l.gestureAxisRatio && (drawerOpen ? gesture.dx < 0 : event.nativeEvent.pageX - gesture.dx < l.edgeGestureWidth && gesture.dx > 0),
     onPanResponderRelease: (_event, gesture) => { if (gesture.dx < -l.gestureThreshold) setDrawerOpen(false); if (gesture.dx > l.gestureThreshold) openDrawer(); },
   });
-  const otherPage = page === 'apps' ? <AppsPage snapshot={snapshot} openConnection={openConnection} /> : <View style={styles.otherPage}>
+  const otherPage = page === 'apps' ? <AppsPage snapshot={snapshot} openConnection={openConnection} /> : page === 'activity' ? !sessionOpen && <ScrollView contentContainerStyle={styles.otherPage}><ActivityPanel key={threads.currentThread} threadId={threads.currentThread} defaultScope="all" /><Text style={styles.caption}>定时任务管理尚未接入。</Text></ScrollView> : <View style={styles.otherPage}>
     <Text style={styles.pageTitle}>{page === 'goals' ? '目标' : '任务'}</Text><Text style={styles.mutedText}>{page === 'goals' ? '目标尚未接入。' : '活动历史与定时任务管理尚未接入；当前执行可在会话面板“动态”中查看。'}</Text>
   </View>;
   return <View style={styles.root} testID="workspace-screen"><StatusBar style={mode === 'light' ? 'dark' : 'light'} />

@@ -5,6 +5,8 @@ import { useServiceConnection } from '../connection/ConnectionProvider';
 import { RuntimeStore, threadRuntime } from './runtime-store';
 import { ApprovalStore } from '../approvals/approval-store';
 import { ApprovalProvider } from '../approvals/ApprovalProvider';
+import { ActivityStore } from '../activities/activity-store';
+import { ActivityProvider } from '../activities/ActivityProvider';
 
 const Context = createContext<RuntimeStore | null>(null);
 
@@ -14,18 +16,22 @@ export function RuntimeProvider({ children }: { children: ReactNode }) {
   const connection = useServiceConnection();
   const [foreground, setForeground] = useState(AppState.currentState === 'active');
   const approvals = useMemo(() => new ApprovalStore(api), [api]);
-  const store = useMemo(() => new RuntimeStore(api, { onEvent: approvals.receive, onConnection: approvals.setConnection }), [api, approvals]);
+  const activities = useMemo(() => new ActivityStore(api), [api]);
+  const store = useMemo(() => new RuntimeStore(api, {
+    onEvent: (event) => { approvals.receive(event); activities.receive(event); },
+    onConnection: (state) => { approvals.setConnection(state); activities.setConnection(state); },
+  }), [api, approvals, activities]);
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => setForeground(state === 'active'));
     return () => subscription.remove();
   }, []);
   const enabled = !!connection?.enabled && (Platform.OS === 'web' || foreground);
   useEffect(() => {
-    approvals.setActive(enabled); store.setActive(enabled);
-    return () => { store.setActive(false); approvals.setActive(false); };
-  }, [store, approvals, enabled, connection?.snapshot.refreshVersion]);
-  useEffect(() => () => { store.dispose(); approvals.dispose(); }, [store, approvals]);
-  return <Context.Provider value={store}><ApprovalProvider store={approvals}>{children}</ApprovalProvider></Context.Provider>;
+    approvals.setActive(enabled); activities.setActive(enabled); store.setActive(enabled);
+    return () => { store.setActive(false); approvals.setActive(false); activities.setActive(false); };
+  }, [store, approvals, activities, enabled, connection?.snapshot.refreshVersion]);
+  useEffect(() => () => { store.dispose(); approvals.dispose(); activities.dispose(); }, [store, approvals, activities]);
+  return <Context.Provider value={store}><ApprovalProvider store={approvals}><ActivityProvider store={activities}>{children}</ActivityProvider></ApprovalProvider></Context.Provider>;
 }
 
 export function useRuntimeStore() {

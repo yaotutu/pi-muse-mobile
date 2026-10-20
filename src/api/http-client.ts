@@ -51,6 +51,8 @@ import type {
 import { RuntimeSseParser, RuntimeSseParseError, decodeRuntimeFrame } from '../runtime/sse';
 import type { ApprovalPage, ApprovalQuery, ApprovalView } from '../approvals/types';
 import { ApprovalConflictError, parseApprovalPage, parseApprovalResolution, parseApprovalView, parsePendingApprovals } from '../approvals/contracts';
+import type { ActivityQuery } from '../activities/types';
+import { parseActivityDetail, parseActivityPage } from '../activities/contracts';
 
 export type TransportState = { kind: 'online' | 'offline'; token?: string; error?: string };
 export type HttpApiOptions = { onTransportState?: (state: TransportState) => void; timeoutMs?: number; headerTimeoutMs?: number };
@@ -199,6 +201,21 @@ export class HttpApiClient implements ApiClient {
       throw new ApiError(502, '服务器没有返回有效会话列表，请确认服务器地址');
     }
     return data.threads;
+  }
+
+  /** 只读活动接口；游标绑定筛选，原样编码传输，绝不解析/拼造游标。 */
+  async listActivities(query: ActivityQuery = {}, signal?: AbortSignal) {
+    const params = new URLSearchParams();
+    if (query.limit !== undefined) params.set('limit', String(query.limit));
+    if (query.cursor !== undefined) params.set('cursor', query.cursor);
+    if (query.threadId !== undefined) params.set('threadId', query.threadId);
+    if (query.status !== undefined) params.set('status', query.status);
+    const suffix = params.toString();
+    return parseActivityPage(await this.request(`/api/activities${suffix ? `?${suffix}` : ''}`, { signal }));
+  }
+
+  async getActivity(id: string, signal?: AbortSignal) {
+    return parseActivityDetail(await this.request(`/api/activities/${encodeURIComponent(id)}`, { signal }), id);
   }
 
   async getConversation(threadId: string, signal?: AbortSignal): Promise<ConversationSnapshot> {

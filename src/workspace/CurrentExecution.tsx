@@ -6,7 +6,7 @@ import { useThreadRuntime } from '../runtime/RuntimeProvider';
 import type { AgentStatus } from '../runtime/types';
 import { useServiceConnection } from '../connection/ConnectionProvider';
 
-export function CurrentExecution({ threadId, onSettled, onApprovals }: { threadId: string; onSettled?: () => void; onApprovals?: () => void }) {
+export function CurrentExecution({ threadId, onSettled, onApprovals, onHistory }: { threadId: string; onSettled?: () => void; onApprovals?: () => void; onHistory?: (activityId?: string) => void }) {
   const runtime = useThreadRuntime(threadId);
   const connection = useServiceConnection();
   const { colors } = useWorkspaceTheme();
@@ -66,8 +66,10 @@ export function CurrentExecution({ threadId, onSettled, onApprovals }: { threadI
       {!!run.pendingApprovalIds.length && <View style={styles.body}><Text style={styles.caption}>等待 {run.pendingApprovalIds.length} 项审批</Text>
         {onApprovals && <Pressable accessibilityRole="button" accessibilityLabel="查看待审批" onPress={onApprovals} style={styles.button}><Text style={styles.buttonText}>查看待审批</Text></Pressable>}
       </View>}
+      {run.activityId !== null && onHistory && <Pressable accessibilityRole="button" accessibilityLabel="查看关联活动" onPress={() => onHistory(run.activityId!)} style={styles.button}><Text style={styles.buttonText}>查看关联活动</Text></Pressable>}
     </View>)}
-    <Text style={styles.caption}>活动历史尚未接入；本轮正常结束不等于整项工作完成。</Text>
+    {onHistory && <Pressable accessibilityRole="button" accessibilityLabel="查看活动历史" onPress={() => onHistory()} style={styles.button}><Text style={styles.buttonText}>查看活动历史</Text></Pressable>}
+    <Text style={styles.caption}>本轮正常结束不等于整项工作完成；未登记活动的聊天不会出现在历史中。</Text>
   </View>;
 }
 function subagentStatus(status: AgentStatus['subagents'][number]['status']) {
