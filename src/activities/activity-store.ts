@@ -19,7 +19,7 @@ export type ActivitySnapshot = {
   detailError?: string;
   missing: boolean;
 };
-const sameFilter = (a: ActivityFilter, b: ActivityFilter) => a.threadId === b.threadId && a.status === b.status;
+const sameFilter = (a: ActivityFilter, b: ActivityFilter) => a.spaceId === b.spaceId && a.status === b.status;
 const empty = (): ActivitySnapshot => ({ filter: {}, activities: [], loaded: false, loading: false, stale: true, hasMore: false, nextCursor: null, detailLoading: false, detailStale: true, missing: false });
 
 /**
@@ -90,9 +90,9 @@ export class ActivityStore {
     void this.loadList(true);
   };
   /** 聊天结束也从这里失效，不把 RUN_FINISHED 翻译成活动 completed。 */
-  invalidate = (threadId?: string) => {
-    const relevantList = !threadId || !this.state.filter.threadId || this.state.filter.threadId === threadId;
-    const relevantDetail = !!this.state.selectedId && (!threadId || !this.state.detail || this.state.detail.activity.threadId === threadId);
+  invalidate = (spaceId?: string) => {
+    const relevantList = !spaceId || !this.state.filter.spaceId || this.state.filter.spaceId === spaceId;
+    const relevantDetail = !!this.state.selectedId && (!spaceId || !this.state.detail || this.state.detail.activity.spaceId === spaceId);
     if (!relevantList && !relevantDetail) return;
     this.listDirty ||= relevantList; this.detailDirty ||= relevantDetail;
     this.publish({ ...(relevantList ? { stale: true } : {}), ...(relevantDetail ? { detailStale: true } : {}) });
@@ -101,7 +101,7 @@ export class ActivityStore {
   receive = (event: RuntimeEvent) => {
     if (!this.active) return;
     if (event.event === 'ready') this.invalidate();
-    else this.invalidate(event.data.threadId ?? undefined);
+    else this.invalidate(event.data.spaceId ?? undefined);
   };
   setConnection = (connection: RuntimeConnection) => {
     if (connection !== 'live') this.publish({ stale: true, detailStale: true });
@@ -123,7 +123,7 @@ export class ActivityStore {
     try {
       const page = await this.client.listActivities({ ...filter, limit: 20, ...(cursor ? { cursor } : {}) }, controller.signal);
       if (generation !== this.listGeneration || controller.signal.aborted) return;
-      if (page.activities.some((item) => filter.threadId && item.threadId !== filter.threadId || filter.status && item.status !== filter.status)) throw new ApiError(502, '活动列表与请求范围不符，请刷新核对');
+      if (page.activities.some((item) => filter.spaceId && item.spaceId !== filter.spaceId || filter.status && item.status !== filter.status)) throw new ApiError(502, '活动列表与请求范围不符，请刷新核对');
       if (page.hasMore && page.nextCursor === cursor) throw new ApiError(502, '活动分页游标没有前进，请刷新列表');
       // 分页不冻结；追加页可包含已读项，按 ID 去重并保留服务端顺序。
       const merged = new Map((append ? this.state.activities : []).map((item) => [item.id, item]));
@@ -154,10 +154,10 @@ export class ActivityStore {
       if (generation === this.detailGeneration) { this.detailController = undefined; this.publish({ detailLoading: false }); if (this.detailDirty) this.schedule(); }
     }
   }
-  forgetThread(threadId: string) {
-    if (this.state.detail?.activity.threadId === threadId || this.state.filter.threadId === threadId) this.select();
-    this.publish({ activities: this.state.activities.filter((item) => item.threadId !== threadId) });
-    this.invalidate(threadId);
+  forgetSpace(spaceId: string) {
+    if (this.state.detail?.activity.spaceId === spaceId || this.state.filter.spaceId === spaceId) this.select();
+    this.publish({ activities: this.state.activities.filter((item) => item.spaceId !== spaceId) });
+    this.invalidate(spaceId);
   }
   dispose() { this.active = false; this.close(); this.state = empty(); this.listeners.clear(); }
 }

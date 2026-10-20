@@ -12,7 +12,7 @@ const deferred = () => { let resolve; const promise = new Promise((done) => { re
 function fixture(record) {
   const values = new Map(record ? [[CONNECTION_KEY, JSON.stringify(record)]] : []);
   const events = []; const clients = []; const calls = [];
-  const control = { failWrite: false, failFinal: false, failClear: false, clearGate: undefined, session: undefined, threads: undefined, cache: 'old-business-cache' };
+  const control = { failWrite: false, failFinal: false, failClear: false, clearGate: undefined, session: undefined, spaces: undefined, cache: 'old-business-cache' };
   const store = createConnectionStore({
     getItem: async (key) => values.get(key) ?? null,
     setItem: async (key, raw) => {
@@ -36,9 +36,9 @@ function fixture(record) {
         if (control.session) return control.session(client, key);
         return { token: url === B ? 'token-b' : 'token-a', mode: 'live' };
       },
-      listThreads: async () => {
-        calls.push({ type: 'threads', url, token: getToken() });
-        if (control.threads) return control.threads(client);
+      listSpaces: async () => {
+        calls.push({ type: 'spaces', url, token: getToken() });
+        if (control.spaces) return control.spaces(client);
         return [{ id: 'local-main', updatedAt: '2026-10-17T00:00:00Z' }];
       },
       cancelPending: () => { events.push(['cancel', url]); },
@@ -89,7 +89,7 @@ test('恢复已有永久Token只做只读探测，不交换Key或解析过期时
 test('原址断网或5xx保留Token、业务数据域和缓存，重试恢复不重放写请求', async () => {
   const f = fixture({ serverUrl: A, token: 'token-a' }); await f.boot();
   const key = f.manager.getSnapshot().workspaceKey; const client = f.manager.getClient();
-  f.control.threads = async () => { throw new ApiError(503, 'service down'); };
+  f.control.spaces = async () => { throw new ApiError(503, 'service down'); };
   await f.manager.retry();
   assert.equal(f.manager.getSnapshot().status, 'offline');
   assert.equal(f.manager.getSnapshot().hasToken, true);
@@ -99,9 +99,9 @@ test('原址断网或5xx保留Token、业务数据域和缓存，重试恢复不
   assert.equal(f.record().token, 'token-a');
   assert.equal(f.control.cache, 'old-business-cache');
   assert.equal(f.clearCount(), 0);
-  f.control.threads = undefined; await f.manager.retry();
+  f.control.spaces = undefined; await f.manager.retry();
   assert.equal(f.manager.getSnapshot().status, 'online');
-  assert.equal(f.calls.every((call) => call.type === 'threads'), true);
+  assert.equal(f.calls.every((call) => call.type === 'spaces'), true);
   assert.equal(f.writes().length, 0);
 });
 

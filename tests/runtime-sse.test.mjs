@@ -18,7 +18,7 @@ const parseChunks = (chunks, limits) => {
 
 test('标准 event/data 帧按到达顺序解析，未闭合尾部留给下一段', () => {
   const ready = { instanceId: 'i1', serverTime: 't', agentStatuses: [] };
-  const status = { instanceId: 'i1', threadId: 'a', runId: 'b', revision: 2, source: 'chat', jobId: null, title: 't', status: 'running', phase: 'waiting_model', label: 'l', tools: [], subagents: [], pendingApprovalIds: [], startedAt: '2026-10-19T00:00:00.000Z', updatedAt: '2026-10-19T00:00:00.000Z', endedAt: null };
+  const status = { instanceId: 'i1', spaceId: 'a', runId: 'b', revision: 2, source: 'chat', jobId: null, title: 't', status: 'running', phase: 'waiting_model', label: 'l', tools: [], subagents: [], pendingApprovalIds: [], startedAt: '2026-10-19T00:00:00.000Z', updatedAt: '2026-10-19T00:00:00.000Z', endedAt: null };
   const tail = 'event: agent_status_updated\ndata: {"instance';
   const out = new RuntimeSseParser().push(frame('ready', ready) + frame('agent_status_updated', status) + tail);
   assert.equal(out.length, 2);
@@ -32,7 +32,7 @@ test('标准 event/data 帧按到达顺序解析，未闭合尾部留给下一�
   // 把残尾补完，再 push 完整剩余部分。
   const parser = new RuntimeSseParser();
   parser.push(frame('ready', ready) + tail);
-  const finished = parser.push('Id":"i1","threadId":"a","runId":"b","revision":2}\n\n');
+  const finished = parser.push('Id":"i1","spaceId":"a","runId":"b","revision":2}\n\n');
   assert.equal(finished.length, 1);
   assert.equal(finished[0].event, 'agent_status_updated');
 });
@@ -45,7 +45,7 @@ test('CRLF 与 LF 帧尾都能正确闭合', () => {
 
 test('每个 chunk 切分位置都不能丢失或重复事件', () => {
   const ready = { instanceId: 'i1', serverTime: 't', agentStatuses: [] };
-  const status = { instanceId: 'i1', threadId: 'a', runId: 'b', revision: 2, source: 'chat', jobId: null, title: 't', status: 'running', phase: 'waiting_model', label: 'l', tools: [], subagents: [], pendingApprovalIds: [], startedAt: '2026-10-19T00:00:00.000Z', updatedAt: '2026-10-19T00:00:00.000Z', endedAt: null };
+  const status = { instanceId: 'i1', spaceId: 'a', runId: 'b', revision: 2, source: 'chat', jobId: null, title: 't', status: 'running', phase: 'waiting_model', label: 'l', tools: [], subagents: [], pendingApprovalIds: [], startedAt: '2026-10-19T00:00:00.000Z', updatedAt: '2026-10-19T00:00:00.000Z', endedAt: null };
   const stream = frame('ready', ready, '\r\n') + frame('agent_status_updated', status) + frame('ready', ready);
   for (let split = 0; split <= stream.length; split += 1) {
     assert.equal(parseChunks([stream.slice(0, split), stream.slice(split)]).length, 3, `split=${split}`);

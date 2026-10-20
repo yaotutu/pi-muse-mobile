@@ -25,16 +25,17 @@ import {
   Monitor,
   Moon,
   ShieldCheck,
+  RotateCcw,
   Sun,
   X,
 } from 'lucide-react-native';
 
-import { workspaceTheme, sizing, spacing, type WorkspaceColors } from '../ui/tokens';
+import { workspaceTheme, spacing, type WorkspaceColors } from '../ui/tokens';
 import { useWorkspaceTheme } from './WorkspaceTheme';
 import { CurrentExecution } from './CurrentExecution';
 import { ApprovalPanel } from './ApprovalPanel';
 import { ActivityPanel } from './ActivityPanel';
-import { MAIN_THREAD } from '../threads/thread-state';
+import { MAIN_SPACE } from '../spaces/space-state';
 
 export type SessionTab = 'activity' | 'approvals' | 'workspace' | 'history';
 
@@ -55,16 +56,18 @@ const TAB_LABELS: Record<SessionTab, string> = {
 };
 
 export interface SessionPanelProps {
-  threadId: string;
-  threadName: string;
+  spaceId: string;
+  spaceName: string;
   status: string;
   tab: SessionTab;
   onTab: (tab: SessionTab) => void;
   onClose: () => void;
   onDelete?: () => void;
+  onReset?: () => void;
   onSettled?: () => void;
   settings?: ReactNode;
   deleting?: boolean;
+  resetting?: boolean;
   reducedMotion: boolean;
 }
 
@@ -105,6 +108,9 @@ function createStyles(colors: WorkspaceColors) {
       justifyContent: 'center',
       marginTop: spacing.xs,
     },
+    // 操作区独立定位，新增重置按钮也不能把头像和空间名称推离面板中线。
+    headerClose: { position: 'absolute', top: workspaceTheme.layout.sessionTop, left: workspaceTheme.layout.sidePadding },
+    headerActions: { position: 'absolute', top: workspaceTheme.layout.sessionTop, right: workspaceTheme.layout.sidePadding, flexDirection: 'row', gap: spacing.xs },
     headerCenter: {
       flex: 1,
       alignItems: 'center',
@@ -118,10 +124,6 @@ function createStyles(colors: WorkspaceColors) {
       alignItems: 'center',
       justifyContent: 'center',
       overflow: 'hidden',
-    },
-    avatar: {
-      width: '100%',
-      height: '100%',
     },
     name: {
       marginTop: workspaceTheme.layout.sessionNameTop,
@@ -166,33 +168,6 @@ function createStyles(colors: WorkspaceColors) {
       paddingBottom: workspaceTheme.layout.sessionHeaderBottom,
     },
 
-    section: {
-      ...workspaceTheme.typography.section,
-      color: colors.ink,
-      fontWeight: '600',
-    },
-    sampleLabel: {
-      ...workspaceTheme.typography.caption,
-      color: colors.faint,
-      marginTop: workspaceTheme.layout.sampleLabelTop,
-      marginBottom: spacing.lg,
-    },
-
-    timelineRow: {
-      flexDirection: 'row',
-      alignItems: 'flex-start',
-      marginBottom: workspaceTheme.layout.listItemGap,
-    },
-    timelineIcon: {
-      width: workspaceTheme.layout.timelineIconWidth,
-      height: workspaceTheme.layout.timelineIconWidth,
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginRight: spacing.md,
-    },
-    rowBody: {
-      flex: 1,
-    },
     rowTitle: {
       ...workspaceTheme.typography.itemTitle,
       color: colors.ink,
@@ -203,64 +178,12 @@ function createStyles(colors: WorkspaceColors) {
       color: colors.muted,
       marginTop: spacing.xxs,
     },
-    rowTime: {
-      ...workspaceTheme.typography.detail,
-      color: colors.faint,
-      marginTop: spacing.xs,
-    },
-
     card: {
       backgroundColor: colors.surface,
       borderRadius: workspaceTheme.radius.card,
       padding: workspaceTheme.layout.sidePadding,
       marginBottom: workspaceTheme.layout.listItemGap,
     },
-    approvalButtons: {
-      flexDirection: 'row',
-      justifyContent: 'flex-end',
-      marginTop: spacing.md,
-      gap: spacing.sm,
-    },
-    approvalButton: {
-      paddingHorizontal: spacing.lg,
-      paddingVertical: spacing.sm,
-      borderRadius: workspaceTheme.radius.round,
-      minHeight: workspaceTheme.layout.smallControl,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    approvalButtonDeny: {
-      backgroundColor: 'transparent',
-      borderWidth: sizing.borderWidth,
-      borderColor: colors.danger,
-    },
-    approvalButtonDenyText: {
-      color: colors.danger,
-      ...workspaceTheme.typography.detail,
-      fontWeight: '500',
-    },
-    approvalButtonApprove: {
-      backgroundColor: colors.blue,
-    },
-    approvalButtonApproveText: {
-      // 蓝底按钮字色固定白，不随 ink 翻转；WorkspaceColors.onAccent 由 WorkspaceTheme 提供。
-      color: colors.onAccent,
-      ...workspaceTheme.typography.detail,
-      fontWeight: '600',
-    },
-    approvalState: {
-      marginTop: spacing.md,
-      color: colors.faint,
-      ...workspaceTheme.typography.detail,
-    },
-
-    historyRow: {
-      paddingVertical: spacing.md,
-      marginBottom: spacing.sm,
-      borderBottomWidth: sizing.borderWidth,
-      borderBottomColor: colors.line,
-    },
-
     emptyBox: {
       paddingVertical: spacing.xl,
       alignItems: 'center',
@@ -273,16 +196,18 @@ function createStyles(colors: WorkspaceColors) {
 }
 
 export function SessionPanel({
-  threadId,
-  threadName,
+  spaceId,
+  spaceName,
   status,
   tab,
   onTab,
   onClose,
   onDelete,
+  onReset,
   onSettled,
   settings,
   deleting,
+  resetting,
   reducedMotion,
 }: SessionPanelProps) {
   const styles = usePanelStyles();
@@ -341,7 +266,7 @@ export function SessionPanel({
               accessibilityRole="button"
               accessibilityLabel="关闭会话面板"
               hitSlop={spacing.md}
-              style={styles.headerSideButton}
+              style={[styles.headerSideButton, styles.headerClose]}
               testID="workspace-session-close"
             >
               <X
@@ -351,7 +276,7 @@ export function SessionPanel({
               />
             </Pressable>
 
-            <View style={styles.headerCenter}>
+            <View style={styles.headerCenter} pointerEvents="none">
               <View
                 style={styles.avatarRing}
                 accessibilityLabel="会话头像"
@@ -360,13 +285,18 @@ export function SessionPanel({
                 <Bot size={workspaceTheme.layout.sessionAvatar / 2} color={colors.ink} strokeWidth={1.5} />
               </View>
               <Text style={styles.name} numberOfLines={1}>
-                {threadName}
+                {spaceName}
               </Text>
               <Text style={styles.status} numberOfLines={1}>
                 {status}
               </Text>
             </View>
 
+            <View style={styles.headerActions}>
+            {onReset && <Pressable accessibilityRole="button" accessibilityLabel="重置当前会话"
+              disabled={deleting || resetting} onPress={onReset} style={styles.headerSideButton} testID="workspace-reset-conversation">
+              <RotateCcw size={workspaceTheme.layout.navigationIconSize} color={colors.ink} />
+            </Pressable>}
             <Pressable
               onPress={toggle}
               accessibilityRole="button"
@@ -381,6 +311,7 @@ export function SessionPanel({
                 strokeWidth={2}
               />
             </Pressable>
+            </View>
           </View>
 
           <View
@@ -419,18 +350,18 @@ export function SessionPanel({
             contentContainerStyle={styles.content}
             showsVerticalScrollIndicator={false}
           >
-            {tab === 'activity' && <CurrentExecution threadId={threadId} onSettled={onSettled} onApprovals={() => onTab('approvals')} onHistory={(id) => { setHistoryActivityId(id); onTab('history'); }} />}
-            {tab === 'approvals' && <ApprovalPanel key={threadId} threadId={threadId} />}
+            {tab === 'activity' && <CurrentExecution spaceId={spaceId} onSettled={onSettled} onApprovals={() => onTab('approvals')} onHistory={(id) => { setHistoryActivityId(id); onTab('history'); }} />}
+            {tab === 'approvals' && <ApprovalPanel key={spaceId} spaceId={spaceId} />}
             {tab === 'workspace' && <>
               {settings}
               <EmptyState text="工作区文件尚未接入" />
-              {threadId !== MAIN_THREAD && onDelete && <Pressable accessibilityRole="button" accessibilityLabel="删除当前会话"
-                disabled={deleting} onPress={onDelete} style={styles.card}>
-                <Text style={[styles.rowTitle, { color: colors.danger }]}>{deleting ? '正在删除会话…' : '删除当前会话'}</Text>
-                <Text style={styles.rowDetail}>删除此会话及其绑定的定时任务与监控，不可恢复。</Text>
+              {spaceId !== MAIN_SPACE && onDelete && <Pressable accessibilityRole="button" accessibilityLabel="删除当前空间"
+                disabled={deleting || resetting} onPress={onDelete} style={styles.card}>
+                <Text style={[styles.rowTitle, { color: colors.danger }]}>{deleting ? '正在删除空间…' : '删除当前空间'}</Text>
+                <Text style={styles.rowDetail}>彻底删除空间的历史、工作区文件、规则、技能及绑定任务，不可恢复；仅翻篇请使用重置会话。</Text>
               </Pressable>}
             </>}
-            {tab === 'history' && <ActivityPanel key={threadId} threadId={threadId} initialActivityId={historyActivityId} />}
+            {tab === 'history' && <ActivityPanel key={spaceId} spaceId={spaceId} initialActivityId={historyActivityId} />}
           </ScrollView>
         </View>
       </SafeAreaView>

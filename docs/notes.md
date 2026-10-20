@@ -2,6 +2,25 @@
 
 遇到不合理/不顺手的服务端接口：先在此登记（现状 / 期望形状 / 理由），然后**停下来报告用户**，由用户介入协调服务端 agent 修改。服务端契约更新后再继续。
 
+## 修复后复验：重置计数已修复，审批自动过期仍待协调（2026-10-20）
+
+- **重置计数已解除**：实际17890的新部署 sourceHash 为 `8e1dc7c935c630e34f2e169076ace246e78e95ef11cc52df37dde0f78d26bf7e`，commit 仍为 `59013f5af4529ee10fb33ded675e897d8115f61d`、dirty/source，docs/OpenAPI/health 一致。与上次快照逐项比较，端点及 schema 未变，无需前端再次改字段。新文档明确计数包含关闭活跃运行时撤销的审批；真实 pending 重置后 cancelled、空历史、新 session，回执已正确返回 `cancelledApprovals=1`。旧的0值记录仅保留为历史，不再标作当前阻塞。
+- **空间迁移主链路通过**：修正下述工具投影测试假设后，最终 `E2E_NATIVE=1`、`scope=full` 整轮重跑通过，9组整体检查及4组Android原生交互通过；包括此前被截断的真实文件保留、新会话精确Stop、旧Stop无副作用和停止后继续。证据 `/tmp/pimuse-spaces-fixed-verified-20261020/`，前后部署和客户端源码哈希一致。349/349本地测试、lint、typecheck及diff检查通过；未跑mock。该结论不包含下述独立过期场景，也不补齐未运行的物理机／独立APK／iOS等边界。
+- **独立遗留项仍复现**：space=`space-expiry-mvgihg32`、approval=`ad33c26a-5f60-4502-a69a-2208638785bc`。真实 `createdAt=2026-10-20T09:59:30.944Z`、`expiresAt=10:04:30.944Z`；`10:01:28.704Z` 已变 cancelled，decidedAt/execution=null；聊天明确收到 `RUN_ERROR`、code=`TIMEOUT`、message=`Model response timed out`。等待期间未提交决定或 Stop，也未更改服务端时限。这次在新部署重新复现，不能再仅称“旧部署尚未验证”。
+- **需要后端说明／处理**：请明确审批等待与聊天运行超时的契约，提供能合法等待至 `expiresAt` 的真实场景，再验证 expired、晚到决定409和原生终态消费。运行超时后取消审批本身符合取消安全语义，但当前窗口使5分钟自动过期路径无法验通；不把 cancelled 改称 expired，不擅自改TTL或绕过审批。该项独立于已经修复的 reset 计数问题。
+- **验收脚本修正**：首轮已越过原计数断言，但错误要求重置后历史必须含 `role=tool` 正文，因服务工具展示策略未投影而失败；不能据此断言文件丢失。脚本改为先验证新会话读取回复，再用另一条真实审批的固定 before 全文逐字对照原批准写入内容，严格核对归属／路径／beforeExists 后拒绝探测写入。这样证明实际文件存续，而不是放宽为只信模型回复或更改服务端展示策略。最终整轮复跑结果见 `HANDOFF.md` 文首；首轮失败证据保留在 `/tmp/pimuse-spaces-reset-fixed-attempt-20261020/`。
+- **过期复验结果与清理**：`/tmp/pimuse-spaces-expiry-recheck-20261020/` 保存 pending／terminal、RUN_ERROR、真实SSE事件、前后部署、客户端源码哈希及复现脚本；`results.json` 明确 passed=false，未执行后续expired409或原生expired验收。专用空间与pending均通过API清理，用户原有空间保留；前后部署一致。没有修改服务端源码／配置／存储／Git，也不以本地测试或mock代替真实接口。
+
+## 空间会话迁移：重置审批计数历史复现（2026-10-20，后续已修复）
+
+本节保留首次迁移时的失败证据及当时状态；最新修复与复验以文首为准。
+
+- **已确认的契约差异**：`POST /api/spaces/:spaceId/reset` 的 `cancelledApprovals` 在迁移文档和实际 OpenAPI 中定义为“重置时作废的待审批写操作数”。真实客户端在重置前通过详情接口确认唯一审批仍为 `pending`，重置后该项变为 `cancelled`、待审批集合为空、历史为空且 `sessionId` 已更换，但响应计数为 **0**，应为 **1**。不是“审批没有被撤销”的安全故障，而是本次重置的回执漏计。
+- **独立复现**：实际17890、space=`spaces-e2e-mvgg5d7v`、approval=`741fad09-c848-4a83-aea2-3e8af9e90545`。`08:54:19.024Z` 的详情为 pending（expiresAt=`08:59:18.857Z`）；`08:54:19.058Z` 重置返回新 session，`cancelledApprovals=0`，同审批已 cancelled、decidedAt/execution 均为 null。上一轮专用空间同样返回0；不是等待超时或客户端先发 Stop 导致本次状态变化。
+- **只读定位与期望**：服务端 `src/http/routes/spaces.ts` 先 `await closeCurrent()`，再 `actions.cancelBySpaceId()`，最终仅统计后者结果。关闭运行时已撤销的审批可能因此漏计；这属于源码顺序支持的根因推断，不修改服务端。请服务端统一计算整次 reset 作废的审批数，或由用户协调明确变更文档语义；移动端不自行补算、不把断言放宽为任意非负数来宣称全链路通过。
+- **当前结果**：协议字段、空间设置和默认／可选重置已适配；Android真实发送、进程重启恢复、取消确认、两种重置选项与规则保留已通过。真实HTTP/SSE已验证新归属字段与真实文件批准执行，但完整 `test:e2e:spaces` 在上述计数断言明确失败，状态为 **待真实接口验收**。因此尚未执行后续“重置后实际读取保留文件／新会话精确Stop／继续聊天”场景，也未完成本轮新审批归属的原生决定流程，不引用旧部署验收补齐。
+- **证据与边界**：`/tmp/pimuse-spaces-reset-contract-20261020/` 的 `active-reset-before.json`、`active-reset-after.json`、`results.json` 保存真实前后快照；原生重置证据在 `/tmp/pimuse-spaces-native-20261020/`。两轮前后 docs/OpenAPI/health 均一致且部署未变：commit `59013f5af4529ee10fb33ded675e897d8115f61d`、sourceHash `5b45cb9c246b1458fcf38dac04dad9dbb11884ef772b1f7604af93f445568267`、dirty/source。专用空间、文件、监控和 pending 已通过API清理，用户原有空间保留，终态审批按服务端契约保留；未修改服务端源码、配置、存储或 Git。未跑mock，未验非零jobs级联／重新投递、物理机、独立APK或iOS；原有自动过期问题仍独立待协调。
+
 ## 活动主线实现与验收结论（2026-10-20）
 
 - **本轮没有新增必须协调的接口阻塞**。按用户确认的首期范围，真实只读列表／详情、关联run和步骤已接入；原先“历史范围／刷新信号”的问题采用下方已确认口径，不通过猜测全量run档案或添加轮询绕过契约。主任务页、会话面板历史及动态明确关联均能消费真实数据。

@@ -156,7 +156,7 @@ try:
     sh('shell', 'am', 'start', '-a', 'android.intent.action.VIEW', '-d', 'exp://127.0.0.1:8082', 'host.exp.exponent')
     for _ in range(25):
         refresh()
-        if find('打开会话侧栏') is not None:
+        if find('打开空间侧栏') is not None:
             break
         if find('Wait') is not None:
             tap('Wait')
@@ -165,16 +165,16 @@ try:
     refresh()
     if find('关闭会话面板') is not None:
         tap('关闭会话面板')
-    if find('关闭会话侧栏') is not None:
-        tap('关闭会话侧栏')
+    if find('关闭空间侧栏') is not None:
+        tap('关闭空间侧栏')
     if find('切换到亮色主题') is not None:
         tap('切换到亮色主题')
     tap('应用')
     seek(context['base'])
     passed('native application is configured for the exact confirmed real service')
     tap('聊天')
-    tap('打开会话侧栏')
-    tap(context['threadId'], scroll=True)
+    tap('打开空间侧栏')
+    tap(context['spaceId'], scroll=True)
     tap('打开当前会话面板')
     tap('workspace-session-tab-history')
     tap('activity-open-'+context['id'], scroll=True)
@@ -209,14 +209,14 @@ try:
     seek(context['secondTitle'], scroll=True)
     screenshot('two-activities-list')
     passed('manual refresh discovers a new real activity on first page')
-    tap('当前会话活动', scroll=True, down=True)
-    tap('全部会话活动')
+    tap('当前空间活动', scroll=True, down=True)
+    tap('全部空间活动')
     seek(context['secondTitle'], scroll=True)
     tap('activity-open-'+context['secondId'], scroll=True)
     seek('已完成')
     passed('all-session filter opens second real completed activity')
     tap('返回活动列表', scroll=True, down=True)
-    tap('当前会话活动')
+    tap('当前空间活动')
     status_filter('等待明确继续')
     seek('当前范围没有已登记的活动', scroll=True)
     screenshot('empty-continuation-filter')
@@ -235,7 +235,7 @@ try:
     passed('main task entry consumes same actual activity detail')
     # 返回原主会话与聊天页，不替用户清除设备已保存连接信息。
     tap('聊天')
-    tap('打开会话侧栏')
+    tap('打开空间侧栏')
     tap('主会话', scroll=True, down=True)
     pid = sh('shell', 'pidof', 'host.exp.exponent').decode().strip().split()[0]
     logs = sh('logcat', '-d', '--pid='+pid, 'ReactNativeJS:E', 'AndroidRuntime:E', '*:S').decode()

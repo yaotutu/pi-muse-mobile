@@ -3,16 +3,17 @@ import type {
   AgentTask,
   AgUiEvent,
   ConversationSnapshot,
-  DeleteThreadResult,
+  DeleteSpaceResult,
   Goal,
   GoalStatus,
   Identity,
   MemoryItem,
   Monitor,
+  ResetSpaceResult,
   TaskDetails,
-  ThreadInfo,
-  ThreadInstructions,
-  ThreadSkills,
+  SpaceInfo,
+  SpaceInstructions,
+  SpaceSkills,
   WorkspaceSnapshot,
 } from './types';
 import type { AgentStatusResponse, RuntimeEvent } from '../runtime/types';
@@ -21,7 +22,7 @@ import type { ActivityClient } from '../activities/types';
 
 /** 增量聊天只提交一条新用户消息；历史与工具消息始终由服务端持有。 */
 export type RunInput = {
-  threadId: string;
+  spaceId: string;
   /** 本轮唯一 ID；成功请求可幂等重放。 */
   runId: string;
   /** 来自 GET /api/conversation；空会话也是明确的 empty 版本。 */
@@ -35,10 +36,12 @@ export type RunInput = {
 export interface ApiClient extends ApprovalClient, ActivityClient {
   /** POST /api/session → {token, mode}；客户端不按时间过期，失效以服务端401为准。 */
   createSession(accessKey?: string): Promise<{ token: string; mode: string }>;
-  /** GET /api/threads（按活跃倒序） */
-  listThreads(signal?: AbortSignal): Promise<ThreadInfo[]>;
-  /** GET /api/conversation?threadId= 权威历史；empty 不代表会话存在，存在性以列表为准。 */
-  getConversation(threadId: string, signal?: AbortSignal): Promise<ConversationSnapshot>;
+  /** GET /api/spaces（按活跃倒序） */
+  listSpaces(signal?: AbortSignal): Promise<SpaceInfo[]>;
+  /** 重置只替换聊天绑定；默认保留规则、技能、文件、定时任务和监控。副作用绝不自动重试。 */
+  resetSpace(spaceId: string, options?: { clearSchedules?: boolean }, signal?: AbortSignal): Promise<ResetSpaceResult>;
+  /** GET /api/conversation?spaceId= 权威历史；empty 不代表空间存在，存在性以空间列表为准。 */
+  getConversation(spaceId: string, signal?: AbortSignal): Promise<ConversationSnapshot>;
   /** 发起一轮对话：SSE 流式回调 AG-UI 事件；signal 中断即停止消费 */
   runAgent(
     input: RunInput,
@@ -46,41 +49,38 @@ export interface ApiClient extends ApprovalClient, ActivityClient {
     signal?: AbortSignal,
   ): Promise<void>;
   /** 只停止指定运行；迟到停止返回 false，不影响下一轮。 */
-  stopRun(threadId: string, runId: string): Promise<boolean>;
-  /** GET /api/agent 全量快照（顶栏状态/审批/工作台页共用） */
+  stopRun(spaceId: string, runId: string): Promise<boolean>;
+  /** 保留的全量快照消费者；新版顶栏、审批与活动不调用此方法，也不恢复盲轮询。 */
   getSnapshot(signal?: AbortSignal): Promise<WorkspaceSnapshot>;
 
-  // --- 会话配置（线程级 SKILL/指令/删除） ---
+  // --- 空间配置与生命周期 ---
 
-  /** GET /api/threads/:id/instructions 读取线程指令 */
-  getThreadInstructions(threadId: string, signal?: AbortSignal): Promise<ThreadInstructions>;
-  /** PUT /api/threads/:id/instructions 写入线程指令；空串允许（等价"清空"） */
-  saveThreadInstructions(threadId: string, instructions: string, signal?: AbortSignal): Promise<ThreadInstructions>;
-  /** GET /api/threads/:id/skills 读取线程级技能覆盖；diagnostics 缺省视为无诊断 */
-  getThreadSkills(threadId: string, signal?: AbortSignal): Promise<ThreadSkills>;
-  /** PUT /api/threads/:id/skills 用名称→启用态覆盖写入；空对象等价"恢复默认" */
-  saveThreadSkills(
-    threadId: string,
+  /** GET /api/spaces/:id/instructions 读取空间规则 */
+  getSpaceInstructions(spaceId: string, signal?: AbortSignal): Promise<SpaceInstructions>;
+  /** PUT /api/spaces/:id/instructions 保存空间规则；空串允许（等价"清空"） */
+  saveSpaceInstructions(spaceId: string, instructions: string, signal?: AbortSignal): Promise<SpaceInstructions>;
+  /** GET /api/spaces/:id/skills 读取空间级技能生效值；diagnostics 缺省视为无诊断 */
+  getSpaceSkills(spaceId: string, signal?: AbortSignal): Promise<SpaceSkills>;
+  /** PUT /api/spaces/:id/skills 用名称→启用态覆盖写入；空对象等价"恢复默认" */
+  saveSpaceSkills(
+    spaceId: string,
     overrides: Record<string, boolean>,
     signal?: AbortSignal,
-  ): Promise<ThreadSkills>;
-  /** DELETE /api/threads/:id 删除线程并清点副作用；服务端 401/404/409 语义保留 */
-  deleteThread(threadId: string, signal?: AbortSignal): Promise<DeleteThreadResult>;
+  ): Promise<SpaceSkills>;
+  /** DELETE /api/spaces/:id 彻底删除空间并清点副作用；服务端 401/404/409 语义保留 */
+  deleteSpace(spaceId: string, signal?: AbortSignal): Promise<DeleteSpaceResult>;
 
-  // --- 任务（POST /api/agent/tasks 系列） ---
+  // --- 定时任务（GET /api/agent/tasks/:id + POST /api/agent/tasks/:id/control） ---
 
-  /** 创建后台任务（立即排队执行）；originThreadId 显式传入以回填会话来源，缺省值与"local-main"同等处理 */
-  createTask(prompt: string, title?: string, originThreadId?: string): Promise<AgentTask>;
-  /** 任务详情（含时间线 events） */
+  /** 定时任务详情（含时间线 events） */
   getTask(id: string): Promise<TaskDetails>;
   /**
-   * 控制任务：target=job（定时）或 task（后台），必须显式传入。
-   * 以快照 task.kind 为准，禁止依赖服务端默认分发。
+   * 控制定时任务：服务端契约 target 固定为 job（后台任务 API 已下线）。
    */
   controlTask(
     id: string,
     action: TaskAction,
-    target: TaskControlTarget,
+    target?: TaskControlTarget,
   ): Promise<AgentTask>;
 
   // --- 监控（创建走聊天 monitor 工具，页面只做控制） ---
@@ -109,8 +109,8 @@ export interface ApiClient extends ApprovalClient, ActivityClient {
 
   // --- 运行状态（GET /api/agent/status + GET /api/events） ---
 
-  /** 单点查询指定 (threadId, runId) 的最新状态；运行不存在或被清理返回 404。 */
-  getAgentStatus(threadId: string, runId: string, signal?: AbortSignal): Promise<AgentStatusResponse>;
+  /** 单点查询指定 (spaceId, runId) 的最新状态；运行不存在或被清理返回 404。 */
+  getAgentStatus(spaceId: string, runId: string, signal?: AbortSignal): Promise<AgentStatusResponse>;
   /**
    * 订阅唯一工作区通知流；首帧 ready 同时给出运行和待审批完整集合。
    * 后续运行状态与审批新增／回执事件交由各自领域消费，不额外建立审批 SSE。
@@ -121,7 +121,7 @@ export interface ApiClient extends ApprovalClient, ActivityClient {
 }
 
 export type TaskAction = 'pause' | 'resume' | 'cancel' | 'retry';
-export type TaskControlTarget = 'job' | 'task';
+export type TaskControlTarget = 'job';
 export type MonitorAction = 'pause' | 'resume' | 'stop';
 export type { ApprovalDecision } from '../approvals/types';
 export type GoalInput = {

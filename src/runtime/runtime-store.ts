@@ -3,14 +3,14 @@ import type { AgentStatus, AgentStatusResponse, RuntimeEvent } from './types';
 
 export type RuntimeClient = {
   subscribeRuntime: (onEvent: (event: RuntimeEvent) => void, signal?: AbortSignal) => Promise<void>;
-  getAgentStatus: (threadId: string, runId: string, signal?: AbortSignal) => Promise<AgentStatusResponse>;
+  getAgentStatus: (spaceId: string, runId: string, signal?: AbortSignal) => Promise<AgentStatusResponse>;
 };
 export type RuntimeConnection = 'paused' | 'connecting' | 'live' | 'reconnecting' | 'authentication-required';
 export type RuntimeSnapshot = {
   connection: RuntimeConnection;
   instanceId?: string;
   runs: readonly AgentStatus[];
-  unknownThreadIds?: readonly string[];
+  unknownSpaceIds?: readonly string[];
   error?: string;
 };
 export type RuntimeStoreOptions = {
@@ -19,7 +19,7 @@ export type RuntimeStoreOptions = {
   onEvent?: (event: RuntimeEvent) => void;
   onConnection?: (connection: RuntimeConnection) => void;
 };
-const keyFor = (threadId: string, runId: string) => JSON.stringify([threadId, runId]);
+const keyFor = (spaceId: string, runId: string) => JSON.stringify([spaceId, runId]);
 const MAX_REMEMBERED_RUNS = 128;
 
 /** 单个服务器数据域持有一条通知连接；重连只同步状态，绝不重发聊天或停止运行。 */
@@ -30,8 +30,8 @@ export class RuntimeStore {
   private timer?: ReturnType<typeof setTimeout>;
   private generation = 0;
   private attempt = 0;
-  private unresolved = new Map<string, { threadId: string; runId: string }>();
-  private blockedThreads = new Set<string>();
+  private unresolved = new Map<string, { spaceId: string; runId: string }>();
+  private blockedSpaces = new Set<string>();
   private active = false;
 
   constructor(private readonly client: RuntimeClient, private readonly options: RuntimeStoreOptions = {}) {}
@@ -80,12 +80,12 @@ export class RuntimeStore {
         if (event.event === 'ready') {
           this.attempt = 0;
           const previous = [...this.unresolved.values(), ...this.state.runs.filter((run) => run.status === 'running')];
-          const missing = previous.filter((run) => !event.data.agentStatuses.some((next) => keyFor(next.threadId, next.runId) === keyFor(run.threadId, run.runId)));
-          this.blockedThreads.clear();
-          this.unresolved = new Map(missing.map((run) => [keyFor(run.threadId, run.runId), { threadId: run.threadId, runId: run.runId }]));
-          this.publish({ instanceId: event.data.instanceId, connection: 'live', runs: [...event.data.agentStatuses], unknownThreadIds: [...new Set(missing.map((run) => run.threadId))], error: undefined });
+          const missing = previous.filter((run) => !event.data.agentStatuses.some((next) => keyFor(next.spaceId, next.runId) === keyFor(run.spaceId, run.runId)));
+          this.blockedSpaces.clear();
+          this.unresolved = new Map(missing.map((run) => [keyFor(run.spaceId, run.runId), { spaceId: run.spaceId, runId: run.runId }]));
+          this.publish({ instanceId: event.data.instanceId, connection: 'live', runs: [...event.data.agentStatuses], unknownSpaceIds: [...new Set(missing.map((run) => run.spaceId))], error: undefined });
           // ready 不含历史；消失的运行只能补查终态，不能因缺席就猜成功。
-          for (const run of missing) void this.reconcile(run.threadId, run.runId, generation, controller.signal);
+          for (const run of missing) void this.reconcile(run.spaceId, run.runId, generation, controller.signal);
         } else {
           if (event.data.instanceId !== this.state.instanceId) throw new ApiError(502, '运行状态实例已变化，请重新同步');
           if (event.event === 'agent_status_updated') this.merge(event.data);
@@ -108,11 +108,11 @@ export class RuntimeStore {
     }
   }
   private merge(run: AgentStatus) {
-    if (this.blockedThreads.has(run.threadId)) return;
-    const identity = keyFor(run.threadId, run.runId);
-    const previous = this.state.runs.find((item) => keyFor(item.threadId, item.runId) === identity);
+    if (this.blockedSpaces.has(run.spaceId)) return;
+    const identity = keyFor(run.spaceId, run.runId);
+    const previous = this.state.runs.find((item) => keyFor(item.spaceId, item.runId) === identity);
     if (previous && previous.revision >= run.revision) return;
-    const runs = this.state.runs.filter((item) => keyFor(item.threadId, item.runId) !== identity);
+    const runs = this.state.runs.filter((item) => keyFor(item.spaceId, item.runId) !== identity);
     runs.push(run);
     // 内存只保留有界的最近观测结果；所有进行中项必须保留，历史仍由服务端负责。
     while (runs.length > MAX_REMEMBERED_RUNS) {
@@ -121,16 +121,16 @@ export class RuntimeStore {
       runs.splice(index, 1);
     }
     this.unresolved.delete(identity);
-    this.publish({ runs, unknownThreadIds: [...new Set([...this.unresolved.values()].map((item) => item.threadId))] });
+    this.publish({ runs, unknownSpaceIds: [...new Set([...this.unresolved.values()].map((item) => item.spaceId))] });
   }
-  private async reconcile(threadId: string, runId: string, generation: number, signal: AbortSignal) {
+  private async reconcile(spaceId: string, runId: string, generation: number, signal: AbortSignal) {
     try {
-      const response = await this.client.getAgentStatus(threadId, runId, signal);
+      const response = await this.client.getAgentStatus(spaceId, runId, signal);
       if (!this.current(generation, signal) || response.instanceId !== this.state.instanceId) return;
-      if (response.status.threadId !== threadId || response.status.runId !== runId) throw new ApiError(502, '运行查询返回了其他会话或运行');
-      if (this.state.runs.some((run) => run.threadId === threadId && run.runId !== runId)) {
-        this.unresolved.delete(keyFor(threadId, runId));
-        this.publish({ unknownThreadIds: [...new Set([...this.unresolved.values()].map((item) => item.threadId))] });
+      if (response.status.spaceId !== spaceId || response.status.runId !== runId) throw new ApiError(502, '运行查询返回了其他会话或运行');
+      if (this.state.runs.some((run) => run.spaceId === spaceId && run.runId !== runId)) {
+        this.unresolved.delete(keyFor(spaceId, runId));
+        this.publish({ unknownSpaceIds: [...new Set([...this.unresolved.values()].map((item) => item.spaceId))] });
         return;
       }
       this.merge(response.status);
@@ -138,15 +138,15 @@ export class RuntimeStore {
       if (!this.current(generation, signal)) return;
       if (isRequestCancelled(error)) return;
       if (error instanceof ApiError && error.status === 404) {
-        this.unresolved.delete(keyFor(threadId, runId));
-        this.publish({ unknownThreadIds: [...new Set([...this.unresolved.values()].map((item) => item.threadId))] });
+        this.unresolved.delete(keyFor(spaceId, runId));
+        this.publish({ unknownSpaceIds: [...new Set([...this.unresolved.values()].map((item) => item.spaceId))] });
       } else this.publish({ error: '部分执行结果暂未同步，请重试同步' });
     }
   }
-  forgetThread(threadId: string) {
-    this.blockedThreads.add(threadId);
-    for (const [key, run] of this.unresolved) if (run.threadId === threadId) this.unresolved.delete(key);
-    this.publish({ runs: this.state.runs.filter((run) => run.threadId !== threadId), unknownThreadIds: this.state.unknownThreadIds?.filter((id) => id !== threadId) });
+  forgetSpace(spaceId: string) {
+    this.blockedSpaces.add(spaceId);
+    for (const [key, run] of this.unresolved) if (run.spaceId === spaceId) this.unresolved.delete(key);
+    this.publish({ runs: this.state.runs.filter((run) => run.spaceId !== spaceId), unknownSpaceIds: this.state.unknownSpaceIds?.filter((id) => id !== spaceId) });
     this.retry();
   }
   dispose() {
@@ -155,11 +155,11 @@ export class RuntimeStore {
   }
 }
 
-export function threadRuntime(snapshot: RuntimeSnapshot, threadId: string) {
-  const runs = snapshot.runs.filter((run) => run.threadId === threadId);
+export function spaceRuntime(snapshot: RuntimeSnapshot, spaceId: string) {
+  const runs = snapshot.runs.filter((run) => run.spaceId === spaceId);
   const active = runs.filter((run) => run.status === 'running');
   const last = runs.at(-1);
-  const unresolved = snapshot.unknownThreadIds?.includes(threadId) ?? false;
+  const unresolved = snapshot.unknownSpaceIds?.includes(spaceId) ?? false;
   const synchronized = snapshot.connection === 'live' && !unresolved;
   const label = unresolved && snapshot.connection === 'live' ? '执行结果待同步' : !synchronized
     ? snapshot.connection === 'authentication-required' ? '需要重新认证'

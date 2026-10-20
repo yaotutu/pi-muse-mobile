@@ -1,17 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { useApi } from '../api/ApiProvider';
-import { useThreadSession, useThreadSessionStore } from '../threads/ThreadSessionProvider';
+import { useSpaceState, useSpaceStore } from '../spaces/SpaceProvider';
 import { isRequestCancelled, requestCancelled } from '../api/errors';
 import { useServiceConnection } from '../connection/ConnectionProvider';
 import { StreamAggregator, projectHistory, type MessageView } from './chat-state';
 
-/** 单次挂载仅服务一个 thread；父级以 threadId 为 key 隔离旧流与历史。 */
-export function useConversation(threadId: string, refreshKey = 0) {
+let clientSequence = 0;
+const nextClientId = (prefix: string) => `${prefix}-${Date.now()}-${++clientSequence}`;
+
+/** 单次挂载仅服务一个空间的一个聊天代次；父级以 spaceId + epoch 隔离重置前的请求。 */
+export function useConversation(spaceId: string, refreshKey = 0) {
   const api = useApi();
-  const sessions = useThreadSessionStore();
-  const { epoch, deleted, deleting } = useThreadSession(threadId);
-  const writable = !deleted && !deleting;
+  const sessions = useSpaceStore();
+  const { epoch } = useSpaceState(spaceId);
+  const writable = sessions.canWrite(spaceId);
   const connection = useServiceConnection();
   const enabled = connection?.enabled ?? true;
   const refreshVersion = connection?.snapshot.refreshVersion ?? 0;
@@ -27,7 +30,7 @@ export function useConversation(threadId: string, refreshKey = 0) {
   const revisionRef = useRef<string | null>(null);
   const aliveRef = useRef(false);
   const historyRequest = useRef<AbortController | null>(null);
-  const current = () => aliveRef.current && sessions.isCurrent(threadId, epoch);
+  const current = () => aliveRef.current && sessions.isCurrent(spaceId, epoch);
 
   useEffect(() => {
     let previous = AppState.currentState;
@@ -38,7 +41,7 @@ export function useConversation(threadId: string, refreshKey = 0) {
     return () => subscription.remove();
   }, []);
 
-  // 父级以 threadId 为 key：卸载时取消旧流，且所有异步回写都检查生命周期。
+  // 父级以 spaceId + epoch 为 key：卸载时取消旧流，且所有异步回写都检查生命周期。
   // 不保挂载多个会话，也不让旧请求污染新会话或已退出登录的界面。
   useEffect(() => {
     aliveRef.current = true;
@@ -47,10 +50,10 @@ export function useConversation(threadId: string, refreshKey = 0) {
       historyRequest.current?.abort();
       if (abortRef.current) {
         abortRef.current.abort();
-        if (runIdRef.current) void api.stopRun(threadId, runIdRef.current).catch(() => {});
+        if (runIdRef.current) void api.stopRun(spaceId, runIdRef.current).catch(() => {});
       }
     };
-  }, [api, threadId]);
+  }, [api, spaceId]);
 
   useEffect(() => {
     enabledRef.current = enabled;
@@ -68,56 +71,56 @@ export function useConversation(threadId: string, refreshKey = 0) {
       if (!alive) return;
       setLoading(true);
       try {
-        const history = await api.getConversation(threadId, controller.signal);
-        if (alive && sessions.isCurrent(threadId, epoch)) {
+        const history = await api.getConversation(spaceId, controller.signal);
+        if (alive && sessions.isCurrent(spaceId, epoch)) {
           revisionRef.current = history.revision;
           setViews(projectHistory(history.messages));
           setHistoryFailed(false);
           setError(undefined);
         }
       } catch (e) {
-        if (alive && sessions.isCurrent(threadId, epoch) && !isRequestCancelled(e)) {
+        if (alive && sessions.isCurrent(spaceId, epoch) && !isRequestCancelled(e)) {
           setHistoryFailed(true);
           setError(e instanceof Error ? e.message : String(e));
         }
       } finally {
-        if (alive && sessions.isCurrent(threadId, epoch)) setLoading(false);
+        if (alive && sessions.isCurrent(spaceId, epoch)) setLoading(false);
       }
     })();
     return () => { alive = false; controller.abort(); if (historyRequest.current === controller) historyRequest.current = null; };
-  }, [api, threadId, historyVersion, enabled, refreshVersion, refreshKey, epoch, sessions, writable]);
+  }, [api, spaceId, historyVersion, enabled, refreshVersion, refreshKey, epoch, sessions, writable]);
 
   useEffect(() => {
     if (!writable) {
       historyRequest.current?.abort();
       revisionRef.current = null;
     }
-  }, [sessions, threadId, epoch, writable]);
+  }, [sessions, spaceId, epoch, writable]);
 
   const syncAfterRun = async () => {
     if (!current()) throw requestCancelled();
     const controller = new AbortController();
     historyRequest.current?.abort();
     historyRequest.current = controller;
-    try { return await api.getConversation(threadId, controller.signal); }
+    try { return await api.getConversation(spaceId, controller.signal); }
     finally { if (historyRequest.current === controller) historyRequest.current = null; }
   };
 
   const send = async (raw: string, onAccepted: () => void, onFailure: (text: string) => void) => {
     const text = raw.trim();
-    if (!enabled || !sessions.isCurrent(threadId, epoch) || !text || loading || historyFailed || abortRef.current || !revisionRef.current) return;
+    if (!enabled || !sessions.isCurrent(spaceId, epoch) || !text || loading || historyFailed || abortRef.current || !revisionRef.current) return;
     historyRequest.current?.abort();
     onAccepted();
     setError(undefined);
     const controller = new AbortController();
     abortRef.current = controller;
-    const runId = `run-${Date.now()}`;
+    const runId = nextClientId('run');
     runIdRef.current = runId;
 
     // 历史是服务端事实；客户端只发送新消息和读取历史时的版本，不再复制用户序列。
     const expectedRevision = revisionRef.current;
     const userView: MessageView = {
-      id: `u-${Date.now()}`,
+      id: nextClientId('u'),
       role: 'user',
       text,
       toolCalls: [],
@@ -128,7 +131,7 @@ export function useConversation(threadId: string, refreshKey = 0) {
     try {
       await api.runAgent(
         {
-          threadId,
+          spaceId,
           runId,
           expectedRevision,
           message: { id: userView.id, content: text },
@@ -189,13 +192,13 @@ export function useConversation(threadId: string, refreshKey = 0) {
         setHistoryFailed(true);
       }
     } finally {
-      const stale = !sessions.isCurrent(threadId, epoch);
+      const stale = !sessions.isCurrent(spaceId, epoch);
       if (stale && aliveRef.current) setHistoryFailed(true);
       abortRef.current = null;
       runIdRef.current = null;
       if (aliveRef.current) {
         setRunning(false);
-        if (stale && sessions.canWrite(threadId)) setHistoryVersion((value) => value + 1);
+        if (stale && sessions.canWrite(spaceId)) setHistoryVersion((value) => value + 1);
       }
     }
   };
@@ -206,7 +209,7 @@ export function useConversation(threadId: string, refreshKey = 0) {
     if (!controller || !runId) return;
     try {
       // 捕获本轮 controller：迟到的停止响应不能中断下一轮；false 也不能伪装停止成功。
-      const stopped = await api.stopRun(threadId, runId);
+      const stopped = await api.stopRun(spaceId, runId);
       if (stopped && abortRef.current === controller) controller.abort();
     } catch (e) {
       if (current() && abortRef.current === controller) {
@@ -216,7 +219,7 @@ export function useConversation(threadId: string, refreshKey = 0) {
   };
 
   const reload = () => {
-    if (abortRef.current || !sessions.canWrite(threadId)) return;
+    if (abortRef.current || !sessions.canWrite(spaceId)) return;
     setLoading(true);
     setHistoryVersion((value) => value + 1);
   };

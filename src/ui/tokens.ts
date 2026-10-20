@@ -280,37 +280,6 @@ export const sizing = {
   inputMinHeight: 45,
 } as const;
 
-/**
- * 阴影：iOS 系 shadow* 属性与 Android elevation 一并声明，
- * 组件直接展开使用（OpenMuse 同款参数）。
- */
-export const shadows = {
-  /** 底部 tab bar 白胶囊的软阴影 */
-  tabBar: {
-    shadowColor: '#132631',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.07,
-    shadowRadius: 18,
-    elevation: 3,
-  },
-  /** 聊天输入 pill 的软阴影 */
-  composer: {
-    shadowColor: '#18384B',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 20,
-    elevation: 2,
-  },
-  /** 聊天输入 pill 聚焦时的加深阴影 */
-  composerFocused: {
-    shadowColor: '#18384B',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 20,
-    elevation: 3,
-  },
-} as const;
-
 /** 新版工作区共享几何与暗色基线。 */
 export const workspaceTheme = {
   colors: {

@@ -1,29 +1,30 @@
-import { ArrowUp, Bot, Check, Download, Menu, MessageCircle, Moon, PanelsTopLeft, Plus, Server, Shapes, Square, SquareCheck, SquarePen, Sun, X, type LucideIcon } from 'lucide-react-native';
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Bot, Check, Download, Menu, MessageCircle, Moon, PanelsTopLeft, Server, Shapes, Square, SquareCheck, SquarePen, Sun, X, type LucideIcon } from 'lucide-react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { AccessibilityInfo, Animated, BackHandler, Easing, Keyboard, KeyboardAvoidingView, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type TextStyle, useWindowDimensions } from 'react-native';
+import { AccessibilityInfo, Animated, BackHandler, Easing, Keyboard, KeyboardAvoidingView, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ApiProvider, useApi } from '../api/ApiProvider';
-import { useConversation } from '../chat/useConversation';
-import type { MessageView } from '../chat/chat-state';
+import { ApiProvider } from '../api/ApiProvider';
 import { ConnectionProvider, useServiceConnection } from '../connection/ConnectionProvider';
 import { useConnection } from '../connection/useConnection';
 import type { ConnectionManager } from '../connection/connection-manager';
 import type { ConnectionSnapshot } from '../connection/types';
-import { RuntimeProvider, useRuntimeStore, useThreadRuntime } from '../runtime/RuntimeProvider';
+import { RuntimeProvider, useRuntimeStore, useSpaceRuntime } from '../runtime/RuntimeProvider';
 import { useActivityStore } from '../activities/ActivityProvider';
-import { ThreadSessionProvider, useThreadSession, useThreadSessionStore } from '../threads/ThreadSessionProvider';
-import { MAIN_THREAD } from '../threads/thread-state';
-import { useThreads } from '../threads/useThreads';
+import { useApprovals } from '../approvals/ApprovalProvider';
+import { SpaceProvider, useSpaceState, useSpaceStore } from '../spaces/SpaceProvider';
+import { MAIN_SPACE } from '../spaces/space-state';
+import { useSpaces } from '../spaces/useSpaces';
 import { useAppUpdate } from '../update/UpdateProvider';
 import { spacing, sizing, workspaceTheme, type WorkspaceColors } from '../ui/tokens';
 import { ConnectionPanel } from './ConnectionPanel';
 import { ActivityPanel } from './ActivityPanel';
+import { ConversationView } from './ConversationView';
 import { SessionPanel, type SessionTab } from './SessionPanel';
-import { ThreadSettings } from './ThreadSettings';
+import { SpaceSettings } from './SpaceSettings';
 import { WorkspaceThemeProvider, useWorkspaceTheme } from './WorkspaceTheme';
 
 type WorkspacePage = 'chat' | 'activity' | 'goals' | 'apps';
+type WorkspaceNotice = { text: string; tone: 'success' | 'error' };
 const { layout: l, radius: r, typography: t } = workspaceTheme;
 const NAV: { id: WorkspacePage; label: string; icon: LucideIcon }[] = [
   { id: 'chat', label: '聊天', icon: MessageCircle }, { id: 'activity', label: '任务', icon: PanelsTopLeft },
@@ -50,7 +51,7 @@ function ConnectedWorkspace() {
   }), [connection.snapshot, connection.enabled, connection.manager, openConnection]);
   const content = connection.client && connection.snapshot.workspaceReady
     ? <ApiProvider client={connection.client} key={connection.snapshot.workspaceKey}>
-      <ThreadSessionProvider><RuntimeProvider><LiveWorkspace manager={connection.manager} snapshot={connection.snapshot} openConnection={openConnection} /></RuntimeProvider></ThreadSessionProvider>
+      <SpaceProvider><RuntimeProvider><LiveWorkspace manager={connection.manager} snapshot={connection.snapshot} openConnection={openConnection} /></RuntimeProvider></SpaceProvider>
     </ApiProvider>
     : <DisconnectedWorkspace manager={connection.manager} snapshot={connection.snapshot} openConnection={openConnection} />;
   return <ConnectionProvider value={value}>
@@ -107,17 +108,20 @@ function Navigation({ page, onPage }: { page: WorkspacePage; onPage: (page: Work
 
 function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
   const connection = useServiceConnection();
-  const threads = useThreads(!!connection?.enabled, snapshot.refreshVersion);
-  const session = useThreadSession(threads.currentThread);
-  const sessions = useThreadSessionStore(); const runtimeStore = useRuntimeStore();
+  const spaces = useSpaces(!!connection?.enabled, snapshot.refreshVersion);
+  const session = useSpaceState(spaces.currentSpace);
+  const sessions = useSpaceStore(); const runtimeStore = useRuntimeStore();
   const activities = useActivityStore();
-  const runtime = useThreadRuntime(threads.currentThread);
+  const { store: approvals } = useApprovals();
+  const runtime = useSpaceRuntime(spaces.currentSpace);
   const [page, setPage] = useState<WorkspacePage>('chat');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [sessionOpen, setSessionOpen] = useState(false);
   const [sessionTab, setSessionTab] = useState<SessionTab>('activity');
   const [deleteConfirm, setDeleteConfirm] = useState(false);
-  const [notice, setNotice] = useState('');
+  const [resetConfirm, setResetConfirm] = useState(false);
+  const [clearSchedules, setClearSchedules] = useState(false);
+  const [notice, setNotice] = useState<WorkspaceNotice>();
   const [reducedMotion, setReducedMotion] = useState(false);
   const [historyRefresh, setHistoryRefresh] = useState(0);
   const { colors, mode, toggle } = useWorkspaceTheme(); const styles = useStyles();
@@ -126,9 +130,10 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
   const [drawerProgress] = useState(() => new Animated.Value(0));
   const statusLabel = snapshot.status === 'authentication-required' || snapshot.status === 'reset-error' || snapshot.status === 'storage-error'
     ? connectionLabel(snapshot) : runtime.label;
-  const name = threads.currentThread === MAIN_THREAD ? 'Pi Muse' : threads.currentThread;
-  const reloadThreads = threads.reload;
-  const refresh = useCallback(() => { void reloadThreads(); activities.invalidate(); setHistoryRefresh((value) => value + 1); }, [reloadThreads, activities]);
+  const name = spaces.currentSpace === MAIN_SPACE ? 'Pi Muse' : spaces.currentSpace;
+  const ClearSchedulesIcon = clearSchedules ? SquareCheck : Square;
+  const reloadSpaces = spaces.reload;
+  const refresh = useCallback(() => { void reloadSpaces(); activities.invalidate(); setHistoryRefresh((value) => value + 1); }, [reloadSpaces, activities]);
   useEffect(() => {
     let active = true;
     void AccessibilityInfo.isReduceMotionEnabled().then((enabled) => { if (active) setReducedMotion(enabled); });
@@ -144,47 +149,65 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => { if (!drawerOpen) return false; setDrawerOpen(false); return true; });
     return () => subscription.remove();
   }, [drawerOpen]);
-  const openDrawer = () => { Keyboard.dismiss(); setSessionOpen(false); setDrawerOpen(true); void threads.reload(); };
-  const select = (id: string) => { threads.selectThread(id); setSessionOpen(false); setDrawerOpen(false); setPage('chat'); setDeleteConfirm(false); setNotice(''); };
+  const openDrawer = useCallback(() => { Keyboard.dismiss(); setSessionOpen(false); setDrawerOpen(true); void reloadSpaces(); }, [reloadSpaces]);
+  const select = (id: string) => { spaces.selectSpace(id); setSessionOpen(false); setDrawerOpen(false); setPage('chat'); setDeleteConfirm(false); setNotice(undefined); };
   const remove = async () => {
-    const id = threads.currentThread;
+    const id = spaces.currentSpace;
     try {
-      const result = await sessions.deleteThread(id);
+      const result = await sessions.deleteSpace(id);
       if (!result) return;
-      runtimeStore.forgetThread(id); activities.forgetThread(id); threads.removeThread(id); setSessionOpen(false); setDeleteConfirm(false); setNotice(''); await threads.reload();
-    } catch (error) { setNotice(error instanceof Error ? error.message : String(error)); setDeleteConfirm(false); }
+      runtimeStore.forgetSpace(id); activities.forgetSpace(id); spaces.removeSpace(id); setSessionOpen(false); setDeleteConfirm(false); setNotice(undefined); await spaces.reload();
+    } catch (error) { setNotice({ text: error instanceof Error ? error.message : String(error), tone: 'error' }); }
   };
-  const pan = PanResponder.create({
+  const reset = async () => {
+    const id = spaces.currentSpace;
+    try {
+      const result = await sessions.resetSpace(id, clearSchedules);
+      if (!result) return;
+      // 重置不删除空间或活动历史；通知重连获取权威审批集合，不凭 cancelledApprovals 猜具体审批 ID。
+      runtimeStore.forgetSpace(id);
+      activities.invalidate(id);
+      await approvals.refreshPending();
+      setResetConfirm(false); setClearSchedules(false); setSessionOpen(false); setPage('chat');
+      setNotice({ text: '会话已重置，可开启全新对话。空间规则、技能与工作区文件已保留。', tone: 'success' });
+      refresh();
+    } catch (error) {
+      setNotice({ text: error instanceof Error ? error.message : String(error), tone: 'error' });
+      // 列表回读仅核对新 sessionId，不重发 reset；未确认期间禁止继续发送旧上下文。
+      void spaces.reload();
+    }
+  };
+  const pan = useMemo(() => PanResponder.create({
     onMoveShouldSetPanResponder: (event, gesture) => Math.abs(gesture.dx) > l.gestureThreshold && Math.abs(gesture.dx) > Math.abs(gesture.dy) * l.gestureAxisRatio && (drawerOpen ? gesture.dx < 0 : event.nativeEvent.pageX - gesture.dx < l.edgeGestureWidth && gesture.dx > 0),
     onPanResponderRelease: (_event, gesture) => { if (gesture.dx < -l.gestureThreshold) setDrawerOpen(false); if (gesture.dx > l.gestureThreshold) openDrawer(); },
-  });
-  const otherPage = page === 'apps' ? <AppsPage snapshot={snapshot} openConnection={openConnection} /> : page === 'activity' ? !sessionOpen && <ScrollView contentContainerStyle={styles.otherPage}><ActivityPanel key={threads.currentThread} threadId={threads.currentThread} defaultScope="all" /><Text style={styles.caption}>定时任务管理尚未接入。</Text></ScrollView> : <View style={styles.otherPage}>
-    <Text style={styles.pageTitle}>{page === 'goals' ? '目标' : '任务'}</Text><Text style={styles.mutedText}>{page === 'goals' ? '目标尚未接入。' : '活动历史与定时任务管理尚未接入；当前执行可在会话面板“动态”中查看。'}</Text>
+  }), [drawerOpen, openDrawer]);
+  const otherPage = page === 'chat' ? null : page === 'apps' ? <AppsPage snapshot={snapshot} openConnection={openConnection} /> : page === 'activity' ? !sessionOpen && <ScrollView contentContainerStyle={styles.otherPage}><ActivityPanel key={spaces.currentSpace} spaceId={spaces.currentSpace} defaultScope="all" /><Text style={styles.caption}>定时任务管理尚未接入。</Text></ScrollView> : <View style={styles.otherPage}>
+    <Text style={styles.pageTitle}>目标</Text><Text style={styles.mutedText}>目标尚未接入。</Text>
   </View>;
   return <View style={styles.root} testID="workspace-screen"><StatusBar style={mode === 'light' ? 'dark' : 'light'} />
     <View style={[styles.viewport, { width: contentWidth }]} {...pan.panHandlers}>
       <SafeAreaView style={[styles.drawer, { width: drawerWidth }]} edges={['top', 'bottom', 'left']} pointerEvents={drawerOpen ? 'auto' : 'none'} aria-hidden={!drawerOpen}
         {...(Platform.OS === 'web' && !drawerOpen ? { inert: true } : {})} accessibilityElementsHidden={!drawerOpen} importantForAccessibility={drawerOpen ? 'yes' : 'no-hide-descendants'}>
-        <View style={styles.drawerHeading}><Text style={styles.drawerTitle}>Pi Muse</Text><RoundButton icon={X} label="关闭会话侧栏" onPress={() => setDrawerOpen(false)} /></View>
-        <Text style={styles.drawerSection}>会话</Text>
-        {!!threads.error && <Text style={styles.error}>{threads.error}</Text>}
+        <View style={styles.drawerHeading}><Text style={styles.drawerTitle}>Pi Muse</Text><RoundButton icon={X} label="关闭空间侧栏" onPress={() => setDrawerOpen(false)} /></View>
+        <Text style={styles.drawerSection}>空间</Text>
+        {!!spaces.error && <Text style={styles.error}>{spaces.error}</Text>}
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.drawerList}>
-          {threads.threads.map((thread) => <Pressable key={thread.id} accessibilityRole="button" accessibilityLabel={thread.id === MAIN_THREAD ? '主会话' : thread.id} accessibilityState={{ selected: thread.id === threads.currentThread }}
-            onPress={() => select(thread.id)} style={[styles.threadRow, thread.id === threads.currentThread && styles.threadSelected]}>
+          {spaces.spaces.map((space) => <Pressable key={space.id} accessibilityRole="button" accessibilityLabel={space.id === MAIN_SPACE ? '主空间' : space.id} accessibilityState={{ selected: space.id === spaces.currentSpace }}
+            onPress={() => select(space.id)} style={[styles.threadRow, space.id === spaces.currentSpace && styles.threadSelected]}>
             <MessageCircle size={l.navigationIconSize} color={colors.ink} /><View style={styles.threadText}>
-              <Text numberOfLines={1} style={styles.itemTitle}>{thread.id === MAIN_THREAD ? '主会话' : thread.id}</Text><ThreadStatusCaption threadId={thread.id} />
-            </View>{thread.id === threads.currentThread && <Check size={sizing[18]} color={colors.muted} />}
+              <Text numberOfLines={1} style={styles.itemTitle}>{space.id === MAIN_SPACE ? '主空间' : space.id}</Text><SpaceStatusCaption spaceId={space.id} />
+            </View>{space.id === spaces.currentSpace && <Check size={sizing[18]} color={colors.muted} />}
           </Pressable>)}
         </ScrollView>
-        <View style={styles.drawerFooter}><RoundButton icon={SquarePen} label="新建会话" testID="workspace-create-thread" onPress={() => { threads.createThread(); setDrawerOpen(false); setSessionOpen(false); setPage('chat'); }} /></View>
+        <View style={styles.drawerFooter}><RoundButton icon={SquarePen} label="新建空间" testID="workspace-create-space" onPress={() => { spaces.createSpace(); setDrawerOpen(false); setSessionOpen(false); setPage('chat'); setNotice(undefined); }} /></View>
       </SafeAreaView>
       <Animated.View style={[styles.foreground, drawerOpen && styles.foregroundRounded, { transform: [{ translateX: drawerProgress.interpolate({ inputRange: [0, 1], outputRange: [0, drawerWidth] }) }] }]} accessibilityElementsHidden={drawerOpen} importantForAccessibility={drawerOpen ? 'no-hide-descendants' : 'auto'}>
         <SafeAreaView style={styles.screen} edges={['top', 'bottom', 'left', 'right']} aria-hidden={drawerOpen} {...(Platform.OS === 'web' && drawerOpen ? { inert: true } : {})}>
           <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled={Platform.OS !== 'web'}>
             <View style={styles.connectionLabel}><Text style={styles.caption}>{runtime.synchronized && snapshot.hasToken ? '已连接真实服务' : statusLabel}</Text></View>
-            <ConversationView key={threads.currentThread} threadId={threads.currentThread} visible={page === 'chat'} otherPage={otherPage} refreshKey={historyRefresh} onSettled={refresh} openConnection={openConnection} />
+            <ConversationView key={`${spaces.currentSpace}:${session.epoch}`} spaceId={spaces.currentSpace} visible={page === 'chat'} otherPage={otherPage} refreshKey={historyRefresh} onSettled={refresh} openConnection={openConnection} />
             <View style={styles.floatingHeader} pointerEvents="box-none">
-              <View style={styles.headerLeft}><RoundButton icon={Menu} label="打开会话侧栏" testID="workspace-open-drawer" onPress={openDrawer} /></View>
+              <View style={styles.headerLeft}><RoundButton icon={Menu} label="打开空间侧栏" testID="workspace-open-drawer" onPress={openDrawer} /></View>
               <Pressable accessibilityRole="button" accessibilityLabel="打开当前会话面板" accessibilityHint="全屏显示当前会话的动态、审批、工作区和历史" testID="workspace-open-session" style={styles.identity}
                 onPress={() => { Keyboard.dismiss(); setDrawerOpen(false); setSessionOpen(true); }}>
                 <View style={styles.headerAvatar}><Bot size={l.headerAvatar / 2} color={colors.ink} /></View>
@@ -192,119 +215,54 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
               </Pressable>
               <View style={styles.headerRight}><RoundButton icon={mode === 'light' ? Moon : Sun} label={mode === 'light' ? '切换到暗色主题' : '切换到亮色主题'} testID="workspace-theme-toggle" onPress={toggle} /></View>
             </View>
-            {!!notice && <Text accessibilityRole="alert" style={styles.notice}>{notice}</Text>}
+            {!!notice && <Text accessibilityRole="alert" style={[styles.notice, notice.tone === 'error' && styles.error]}>{notice.text}</Text>}
             <Navigation page={page} onPage={(next) => { setPage(next); setSessionOpen(false); }} />
           </KeyboardAvoidingView>
         </SafeAreaView>
-        {drawerOpen && <Pressable accessibilityRole="button" accessibilityLabel="收起会话侧栏" onPress={() => setDrawerOpen(false)} style={styles.foregroundCover} />}
+        {drawerOpen && <Pressable accessibilityRole="button" accessibilityLabel="收起空间侧栏" onPress={() => setDrawerOpen(false)} style={styles.foregroundCover} />}
       </Animated.View>
     </View>
-    {sessionOpen && <SessionPanel threadId={threads.currentThread} threadName={name} status={statusLabel} tab={sessionTab} onTab={(next) => { setSessionTab(next); setDeleteConfirm(false); }}
-      onClose={() => { if (!session.deleting) setSessionOpen(false); }} onDelete={() => setDeleteConfirm(true)} deleting={session.deleting} reducedMotion={reducedMotion} onSettled={refresh}
-      settings={<>{deleteConfirm ? <View style={styles.exampleCard}><Text style={styles.itemTitle}>确认删除当前会话？</Text><Text style={styles.mutedText}>会话历史和绑定的定时任务、监控将被删除，无法撤销。</Text>
-        <Pressable accessibilityRole="button" accessibilityLabel="确认删除会话" disabled={session.deleting} style={styles.actionButton} onPress={() => void remove()}><Text style={styles.actionText}>确认删除</Text></Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel="取消删除会话" disabled={session.deleting} onPress={() => setDeleteConfirm(false)}><Text style={styles.mutedText}>取消</Text></Pressable>
-        {!!notice && <Text accessibilityRole="alert" style={styles.error}>{notice}</Text>}
-      </View> : <ThreadSettings threadId={threads.currentThread} onSaved={refresh} />}</>} />}
+    {sessionOpen && <SessionPanel spaceId={spaces.currentSpace} spaceName={name} status={statusLabel} tab={sessionTab} onTab={(next) => { if (session.resetting || session.deleting) return; setSessionTab(next); setDeleteConfirm(false); setResetConfirm(false); }}
+      onClose={() => { if (!session.deleting && !session.resetting) { setSessionOpen(false); setResetConfirm(false); } }} onDelete={() => { setDeleteConfirm(true); setResetConfirm(false); }} deleting={session.deleting} resetting={session.resetting} reducedMotion={reducedMotion} onSettled={refresh}
+      onReset={() => { setSessionTab('workspace'); setDeleteConfirm(false); setClearSchedules(false); setResetConfirm(true); setNotice(undefined); }}
+      settings={<>{resetConfirm ? <View style={styles.exampleCard} accessibilityViewIsModal>
+        <Text style={styles.itemTitle}>重置当前会话？</Text>
+        <Text style={styles.mutedText}>重置将停止当前运行，清空聊天历史与未完成的审批，开启全新对话。空间规则、技能开关与已保存的工作区文件都会保留。</Text>
+        <Pressable accessibilityRole="checkbox" accessibilityLabel="同时清理定时任务与网页监控" accessibilityState={{ checked: clearSchedules, disabled: session.resetting }}
+          disabled={session.resetting} onPress={() => setClearSchedules((value) => !value)} style={styles.settingsRow}>
+          <ClearSchedulesIcon size={l.iconSize} color={clearSchedules ? colors.blue : colors.faint} /><Text style={[styles.mutedText, styles.threadText]}>{clearSchedules ? '已选择：' : '未选择：'}同时清理此空间下的定时任务与网页监控</Text>
+        </Pressable>
+        <Text style={styles.caption}>默认保留定时任务与监控，并由服务端绑定到新会话。清空的聊天历史无法恢复。</Text>
+        {session.resetUncertain && <Text accessibilityRole="alert" style={styles.error}>重置结果未确认，请关闭面板并刷新空间列表核对；不会自动重试。</Text>}
+        <Pressable accessibilityRole="button" accessibilityLabel="确认重置会话" disabled={session.resetting || session.resetUncertain || !connection?.enabled || sessions.hasSettingsWrite(spaces.currentSpace)} style={styles.actionButton} onPress={() => void reset()}><Text style={styles.actionText}>{session.resetting ? '正在重置…' : '确认重置'}</Text></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="取消重置会话" disabled={session.resetting} onPress={() => setResetConfirm(false)}><Text style={styles.mutedText}>取消</Text></Pressable>
+        {notice?.tone === 'error' && <Text accessibilityRole="alert" style={styles.error}>{notice.text}</Text>}
+      </View> : deleteConfirm ? <View style={styles.exampleCard}><Text style={styles.itemTitle}>确认删除当前空间？</Text><Text style={styles.mutedText}>空间的全部聊天历史、工作区文件、规则、技能和绑定的定时任务、监控将被彻底删除，无法撤销。</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel="确认删除空间" disabled={session.deleting} style={styles.actionButton} onPress={() => void remove()}><Text style={styles.actionText}>确认删除</Text></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="取消删除空间" disabled={session.deleting} onPress={() => setDeleteConfirm(false)}><Text style={styles.mutedText}>取消</Text></Pressable>
+        {notice?.tone === 'error' && <Text accessibilityRole="alert" style={styles.error}>{notice.text}</Text>}
+      </View> : <SpaceSettings spaceId={spaces.currentSpace} onSaved={refresh} />}</>} />}
   </View>;
 }
-function ThreadStatusCaption({ threadId }: { threadId: string }) {
-  const runtime = useThreadRuntime(threadId); const styles = useStyles();
+function SpaceStatusCaption({ spaceId }: { spaceId: string }) {
+  const runtime = useSpaceRuntime(spaceId); const styles = useStyles();
   return <Text numberOfLines={1} style={styles.caption}>{runtime.label}</Text>;
-}
-function ConversationView({ threadId, visible, otherPage, refreshKey, onSettled, openConnection }: { threadId: string; visible: boolean; otherPage: ReactNode; refreshKey: number; onSettled: () => void; openConnection: () => void }) {
-  const api = useApi();
-  const conversation = useConversation(threadId, refreshKey);
-  const sessions = useThreadSessionStore(); const session = useThreadSession(threadId);
-  const runtime = useThreadRuntime(threadId); const connection = useServiceConnection();
-  const styles = useStyles(); const { colors } = useWorkspaceTheme();
-  const scroll = useRef<ScrollView>(null); const nearBottom = useRef(true);
-  const previousRunning = useRef(false); const lastRun = useRef('');
-  const [stopError, setStopError] = useState('');
-  const [inputHeight, setInputHeight] = useState(l.composerHeight - l.composerPadding * 2);
-  useEffect(() => {
-    if (previousRunning.current && !conversation.running) onSettled();
-    previousRunning.current = conversation.running;
-  }, [conversation.running, onSettled]);
-  const recentTerminal = runtime.runs.filter((run) => run.status !== 'running').map((run) => `${run.runId}:${run.revision}`).join('|');
-  useEffect(() => {
-    if (recentTerminal && recentTerminal !== lastRun.current) {
-      lastRun.current = recentTerminal;
-      if (!conversation.running) conversation.reload();
-    }
-  }, [recentTerminal, conversation]);
-  const busy = conversation.running || runtime.running;
-  const canSend = !!connection?.enabled && runtime.synchronized && !busy && !conversation.loading && !conversation.historyFailed && !session.deleted && !session.deleting;
-  const stop = async () => {
-    setStopError('');
-    if (conversation.running) { await conversation.stop(); return; }
-    const run = runtime.runs.find((item) => item.status === 'running' && item.threadId === threadId);
-    if (!run || !runtime.synchronized) return;
-    try {
-      const stopped = await api.stopRun(threadId, run.runId);
-      if (!stopped) { setStopError('该运行已结束或已变化，正在重新同步'); runtime.retry(); }
-    } catch (error) { setStopError(error instanceof Error ? error.message : '停止失败，请重试'); }
-  };
-  const send = () => {
-    if (!canSend || !session.draft.trim()) return;
-    setStopError('');
-    void conversation.send(session.draft, () => sessions.setDraft(threadId, ''), (text) => { if (!sessions.get(threadId).draft) sessions.setDraft(threadId, text); });
-  };
-  return <>
-    <View style={[styles.chatBody, !visible && styles.hidden]}>
-      <ScrollView ref={scroll} style={styles.chatScroll} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.messageList} showsVerticalScrollIndicator={false}
-        onScroll={(event) => { const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent; nearBottom.current = contentSize.height - contentOffset.y - layoutMeasurement.height < l.headerHeight; }}
-        scrollEventThrottle={spacing[16]} onContentSizeChange={() => { if (nearBottom.current) scroll.current?.scrollToEnd({ animated: false }); }}>
-        {conversation.loading && !conversation.views.length ? <Text style={styles.mutedText}>正在读取聊天记录…</Text> : !conversation.views.length && <View style={styles.emptyChat}><Text style={styles.emptyTitle}>开始一段新的对话</Text><Text style={styles.mutedText}>消息会发送到你配置的 Pi Muse 服务器。</Text></View>}
-        {conversation.views.map((message) => <Message key={message.id} message={message} />)}
-        {conversation.running && <Text accessibilityLabel="正在生成回复" style={styles.mutedText}>正在生成回复…</Text>}
-        {!!stopError && <Text accessibilityRole="alert" style={styles.error}>{stopError}</Text>}
-        {!!conversation.error && <Text accessibilityRole="alert" style={styles.error}>{conversation.error}</Text>}
-        {(conversation.historyFailed || connection?.snapshot.status === 'authentication-required') && <Pressable accessibilityRole="button" accessibilityLabel="重新同步会话" style={styles.actionButton} onPress={() => { if (connection?.snapshot.status === 'authentication-required') openConnection(); else { conversation.reload(); connection?.retry(); } }}><Text style={styles.actionText}>重新同步</Text></Pressable>}
-      </ScrollView>
-    </View>
-    {!visible && <View style={styles.chatBody}>{otherPage}</View>}
-    {visible && <View style={styles.composer}>
-      <Pressable accessibilityRole="button" accessibilityLabel="附件尚未接入" style={styles.composerControl} disabled><Plus size={l.iconSize} color={colors.faint} /></Pressable>
-      <TextInput accessibilityLabel="消息输入框" placeholder="消息" placeholderTextColor={colors.faint} value={session.draft} onChangeText={(text) => sessions.setDraft(threadId, text)} editable={!session.deleting && !session.deleted} multiline
-        onContentSizeChange={(event) => setInputHeight(Math.max(l.composerHeight - l.composerPadding * 2, Math.min(l.composerMaxHeight, event.nativeEvent.contentSize.height)))}
-        onKeyPress={Platform.OS === 'web' ? (event) => { const key = event.nativeEvent as typeof event.nativeEvent & { shiftKey?: boolean; isComposing?: boolean; keyCode?: number }; if (key.key === 'Enter' && !key.shiftKey && !key.isComposing && key.keyCode !== 229) { event.preventDefault(); send(); } } : undefined}
-        style={[styles.input, { height: session.draft ? inputHeight : l.composerHeight - l.composerPadding * 2 }, Platform.OS === 'web' && ({ outlineStyle: 'none' } as unknown as TextStyle)]} />
-      <Pressable accessibilityRole="button" accessibilityLabel={busy ? '停止当前运行' : '发送消息'} disabled={busy ? !runtime.synchronized || session.deleting : !canSend || !session.draft.trim()}
-        style={[styles.sendButton, (!canSend && !busy || !busy && !session.draft.trim()) && styles.disabled]} onPress={() => void (busy ? stop() : send())}>
-        {busy ? <Square size={sizing[16]} color={colors.onAccent} fill={colors.onAccent} /> : <ArrowUp size={l.iconSize} color={colors.onAccent} />}
-      </Pressable>
-    </View>}
-  </>;
-}
-function Message({ message }: { message: MessageView }) {
-  const styles = useStyles();
-  return <View style={styles.messageBlock}>
-    {!!message.text && <View style={[styles.message, message.role === 'user' ? styles.userMessage : styles.assistantMessage]}><Text selectable style={[styles.messageText, message.role === 'user' && styles.userMessageText]}>{message.text}</Text></View>}
-    {message.toolCalls.map((tool) => <View style={styles.toolCard} key={tool.id}><Text style={styles.caption}>{tool.name}</Text><Text selectable style={styles.mutedText}>{tool.result ?? '工具执行中…'}</Text></View>)}
-  </View>;
 }
 
 const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: c.canvas }, viewport: { flex: 1, alignSelf: 'center', overflow: 'hidden', backgroundColor: c.canvas }, screen: { flex: 1 },
   foreground: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: c.canvas, overflow: 'hidden' }, foregroundRounded: { borderRadius: r.drawerForeground }, foregroundCover: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: c.overlay },
-  connectionLabel: { alignItems: 'center', paddingTop: l.sampleLabelTop }, chatBody: { flex: 1, minHeight: 0 }, hidden: { display: 'none' }, chatScroll: { flex: 1 },
-  messageList: { paddingTop: l.chatContentTop, paddingHorizontal: l.sidePadding, paddingBottom: spacing[24], gap: l.messageGap }, messageBlock: { gap: l.messageGap },
-  message: { padding: l.messagePadding, borderRadius: r.message }, assistantMessage: { backgroundColor: c.surface, borderTopLeftRadius: l.bubbleTail, alignSelf: 'flex-start', maxWidth: '100%' }, userMessage: { backgroundColor: c.blue, alignSelf: 'flex-end', maxWidth: l.userMessageWidth },
-  messageText: { ...t.message, color: c.ink }, userMessageText: { color: c.onAccent }, toolCard: { backgroundColor: c.surface, padding: spacing[14], borderRadius: r.card, gap: spacing[8] },
+  connectionLabel: { alignItems: 'center', paddingTop: l.sampleLabelTop },
   floatingHeader: { position: 'absolute', top: l.headerTop, left: l.sidePadding, right: l.sidePadding, height: l.headerHeight }, headerLeft: { position: 'absolute', top: 0, left: 0 }, headerRight: { position: 'absolute', top: 0, right: 0 },
   roundButton: { width: l.controlSize, height: l.controlSize, borderRadius: r.round, backgroundColor: c.control, alignItems: 'center', justifyContent: 'center' }, pressed: { opacity: 0.7 },
   identity: { alignSelf: 'center', alignItems: 'center', maxWidth: '56%' }, headerAvatar: { width: l.headerAvatar, height: l.headerAvatar, borderRadius: r.round, backgroundColor: c.avatar, alignItems: 'center', justifyContent: 'center' },
   identityLabel: { paddingHorizontal: spacing[14], paddingVertical: spacing[6], marginTop: -spacing[10], zIndex: -1, borderRadius: r.message, backgroundColor: c.control, alignItems: 'center', maxWidth: '100%' }, identityName: { ...t.name, color: c.ink }, identityStatus: { ...t.status, color: c.muted },
-  composer: { flexDirection: 'row', alignItems: 'center', minHeight: l.composerHeight, padding: l.composerPadding, marginHorizontal: l.sidePadding, marginBottom: l.composerBottom, borderRadius: r.round, backgroundColor: c.surface },
-  composerControl: { width: l.smallControl, height: l.smallControl, alignItems: 'center', justifyContent: 'center' }, input: { flex: 1, minWidth: 0, ...t.input, color: c.ink, paddingHorizontal: spacing[6], paddingVertical: spacing[8], textAlignVertical: 'center', maxHeight: l.composerMaxHeight, backgroundColor: c.surface, borderWidth: 0, overflow: 'hidden' },
-  sendButton: { width: l.smallControl, height: l.smallControl, borderRadius: r.round, alignItems: 'center', justifyContent: 'center', backgroundColor: c.blue }, disabled: { opacity: 0.4 },
   navigation: { flexDirection: 'row', height: l.navigationHeight, marginHorizontal: spacing[26], marginBottom: l.navigationBottom, alignItems: 'center' }, navigationItem: { flex: 1, height: l.controlSize, alignItems: 'center', justifyContent: 'center' },
   drawer: { position: 'absolute', top: 0, bottom: 0, left: 0, paddingHorizontal: l.sidePadding, paddingTop: l.drawerTop, backgroundColor: c.canvas }, drawerHeading: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: l.drawerTop, marginBottom: l.drawerTitleBottom }, drawerTitle: { ...t.drawerTitle, color: c.ink }, drawerSection: { ...t.caption, color: c.faint, marginBottom: spacing[12], marginLeft: spacing[4] }, drawerList: { gap: spacing[6] },
   threadRow: { minHeight: l.drawerRowHeight, flexDirection: 'row', alignItems: 'center', gap: spacing[14], paddingHorizontal: spacing[14], paddingVertical: spacing[8], borderRadius: r.listItem }, threadSelected: { backgroundColor: c.surface }, threadText: { flex: 1, gap: spacing[2] }, drawerFooter: { height: l.drawerFooterHeight, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' },
   otherPage: { paddingTop: l.headerHeight, paddingHorizontal: l.sidePadding, paddingBottom: spacing[24], gap: spacing[16] }, pageTitle: { ...t.heroName, color: c.ink }, itemTitle: { ...t.itemTitle, color: c.ink }, mutedText: { ...t.detail, color: c.muted }, caption: { ...t.caption, color: c.faint }, error: { ...t.caption, color: c.danger },
   exampleCard: { padding: spacing[18], borderRadius: r.card, backgroundColor: c.surface, gap: spacing[8], marginBottom: spacing[16] }, settingsRow: { flexDirection: 'row', alignItems: 'center', gap: spacing[14], padding: spacing[18], borderRadius: r.card, backgroundColor: c.surface },
-  emptyChat: { alignItems: 'center', paddingVertical: spacing[24], gap: spacing[12] }, emptyTitle: { ...t.heroName, color: c.ink, textAlign: 'center' }, notice: { position: 'absolute', left: l.sidePadding, right: l.sidePadding, top: l.headerHeight, ...t.caption, color: c.danger, backgroundColor: c.control, padding: spacing[12], borderRadius: r.listItem },
+  emptyTitle: { ...t.heroName, color: c.ink, textAlign: 'center' }, notice: { position: 'absolute', left: l.sidePadding, right: l.sidePadding, top: l.headerHeight, ...t.caption, color: c.ink, backgroundColor: c.control, padding: spacing[12], borderRadius: r.listItem },
   disconnected: { flex: 1, alignSelf: 'center', width: '100%', maxWidth: l.maxWidth }, disconnectedHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: l.sidePadding }, welcome: { flex: 1, paddingHorizontal: l.sidePadding, gap: spacing[18], alignItems: 'center', justifyContent: 'center' },
   actionButton: { backgroundColor: c.blue, paddingHorizontal: spacing[18], paddingVertical: spacing[12], borderRadius: r.round, alignSelf: 'center' }, actionText: { ...t.status, color: c.onAccent },
 });

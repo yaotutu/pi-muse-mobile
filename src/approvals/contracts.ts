@@ -1,4 +1,5 @@
 import { ApiError } from '../api/errors';
+import { assertSpaceAlias } from '../api/space-contracts';
 import type { ApprovalExecution, ApprovalPage, ApprovalResolution, ApprovalState, ApprovalSummary, ApprovalView } from './types';
 
 const statuses = ['pending', 'approved', 'denied', 'expired', 'cancelled'];
@@ -7,7 +8,11 @@ const invalid = (): never => { throw new ApiError(502, '服务器审批响应格
 const object = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : invalid();
 const text = (value: unknown, nonempty = false): string => typeof value === 'string' && (!nonempty || value.length > 0) ? value : invalid();
 const nullableText = (value: unknown): string | null => value === null ? null : text(value, true);
-const date = (value: unknown): string => typeof value === 'string' && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z$/.test(value) && Number.isFinite(Date.parse(value)) ? value : invalid();
+function date(value: unknown): string {
+  if (typeof value !== 'string' || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z$/.test(value) || !Number.isFinite(Date.parse(value))) return invalid();
+  if (new Date(value).toISOString().slice(0, 19) !== value.slice(0, 19)) return invalid();
+  return value;
+}
 const nullableDate = (value: unknown): string | null => value === null ? null : date(value);
 
 /** 409 的当前审批仍是权威视图；调用方应合并它，而不是重发原决定。 */
@@ -30,12 +35,14 @@ function execution(value: unknown): ApprovalExecution | null {
 
 function state(value: unknown): ApprovalState {
   const entry = object(value);
+  assertSpaceAlias(entry);
+  assertSpaceAlias(entry, 'workspaceSpaceId', 'workspaceThreadId');
   if (!Number.isSafeInteger(entry.revision) || (entry.revision as number) < 1 || !statuses.includes(entry.status as string)) invalid();
   const result: ApprovalState = {
     id: text(entry.id, true), revision: entry.revision as number,
-    threadId: nullableText(entry.threadId), runId: nullableText(entry.runId),
+    spaceId: nullableText(entry.spaceId), runId: nullableText(entry.runId),
     toolCallId: nullableText(entry.toolCallId), subagentId: nullableText(entry.subagentId),
-    workspaceThreadId: nullableText(entry.workspaceThreadId), activityId: nullableText(entry.activityId),
+    workspaceSpaceId: nullableText(entry.workspaceSpaceId), activityId: nullableText(entry.activityId),
     status: entry.status as ApprovalState['status'], execution: execution(entry.execution),
     createdAt: date(entry.createdAt), expiresAt: date(entry.expiresAt),
     resolvedAt: nullableDate(entry.resolvedAt), decidedAt: nullableDate(entry.decidedAt),
@@ -54,14 +61,15 @@ export function parseApprovalSummary(value: unknown): ApprovalSummary {
 export function parseApprovalView(value: unknown): ApprovalView {
   const entry = object(value);
   const preview = object(entry.preview);
-  const ownerThreadId = nullableText(preview.ownerThreadId);
-  if (preview.scope !== 'thread' && preview.scope !== 'shared') invalid();
-  if (preview.scope === 'thread' ? ownerThreadId === null : ownerThreadId !== null) invalid();
+  assertSpaceAlias(preview, 'ownerSpaceId', 'ownerThreadId');
+  const ownerSpaceId = nullableText(preview.ownerSpaceId);
+  if (preview.scope !== 'space' && preview.scope !== 'thread' && preview.scope !== 'shared') invalid();
+  if (preview.scope !== 'shared' ? ownerSpaceId === null : ownerSpaceId !== null) invalid();
   if (typeof preview.beforeExists !== 'boolean') invalid();
   return {
     ...parseApprovalSummary(entry),
     preview: {
-      scope: preview.scope as 'thread' | 'shared', ownerThreadId,
+      scope: preview.scope as 'space' | 'thread' | 'shared', ownerSpaceId,
       path: text(preview.path, true), before: text(preview.before), after: text(preview.after),
       beforeExists: preview.beforeExists as boolean,
     },

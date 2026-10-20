@@ -12,21 +12,19 @@
 import { fetch as expoFetch } from 'expo/fetch';
 import type {
   AgentTask,
-  ApprovalNotification,
   ConversationSnapshot,
-  DeleteThreadResult,
+  DeleteSpaceResult,
   Goal,
   GoalStatus,
   Identity,
   MemoryItem,
   Monitor,
   TaskDetails,
-  ThreadInfo,
-  ThreadInstructions,
-  ThreadSkill,
-  ThreadSkills,
+  SpaceInfo,
+  SpaceInstructions,
+  SpaceSkill,
+  SpaceSkills,
   WorkspaceSnapshot,
-  WorkspaceData,
 } from './types';
 import {
   type ApiClient,
@@ -41,13 +39,16 @@ import {
 } from './contracts';
 import { ApiError, isRequestCancelled, requestCancelled, responseError } from './errors';
 import { parseSseFrames } from './sse';
+import { parseResetSpace, parseSpaces } from './space-contracts';
 import type {
-  AgentStatus,
   AgentStatusResponse,
   RuntimeEvent,
-  RunPhase,
-  SubagentPhase,
 } from '../runtime/types';
+import {
+  parseAgentStatusResponse,
+  parseAgentStatusUpdate,
+  parseRuntimeReady,
+} from '../runtime/contracts';
 import { RuntimeSseParser, RuntimeSseParseError, decodeRuntimeFrame } from '../runtime/sse';
 import type { ApprovalPage, ApprovalQuery, ApprovalView } from '../approvals/types';
 import { ApprovalConflictError, parseApprovalPage, parseApprovalResolution, parseApprovalView, parsePendingApprovals } from '../approvals/contracts';
@@ -70,7 +71,7 @@ export class HttpApiClient implements ApiClient {
   private retired = false;
   private paused = false;
   private pending = new Set<AbortController>();
-  private activeRuns = new Set<{ threadId: string; runId: string; token?: string }>();
+  private activeRuns = new Set<{ spaceId: string; runId: string; token?: string }>();
 
   constructor(
     private readonly baseUrl: string,
@@ -125,7 +126,7 @@ export class HttpApiClient implements ApiClient {
     this.generation++;
     for (const controller of this.pending) controller.abort();
     for (const run of runs) {
-      void this.request('/api/conversation/stop', { method: 'POST', body: { threadId: run.threadId, runId: run.runId }, tokenOverride: { value: run.token } }).catch(() => {});
+      void this.request('/api/conversation/stop', { method: 'POST', body: { spaceId: run.spaceId, runId: run.runId }, tokenOverride: { value: run.token } }).catch(() => {});
     }
   }
 
@@ -195,12 +196,14 @@ export class HttpApiClient implements ApiClient {
     return session;
   }
 
-  async listThreads(signal?: AbortSignal): Promise<ThreadInfo[]> {
-    const data = await this.request<{ threads: ThreadInfo[] }>('/api/threads', { signal });
-    if (!Array.isArray(data?.threads) || data.threads.some((item) => typeof item?.id !== 'string' || typeof item?.updatedAt !== 'string')) {
-      throw new ApiError(502, '服务器没有返回有效会话列表，请确认服务器地址');
-    }
-    return data.threads;
+  async listSpaces(signal?: AbortSignal): Promise<SpaceInfo[]> {
+    return parseSpaces(await this.request('/api/spaces', { signal }));
+  }
+
+  async resetSpace(spaceId: string, options: { clearSchedules?: boolean } = {}, signal?: AbortSignal) {
+    return parseResetSpace(await this.request(`/api/spaces/${encodeURIComponent(spaceId)}/reset`, {
+      method: 'POST', body: { clearSchedules: options.clearSchedules ?? false }, signal,
+    }), spaceId);
   }
 
   /** 只读活动接口；游标绑定筛选，原样编码传输，绝不解析/拼造游标。 */
@@ -208,7 +211,7 @@ export class HttpApiClient implements ApiClient {
     const params = new URLSearchParams();
     if (query.limit !== undefined) params.set('limit', String(query.limit));
     if (query.cursor !== undefined) params.set('cursor', query.cursor);
-    if (query.threadId !== undefined) params.set('threadId', query.threadId);
+    if (query.spaceId !== undefined) params.set('spaceId', query.spaceId);
     if (query.status !== undefined) params.set('status', query.status);
     const suffix = params.toString();
     return parseActivityPage(await this.request(`/api/activities${suffix ? `?${suffix}` : ''}`, { signal }));
@@ -218,63 +221,63 @@ export class HttpApiClient implements ApiClient {
     return parseActivityDetail(await this.request(`/api/activities/${encodeURIComponent(id)}`, { signal }), id);
   }
 
-  async getConversation(threadId: string, signal?: AbortSignal): Promise<ConversationSnapshot> {
-    return this.request<ConversationSnapshot>(`/api/conversation?threadId=${encodeURIComponent(threadId)}`, { signal });
+  async getConversation(spaceId: string, signal?: AbortSignal): Promise<ConversationSnapshot> {
+    return this.request<ConversationSnapshot>(`/api/conversation?spaceId=${encodeURIComponent(spaceId)}`, { signal });
   }
 
-  // --- 会话配置：响应字段必须存在且类型正确，200 但结构错位报 502（与服务端快照校验一致） ---
+  // --- 空间配置：响应字段必须存在且类型正确，200 但结构错位报 502（与服务端快照校验一致） ---
 
-  async getThreadInstructions(threadId: string, signal?: AbortSignal): Promise<ThreadInstructions> {
-    const path = `/api/threads/${encodeURIComponent(threadId)}/instructions`;
-    const data = await this.request<ThreadInstructions>(path, { signal });
+  async getSpaceInstructions(spaceId: string, signal?: AbortSignal): Promise<SpaceInstructions> {
+    const path = `/api/spaces/${encodeURIComponent(spaceId)}/instructions`;
+    const data = await this.request<SpaceInstructions>(path, { signal });
     if (typeof data?.instructions !== 'string') {
-      throw new ApiError(502, '服务器没有返回有效会话指令，请确认服务器版本与地址');
+      throw new ApiError(502, '服务器没有返回有效空间指令，请确认服务器版本与地址');
     }
     return data;
   }
 
-  async saveThreadInstructions(threadId: string, instructions: string, signal?: AbortSignal): Promise<ThreadInstructions> {
-    const path = `/api/threads/${encodeURIComponent(threadId)}/instructions`;
-    const data = await this.request<ThreadInstructions>(path, { method: 'PUT', body: { instructions }, signal });
+  async saveSpaceInstructions(spaceId: string, instructions: string, signal?: AbortSignal): Promise<SpaceInstructions> {
+    const path = `/api/spaces/${encodeURIComponent(spaceId)}/instructions`;
+    const data = await this.request<SpaceInstructions>(path, { method: 'PUT', body: { instructions }, signal });
     if (typeof data?.instructions !== 'string') {
-      throw new ApiError(502, '服务器没有返回有效会话指令，请确认服务器版本与地址');
+      throw new ApiError(502, '服务器没有返回有效空间指令，请确认服务器版本与地址');
     }
     return data;
   }
 
   // diagnostics 可缺省；skills 字段必须为条目数组，每条字段类型严格。
-  async getThreadSkills(threadId: string, signal?: AbortSignal): Promise<ThreadSkills> {
-    const path = `/api/threads/${encodeURIComponent(threadId)}/skills`;
-    const data = await this.request<ThreadSkills>(path, { signal });
-    if (!Array.isArray(data?.skills) || data.skills.some((item) => !this.isValidThreadSkill(item))) {
-      throw new ApiError(502, '服务器没有返回有效会话技能列表，请确认服务器版本与地址');
+  async getSpaceSkills(spaceId: string, signal?: AbortSignal): Promise<SpaceSkills> {
+    const path = `/api/spaces/${encodeURIComponent(spaceId)}/skills`;
+    const data = await this.request<SpaceSkills>(path, { signal });
+    if (!Array.isArray(data?.skills) || data.skills.some((item) => !this.isValidSpaceSkill(item))) {
+      throw new ApiError(502, '服务器没有返回有效空间技能列表，请确认服务器版本与地址');
     }
     if (data.diagnostics !== undefined && (!Array.isArray(data.diagnostics) || data.diagnostics.some((item) => typeof item?.path !== 'string' || typeof item?.message !== 'string'))) {
-      throw new ApiError(502, '服务器没有返回有效会话技能列表，请确认服务器版本与地址');
+      throw new ApiError(502, '服务器没有返回有效空间技能列表，请确认服务器版本与地址');
     }
     return data;
   }
 
-  async saveThreadSkills(
-    threadId: string,
+  async saveSpaceSkills(
+    spaceId: string,
     overrides: Record<string, boolean>,
     signal?: AbortSignal,
-  ): Promise<ThreadSkills> {
-    const path = `/api/threads/${encodeURIComponent(threadId)}/skills`;
-    const data = await this.request<ThreadSkills>(path, { method: 'PUT', body: { overrides }, signal });
-    if (!Array.isArray(data?.skills) || data.skills.some((item) => !this.isValidThreadSkill(item))) {
-      throw new ApiError(502, '服务器没有返回有效会话技能列表，请确认服务器版本与地址');
+  ): Promise<SpaceSkills> {
+    const path = `/api/spaces/${encodeURIComponent(spaceId)}/skills`;
+    const data = await this.request<SpaceSkills>(path, { method: 'PUT', body: { overrides }, signal });
+    if (!Array.isArray(data?.skills) || data.skills.some((item) => !this.isValidSpaceSkill(item))) {
+      throw new ApiError(502, '服务器没有返回有效空间技能列表，请确认服务器版本与地址');
     }
     if (data.diagnostics !== undefined && (!Array.isArray(data.diagnostics) || data.diagnostics.some((item) => typeof item?.path !== 'string' || typeof item?.message !== 'string'))) {
-      throw new ApiError(502, '服务器没有返回有效会话技能列表，请确认服务器版本与地址');
+      throw new ApiError(502, '服务器没有返回有效空间技能列表，请确认服务器版本与地址');
     }
     return data;
   }
 
   // DELETE 必须无 body；服务端 404/409 语义保留，不做自动重试副作用。
-  async deleteThread(threadId: string, signal?: AbortSignal): Promise<DeleteThreadResult> {
-    const path = `/api/threads/${encodeURIComponent(threadId)}`;
-    const data = await this.request<DeleteThreadResult>(path, { method: 'DELETE', signal });
+  async deleteSpace(spaceId: string, signal?: AbortSignal): Promise<DeleteSpaceResult> {
+    const path = `/api/spaces/${encodeURIComponent(spaceId)}`;
+    const data = await this.request<DeleteSpaceResult>(path, { method: 'DELETE', signal });
     const removed = data?.removed;
     if (
       data?.ok !== true ||
@@ -282,14 +285,14 @@ export class HttpApiClient implements ApiClient {
       !Number.isSafeInteger(removed.jobs) || removed.jobs < 0 ||
       !Number.isSafeInteger(removed.monitors) || removed.monitors < 0
     ) {
-      throw new ApiError(502, '服务器没有返回有效会话删除结果，请确认服务器版本与地址');
+      throw new ApiError(502, '服务器没有返回有效空间删除结果，请确认服务器版本与地址');
     }
     return data;
   }
 
-  private isValidThreadSkill(item: unknown): item is ThreadSkill {
+  private isValidSpaceSkill(item: unknown): item is SpaceSkill {
     if (!item || typeof item !== 'object') return false;
-    const skill = item as ThreadSkill;
+    const skill = item as SpaceSkill;
     return typeof skill.name === 'string'
       && typeof skill.description === 'string'
       && typeof skill.defaultEnabled === 'boolean'
@@ -304,7 +307,7 @@ export class HttpApiClient implements ApiClient {
     if (this.retired || this.paused) throw requestCancelled();
     const token = this.getToken();
     const control = this.control(this.options.headerTimeoutMs ?? this.options.timeoutMs ?? 15_000, signal);
-    const run = { threadId: input.threadId, runId: input.runId, token };
+    const run = { spaceId: input.spaceId, runId: input.runId, token };
     this.activeRuns.add(run);
     let callbackFailed = false;
     try {
@@ -320,7 +323,7 @@ export class HttpApiClient implements ApiClient {
         throw new ApiError(401, '当前凭证未被服务器接受，请重新认证');
       }
       if (!response.ok) {
-        // 删除中的会话与普通版本冲突必须保留区别，不能引导重试旧 ID。
+        // 删除中的空间与普通版本冲突必须保留区别，不能引导重试旧 ID。
         const payload = await response.json().catch(() => undefined);
         control.assertActive();
         const fallback = response.status === 409 ? '会话状态已更新或仍在运行，请重新加载后重试' : undefined;
@@ -361,42 +364,33 @@ export class HttpApiClient implements ApiClient {
     }
   }
 
-  async stopRun(threadId: string, runId: string): Promise<boolean> {
+  async stopRun(spaceId: string, runId: string): Promise<boolean> {
     const data = await this.request<{ stopped: boolean }>(
       '/api/conversation/stop',
-      { method: 'POST', body: { threadId, runId } },
+      { method: 'POST', body: { spaceId, runId } },
     );
     return data.stopped;
   }
 
   async getSnapshot(signal?: AbortSignal): Promise<WorkspaceSnapshot> {
-    // 工作区快照不包含审批正文；两端点属于同一轮刷新，任一失败都不提交半份新状态。
-    const [workspace, pending] = await Promise.all([
-      this.request<WorkspaceData>('/api/agent', { signal }),
-      this.request<{ actions: ApprovalNotification[] }>('/api/actions/pending', { signal }),
-    ]);
-    if (!workspace || !['tasks', 'goals', 'monitors', 'memories'].every((key) => Array.isArray(workspace[key as keyof WorkspaceData])) || typeof workspace.identity?.name !== 'string' || typeof workspace.identity?.tone !== 'string' || typeof workspace.worker?.running !== 'boolean' || !Array.isArray(pending?.actions)) {
+    // 审批由 GET /api/events 与 /api/approvals/* 独立同步，不再请求已下线的 /api/actions/pending。
+    const workspace = await this.request<WorkspaceSnapshot>('/api/agent', { signal });
+    if (
+      !workspace ||
+      !['tasks', 'goals', 'monitors', 'memories'].every((key) => Array.isArray(workspace[key as keyof WorkspaceSnapshot])) ||
+      typeof workspace.identity?.name !== 'string' ||
+      typeof workspace.identity?.tone !== 'string'
+    ) {
       throw new ApiError(502, '服务器工作区响应格式不正确，请确认服务器版本与地址');
     }
-    return { ...workspace, notifications: pending.actions };
-  }
-
-  async createTask(prompt: string, title?: string, originThreadId?: string): Promise<AgentTask> {
-    // title/originThreadId 仅在显式传值时落入 body：传 'local-main' 也算值，服务端据此回填会话来源。
-    const body: { prompt: string; title?: string; originThreadId?: string } = { prompt };
-    if (title !== undefined) body.title = title;
-    if (originThreadId !== undefined) body.originThreadId = originThreadId;
-    return this.request<AgentTask>('/api/agent/tasks', {
-      method: 'POST',
-      body,
-    });
+    return workspace;
   }
 
   async getTask(id: string): Promise<TaskDetails> {
     return this.request<TaskDetails>(`/api/agent/tasks/${encodeURIComponent(id)}`);
   }
 
-  async controlTask(id: string, action: TaskAction, target: TaskControlTarget): Promise<AgentTask> {
+  async controlTask(id: string, action: TaskAction, target: TaskControlTarget = 'job'): Promise<AgentTask> {
     return this.request<AgentTask>(`/api/agent/tasks/${encodeURIComponent(id)}/control`, {
       method: 'POST',
       body: { action, target },
@@ -412,7 +406,7 @@ export class HttpApiClient implements ApiClient {
 
   async listApprovals(query: ApprovalQuery = {}, signal?: AbortSignal): Promise<ApprovalPage> {
     const params = new URLSearchParams();
-    for (const key of ['limit', 'cursor', 'status', 'threadId', 'activityId'] as const) {
+    for (const key of ['limit', 'cursor', 'status', 'spaceId', 'activityId'] as const) {
       const value = query[key];
       if (value !== undefined) params.set(key, String(value));
     }
@@ -516,12 +510,12 @@ export class HttpApiClient implements ApiClient {
 
   // --- 运行状态（GET /api/agent/status + GET /api/events） ---
 
-  async getAgentStatus(threadId: string, runId: string, signal?: AbortSignal): Promise<AgentStatusResponse> {
-    // 单点查询：threadId 与 runId 都必填，服务端 400 透传，404 表示运行不存在或已被清理。
-    const path = `/api/agent/status?threadId=${encodeURIComponent(threadId)}&runId=${encodeURIComponent(runId)}`;
+  async getAgentStatus(spaceId: string, runId: string, signal?: AbortSignal): Promise<AgentStatusResponse> {
+    // 单点查询：spaceId 与 runId 都必填，服务端 400 透传，404 表示运行不存在或已被清理。
+    const path = `/api/agent/status?spaceId=${encodeURIComponent(spaceId)}&runId=${encodeURIComponent(runId)}`;
     const raw = await this.request<unknown>(path, { signal });
     const response = parseAgentStatusResponse(raw);
-    if (response.status.threadId !== threadId || response.status.runId !== runId) throw new ApiError(502, '服务器返回的运行状态归属不正确');
+    if (response.status.spaceId !== spaceId || response.status.runId !== runId) throw new ApiError(502, '服务器返回的运行状态归属不正确');
     return response;
   }
 
@@ -647,152 +641,4 @@ export class HttpApiClient implements ApiClient {
       reader.releaseLock();
     }
   }
-}
-
-// ---------------------------------------------------------------------------
-// 运行状态结构校验：字段类型或枚举错位一律抛 502；坏协议不静默漏状态，也不替上层臆造字段。
-// ---------------------------------------------------------------------------
-
-const RUN_STATUSES = new Set(['running', 'succeeded', 'failed', 'cancelled']);
-const RUN_PHASES = new Set([
-  'preparing',
-  'waiting_model',
-  'responding',
-  'executing_tool',
-  'waiting_subagents',
-  'waiting_approval',
-  'finalizing',
-]);
-const SUBAGENT_PHASES = new Set([
-  'preparing',
-  'waiting_model',
-  'responding',
-  'executing_tool',
-  'waiting_approval',
-  'finalizing',
-]);
-const TOOL_STATUSES = new Set(['running', 'waiting_approval']);
-const SUBAGENT_STATUSES = new Set(['queued', 'running', 'succeeded', 'failed', 'cancelled']);
-const RUN_SOURCES = new Set(['chat', 'job']);
-
-function ensureString(value: unknown, field: string): string {
-  if (typeof value !== 'string' || value.length === 0) throw new ApiError(502, `运行状态字段 ${field} 不是字符串`);
-  return value;
-}
-
-function ensureText(value: unknown, field: string): string {
-  if (typeof value !== 'string') throw new ApiError(502, `运行状态字段 ${field} 不是文本`);
-  return value;
-}
-
-function ensureOptionalString(value: unknown, field: string): string | null {
-  if (value === null) return null;
-  if (typeof value !== 'string' || value.length === 0) throw new ApiError(502, `运行状态字段 ${field} 不是字符串或 null`);
-  return value;
-}
-
-function ensureRevision(value: unknown, field: string): number {
-  if (!Number.isSafeInteger(value) || (value as number) < 1) throw new ApiError(502, `运行状态字段 ${field} 不是正安全整数`);
-  return value as number;
-}
-
-function ensureEnum<T extends string>(value: unknown, allowed: Set<string>, field: string): T {
-  if (typeof value !== 'string' || !allowed.has(value)) throw new ApiError(502, `运行状态字段 ${field} 不是允许的枚举值`);
-  return value as T;
-}
-
-function ensurePhase<T extends RunPhase | SubagentPhase>(value: unknown, allowed: Set<string>, field: string): T {
-  if (value === null) return null as T;
-  if (typeof value !== 'string' || !allowed.has(value)) throw new ApiError(502, `运行状态字段 ${field} 不是允许的阶段值或 null`);
-  return value as T;
-}
-
-function ensureStringArray(value: unknown, field: string): string[] {
-  if (!Array.isArray(value)) throw new ApiError(502, `运行状态字段 ${field} 不是字符串数组`);
-  for (const entry of value) if (typeof entry !== 'string' || entry.length === 0) throw new ApiError(502, `运行状态字段 ${field} 包含非字符串元素`);
-  return value as string[];
-}
-
-function ensureToolState(value: unknown): AgentStatus['tools'][number] {
-  if (!value || typeof value !== 'object') throw new ApiError(502, '运行状态 tools 项不是对象');
-  const entry = value as Record<string, unknown>;
-  return {
-    toolCallId: ensureString(entry.toolCallId, 'tools[].toolCallId'),
-    name: entry.name === null ? null : ensureString(entry.name, 'tools[].name'),
-    label: ensureText(entry.label, 'tools[].label'),
-    status: ensureEnum<AgentStatus['tools'][number]['status']>(entry.status, TOOL_STATUSES, 'tools[].status'),
-    subagentId: entry.subagentId === null ? null : ensureString(entry.subagentId, 'tools[].subagentId'),
-  };
-}
-
-function ensureSubagentState(value: unknown): AgentStatus['subagents'][number] {
-  if (!value || typeof value !== 'object') throw new ApiError(502, '运行状态 subagents 项不是对象');
-  const entry = value as Record<string, unknown>;
-  return {
-    id: ensureString(entry.id, 'subagents[].id'),
-    role: ensureString(entry.role, 'subagents[].role'),
-    status: ensureEnum<AgentStatus['subagents'][number]['status']>(entry.status, SUBAGENT_STATUSES, 'subagents[].status'),
-    phase: ensurePhase<SubagentPhase>(entry.phase, SUBAGENT_PHASES, 'subagents[].phase'),
-    label: ensureText(entry.label, 'subagents[].label'),
-    startedAt: ensureOptionalString(entry.startedAt, 'subagents[].startedAt'),
-    updatedAt: ensureString(entry.updatedAt, 'subagents[].updatedAt'),
-    endedAt: ensureOptionalString(entry.endedAt, 'subagents[].endedAt'),
-  };
-}
-
-function ensureAgentStatus(value: unknown): AgentStatus {
-  if (!value || typeof value !== 'object') throw new ApiError(502, '运行状态 status 不是对象');
-  const entry = value as Record<string, unknown>;
-  if (!Array.isArray(entry.tools) || entry.tools.length > 64) throw new ApiError(502, '运行状态 tools 不是长度 ≤64 的数组');
-  if (!Array.isArray(entry.subagents) || entry.subagents.length > 64) throw new ApiError(502, '运行状态 subagents 不是长度 ≤64 的数组');
-  return {
-    activityId: entry.activityId === null ? null : ensureString(entry.activityId, 'status.activityId'),
-    threadId: ensureString(entry.threadId, 'status.threadId'),
-    runId: ensureString(entry.runId, 'status.runId'),
-    revision: ensureRevision(entry.revision, 'status.revision'),
-    source: ensureEnum<AgentStatus['source']>(entry.source, RUN_SOURCES, 'status.source'),
-    jobId: entry.jobId === null ? null : ensureString(entry.jobId, 'status.jobId'),
-    title: ensureText(entry.title, 'status.title'),
-    status: ensureEnum<AgentStatus['status']>(entry.status, RUN_STATUSES, 'status.status'),
-    phase: ensurePhase<RunPhase>(entry.phase, RUN_PHASES, 'status.phase'),
-    label: ensureText(entry.label, 'status.label'),
-    tools: entry.tools.map(ensureToolState),
-    subagents: entry.subagents.map(ensureSubagentState),
-    pendingApprovalIds: ensureStringArray(entry.pendingApprovalIds, 'status.pendingApprovalIds'),
-    startedAt: ensureString(entry.startedAt, 'status.startedAt'),
-    updatedAt: ensureString(entry.updatedAt, 'status.updatedAt'),
-    endedAt: ensureOptionalString(entry.endedAt, 'status.endedAt'),
-  };
-}
-
-function parseAgentStatusResponse(value: unknown): AgentStatusResponse {
-  if (!value || typeof value !== 'object') throw new ApiError(502, '运行状态响应不是对象');
-  const entry = value as Record<string, unknown>;
-  const instanceId = ensureString(entry.instanceId, 'instanceId');
-  return { instanceId, status: ensureAgentStatus(entry.status) };
-}
-
-function parseRuntimeReady(value: unknown): Extract<RuntimeEvent, { event: 'ready' }>['data'] {
-  if (!value || typeof value !== 'object') throw new ApiError(502, 'ready 事件 data 不是对象');
-  const entry = value as Record<string, unknown>;
-  const instanceId = ensureString(entry.instanceId, 'ready.data.instanceId');
-  const serverTime = ensureString(entry.serverTime, 'ready.data.serverTime');
-  if (!Array.isArray(entry.agentStatuses)) throw new ApiError(502, 'ready.data.agentStatuses 不是数组');
-  return {
-    instanceId,
-    serverTime,
-    agentStatuses: entry.agentStatuses.map(ensureAgentStatus),
-    pendingApprovals: parsePendingApprovals({ approvals: entry.pendingApprovals }),
-  };
-}
-
-function parseAgentStatusUpdate(value: unknown, expectedInstanceId: string): AgentStatus & { instanceId: string } {
-  if (!value || typeof value !== 'object') throw new ApiError(502, 'agent_status_updated data 不是对象');
-  const entry = value as Record<string, unknown>;
-  const instanceId = ensureString(entry.instanceId, 'agent_status_updated.data.instanceId');
-  if (instanceId !== expectedInstanceId) {
-    throw new ApiError(502, 'agent_status_updated 与 ready 的 instanceId 不一致，按服务端约定视为非法帧');
-  }
-  const status = ensureAgentStatus(entry);
-  return { ...status, instanceId };
 }

@@ -11,8 +11,18 @@
 // 会话与历史
 // ---------------------------------------------------------------------------
 
-/** GET /api/threads 条目（注：服务端暂无标题/重命名，见 docs/notes.md） */
-export type ThreadInfo = { id: string; updatedAt: string };
+/** 空间持有配置与文件；sessionId 是当前聊天绑定，重置时改变，不能作为空间 ID 发请求。 */
+export type SpaceInfo = { id: string; sessionId: string; updatedAt: string };
+/** 未持久化的本地空间草稿不伪造服务端 sessionId。 */
+export type SpaceEntry = Omit<SpaceInfo, 'sessionId'> & { sessionId: string | null };
+
+export type ResetSpaceResult = {
+  ok: true;
+  spaceId: string;
+  sessionId: string;
+  cancelledApprovals: number;
+  removed: { jobs: number; monitors: number };
+};
 
 export type ChatRole = 'user' | 'assistant' | 'tool';
 
@@ -46,8 +56,8 @@ export type ConversationSnapshot = { revision: string; messages: ConversationMes
 export type AgUiEvent = {
   type: string;
   /** RUN_STARTED / RUN_FINISHED */
-  threadId?: string;
-  /** 本轮运行 ID；停止请求以 threadId 与 runId 双重匹配 */
+  spaceId?: string;
+  /** 本轮运行 ID；停止请求以 spaceId 与 runId 双重匹配 */
   runId?: string;
   /** TEXT_MESSAGE_START */
   role?: string;
@@ -70,7 +80,7 @@ export type AgUiEvent = {
 // 工作区快照（GET /api/agent）
 // ---------------------------------------------------------------------------
 
-export type TaskKind = 'job' | 'task';
+export type TaskKind = 'job';
 export type TaskStatus =
   | 'queued'
   | 'running'
@@ -142,29 +152,29 @@ export type Monitor = {
   lastCheckedAt?: string;
   checks: number;
   error?: string;
-  /** 服务端回填来源会话 ID；未跨会话导出时缺省 */
-  originThreadId?: string;
+  /** 服务端回填来源空间 ID；未提供来源时缺省 */
+  originSpaceId?: string;
 };
 
-/** 会话自定义指令（SOUL/GUIDELINES 等场景），空串视为"已设置但不写内容" */
-export type ThreadInstructions = { instructions: string };
+/** 空间专属规则；重置聊天会话时保留，空串表示清空规则内容。 */
+export type SpaceInstructions = { instructions: string };
 
-/** 单条线程级技能；name 为后端注册键，defaultEnabled 来自服务端列表，enabled 为当前覆盖值 */
-export type ThreadSkill = {
+/** 单条空间级技能；name 为后端注册键，defaultEnabled 来自服务端列表，enabled 为当前生效值。 */
+export type SpaceSkill = {
   name: string;
   description: string;
   defaultEnabled: boolean;
   enabled: boolean;
 };
 
-/** GET /api/threads/:id/skills 返回结果：技能列表 + 服务端可选诊断（如本地 YAML 读取失败等） */
-export type ThreadSkills = {
-  skills: ThreadSkill[];
+/** GET /api/spaces/:id/skills 返回结果：技能列表 + 服务端可选诊断（如本地 YAML 读取失败等） */
+export type SpaceSkills = {
+  skills: SpaceSkill[];
   diagnostics?: { path: string; message: string }[];
 };
 
-/** 删除会话仅清点级联移除的定时任务与监控。 */
-export type DeleteThreadResult = {
+/** 删除空间的响应仅清点级联移除的定时任务与监控，不代表只删除这两类数据。 */
+export type DeleteSpaceResult = {
   ok: true;
   removed: { jobs: number; monitors: number };
 };
@@ -175,21 +185,6 @@ export type MemoryItem = {
   source: string;
   createdAt: string;
   updatedAt: string;
-};
-
-export type ApprovalStatus = 'pending' | 'approved' | 'denied' | 'expired' | 'cancelled';
-export type ApprovalNotification = {
-  id: string;
-  kind: 'file_write' | 'file_edit';
-  title: string;
-  /** 键名服务端文档未定义（docs/notes.md 待澄清），渲染时通用遍历 */
-  payload: Record<string, string>;
-  status: ApprovalStatus;
-  createdAt: string;
-  decidedAt?: string;
-  expiresAt?: string;
-  threadId?: string;
-  runId?: string;
 };
 
 export type Identity = {
@@ -204,11 +199,5 @@ export type WorkspaceSnapshot = {
   goals: Goal[];
   monitors: Monitor[];
   memories: MemoryItem[];
-  /** 客户端合成视图：由独立审批数据与工作区快照合并，服务端 /api/agent 不返回。 */
-  notifications: ApprovalNotification[];
   identity: Identity;
-  worker: { running: boolean };
 };
-
-/** GET /api/agent 的原始网络响应；通知由客户端从独立审批接口合成。 */
-export type WorkspaceData = Omit<WorkspaceSnapshot, 'notifications'>;

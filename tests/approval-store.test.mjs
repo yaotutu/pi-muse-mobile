@@ -112,14 +112,14 @@ test('历史分页原样使用 nextCursor，去重且保持服务端页序', asy
     return query.cursor ? { approvals: [approvalSummary(settledApproval({ id: 'b' })), approvalSummary(settledApproval({ id: 'c' }))], hasMore: false, nextCursor: null }
       : { approvals: [approvalSummary(settledApproval({ id: 'a' })), approvalSummary(settledApproval({ id: 'b' }))], hasMore: true, nextCursor: 'opaque=+/cursor' };
   } });
-  store.receive(ready()); await store.loadHistory({ threadId: 'thread-a', status: 'approved' }); await store.loadHistory({ threadId: 'thread-a', status: 'approved' }, true);
+  store.receive(ready()); await store.loadHistory({ spaceId: 'thread-a', status: 'approved' }); await store.loadHistory({ spaceId: 'thread-a', status: 'approved' }, true);
   assert.equal(queries[1].cursor, 'opaque=+/cursor'); assert.deepEqual(store.getSnapshot().history.ids, ['a', 'b', 'c']);
 });
 test('改变历史过滤会重置游标并忽略旧响应，不把其他会话混入当前范围', async () => {
   const old = deferred(); const queries = [];
-  const { store } = setup({ listApprovals: async (query) => { queries.push(query); return query.threadId === 'a' ? old.promise : { approvals: [approvalSummary(settledApproval({ id: 'b-item', threadId: 'b' }))], hasMore: false, nextCursor: null }; } });
-  const first = store.loadHistory({ threadId: 'a' }); await store.loadHistory({ threadId: 'b' });
-  old.resolve({ approvals: [approvalSummary(settledApproval({ id: 'a-item', threadId: 'a' }))], hasMore: false, nextCursor: null }); await first;
+  const { store } = setup({ listApprovals: async (query) => { queries.push(query); return query.spaceId === 'a' ? old.promise : { approvals: [approvalSummary(settledApproval({ id: 'b-item', spaceId: 'b' }))], hasMore: false, nextCursor: null }; } });
+  const first = store.loadHistory({ spaceId: 'a' }); await store.loadHistory({ spaceId: 'b' });
+  old.resolve({ approvals: [approvalSummary(settledApproval({ id: 'a-item', spaceId: 'a' }))], hasMore: false, nextCursor: null }); await first;
   assert.deepEqual(store.getSnapshot().history.ids, ['b-item']); assert.equal(queries[1].cursor, undefined);
 });
 test('历史失败保留同范围已读结果，状态变化只提示刷新，不重置分页或盲轮询', async () => {

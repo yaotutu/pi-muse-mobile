@@ -56,7 +56,7 @@ export type SubagentState = {
 
 export type AgentStatus = {
   activityId: string | null;
-  threadId: string;
+  spaceId: string;
   runId: string;
   revision: number;
   source: RunSource;

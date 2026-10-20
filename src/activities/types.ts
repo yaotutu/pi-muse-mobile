@@ -3,7 +3,7 @@ export const activityStatuses = ['running', 'waiting_approval', 'waiting_user', 
 export type ActivityStatus = typeof activityStatuses[number];
 export type ActivityOverview = {
   id: string;
-  threadId: string;
+  spaceId: string;
   title: string;
   goal: string;
   deliverable: string;
@@ -32,7 +32,7 @@ export type ActivityStep = {
   result: string | null;
 };
 export type ActivityDetail = { activity: ActivityOverview; steps: ActivityStep[] };
-export type ActivityFilter = { threadId?: string; status?: ActivityStatus };
+export type ActivityFilter = { spaceId?: string; status?: ActivityStatus };
 export type ActivityQuery = ActivityFilter & { limit?: number; cursor?: string };
 export type ActivityPage = { activities: ActivityOverview[]; hasMore: boolean; nextCursor: string | null };
 export interface ActivityClient {

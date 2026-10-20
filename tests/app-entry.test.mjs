@@ -27,13 +27,18 @@ test('冷启动只有新版工作区，更新与安全区仍由根级持有', ()
 test('旧工作区、旧演示与旁路预览源码已移除，不保留可回退的界面', () => {
   for (const path of [
     'src/app/AppShell.tsx',
-    'src/threads/ThreadsSheet.tsx',
-    'src/threads/ThreadSettingsSheet.tsx',
+    'src/threads',
     'src/chat/ChatScreen.tsx',
     'src/connection/ConnectionScreen.tsx',
     'src/connection/ServerSettingsScreen.tsx',
     'src/demo',
     'src/preview',
+    'src/workspace/sample-state.ts',
+    'src/workspace/useWorkspaceSnapshot.ts',
+    'src/approvals/decisions.ts',
+    'src/shared/format.ts',
+    'src/activity',
+    'tests/helpers/demo-api-client.ts',
   ]) {
     assert.equal(existsSync(new URL(path, root)), false, path);
   }
@@ -45,7 +50,7 @@ test('新版侧栏职责不变，真实连接与更新从应用页进入', () =>
   assert.match(source, /accessibilityLabel="应用更新"\s+onPress=\{update.open\}/);
   assert.match(source, /accessibilityLabel="服务器连接"\s+onPress=\{openConnection\}/);
   assert.match(source, /<RuntimeProvider>/);
-  assert.match(source, /<ThreadSessionProvider>/);
+  assert.match(source, /<SpaceProvider>/);
   assert.match(source, /<ApiProvider client=\{connection.client\}/);
   assert.doesNotMatch(source, /getSnapshot\(|useWorkspaceSnapshot/);
 });
@@ -53,16 +58,10 @@ test('新版侧栏职责不变，真实连接与更新从应用页进入', () =>
 test('会话面板当前执行与未接模块边界明确，不消费示例数组', () => {
   const source = read('src/workspace/SessionPanel.tsx');
   assert.doesNotMatch(source, /sample-state|SampleThread|SampleActivity|thread\.approvals|thread\.files|thread\.history/);
-  assert.match(source, /<CurrentExecution threadId=\{threadId\}/);
-  assert.match(source, /<ApprovalPanel key=\{threadId\} threadId=\{threadId\}/);
+  assert.match(source, /<CurrentExecution spaceId=\{spaceId\}/);
+  assert.match(source, /<ApprovalPanel key=\{spaceId\} spaceId=\{spaceId\}/);
   assert.doesNotMatch(source, /审批尚未接入/);
   assert.match(source, /工作区文件尚未接入/);
-});
-
-test('旧演示客户端只作为测试辅助源码，不成为运行入口', () => {
-  assert.equal(existsSync(new URL('tests/helpers/demo-api-client.ts', root)), true);
-  assert.equal(existsSync(new URL('src/demo/DemoApiClient.ts', root)), false);
-  assert.match(read('tests/demo-api.test.mjs'), /\.\/helpers\/demo-api-client\.ts/);
 });
 
 test('审批页面只渲染固定全文，决定需完整预览与新同步边界，不执行正文中的标记', () => {

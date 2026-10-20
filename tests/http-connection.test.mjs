@@ -4,7 +4,7 @@ import test from 'node:test';
 import { HttpApiClient } from '../src/api/http-client.ts';
 
 const json = (value, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } });
-const input = { threadId: 'thread-a', runId: 'run-a', expectedRevision: 'v1', message: { id: 'user-a', content: 'hello' } };
+const input = { spaceId: 'thread-a', runId: 'run-a', expectedRevision: 'v1', message: { id: 'user-a', content: 'hello' } };
 const deferred = () => { let resolve; const promise = new Promise((done) => { resolve = done; }); return { promise, resolve }; };
 async function withFetch(fetcher, action) {
   const original = globalThis.fetch;
@@ -119,7 +119,7 @@ test('外部取消的只读请求不会报告离线', async () => {
   const controller = new AbortController(); const events = [];
   await withFetch((url, init) => new Promise((resolve, reject) => init.signal.addEventListener('abort', () => reject(abortError()), { once: true })), async () => {
     const api = new HttpApiClient('https://server-a', () => 'token-a', () => {}, { onTransportState: (e) => events.push(e) });
-    const pending = api.listThreads(controller.signal); controller.abort();
+    const pending = api.listSpaces(controller.signal); controller.abort();
     await assert.rejects(pending, (e) => e.name === 'AbortError');
     assert.deepEqual(events, []);
   });
@@ -168,5 +168,5 @@ test('错误服务/畸形会话和会话列表不能被当成连接成功', asyn
     await withFetch(async () => json(payload), async () => assert.rejects(api.createSession(), (e) => e.status === 502));
   }
   await withFetch(async () => new Response('<html>not Pi Muse</html>'), async () => assert.rejects(api.createSession(), (e) => e.status === 502));
-  await withFetch(async () => json({ threads: [{ id: 'a' }] }), async () => assert.rejects(api.listThreads(), (e) => e.status === 502));
+  await withFetch(async () => json({ spaces: [{ id: 'a' }] }), async () => assert.rejects(api.listSpaces(), (e) => e.status === 502));
 });

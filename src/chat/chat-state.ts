@@ -73,9 +73,15 @@ export class StreamAggregator {
   private current?: MessageView;
   /** TOOL_CALL_ARGS 的增量缓冲：END 时一次性写到调用上 */
   private readonly args = new Map<string, string>();
+  private fallbackSeq = 0;
 
   constructor(existing: MessageView[]) {
     this.messages = [...existing];
+  }
+
+  private nextFallbackId(): string {
+    this.fallbackSeq += 1;
+    return `assistant-${Date.now()}-${this.fallbackSeq}`;
   }
 
   /**
@@ -93,7 +99,7 @@ export class StreamAggregator {
       case 'TEXT_MESSAGE_START': {
         // 服务端可能先发同一 assistant 的工具，再开始文本；复用宿主以保留工具卡。
         this.current = (event.messageId == null ? undefined : this.findMessage(event.messageId)) ?? {
-          id: event.messageId ?? `assistant-${Date.now()}`,
+          id: event.messageId ?? this.nextFallbackId(),
           role: 'assistant',
           text: '',
           toolCalls: [],
@@ -117,7 +123,7 @@ export class StreamAggregator {
         // parentMessageId 可以不是当前文本段；纯工具轮还可能尚未创建宿主。
         // 显式父 ID 找不到时新建对应消息，绝不将工具挂到无关的 current 上。
         const target = this.findMessage(event.parentMessageId) ?? {
-          id: event.parentMessageId ?? `assistant-${Date.now()}`,
+          id: event.parentMessageId ?? this.nextFallbackId(),
           role: 'assistant',
           text: '',
           toolCalls: [],

@@ -20,7 +20,7 @@ test('活动响应严格挑选公开字段，不透传意外载荷或伪造结�
 });
 test('活动所有正式状态可解析，中断时间可空；未知状态、坏日期、缺字段不能伪装空列表', () => {
   for (const status of activityStatuses) assert.equal(parseActivityOverview(activityFixture({ status })).status, status);
-  for (const overrides of [{ status: 'success' }, { runIds: ['run-a', 'run-a'] }, { currentRunId: 'other' }, { createdAt: '2026-02-30T01:00:00Z' }, { updatedAt: '2026-10-20T01:00:00+08:00' }, { threadId: '../x' }, { runIds: [1] }]) {
+  for (const overrides of [{ status: 'success' }, { runIds: ['run-a', 'run-a'] }, { currentRunId: 'other' }, { createdAt: '2026-02-30T01:00:00Z' }, { updatedAt: '2026-10-20T01:00:00+08:00' }, { spaceId: '../x' }, { runIds: [1] }]) {
     assert.throws(() => parseActivityOverview(activityFixture(overrides)), (e) => e.status === 502);
   }
   for (const value of [{}, { activities: [], hasMore: false }, activityPage([activityFixture(), activityFixture()]), { ...activityPage(), hasMore: true }, activityPage([], 'cursor')]) assert.throws(() => parseActivityPage(value), (e) => e.status === 502);
@@ -40,10 +40,10 @@ test('步骤保留执行顺序与所有终态；相同步骤 ID 可跨运行，�
 test('活动列表序列化只读声明参数，游标原样编码，复用 Bearer/禁止重定向', async () => {
   await withFetch(async (url, init) => {
     const u = new URL(url); assert.equal(u.pathname, '/api/activities');
-    assert.deepEqual(Object.fromEntries(u.searchParams), { limit: '1', cursor: 'a+b/中文==', threadId: 'thread-a', status: 'completed' });
+    assert.deepEqual(Object.fromEntries(u.searchParams), { limit: '1', cursor: 'a+b/中文==', spaceId: 'thread-a', status: 'completed' });
     assert.equal(init.method, 'GET'); assert.equal(init.headers.authorization, 'Bearer test-token'); assert.equal(init.redirect, 'error'); assert.equal(init.body, undefined);
     return json(activityPage([]));
-  }, (api) => api.listActivities({ limit: 1, cursor: 'a+b/中文==', threadId: 'thread-a', status: 'completed', extra: 'never sent' }));
+  }, (api) => api.listActivities({ limit: 1, cursor: 'a+b/中文==', spaceId: 'thread-a', status: 'completed', extra: 'never sent' }));
 });
 test('活动详情编码 ID 并检查响应归属，HTTP 错误保留且不重试', async () => {
   await withFetch(async (url) => { assert.equal(url, 'https://activities.example/api/activities/a%2F%E4%B8%80'); return json(detailFixture(activityFixture({ id: 'a/一' }))); }, async (api) => assert.equal((await api.getActivity('a/一')).activity.id, 'a/一'));

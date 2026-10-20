@@ -40,7 +40,7 @@ function makeStream() {
 
 const agentStatus = (overrides = {}) => ({
   activityId: null,
-  threadId: 'thread-a',
+  spaceId: 'thread-a',
   runId: 'run-a',
   revision: 1,
   source: 'chat',
@@ -64,18 +64,18 @@ const frame = (event, payload, newline = '\n') => `event: ${event}\ndata: ${JSON
 // getAgentStatus
 // ---------------------------------------------------------------------------
 
-test('getAgentStatus 编码 threadId/runId 并解析响应结构', async () => {
+test('getAgentStatus 编码 spaceId/runId 并解析响应结构', async () => {
   let observed;
   await withFetch(async (url, init) => {
     observed = { url, headers: init.headers };
-    return json({ instanceId: 'inst-1', status: agentStatus({ threadId: 'thread/一', runId: 'run/一' }) });
+    return json({ instanceId: 'inst-1', status: agentStatus({ spaceId: 'thread/一', runId: 'run/一' }) });
   }, async () => {
     const api = new HttpApiClient(BASE, () => 'token-1', () => {});
     const result = await api.getAgentStatus('thread/一', 'run/一');
-    assert.equal(observed.url, `${BASE}/api/agent/status?threadId=thread%2F%E4%B8%80&runId=run%2F%E4%B8%80`);
+    assert.equal(observed.url, `${BASE}/api/agent/status?spaceId=thread%2F%E4%B8%80&runId=run%2F%E4%B8%80`);
     assert.equal(observed.headers.authorization, 'Bearer token-1');
     assert.equal(result.instanceId, 'inst-1');
-    assert.equal(result.status.threadId, 'thread/一');
+    assert.equal(result.status.spaceId, 'thread/一');
     assert.equal(result.status.runId, 'run/一');
   });
 });
@@ -107,8 +107,8 @@ test('getAgentStatus 200 响应坏结构抛 502', async () => {
   const cases = [
     null,
     { instanceId: 'i' },
-    { instanceId: 'i', status: { threadId: 'a' } },
-    { instanceId: 'i', status: agentStatus({ threadId: 'other-thread' }) },
+    { instanceId: 'i', status: { spaceId: 'a' } },
+    { instanceId: 'i', status: agentStatus({ spaceId: 'other-thread' }) },
     { instanceId: 'i', status: agentStatus({ runId: 'other-run' }) },
     { instanceId: 'i', status: agentStatus({ revision: 0 }) },
     { instanceId: 'i', status: agentStatus({ source: 'unknown' }) },

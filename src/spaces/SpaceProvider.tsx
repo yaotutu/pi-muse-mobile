@@ -1,28 +1,28 @@
 import { createContext, useContext, useEffect, useMemo, useSyncExternalStore, type ReactNode } from 'react';
 import { useServiceConnection } from '../connection/ConnectionProvider';
 import { useApi } from '../api/ApiProvider';
-import { ThreadSessionStore } from './thread-session-store';
+import { SpaceStore } from './space-store';
 
-const SessionContext = createContext<ThreadSessionStore | undefined>(undefined);
+const SessionContext = createContext<SpaceStore | undefined>(undefined);
 
-export function ThreadSessionProvider({ children }: { children: ReactNode }) {
+export function SpaceProvider({ children }: { children: ReactNode }) {
   const api = useApi();
   const connection = useServiceConnection();
   const enabled = connection?.enabled ?? true;
-  const store = useMemo(() => new ThreadSessionStore(api), [api]);
+  const store = useMemo(() => new SpaceStore(api), [api]);
   store.setEnabled(enabled);
   useEffect(() => () => store.dispose(), [store]);
   return <SessionContext.Provider value={store}>{children}</SessionContext.Provider>;
 }
 
-export function useThreadSessionStore() {
+export function useSpaceStore() {
   const store = useContext(SessionContext);
-  if (!store) throw new Error('ThreadSessionProvider is required');
+  if (!store) throw new Error('SpaceProvider is required');
   return store;
 }
 
-export function useThreadSession(id: string) {
-  const store = useThreadSessionStore();
+export function useSpaceState(id: string) {
+  const store = useSpaceStore();
   useSyncExternalStore(store.subscribe, store.getVersion, store.getVersion);
   return store.get(id);
 }

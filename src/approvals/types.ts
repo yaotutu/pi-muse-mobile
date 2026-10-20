@@ -4,9 +4,9 @@ export type SettledApprovalStatus = Exclude<ApprovalStatus, 'pending'>;
 export type ApprovalDecision = 'approve' | 'deny';
 
 export type ApprovalPreview = {
-  scope: 'thread' | 'shared';
+  scope: 'space' | 'thread' | 'shared';
   /** 文件归属由服务端明确给出，不能用子代理 ID 或路径反推。 */
-  ownerThreadId: string | null;
+  ownerSpaceId: string | null;
   path: string;
   before: string;
   after: string;
@@ -22,11 +22,11 @@ export type ApprovalState = {
   id: string;
   /** 与运行 revision 不同：审批 revision 跨服务进程持久。 */
   revision: number;
-  threadId: string | null;
+  spaceId: string | null;
   runId: string | null;
   toolCallId: string | null;
   subagentId: string | null;
-  workspaceThreadId: string | null;
+  workspaceSpaceId: string | null;
   activityId: string | null;
   status: ApprovalStatus;
   execution: ApprovalExecution | null;
@@ -40,7 +40,7 @@ export type ApprovalView = ApprovalSummary & { preview: ApprovalPreview };
 /** approval_updated 不携带 title/kind/preview，绝不把缺失正文当作空文件。 */
 export type ApprovalResolution = ApprovalState & { status: SettledApprovalStatus };
 export type ApprovalRecord = ApprovalView | ApprovalSummary | ApprovalResolution;
-export type ApprovalFilter = { status?: SettledApprovalStatus; threadId?: string; activityId?: string };
+export type ApprovalFilter = { status?: SettledApprovalStatus; spaceId?: string; activityId?: string };
 export type ApprovalQuery = ApprovalFilter & { limit?: number; cursor?: string };
 export type ApprovalPage = { approvals: ApprovalSummary[]; hasMore: boolean; nextCursor: string | null };
 

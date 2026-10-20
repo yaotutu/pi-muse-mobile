@@ -20,16 +20,16 @@ function Action({ label, onPress, disabled, primary, danger }: { label: string; 
 }
 
 /** 全屏会话面板内的审批领域；不混入活动历史，也不创建额外导航层或连接。 */
-export function ApprovalPanel({ threadId }: { threadId: string }) {
+export function ApprovalPanel({ spaceId }: { spaceId: string }) {
   const { store, snapshot } = useApprovals(); const runtime = useRuntimeStore();
   const styles = useStyles(); const { colors } = useWorkspaceTheme();
   const [mode, setMode] = useState<'pending' | 'history'>('pending');
-  const [scope, setScope] = useState<'all' | 'thread'>('all');
+  const [scope, setScope] = useState<'all' | 'space'>('all');
   const [status, setStatus] = useState<SettledApprovalStatus>();
   const [selectedId, setSelectedId] = useState<string>();
   const [confirmationRequest, setConfirmation] = useState<{ decision: ApprovalDecision; revision: number; id: string; syncVersion: number }>();
   const [now, setNow] = useState(Date.now);
-  const filter = useMemo<ApprovalFilter>(() => ({ ...(scope === 'thread' ? { threadId } : {}), ...(status ? { status } : {}) }), [scope, threadId, status]);
+  const filter = useMemo<ApprovalFilter>(() => ({ ...(scope === 'space' ? { spaceId } : {}), ...(status ? { status } : {}) }), [scope, spaceId, status]);
   useEffect(() => { if (mode === 'history') void store.loadHistory(filter); }, [store, mode, filter]);
   useEffect(() => { store.select(selectedId); return () => store.select(); }, [store, selectedId]);
   const selected = selectedId ? snapshot.records[selectedId] : undefined;
@@ -41,8 +41,8 @@ export function ApprovalPanel({ threadId }: { threadId: string }) {
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [selected]);
-  const pending = snapshot.pendingIds.map((id) => snapshot.records[id]).filter((item) => item && (scope === 'all' || item.threadId === threadId));
-  const historyMatches = snapshot.history.filter.threadId === filter.threadId && snapshot.history.filter.status === filter.status;
+  const pending = snapshot.pendingIds.map((id) => snapshot.records[id]).filter((item) => item && (scope === 'all' || item.spaceId === spaceId));
+  const historyMatches = snapshot.history.filter.spaceId === filter.spaceId && snapshot.history.filter.status === filter.status;
   const history = historyMatches ? snapshot.history.ids.map((id) => snapshot.records[id]) : [];
   const canDecide = selectedId ? store.canDecide(selectedId, now) : false;
   const submitting = !!selectedId && snapshot.submittingIds.includes(selectedId);
@@ -95,8 +95,8 @@ export function ApprovalPanel({ threadId }: { threadId: string }) {
       {!!snapshot.errors[selectedId] && <Text accessibilityRole="alert" style={styles.error}>{snapshot.errors[selectedId]}</Text>}
     </> : <>
       <View style={styles.row}>
-        <Choice label="全部会话" selected={scope === 'all'} onPress={() => setScope('all')} />
-        <Choice label="当前会话" selected={scope === 'thread'} onPress={() => setScope('thread')} />
+        <Choice label="全部空间" selected={scope === 'all'} onPress={() => setScope('all')} />
+        <Choice label="当前空间" selected={scope === 'space'} onPress={() => setScope('space')} />
       </View>
       <View style={styles.row}>
         <Choice label={`待审批 (${pending.length})`} selected={mode === 'pending'} onPress={() => setMode('pending')} />
@@ -130,7 +130,7 @@ function ApprovalRow({ record, onOpen }: { record: ApprovalRecord; onOpen: () =>
   const title = 'title' in record ? record.title : '审批详情待同步';
   return <Pressable accessibilityRole="button" accessibilityLabel={`查看审批 ${title}`} testID={`approval-open-${record.id}`} onPress={onOpen} style={styles.card}>
     <Text style={styles.title}>{title}</Text><Text style={styles.body}>{approvalStatusLabel(record.status)}</Text>
-    <Text style={styles.caption}>来源会话：{record.threadId ?? '未关联会话'}</Text>
+    <Text style={styles.caption}>来源空间：{record.spaceId ?? '未关联会话'}</Text>
     {record.subagentId !== null && <Text style={styles.caption}>子代理：{record.subagentId}</Text>}
     {record.status !== 'pending' && <Text style={styles.caption}>{executionLabel(record.execution)}</Text>}
     <Text style={styles.caption}>{record.resolvedAt ?? record.createdAt} · 查看完整预览与详情</Text>
@@ -141,7 +141,7 @@ function ApprovalHeading({ record }: { record: ApprovalRecord }) {
   return <View style={styles.card}>
     <Text style={styles.title}>{'title' in record ? record.title : '审批详情'}</Text><Text style={styles.body}>{approvalStatusLabel(record.status)}</Text>
     <Text selectable style={styles.caption}>审批：{record.id} · revision {record.revision}</Text>
-    <Text selectable style={styles.caption}>来源会话：{record.threadId ?? '未关联会话'}</Text>
+    <Text selectable style={styles.caption}>来源空间：{record.spaceId ?? '未关联会话'}</Text>
     {(['runId', 'toolCallId', 'subagentId', 'activityId'] as const).map((key) => record[key] !== null && <Text key={key} selectable style={styles.caption}>{key}：{record[key]}</Text>)}
     <Text style={styles.caption}>有效期至：{record.expiresAt}</Text>
     {record.decidedAt !== null && <Text style={styles.caption}>人工决定：{record.decidedAt}</Text>}

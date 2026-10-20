@@ -4,9 +4,9 @@ import './register-source.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-const { ThreadSessionStore } = await import('../src/threads/thread-session-store.ts');
+const { SpaceStore } = await import('../src/spaces/space-store.ts');
 const { ApiError } = await import('../src/api/errors.ts');
-const { MAIN_THREAD } = await import('../src/threads/thread-state.ts');
+const { MAIN_SPACE } = await import('../src/spaces/space-state.ts');
 
 // --- stub ApiClient：handler 列表 + 控制式 resolve/reject + signal 监听 ---
 
@@ -22,39 +22,39 @@ function defer() {
 
 test('删除 500 保留草稿并恢复当前运行代次，不伪成功或自动重试', async () => {
   const stub = makeStub();
-  const store = new ThreadSessionStore(stub.api);
+  const store = new SpaceStore(stub.api);
   store.setDraft('a', '消息草稿');
   store.setInstructions('a', '规则草稿');
   const epoch = store.get('a').epoch;
-  stub.enqueue('deleteThread', rejectWith(new ApiError(500, '删除部分失败')));
-  await assert.rejects(store.deleteThread('a'), (error) => error.status === 500);
+  stub.enqueue('deleteSpace', rejectWith(new ApiError(500, '删除部分失败')));
+  await assert.rejects(store.deleteSpace('a'), (error) => error.status === 500);
   assert.equal(store.canWrite('a'), true);
   assert.equal(store.isCurrent('a', epoch), true);
   assert.equal(store.get('a').deleted, false);
   assert.equal(store.get('a').draft, '消息草稿');
   assert.equal(store.get('a').instructions.draft, '规则草稿');
-  assert.equal(stub.callCount('deleteThread'), 1);
+  assert.equal(stub.callCount('deleteSpace'), 1);
 });
 
 test('技能保存 500 保留全部修改并释放写锁', async () => {
   const stub = makeStub();
-  const store = new ThreadSessionStore(stub.api);
-  stub.enqueue('getThreadSkills', resolveWith({ skills: [makeSkill('web', true, true), makeSkill('write', true, true)] }));
+  const store = new SpaceStore(stub.api);
+  stub.enqueue('getSpaceSkills', resolveWith({ skills: [makeSkill('web', true, true), makeSkill('write', true, true)] }));
   await store.loadSkills('a');
   store.setSkill('a', 'web', false);
   store.setSkill('a', 'write', false);
-  stub.enqueue('saveThreadSkills', rejectWith(new ApiError(500, '保存失败')));
+  stub.enqueue('saveSpaceSkills', rejectWith(new ApiError(500, '保存失败')));
   assert.equal(await store.saveSkills('a'), false);
   assert.deepEqual(store.get('a').skills.draft, { web: false, write: false });
   assert.equal(store.hasSettingsWrite('a'), false);
   assert.equal(store.get('a').skills.error, '保存失败');
-  assert.equal(stub.callCount('saveThreadSkills'), 1);
+  assert.equal(stub.callCount('saveSpaceSkills'), 1);
 });
 
 test('连接暂停后禁止设置读写与删除，消息草稿仍可保留', async () => {
   let calls = 0;
   const api = new Proxy({}, { get: () => async () => { calls++; throw new Error('不应发出请求'); } });
-  const store = new ThreadSessionStore(api);
+  const store = new SpaceStore(api);
   store.get('a').instructions.loaded = true;
   store.get('a').skills.loaded = true;
   store.setEnabled(false);
@@ -63,18 +63,18 @@ test('连接暂停后禁止设置读写与删除，消息草稿仍可保留', as
   await store.loadSettings('a');
   assert.equal(await store.saveInstructions('a'), false);
   assert.equal(await store.saveSkills('a'), false);
-  assert.equal(await store.deleteThread('a'), undefined);
+  assert.equal(await store.deleteSpace('a'), undefined);
   assert.equal(calls, 0);
   assert.equal(store.get('a').draft, '离线草稿');
   assert.equal(store.get('a').instructions.draft, '离线规则草稿');
 });
 
 const METHODS = [
-  'getThreadInstructions',
-  'saveThreadInstructions',
-  'getThreadSkills',
-  'saveThreadSkills',
-  'deleteThread',
+  'getSpaceInstructions',
+  'saveSpaceInstructions',
+  'getSpaceSkills',
+  'saveSpaceSkills',
+  'deleteSpace',
 ];
 
 function makeStub() {
@@ -150,7 +150,7 @@ const rejectWith = (error) => (ctx) => ctx.reject(error);
 
 test('不同会话的 settings 草稿与消息草稿彼此隔离', async () => {
   const stub = makeStub();
-  const store = new ThreadSessionStore(stub.api);
+  const store = new SpaceStore(stub.api);
   store.setDraft('a', 'A 草稿消息');
   store.setDraft('b', 'B 草稿消息');
   assert.equal(store.get('a').draft, 'A 草稿消息');
@@ -166,10 +166,10 @@ test('不同会话的 settings 草稿与消息草稿彼此隔离', async () => {
   assert.equal(store.get('a').instructions.draft, 'A rules');
   assert.equal(store.get('b').instructions.draft, 'B rules');
   // 一个会话在保存中，另一个仍可继续修改自己的草稿。
-  stub.enqueue('getThreadInstructions', resolveWith({ instructions: '' }));
+  stub.enqueue('getSpaceInstructions', resolveWith({ instructions: '' }));
   await store.loadInstructions('a');
   // 让 a 进入 saving：直接通过 stub 模拟一次成功保存。
-  stub.enqueue('saveThreadInstructions', resolveWith({ instructions: 'A rules' }));
+  stub.enqueue('saveSpaceInstructions', resolveWith({ instructions: 'A rules' }));
   const saveA = store.saveInstructions('a');
   store.setInstructions('b', 'B rules 改');
   // a 的草稿被允许修改（因为是另一会话）；b 的草稿也已更新。
@@ -184,16 +184,16 @@ test('不同会话的 settings 草稿与消息草稿彼此隔离', async () => {
 
 test('A 的延迟读返回时切到 B，不能把 A 的内容应用到 B', async () => {
   const stub = makeStub();
-  const store = new ThreadSessionStore(stub.api);
+  const store = new SpaceStore(stub.api);
 
   // A 第一条 read：延迟但故意忽略 signal，等 store 切到 B 后才 resolve。
   let resolveA;
   const gateA = new Promise((res) => { resolveA = res; });
-  stub.enqueue('getThreadInstructions', () => gateA);
+  stub.enqueue('getSpaceInstructions', () => gateA);
   const loadA = store.loadInstructions('a');
 
   // 第二步：切到 B，读自己的内容。
-  stub.enqueue('getThreadInstructions', resolveWith({ instructions: 'B rules' }));
+  stub.enqueue('getSpaceInstructions', resolveWith({ instructions: 'B rules' }));
   await store.loadInstructions('b');
   assert.equal(store.get('b').instructions.draft, 'B rules');
   assert.equal(store.get('b').instructions.saved, 'B rules');
@@ -212,10 +212,10 @@ test('A 的延迟读返回时切到 B，不能把 A 的内容应用到 B', async
 
 test('loadSkills 回读时若草稿已偏离 saved，则保留草稿字段（去掉已移除项）', async () => {
   const stub = makeStub();
-  const store = new ThreadSessionStore(stub.api);
+  const store = new SpaceStore(stub.api);
 
   // 第一次拉取目录：A、B 都在。
-  stub.enqueue('getThreadSkills', resolveWith({
+  stub.enqueue('getSpaceSkills', resolveWith({
     skills: [makeSkill('a', true), makeSkill('b', false)],
   }));
   await store.loadSkills('a');
@@ -229,7 +229,7 @@ test('loadSkills 回读时若草稿已偏离 saved，则保留草稿字段（去
   assert.equal(store.hasDirtySettings('a'), true);
 
   // 服务端目录变化：b 不再注册，新增 c。
-  stub.enqueue('getThreadSkills', resolveWith({
+  stub.enqueue('getSpaceSkills', resolveWith({
     skills: [makeSkill('a', true, true), makeSkill('c', false, false)],
   }));
   await store.loadSkills('a');
@@ -245,16 +245,16 @@ test('loadSkills 回读时若草稿已偏离 saved，则保留草稿字段（去
 
 test('saveInstructions 回填服务端值；超长时不发起请求', async () => {
   const stub = makeStub();
-  const store = new ThreadSessionStore(stub.api);
+  const store = new SpaceStore(stub.api);
 
   // 先 load，让 target.loaded=true。
-  stub.enqueue('getThreadInstructions', resolveWith({ instructions: 'orig' }));
+  stub.enqueue('getSpaceInstructions', resolveWith({ instructions: 'orig' }));
   await store.loadInstructions('a');
   // store 直发 draft，不在本层 trim；调用方有责任交给服务端前自己 trim。
   store.setInstructions('a', '   新规则 ');
 
   let sentInstructions;
-  stub.enqueue('saveThreadInstructions', ({ args, resolve }) => {
+  stub.enqueue('saveSpaceInstructions', ({ args, resolve }) => {
     sentInstructions = args[0];
     // 服务端代表 trim 两侧空白。
     resolve({ instructions: '新规则' });
@@ -267,14 +267,14 @@ test('saveInstructions 回填服务端值；超长时不发起请求', async () 
   assert.equal(store.get('a').instructions.saved, '新规则');
   assert.equal(store.get('a').instructions.draft, '新规则');
 
-  // 超长：本地拦截，不调用 saveThreadInstructions。
+  // 超长：本地拦截，不调用 saveSpaceInstructions。
   const longText = 'x'.repeat(20_001);
   store.setInstructions('a', longText);
-  const before = stub.callCount('saveThreadInstructions');
+  const before = stub.callCount('saveSpaceInstructions');
   const ok2 = await store.saveInstructions('a');
-  const after = stub.callCount('saveThreadInstructions');
+  const after = stub.callCount('saveSpaceInstructions');
   assert.equal(ok2, false);
-  assert.equal(after, before, '超长不能调用 api.saveThreadInstructions');
+  assert.equal(after, before, '超长不能调用 api.saveSpaceInstructions');
   assert.ok(store.get('a').instructions.error?.includes('20,000') || store.get('a').instructions.error?.includes('20000'), 'err 应包含数字限制');
 });
 
@@ -282,16 +282,16 @@ test('saveInstructions 回填服务端值；超长时不发起请求', async () 
 
 test('saveSkills 普通保存提交整个目录；defaults=true 提交空覆盖表', async () => {
   const stub = makeStub();
-  const store = new ThreadSessionStore(stub.api);
+  const store = new SpaceStore(stub.api);
 
-  stub.enqueue('getThreadSkills', resolveWith({
+  stub.enqueue('getSpaceSkills', resolveWith({
     skills: [makeSkill('a', false), makeSkill('b', true)],
   }));
   await store.loadSkills('a');
   store.setSkill('a', 'a', true);
 
   let sentOverrides;
-  stub.enqueue('saveThreadSkills', ({ args, resolve }) => {
+  stub.enqueue('saveSpaceSkills', ({ args, resolve }) => {
     sentOverrides = args[0];
     resolve({
       skills: [makeSkill('a', true, false), makeSkill('b', true, true)],
@@ -302,9 +302,9 @@ test('saveSkills 普通保存提交整个目录；defaults=true 提交空覆盖�
   assert.deepEqual(sentOverrides, { a: true, b: true }, '普通保存覆盖整个目录，每个开关显式表达');
 
   // restore：发送空覆盖表。
-  const before = stub.callCount('saveThreadSkills');
+  const before = stub.callCount('saveSpaceSkills');
   let restoreOverrides;
-  stub.enqueue('saveThreadSkills', ({ args, resolve }) => {
+  stub.enqueue('saveSpaceSkills', ({ args, resolve }) => {
     restoreOverrides = args[0];
     resolve({
       skills: [makeSkill('a', false, false), makeSkill('b', true, true)],
@@ -313,16 +313,16 @@ test('saveSkills 普通保存提交整个目录；defaults=true 提交空覆盖�
   const okRestore = await store.saveSkills('a', true);
   assert.equal(okRestore, true);
   assert.deepEqual(restoreOverrides, {}, 'defaults=true 应发送 overrides: {}');
-  assert.equal(stub.callCount('saveThreadSkills'), before + 1);
+  assert.equal(stub.callCount('saveSpaceSkills'), before + 1);
 });
 
 // --- 6. 400 保留现存草稿且刷新移除未知名，不无限重试 ---
 
 test('saveSkills 收到 400 时本地草稿保留、自动刷新目录移除未知名、且不无限重试', async () => {
   const stub = makeStub();
-  const store = new ThreadSessionStore(stub.api);
+  const store = new SpaceStore(stub.api);
 
-  stub.enqueue('getThreadSkills', resolveWith({
+  stub.enqueue('getSpaceSkills', resolveWith({
     skills: [makeSkill('a', true), makeSkill('b', false)],
   }));
   await store.loadSkills('a');
@@ -330,23 +330,23 @@ test('saveSkills 收到 400 时本地草稿保留、自动刷新目录移除未�
   store.setSkill('a', 'a', false);
   assert.deepEqual(store.get('a').skills.draft, { a: false, b: false });
 
-  stub.enqueue('saveThreadSkills', rejectWith(new ApiError(400, '技能不可写')));
+  stub.enqueue('saveSpaceSkills', rejectWith(new ApiError(400, '技能不可写')));
   // 紧随其后，被 400 触发的内部 loadSkills。
-  stub.enqueue('getThreadSkills', resolveWith({
+  stub.enqueue('getSpaceSkills', resolveWith({
     skills: [makeSkill('a', true), makeSkill('c', false)],
   }));
 
-  const callsBefore = stub.callCount('saveThreadSkills');
-  const loadsBefore = stub.callCount('getThreadSkills');
+  const callsBefore = stub.callCount('saveSpaceSkills');
+  const loadsBefore = stub.callCount('getSpaceSkills');
   const ok = await store.saveSkills('a');
-  const callsAfter = stub.callCount('saveThreadSkills');
-  const loadsAfter = stub.callCount('getThreadSkills');
+  const callsAfter = stub.callCount('saveSpaceSkills');
+  const loadsAfter = stub.callCount('getSpaceSkills');
   assert.equal(ok, false);
   assert.equal(callsAfter, callsBefore + 1, '只发生一次 400，不再重试');
   assert.equal(loadsAfter, loadsBefore + 1, '刷新一次以移除未知名');
   // 等待内部 finally 中可能串起的 loadSkills 完成（refreshCatalog）。
   await new Promise(setImmediate);
-  assert.equal(stub.callCount('getThreadSkills'), loadsBefore + 1, '不无限重试，只一次刷新');
+  assert.equal(stub.callCount('getSpaceSkills'), loadsBefore + 1, '不无限重试，只一次刷新');
   // draft 中 a=false 仍保留；b 被从目录中移除。
   assert.deepEqual(store.get('a').skills.draft, { a: false, c: false });
   // error 内容是原始 400 文本。
@@ -355,26 +355,26 @@ test('saveSkills 收到 400 时本地草稿保留、自动刷新目录移除未�
 
 // --- 7. delete 同步锁：saving 中禁保存/重复 delete；清除草稿缓存 ---
 
-test('deleteThread 在 hasSettingsWrite 时返回 undefined；inFlight 后第二次直接拒绝', async () => {
+test('deleteSpace 在 hasSettingsWrite 时返回 undefined；inFlight 后第二次直接拒绝', async () => {
   const stub = makeStub();
-  const store = new ThreadSessionStore(stub.api);
+  const store = new SpaceStore(stub.api);
 
-  stub.enqueue('getThreadInstructions', resolveWith({ instructions: '' }));
+  stub.enqueue('getSpaceInstructions', resolveWith({ instructions: '' }));
   await store.loadInstructions('a');
 
   // 把 a 推进 saving 中：用一个永不 resolve 的 save 来保持锁。
   let resolveSave;
   const gate = new Promise((res) => { resolveSave = res; });
-  stub.enqueue('saveThreadInstructions', () => gate);
+  stub.enqueue('saveSpaceInstructions', () => gate);
   const savePromise = store.saveInstructions('a');
   // 微任务推进后再断言状态。
   await new Promise(setImmediate);
   assert.equal(store.hasSettingsWrite('a'), true);
 
-  // deleteThread 在 saving 时拒绝。
-  const result = await store.deleteThread('a');
+  // deleteSpace 在 saving 时拒绝。
+  const result = await store.deleteSpace('a');
   assert.equal(result, undefined, 'saving 中 delete 直接 undefined');
-  assert.equal(stub.callCount('deleteThread'), 0, '不应发 delete 请求');
+  assert.equal(stub.callCount('deleteSpace'), 0, '不应发 delete 请求');
 
   // 释放 save 让其完成。
   resolveSave({ instructions: 'noop' });
@@ -383,16 +383,16 @@ test('deleteThread 在 hasSettingsWrite 时返回 undefined；inFlight 后第二
   // 现在发起真正的 delete。
   let resolveDelete;
   const gateDel = new Promise((res) => { resolveDelete = res; });
-  stub.enqueue('deleteThread', ({ resolve }) => resolve({ ok: true, removed: { jobs: 0, monitors: 0 } }));
-  const firstDelete = store.deleteThread('a');
+  stub.enqueue('deleteSpace', ({ resolve }) => resolve({ ok: true, removed: { jobs: 0, monitors: 0 } }));
+  const firstDelete = store.deleteSpace('a');
 
   // 等待 deleting=true 后，第二次 delete 进入应观察到 deleting=true 路径。
   await new Promise(setImmediate);
-  const secondDelete = await store.deleteThread('a');
+  const secondDelete = await store.deleteSpace('a');
   assert.equal(secondDelete, undefined, 'deleting 中重复请求返回 undefined');
   // 并没有发第二条 delete 请求——canWrite 在 deleting 时也 false。
   await firstDelete;
-  assert.equal(stub.callCount('deleteThread'), 1);
+  assert.equal(stub.callCount('deleteSpace'), 1);
 
   // delete 完成后旧 entry 在 canWrite 视图上是 deleted，新 get 给出 deleted 状态，setDraft/setInstructions 都会被 canWrite 拦截。
   assert.equal(store.canWrite('a'), false);
@@ -401,41 +401,41 @@ test('deleteThread 在 hasSettingsWrite 时返回 undefined；inFlight 后第二
   assert.equal(store.get('a').deleted, true);
 });
 
-test('MAIN_THREAD (local-main) 删除时直接抛 409；保留可写', async () => {
+test('MAIN_SPACE (local-main) 删除时直接抛 409；保留可写', async () => {
   const stub = makeStub();
-  const store = new ThreadSessionStore(stub.api);
-  await assert.rejects(store.deleteThread(MAIN_THREAD), (error) => {
+  const store = new SpaceStore(stub.api);
+  await assert.rejects(store.deleteSpace(MAIN_SPACE), (error) => {
     assert.ok(error instanceof ApiError);
     assert.equal(error.status, 409);
     return true;
   });
-  assert.equal(stub.callCount('deleteThread'), 0);
+  assert.equal(stub.callCount('deleteSpace'), 0);
   // 主会话只被拒绝删除，但仍可写入/修改。
-  assert.equal(store.canWrite(MAIN_THREAD), true);
+  assert.equal(store.canWrite(MAIN_SPACE), true);
 });
 
 // --- 8. 404 视为已不存在清理 ---
 
-test('deleteThread 收到 404 时也清空 entry', async () => {
+test('deleteSpace 收到 404 时也清空 entry', async () => {
   const stub = makeStub();
-  const store = new ThreadSessionStore(stub.api);
+  const store = new SpaceStore(stub.api);
   // 触发 entry 出现。
   store.setDraft('a', 'placeholder');
-  stub.enqueue('deleteThread', rejectWith(new ApiError(404, '会话不存在')));
-  const result = await store.deleteThread('a');
+  stub.enqueue('deleteSpace', rejectWith(new ApiError(404, '会话不存在')));
+  const result = await store.deleteSpace('a');
   assert.deepEqual(result, { ok: true, removed: { jobs: 0, monitors: 0 } });
   assert.equal(store.canWrite('a'), false);
 });
 
 test('删除中的 409 保留草稿和代次，不把冲突当作删除成功或自动重试', async () => {
   const stub = makeStub();
-  const store = new ThreadSessionStore(stub.api);
+  const store = new SpaceStore(stub.api);
   store.setDraft('a', '待发送消息');
   store.setInstructions('a', '未保存规则');
   const epoch = store.get('a').epoch;
-  stub.enqueue('deleteThread', rejectWith(new ApiError(409, '会话正在删除', 'THREAD_DELETING')));
-  await assert.rejects(store.deleteThread('a'), (error) => error.status === 409 && error.code === 'THREAD_DELETING');
-  assert.equal(stub.callCount('deleteThread'), 1);
+  stub.enqueue('deleteSpace', rejectWith(new ApiError(409, '会话正在删除', 'SPACE_DELETING')));
+  await assert.rejects(store.deleteSpace('a'), (error) => error.status === 409 && error.code === 'SPACE_DELETING');
+  assert.equal(stub.callCount('deleteSpace'), 1);
   assert.equal(store.get('a').deleting, false);
   assert.equal(store.get('a').deleted, false);
   assert.equal(store.isCurrent('a', epoch), true);
@@ -446,9 +446,9 @@ test('删除中的 409 保留草稿和代次，不把冲突当作删除成功或
 for (const kind of ['instructions', 'skills']) {
   test(`${kind} 保存遇到删除中的 409 保留草稿，不刷新目录或自动重试`, async () => {
     const stub = makeStub();
-    const store = new ThreadSessionStore(stub.api);
-    const load = kind === 'instructions' ? 'getThreadInstructions' : 'getThreadSkills';
-    const save = kind === 'instructions' ? 'saveThreadInstructions' : 'saveThreadSkills';
+    const store = new SpaceStore(stub.api);
+    const load = kind === 'instructions' ? 'getSpaceInstructions' : 'getSpaceSkills';
+    const save = kind === 'instructions' ? 'saveSpaceInstructions' : 'saveSpaceSkills';
     stub.enqueue(load, resolveWith(kind === 'instructions'
       ? { instructions: '原规则' }
       : { skills: [makeSkill('web', true, true)] }));
@@ -462,7 +462,7 @@ for (const kind of ['instructions', 'skills']) {
     const draft = structuredClone(store.get('a')[kind].draft);
     const saved = structuredClone(store.get('a')[kind].saved);
     const epoch = store.get('a').epoch;
-    stub.enqueue(save, rejectWith(new ApiError(409, '会话正在删除，请刷新会话列表后重新选择', 'THREAD_DELETING')));
+    stub.enqueue(save, rejectWith(new ApiError(409, '会话正在删除，请刷新会话列表后重新选择', 'SPACE_DELETING')));
     const result = kind === 'instructions' ? await store.saveInstructions('a') : await store.saveSkills('a');
     assert.equal(result, false);
     assert.equal(stub.callCount(load), 1);
@@ -479,11 +479,11 @@ for (const kind of ['instructions', 'skills']) {
 
 test('saveInstructions 500 时草稿保留、saving=false、返回 false', async () => {
   const stub = makeStub();
-  const store = new ThreadSessionStore(stub.api);
-  stub.enqueue('getThreadInstructions', resolveWith({ instructions: 'orig' }));
+  const store = new SpaceStore(stub.api);
+  stub.enqueue('getSpaceInstructions', resolveWith({ instructions: 'orig' }));
   await store.loadInstructions('a');
   store.setInstructions('a', '新指令');
-  stub.enqueue('saveThreadInstructions', rejectWith(new ApiError(500, '服务器开小差')));
+  stub.enqueue('saveSpaceInstructions', rejectWith(new ApiError(500, '服务器开小差')));
   const ok = await store.saveInstructions('a');
   assert.equal(ok, false, '不能伪成功');
   assert.equal(store.get('a').instructions.saving, false, '保存结束应清 saving 锁');
@@ -492,7 +492,7 @@ test('saveInstructions 500 时草稿保留、saving=false、返回 false', async
   assert.equal(store.get('a').instructions.error, '服务器开小差');
 
   // 同会话再次提交仍可走：saving 锁已释放。
-  stub.enqueue('saveThreadInstructions', resolveWith({ instructions: '新指令' }));
+  stub.enqueue('saveSpaceInstructions', resolveWith({ instructions: '新指令' }));
   const ok2 = await store.saveInstructions('a');
   assert.equal(ok2, true);
   assert.equal(store.get('a').instructions.saved, '新指令');
@@ -500,14 +500,14 @@ test('saveInstructions 500 时草稿保留、saving=false、返回 false', async
 
 // --- 10. delete 与晚到 GET（忽略 signal 的 promise）不得复活 ---
 
-test('deleteThread 期间 read 已经中途发出、忽略 signal 仍 resolve 时，不能复活 entry', async () => {
+test('deleteSpace 期间 read 已经中途发出、忽略 signal 仍 resolve 时，不能复活 entry', async () => {
   const stub = makeStub();
-  const store = new ThreadSessionStore(stub.api);
+  const store = new SpaceStore(stub.api);
 
-  // 第一条 getThreadInstructions：模拟忽略 signal 的服务端（不监听 abort，且仍 resolve）。
+  // 第一条 getSpaceInstructions：模拟忽略 signal 的服务端（不监听 abort，且仍 resolve）。
   let resolveLate;
   const gate = new Promise((res) => { resolveLate = res; });
-  stub.enqueue('getThreadInstructions', ({ resolve }) => {
+  stub.enqueue('getSpaceInstructions', ({ resolve }) => {
     // 不读 signal，直接 resolve。
     resolve(gate.then(() => ({ instructions: '路上迟到的旧读' })));
   });
@@ -515,11 +515,11 @@ test('deleteThread 期间 read 已经中途发出、忽略 signal 仍 resolve �
   await new Promise(setImmediate);
 
   // 启动 delete：delete 把 in-flight reads abort+移除。
-  stub.enqueue('deleteThread', ({ resolve }) => {
+  stub.enqueue('deleteSpace', ({ resolve }) => {
     // 等到 GET 完全 resolve 后再继续，避免读到 epoch 旧状态。
     setTimeout(() => resolve({ ok: true, removed: { jobs: 0, monitors: 0 } }), 0);
   });
-  const result = await store.deleteThread('a');
+  const result = await store.deleteSpace('a');
   assert.deepEqual(result, { ok: true, removed: { jobs: 0, monitors: 0 } });
   assert.equal(store.canWrite('a'), false);
 
@@ -537,11 +537,11 @@ test('deleteThread 期间 read 已经中途发出、忽略 signal 仍 resolve �
 
 // --- 11. saving 未完成禁止 delete ---
 
-test('saveSkills 进行中触发 deleteThread 应直接 undefined', async () => {
+test('saveSkills 进行中触发 deleteSpace 应直接 undefined', async () => {
   const stub = makeStub();
-  const store = new ThreadSessionStore(stub.api);
+  const store = new SpaceStore(stub.api);
 
-  stub.enqueue('getThreadSkills', resolveWith({
+  stub.enqueue('getSpaceSkills', resolveWith({
     skills: [makeSkill('a', true)],
   }));
   await store.loadSkills('a');
@@ -549,21 +549,21 @@ test('saveSkills 进行中触发 deleteThread 应直接 undefined', async () => 
 
   let resolveSave;
   const gate = new Promise((res) => { resolveSave = res; });
-  stub.enqueue('saveThreadSkills', () => gate);
+  stub.enqueue('saveSpaceSkills', () => gate);
   const savePromise = store.saveSkills('a');
   await new Promise(setImmediate);
   assert.equal(store.hasSettingsWrite('a'), true);
 
-  const result = await store.deleteThread('a');
+  const result = await store.deleteSpace('a');
   assert.equal(result, undefined, 'saving 中 delete 拒绝');
-  assert.equal(stub.callCount('deleteThread'), 0);
+  assert.equal(stub.callCount('deleteSpace'), 0);
 
   // 释放 save。
   resolveSave({ skills: [makeSkill('a', false)] });
   await savePromise;
   // 再发起 delete 应成功（不残留 settings write 锁）。
-  stub.enqueue('deleteThread', ({ resolve }) => resolve({ ok: true, removed: { jobs: 0, monitors: 0 } }));
-  const ok2 = await store.deleteThread('a');
+  stub.enqueue('deleteSpace', ({ resolve }) => resolve({ ok: true, removed: { jobs: 0, monitors: 0 } }));
+  const ok2 = await store.deleteSpace('a');
   assert.deepEqual(ok2, { ok: true, removed: { jobs: 0, monitors: 0 } });
 });
 
@@ -571,11 +571,11 @@ test('saveSkills 进行中触发 deleteThread 应直接 undefined', async () => 
 
 test('dispose 取消正在 loading 的 read；dispose 后 AbortController 应被 abort', async () => {
   const stub = makeStub();
-  const store = new ThreadSessionStore(stub.api);
+  const store = new SpaceStore(stub.api);
 
   let observedAbort = false;
   // 真实路径的服务端应响应 abort 抛 AbortError；这里从 ctx.reject 直接拒绝。
-  stub.enqueue('getThreadInstructions', ({ signal, reject }) => {
+  stub.enqueue('getSpaceInstructions', ({ signal, reject }) => {
     signal?.addEventListener('abort', () => {
       observedAbort = true;
       const e = new Error('Aborted');

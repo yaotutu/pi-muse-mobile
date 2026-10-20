@@ -2,12 +2,12 @@ import { useEffect, useMemo } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { workspaceTheme, spacing } from '../ui/tokens';
 import { useWorkspaceTheme } from './WorkspaceTheme';
-import { useThreadRuntime } from '../runtime/RuntimeProvider';
+import { useSpaceRuntime } from '../runtime/RuntimeProvider';
 import type { AgentStatus } from '../runtime/types';
 import { useServiceConnection } from '../connection/ConnectionProvider';
 
-export function CurrentExecution({ threadId, onSettled, onApprovals, onHistory }: { threadId: string; onSettled?: () => void; onApprovals?: () => void; onHistory?: (activityId?: string) => void }) {
-  const runtime = useThreadRuntime(threadId);
+export function CurrentExecution({ spaceId, onSettled, onApprovals, onHistory }: { spaceId: string; onSettled?: () => void; onApprovals?: () => void; onHistory?: (activityId?: string) => void }) {
+  const runtime = useSpaceRuntime(spaceId);
   const connection = useServiceConnection();
   const { colors } = useWorkspaceTheme();
   const styles = useMemo(() => StyleSheet.create({

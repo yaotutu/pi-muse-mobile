@@ -1,7 +1,7 @@
 import type { ApiClient } from '../api/contracts';
 import { ApiError, isRequestCancelled } from '../api/errors';
-import type { DeleteThreadResult, ThreadSkills } from '../api/types';
-import { MAIN_THREAD } from './thread-state';
+import type { DeleteSpaceResult, ResetSpaceResult, SpaceSkills } from '../api/types';
+import { MAIN_SPACE } from './space-state';
 
 export const INSTRUCTIONS_LIMIT = 20_000;
 
@@ -13,27 +13,32 @@ type Field<T> = {
   draft: T;
   error?: string;
 };
-export type ThreadSession = {
+export type SpaceState = {
   epoch: number;
+  /** 仅作聊天上下文失效边界；HTTP 始终以空间 ID 寻址。 */
+  sessionId: string | null;
   deleted: boolean;
   deleting: boolean;
+  resetting: boolean;
+  resetUncertain: boolean;
   draft: string;
   instructions: Field<string>;
-  skills: Field<Record<string, boolean>> & { catalog: ThreadSkills['skills']; diagnostics: NonNullable<ThreadSkills['diagnostics']>; notice?: string };
+  skills: Field<Record<string, boolean>> & { catalog: SpaceSkills['skills']; diagnostics: NonNullable<SpaceSkills['diagnostics']>; notice?: string };
 };
 type ReadKind = 'instructions' | 'skills';
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
 const field = <T,>(value: T): Field<T> => ({ loaded: false, loading: false, saving: false, saved: value, draft: value });
-const effective = (data: ThreadSkills) => Object.fromEntries(data.skills.map((skill) => [skill.name, skill.enabled]));
+const effective = (data: SpaceSkills) => Object.fromEntries(data.skills.map((skill) => [skill.name, skill.enabled]));
 export const equalSwitches = (a: Record<string, boolean>, b: Record<string, boolean>) =>
   Object.keys(a).length === Object.keys(b).length && Object.keys(a).every((name) => a[name] === b[name]);
 
 /** 每个连接工作区独占内存；不持久化正文、凭据或服务端路径。 */
-export class ThreadSessionStore {
-  private sessions = new Map<string, ThreadSession>();
+export class SpaceStore {
+  private sessions = new Map<string, SpaceState>();
   private reads = new Map<string, AbortController>();
   private listeners = new Set<() => void>();
   private version = 0;
+  private lifecycleVersion = 0;
   private enabled = true;
 
   constructor(private readonly api: ApiClient) {}
@@ -42,20 +47,21 @@ export class ThreadSessionStore {
 
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   getVersion = () => this.version;
+  getLifecycleVersion = () => this.lifecycleVersion;
   private changed() { this.version++; for (const listener of this.listeners) listener(); }
-  get(id: string): ThreadSession {
+  get(id: string): SpaceState {
     let entry = this.sessions.get(id);
     if (!entry) {
-      entry = { epoch: 0, deleted: false, deleting: false, draft: '', instructions: field(''), skills: { ...field<Record<string, boolean>>({}), catalog: [], diagnostics: [] } };
+      entry = { epoch: 0, sessionId: null, deleted: false, deleting: false, resetting: false, resetUncertain: false, draft: '', instructions: field(''), skills: { ...field<Record<string, boolean>>({}), catalog: [], diagnostics: [] } };
       this.sessions.set(id, entry);
     }
     return entry;
   }
   isCurrent(id: string, epoch: number) {
     const entry = this.get(id);
-    return entry.epoch === epoch && !entry.deleted && !entry.deleting;
+    return entry.epoch === epoch && this.canWrite(id);
   }
-  canWrite(id: string) { const entry = this.get(id); return !entry.deleted && !entry.deleting; }
+  canWrite(id: string) { const entry = this.get(id); return !entry.deleted && !entry.deleting && !entry.resetting && !entry.resetUncertain; }
   hasSettingsWrite(id: string) { const entry = this.get(id); return entry.instructions.saving || entry.skills.saving; }
   hasDirtySettings(id: string) { const entry = this.get(id); return entry.instructions.draft !== entry.instructions.saved || !equalSwitches(entry.skills.draft, entry.skills.saved); }
   setDraft(id: string, value: string) { if (this.canWrite(id)) { this.get(id).draft = value; this.changed(); } }
@@ -74,6 +80,47 @@ export class ThreadSessionStore {
     entry.skills.draft = { ...entry.skills.saved };
     entry.skills.notice = undefined;
     this.changed();
+  }
+
+  /** 列表观察到另一设备重置时，只失效聊天，不能销毁空间规则与未保存的设置草稿。 */
+  bindSession(id: string, sessionId: string) {
+    const entry = this.get(id);
+    if (entry.deleted || entry.resetting || entry.sessionId === sessionId) return;
+    if (entry.sessionId !== null || entry.resetUncertain) {
+      entry.epoch++;
+      entry.draft = '';
+      this.cancelReads(id);
+    }
+    entry.sessionId = sessionId;
+    entry.resetUncertain = false;
+    this.changed();
+  }
+
+  async resetSpace(id: string, clearSchedules = false): Promise<ResetSpaceResult | undefined> {
+    const entry = this.get(id);
+    if (!this.available(id) || this.hasSettingsWrite(id)) return undefined;
+    // 先切本地代次再请求：旧 SSE、历史回读和迟到 finally 都不能写入新上下文。
+    // 与删除不同，空间设置（包括未保存草稿）和私有工作区必须保留。
+    entry.resetting = true;
+    entry.epoch++;
+    this.lifecycleVersion++;
+    this.cancelReads(id);
+    this.changed();
+    try {
+      const result = await this.api.resetSpace(id, { clearSchedules });
+      if (this.get(id) !== entry) return undefined;
+      entry.sessionId = result.sessionId;
+      entry.draft = '';
+      entry.resetUncertain = false;
+      return result;
+    } catch (error) {
+      // 网络中断不代表远端未重置，禁止自动重发这种破坏性操作；由列表新绑定核对。
+      entry.resetUncertain = !(error instanceof ApiError) || error.status === 0 || error.status === 408 || error.status >= 500;
+      throw error;
+    } finally {
+      entry.resetting = false;
+      this.changed();
+    }
   }
 
   cancelReads(id: string) {
@@ -112,7 +159,7 @@ export class ThreadSessionStore {
     }
   }
   loadInstructions(id: string) {
-    return this.read(id, 'instructions', (signal) => this.api.getThreadInstructions(id, signal), (data) => {
+    return this.read(id, 'instructions', (signal) => this.api.getSpaceInstructions(id, signal), (data) => {
       const target = this.get(id).instructions;
       const dirty = target.draft !== target.saved;
       target.saved = data.instructions;
@@ -120,7 +167,7 @@ export class ThreadSessionStore {
       target.loaded = true;
     });
   }
-  private applySkills(id: string, data: ThreadSkills, preserveDraft: boolean) {
+  private applySkills(id: string, data: SpaceSkills, preserveDraft: boolean) {
     const target = this.get(id).skills;
     const draft = target.draft;
     const saved = effective(data);
@@ -133,7 +180,7 @@ export class ThreadSessionStore {
     target.loaded = true;
   }
   loadSkills(id: string) {
-    return this.read(id, 'skills', (signal) => this.api.getThreadSkills(id, signal), (data) => {
+    return this.read(id, 'skills', (signal) => this.api.getSpaceSkills(id, signal), (data) => {
       const target = this.get(id).skills;
       this.applySkills(id, data, !equalSwitches(target.draft, target.saved));
     });
@@ -151,7 +198,7 @@ export class ThreadSessionStore {
     target.error = undefined;
     this.changed();
     try {
-      const data = await this.api.saveThreadInstructions(id, draft);
+      const data = await this.api.saveSpaceInstructions(id, draft);
       if (!this.isCurrent(id, epoch)) return false;
       target.saved = data.instructions;
       if (target.draft === draft) target.draft = data.instructions;
@@ -174,7 +221,7 @@ export class ThreadSessionStore {
     this.changed();
     let refreshCatalog = false;
     try {
-      const data = await this.api.saveThreadSkills(id, overrides);
+      const data = await this.api.saveSpaceSkills(id, overrides);
       if (!this.isCurrent(id, epoch)) return false;
       this.applySkills(id, data, false);
       return true;
@@ -195,8 +242,8 @@ export class ThreadSessionStore {
     }
   }
 
-  async deleteThread(id: string): Promise<DeleteThreadResult | undefined> {
-    if (id === MAIN_THREAD) throw new ApiError(409, '主会话不可删除');
+  async deleteSpace(id: string): Promise<DeleteSpaceResult | undefined> {
+    if (id === MAIN_SPACE) throw new ApiError(409, '主空间不可删除');
     const entry = this.get(id);
     if (!this.available(id) || this.hasSettingsWrite(id)) return undefined;
     entry.deleting = true;
@@ -204,8 +251,8 @@ export class ThreadSessionStore {
     this.cancelReads(id);
     this.changed();
     try {
-      let result: DeleteThreadResult;
-      try { result = await this.api.deleteThread(id); }
+      let result: DeleteSpaceResult;
+      try { result = await this.api.deleteSpace(id); }
       catch (error) {
         if (!(error instanceof ApiError) || error.status !== 404) throw error;
         result = { ok: true, removed: { jobs: 0, monitors: 0 } };
@@ -221,6 +268,7 @@ export class ThreadSessionStore {
     const blank = this.get(id);
     blank.epoch = entry.epoch + 1;
     blank.deleted = true;
+    this.lifecycleVersion++;
     this.changed();
   }
   revive(id: string) { const entry = this.get(id); if (entry.deleted) { entry.deleted = false; this.changed(); } }

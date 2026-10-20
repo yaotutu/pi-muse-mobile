@@ -23,7 +23,7 @@ export type ApprovalSnapshot = {
   error?: string;
 };
 const initialHistory = (): ApprovalHistory => ({ filter: {}, ids: [], loaded: false, loading: false, hasMore: false, nextCursor: null, dirty: false });
-const filterKey = (filter: ApprovalFilter) => JSON.stringify([filter.threadId, filter.status, filter.activityId]);
+const filterKey = (filter: ApprovalFilter) => JSON.stringify([filter.spaceId, filter.status, filter.activityId]);
 const without = (items: readonly string[], id: string) => items.filter((item) => item !== id);
 export const hasApprovalPreview = (record: ApprovalRecord | undefined): record is ApprovalView => !!record && 'preview' in record;
 
