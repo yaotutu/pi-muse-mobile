@@ -22,7 +22,6 @@ import type {
   Identity,
   JobAction,
   JobDetail,
-  JobEvent,
   JobItem,
   JobsQuery,
   MemoryItem,
@@ -66,6 +65,7 @@ import type { ActivityQuery } from '../activities/types';
 import { parseActivityDetail, parseActivityOverview, parseActivityPage } from '../activities/contracts';
 import type { MemoryQuery } from '../memories/types';
 import { parseMemoryItem, parseMemoryPage, parseMemoryRemoval } from '../memories/contracts';
+import { parseJob, parseJobDetail, parseJobRemoval, parseJobs, parseServerTimeZone } from './job-contracts';
 
 export type TransportState = { kind: 'online' | 'offline'; token?: string; error?: string };
 export type HttpApiOptions = { onTransportState?: (state: TransportState) => void; timeoutMs?: number; headerTimeoutMs?: number };
@@ -206,6 +206,10 @@ export class HttpApiClient implements ApiClient {
       throw new ApiError(502, '服务器没有返回有效会话，请确认地址是否为 Pi Muse 服务');
     }
     return session;
+  }
+
+  async getServerTimeZone(signal?: AbortSignal): Promise<string> {
+    return parseServerTimeZone(await this.request('/api/health', { anonymous: true, signal }));
   }
 
   async listSpaces(signal?: AbortSignal): Promise<SpaceInfo[]> {
@@ -404,53 +408,37 @@ export class HttpApiClient implements ApiClient {
   async listJobs(query?: JobsQuery, signal?: AbortSignal): Promise<JobItem[]> {
     const params = new URLSearchParams();
     if (query?.spaceId) params.set('spaceId', query.spaceId);
-    if (query?.threadId) params.set('threadId', query.threadId);
     if (query?.sort) params.set('sort', query.sort);
     if (query?.order) params.set('order', query.order);
     const suffix = params.toString() ? `?${params.toString()}` : '';
-    const data = await this.request<{ jobs: JobItem[] }>(`/api/jobs${suffix}`, { signal });
-    if (!data || !Array.isArray(data.jobs)) {
-      throw new ApiError(502, '定时任务列表响应格式不正确');
-    }
-    return data.jobs;
+    return parseJobs(await this.request(`/api/jobs${suffix}`, { signal }));
   }
 
   async getJob(id: string, signal?: AbortSignal): Promise<JobDetail> {
-    const data = await this.request<{ job?: JobItem; task?: JobItem; events?: JobEvent[] }>(
-      `/api/jobs/${encodeURIComponent(id)}`,
-      { signal },
-    );
-    const job = data?.job ?? data?.task;
-    if (!job || !Array.isArray(data?.events)) {
-      throw new ApiError(502, '定时任务详情响应格式不正确');
-    }
-    return {
-      job,
-      events: data.events,
-    };
+    return parseJobDetail(await this.request(`/api/jobs/${encodeURIComponent(id)}`, { signal }), id);
   }
 
   async controlJob(id: string, action: JobAction, signal?: AbortSignal): Promise<JobItem> {
-    return this.request<JobItem>(`/api/jobs/${encodeURIComponent(id)}/control`, {
+    return parseJob(await this.request(`/api/jobs/${encodeURIComponent(id)}/control`, {
       method: 'POST',
       body: { action },
       signal,
-    });
+    }), id);
   }
 
   async updateJob(id: string, updates: UpdateJobInput, signal?: AbortSignal): Promise<JobItem> {
-    return this.request<JobItem>(`/api/jobs/${encodeURIComponent(id)}`, {
+    return parseJob(await this.request(`/api/jobs/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       body: updates,
       signal,
-    });
+    }), id);
   }
 
   async deleteJob(id: string, signal?: AbortSignal): Promise<DeleteJobResult> {
-    return this.request<DeleteJobResult>(`/api/jobs/${encodeURIComponent(id)}`, {
+    return parseJobRemoval(await this.request(`/api/jobs/${encodeURIComponent(id)}`, {
       method: 'DELETE',
       signal,
-    });
+    }), id);
   }
 
   // --- 兼容旧版任务调用（重定向至 /api/jobs 契约） ---
@@ -458,10 +446,7 @@ export class HttpApiClient implements ApiClient {
   async getTask(id: string, signal?: AbortSignal): Promise<TaskDetails> {
     const detail = await this.getJob(id, signal);
     return {
-      task: {
-        ...detail.job,
-        result: detail.job.lastResult ?? detail.job.result,
-      },
+      task: detail.job,
       events: detail.events,
     };
   }
@@ -472,11 +457,7 @@ export class HttpApiClient implements ApiClient {
     _target?: TaskControlTarget,
     signal?: AbortSignal,
   ): Promise<AgentTask> {
-    const job = await this.controlJob(id, action, signal);
-    return {
-      ...job,
-      result: job.lastResult ?? job.result,
-    };
+    return this.controlJob(id, action, signal);
   }
 
   async controlMonitor(id: string, action: MonitorAction): Promise<Monitor> {

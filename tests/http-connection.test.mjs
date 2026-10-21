@@ -103,7 +103,7 @@ test('401回调携带请求发送时的Token，而不是后来替换的Token', a
 
 test('暂停阻止新后台请求，恢复可继续；退役客户端不能重新启用', async () => {
   let calls = 0;
-  await withFetch(async () => { calls++; return json({ task: { id: 'a' }, events: [] }); }, async () => {
+  await withFetch(async () => { calls++; return json({ job: { id: 'a', title: 'Test', prompt: 'Test', kind: 'job', daily: true, at: '09:00', enabled: true, status: 'scheduled', createdAt: '2026-10-20T00:00:00Z', updatedAt: '2026-10-20T00:00:00Z', error: null }, events: [] }); }, async () => {
     const api = new HttpApiClient('https://server-a', () => 'token-a', () => {});
     api.suspend();
     await assert.rejects(api.getTask('a'), (e) => e.name === 'AbortError');

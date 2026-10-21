@@ -20,6 +20,8 @@ const jsonResponse = (body, status = 200) => new Response(JSON.stringify(body), 
   headers: { 'content-type': 'application/json' },
 });
 
+const jobFixture = (patch = {}) => ({ id: 'job-1', title: '任务', prompt: '提示', kind: 'job', daily: true, at: '09:00', enabled: true, status: 'scheduled', createdAt: '2026-10-20T00:00:00Z', updatedAt: '2026-10-20T00:00:00Z', error: null, ...patch });
+
 test('getConversation 保留 revision 与 messages 响应结构', async () => {
   const conversation = { revision: 'rev-17', messages: [{ id: 'message-1', role: 'user', content: '你好' }] };
   await withFetch(async (url) => {
@@ -174,7 +176,7 @@ test('getTask 兼容旧调用并重定向至 /api/jobs/:id', async () => {
     const client = new HttpApiClient('https://api.example', () => undefined, () => {});
     const res = await client.getTask('job/1');
     assert.equal(res.task.id, 'job/1');
-    assert.equal(res.task.result, '完成');
+    assert.equal(res.task.lastResult, '完成');
     assert.deepEqual(res.events, detail.events);
   });
 });
@@ -185,7 +187,7 @@ test('controlJob 向 /api/jobs/:id/control 发送纯 action（无冗余 target�
     assert.equal(url, 'https://api.example/api/jobs/job-1/control');
     assert.equal(init.method, 'POST');
     requestBody = JSON.parse(init.body);
-    return jsonResponse({ id: 'job-1', status: 'paused' });
+    return jsonResponse(jobFixture({ status: 'paused' }));
   }, async () => {
     const client = new HttpApiClient('https://api.example', () => undefined, () => {});
     const res = await client.controlJob('job-1', 'pause');
@@ -200,13 +202,13 @@ test('controlTask 兼容旧调用并将 action 发送至 /api/jobs/:id/control',
     assert.equal(url, 'https://api.example/api/jobs/job-1/control');
     assert.equal(init.method, 'POST');
     requestBody = JSON.parse(init.body);
-    return jsonResponse({ id: 'job-1', status: 'cancelled', lastResult: '已取消' });
+    return jsonResponse(jobFixture({ status: 'cancelled', lastResult: '已取消' }));
   }, async () => {
     const client = new HttpApiClient('https://api.example', () => undefined, () => {});
     const res = await client.controlTask('job-1', 'cancel', 'job');
     assert.deepEqual(requestBody, { action: 'cancel' });
     assert.equal(res.id, 'job-1');
-    assert.equal(res.result, '已取消');
+    assert.equal(res.lastResult, '已取消');
   });
 });
 
@@ -216,7 +218,7 @@ test('updateJob 向 /api/jobs/:id 发送 PATCH 请求', async () => {
     assert.equal(url, 'https://api.example/api/jobs/job-1');
     assert.equal(init.method, 'PATCH');
     requestBody = JSON.parse(init.body);
-    return jsonResponse({ id: 'job-1', prompt: '修改后的提示词', daily: true, at: '08:30' });
+    return jsonResponse(jobFixture({ prompt: '修改后的提示词', daily: true, at: '08:30' }));
   }, async () => {
     const client = new HttpApiClient('https://api.example', () => undefined, () => {});
     const res = await client.updateJob('job-1', { prompt: '修改后的提示词', daily: true, at: '08:30' });

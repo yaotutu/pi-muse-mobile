@@ -15,7 +15,8 @@ test('实际入口挂载只读历史，关联只使用显式 activityId，步骤
   const provider = read('runtime/RuntimeProvider.tsx'); const panel = read('workspace/ActivityPanel.tsx');
   assert.match(provider, /activities.receive\(event\)/); assert.match(provider, /activities.setActive\(enabled\)/);
   assert.match(read('workspace/SessionPanel.tsx'), /tab === 'history'.*ActivityPanel/);
-  assert.match(read('workspace/WorkspaceScreen.tsx'), /page === 'activity'.*!sessionOpen.*ActivityPanel/);
+  assert.match(read('workspace/WorkspaceScreen.tsx'), /page === 'activity'.*!sessionOpen.*TasksPage/);
+  assert.match(read('workspace/JobsPanel.tsx'), /tab === 'activity'.*ActivityPanel/);
   assert.match(read('workspace/CurrentExecution.tsx'), /run.activityId !== null/); assert.match(panel, /key=\{activityStepKey\(step\)\}/);
   assert.doesNotMatch(panel, /decideApproval|createTask|dangerouslySetInnerHTML|parseInt\(step.id/);
 });

@@ -107,14 +107,10 @@ export type JobItem = {
   lastRunAt?: string;
   /** 最近一次执行结果文本摘要 */
   lastResult?: string;
-  /** 兼容别名：旧字段名为 result，现统一规范为 lastResult */
-  result?: string;
   /** 错误信息（上次执行失败时非 null） */
   error: string | null;
   /** 所属空间 ID */
   originSpaceId?: string;
-  /** 兼容字段：等同于 originSpaceId */
-  originThreadId?: string;
 };
 
 /** 定时任务详情时间线条目（GET /api/jobs/:id） */
@@ -142,7 +138,6 @@ export type JobDetail = { job: JobItem; events: JobEvent[] };
 /** GET /api/jobs 查询参数 */
 export type JobsQuery = {
   spaceId?: string;
-  threadId?: string;
   sort?: 'nextRunAt' | 'updatedAt' | 'createdAt';
   order?: 'asc' | 'desc';
 };
@@ -156,7 +151,6 @@ export type UpdateJobInput = {
   daily?: boolean;
   at?: string;
   originSpaceId?: string;
-  originThreadId?: string;
 };
 
 /** DELETE /api/jobs/:id 响应契约 */

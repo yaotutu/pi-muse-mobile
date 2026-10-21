@@ -45,6 +45,8 @@ export type RunInput = {
  * 客户端接口：页面只依赖此抽象，不感知 mock/HTTP 差异。
  */
 export interface ApiClient extends ApprovalClient, ActivityClient, MemoryClient {
+  /** 免鉴权 health 的权威 IANA 时区；不猜测服务端与手机处于相同时区。 */
+  getServerTimeZone(signal?: AbortSignal): Promise<string>;
   /** POST /api/session → {token, mode}；客户端不按时间过期，失效以服务端401为准。 */
   createSession(accessKey?: string): Promise<{ token: string; mode: string }>;
   /** GET /api/spaces（按活跃倒序） */

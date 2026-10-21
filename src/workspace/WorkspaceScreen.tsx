@@ -17,7 +17,8 @@ import { useSpaces } from '../spaces/useSpaces';
 import { useAppUpdate } from '../update/UpdateProvider';
 import { spacing, sizing, workspaceTheme, type WorkspaceColors } from '../ui/tokens';
 import { ConnectionPanel } from './ConnectionPanel';
-import { ActivityPanel } from './ActivityPanel';
+import { TasksPage } from './JobsPanel';
+import { useJobs } from '../jobs/JobProvider';
 import { MemoryPanel } from './MemoryPanel';
 import { ConversationView } from './ConversationView';
 import { SessionPanel, type SessionTab } from './SessionPanel';
@@ -124,6 +125,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
   const session = useSpaceState(spaces.currentSpace);
   const sessions = useSpaceStore(); const runtimeStore = useRuntimeStore();
   const activities = useActivityStore();
+  const { store: jobs } = useJobs();
   const { store: approvals } = useApprovals();
   const runtime = useSpaceRuntime(spaces.currentSpace);
   const [page, setPage] = useState<WorkspacePage>('chat');
@@ -147,7 +149,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
   const name = spaces.currentSpace === MAIN_SPACE ? 'Pi Muse' : spaces.currentSpace;
   const ClearSchedulesIcon = clearSchedules ? SquareCheck : Square;
   const reloadSpaces = spaces.reload;
-  const refresh = useCallback(() => { void reloadSpaces(); activities.invalidate(); setHistoryRefresh((value) => value + 1); }, [reloadSpaces, activities]);
+  const refresh = useCallback(() => { void reloadSpaces(); activities.invalidate(); jobs.invalidate(); setHistoryRefresh((value) => value + 1); }, [reloadSpaces, activities, jobs]);
   useEffect(() => {
     // 原生键盘出现时让出阅读空间；系统 Back 收起键盘也必须恢复完整顶栏与主导航。
     const show = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => setKeyboardVisible(true));
@@ -175,7 +177,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
     try {
       const result = await sessions.deleteSpace(id);
       if (!result) return;
-      runtimeStore.forgetSpace(id); activities.forgetSpace(id); spaces.removeSpace(id); setSessionOpen(false); setDeleteConfirm(false); setNotice(undefined); await spaces.reload();
+      runtimeStore.forgetSpace(id); activities.forgetSpace(id); jobs.invalidate(); spaces.removeSpace(id); setSessionOpen(false); setDeleteConfirm(false); setNotice(undefined); await spaces.reload();
     } catch (error) { setNotice({ text: error instanceof Error ? error.message : String(error), tone: 'error' }); }
   };
   const reset = async () => {
@@ -200,7 +202,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
     onMoveShouldSetPanResponder: (event, gesture) => Math.abs(gesture.dx) > l.gestureThreshold && Math.abs(gesture.dx) > Math.abs(gesture.dy) * l.gestureAxisRatio && (drawerOpen ? gesture.dx < 0 : event.nativeEvent.pageX - gesture.dx < l.edgeGestureWidth && gesture.dx > 0),
     onPanResponderRelease: (_event, gesture) => { if (gesture.dx < -l.gestureThreshold) setDrawerOpen(false); if (gesture.dx > l.gestureThreshold) openDrawer(); },
   }), [drawerOpen, openDrawer]);
-  const otherPage = page === 'chat' ? null : page === 'apps' ? <AppsPage snapshot={snapshot} openConnection={openConnection} memoryAvailable /> : page === 'activity' ? !sessionOpen && <ScrollView contentContainerStyle={styles.otherPage}><ActivityPanel key={spaces.currentSpace} spaceId={spaces.currentSpace} defaultScope="all" /><Text style={styles.caption}>定时任务管理尚未接入。</Text></ScrollView> : <View style={styles.goalPage}>
+  const otherPage = page === 'chat' ? null : page === 'apps' ? <AppsPage snapshot={snapshot} openConnection={openConnection} memoryAvailable /> : page === 'activity' ? !sessionOpen && <TasksPage spaceId={spaces.currentSpace} /> : <View style={styles.goalPage}>
     <EmptyState icon={SquareCheck} title="给想做的事，一个方向" description="目标尚未接入。当前可以在聊天中与 Pi Muse 探讨你的计划；这里不会展示模拟进度。" />
     <Pressable accessibilityRole="button" accessibilityLabel="去聊天讨论目标" onPress={() => setPage('chat')} style={styles.secondaryButton}><Text style={styles.actionLabel}>从聊天开始</Text><ArrowUpRight size={sizing[18]} color={colors.ink} /></Pressable>
   </View>;
