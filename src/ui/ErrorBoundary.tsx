@@ -4,10 +4,11 @@
  */
 
 import { AlertTriangle, RefreshCw } from 'lucide-react-native';
-import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { Component, useMemo, type ErrorInfo, type ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Button } from './Buttons';
-import { colors, radius, sizing, spacing, typography } from './tokens';
+import { sizing, spacing, workspaceTheme, type WorkspaceColors } from './tokens';
+import { useTheme } from '../theme/ThemeProvider';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -48,31 +49,35 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
         return this.props.fallback;
       }
 
-      return (
-        <View style={styles.container}>
-          <View style={styles.card}>
-            <View style={styles.header}>
-              <AlertTriangle size={sizing[20]} color={colors.danger} />
-              <Text style={styles.title}>{this.props.title ?? '组件显示异常'}</Text>
-            </View>
-            <Text style={styles.message} numberOfLines={3}>
-              {this.state.error.message || '发生未知错误'}
-            </Text>
-            <View style={styles.actions}>
-              <Button small icon={RefreshCw} onPress={this.reset}>
-                重试
-              </Button>
-            </View>
-          </View>
-        </View>
-      );
+      return <ErrorFallback title={this.props.title ?? '组件显示异常'} error={this.state.error} reset={this.reset} />;
     }
 
     return this.props.children;
   }
 }
 
-const styles = StyleSheet.create({
+/** 函数组件读取主题，错误边界本身仍只承担 React 异常隔离。 */
+function ErrorFallback({ title, error, reset }: { title: string; error: Error; reset: () => void }) {
+  const { colors } = useTheme(); const styles = useMemo(() => createStyles(colors), [colors]);
+  return <View style={styles.container}>
+          <View style={styles.card}>
+            <View style={styles.header}>
+              <AlertTriangle size={sizing[20]} color={colors.danger} />
+              <Text style={styles.title}>{title}</Text>
+            </View>
+            <Text style={styles.message} numberOfLines={3}>
+              {error.message || '发生未知错误'}
+            </Text>
+            <View style={styles.actions}>
+              <Button small icon={RefreshCw} onPress={reset}>
+                重试
+              </Button>
+            </View>
+          </View>
+        </View>;
+}
+
+const createStyles = (colors: WorkspaceColors) => StyleSheet.create({
   container: {
     padding: spacing.md,
     alignItems: 'center',
@@ -81,10 +86,8 @@ const styles = StyleSheet.create({
   card: {
     width: '100%',
     padding: spacing.lg,
-    borderRadius: radius.card,
-    backgroundColor: colors.dangerBg,
-    borderWidth: sizing.borderWidth,
-    borderColor: colors.danger,
+    borderRadius: workspaceTheme.radius.card,
+    backgroundColor: colors.dangerSoft,
     gap: spacing.sm,
   },
   header: {
@@ -93,12 +96,12 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   title: {
-    ...typography.text,
+    ...workspaceTheme.typography.itemTitle,
     fontWeight: '600',
     color: colors.danger,
   },
   message: {
-    ...typography.small,
+    ...workspaceTheme.typography.caption,
     color: colors.muted,
   },
   actions: {

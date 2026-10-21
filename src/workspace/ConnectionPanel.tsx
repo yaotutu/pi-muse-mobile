@@ -24,7 +24,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { StatusBar } from 'expo-status-bar';
+import { ThemeStatusBar } from '../theme/ThemeStatusBar';
 import {
   Check,
   Eye,
@@ -32,6 +32,7 @@ import {
   RefreshCw,
   ShieldAlert,
   ShieldCheck,
+  Server,
   X,
 } from 'lucide-react-native';
 
@@ -46,13 +47,14 @@ import type {
   ConnectionSnapshot,
   ConnectionTest,
 } from '../connection/types';
-import { useWorkspaceTheme } from './WorkspaceTheme';
+import { useTheme } from '../theme/ThemeProvider';
 import {
   describeStatus,
   isPlainHttp,
   tryNormalize,
   type StatusTone,
 } from './connection-panel-helpers';
+import { SectionHeading, useReducedMotion } from './primitives';
 
 // 内部归一化包装，不抛异常的便捷方法。
 function normalizeSafe(input: string): string | undefined {
@@ -70,7 +72,8 @@ export interface ConnectionPanelProps {
 
 export function ConnectionPanel({ manager, snapshot, onClose }: ConnectionPanelProps) {
   const styles = useConnectionStyles();
-  const { mode, colors } = useWorkspaceTheme();
+  const { colors } = useTheme();
+  const reducedMotion = useReducedMotion();
 
   // 草稿状态：URL/Key 仅在组件内存；保存成功后随面板卸载丢弃。
   const [url, setUrl] = useState<string>(snapshot.serverUrl ?? '');
@@ -257,19 +260,18 @@ export function ConnectionPanel({ manager, snapshot, onClose }: ConnectionPanelP
     });
   }, [manager, url, normalizedInput, isLocked, showConfirmStep, runWithDraft, onClose]);
 
-  const statusBarStyle = mode === 'dark' ? 'light' : 'dark';
 
   return (
     <Modal
       visible
       presentationStyle="fullScreen"
-      animationType="fade"
+      animationType={reducedMotion ? 'none' : 'fade'}
       onRequestClose={handleClose}
       statusBarTranslucent
       navigationBarTranslucent
       testID="workspace-connection-modal"
     >
-      <StatusBar style={statusBarStyle} />
+      <ThemeStatusBar />
       <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
         <View style={styles.column}>
           <View style={styles.header}>
@@ -314,6 +316,7 @@ export function ConnectionPanel({ manager, snapshot, onClose }: ConnectionPanelP
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
             >
+              <SectionHeading title="连接你的 Pi Muse" eyebrow="YOUR OWN SPACE" description="填入服务器地址，在自己的空间里继续对话。访问密钥只在本次表单中使用。" />
               <StatusCard
                 statusLabel={statusView.label}
                 statusDetail={statusView.detail}
@@ -607,7 +610,7 @@ function StatusCard({
   caption?: string;
 }) {
   const styles = useConnectionStyles();
-  const { colors } = useWorkspaceTheme();
+  const { colors } = useTheme();
   const accent =
     tone === 'success'
       ? colors.success
@@ -618,7 +621,7 @@ function StatusCard({
           : colors.muted;
   return (
     <View style={styles.statusCard} accessibilityRole="summary">
-      <View style={[styles.statusDot, { backgroundColor: accent }]} />
+      <View style={styles.serverIcon}><Server size={workspaceTheme.layout.iconSize} color={accent} strokeWidth={1.5} /></View>
       <View style={styles.statusBody}>
         <Text style={styles.statusSection}>已保存连接</Text>
         <Text style={styles.statusLabel}>{statusLabel}</Text>
@@ -661,14 +664,13 @@ function Section({
 // ─── 样式 ──────────────────────────────────────────────────────────────────
 
 function useConnectionStyles() {
-  const { colors } = useWorkspaceTheme();
+  const { colors } = useTheme();
   return useMemo(() => createStyles(colors), [colors]);
 }
 
 function createStyles(c: WorkspaceColors) {
   const { layout: l, radius: r, typography: t } = workspaceTheme;
-  // pill 输入框：圆角取最小高度的半高，几何派生自 sizing.inputMinHeight。
-  const inputRadius = sizing.inputMinHeight / 2;
+  const inputRadius = r.field;
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: c.canvas },
     column: {
@@ -680,7 +682,7 @@ function createStyles(c: WorkspaceColors) {
 
     header: {
       flexDirection: 'row',
-      alignItems: 'flex-start',
+      alignItems: 'center',
       paddingHorizontal: l.sidePadding,
       paddingTop: l.sessionTop,
       paddingBottom: l.sessionHeaderBottom,
@@ -705,9 +707,9 @@ function createStyles(c: WorkspaceColors) {
       justifyContent: 'flex-start',
     },
     headerTitle: {
-      ...t.heroName,
+      ...t.section,
       color: c.ink,
-      fontWeight: '600',
+      fontWeight: '500',
     },
     headerStatus: {
       marginTop: spacing.xs,
@@ -720,7 +722,8 @@ function createStyles(c: WorkspaceColors) {
     content: {
       paddingHorizontal: l.sidePadding,
       paddingBottom: spacing[24],
-      gap: l.listItemGap,
+      gap: l.sectionGap,
+      paddingTop: spacing[12],
     },
 
     statusCard: {
@@ -737,6 +740,7 @@ function createStyles(c: WorkspaceColors) {
       borderRadius: l.stateDotSize / 2,
       marginTop: spacing.sm,
     },
+    serverIcon: { width: l.rowIcon, height: l.rowIcon, alignItems: 'center', justifyContent: 'center', borderRadius: r.round, backgroundColor: c.control },
     statusBody: { flex: 1, gap: spacing.xxs },
     statusSection: {
       ...t.caption,
@@ -768,9 +772,7 @@ function createStyles(c: WorkspaceColors) {
     proofBox: {
       padding: spacing.md,
       borderRadius: r.card,
-      backgroundColor: c.selected,
-      borderWidth: sizing.borderWidth,
-      borderColor: c.success,
+      backgroundColor: c.successSoft,
       gap: spacing.xxs,
     },
     proofLabel: {
@@ -793,14 +795,14 @@ function createStyles(c: WorkspaceColors) {
     },
 
     input: {
-      minHeight: sizing.inputMinHeight,
+      minHeight: l.inputMinHeight,
       paddingHorizontal: spacing[18],
       paddingVertical: spacing[12],
       borderRadius: inputRadius,
       backgroundColor: c.surface,
       color: c.ink,
       ...t.input,
-      borderWidth: sizing.borderWidth,
+      borderWidth: StyleSheet.hairlineWidth,
       borderColor: c.line,
     },
     keyWrap: {
@@ -836,9 +838,7 @@ function createStyles(c: WorkspaceColors) {
     errorBox: {
       padding: spacing.md,
       borderRadius: r.card,
-      backgroundColor: c.selected,
-      borderWidth: sizing.borderWidth,
-      borderColor: c.danger,
+      backgroundColor: c.dangerSoft,
     },
     errorText: {
       ...t.detail,
@@ -848,9 +848,9 @@ function createStyles(c: WorkspaceColors) {
     confirmBox: {
       padding: spacing.lg,
       borderRadius: r.card,
-      backgroundColor: c.surface,
+      backgroundColor: c.dangerSoft,
       gap: spacing.md,
-      borderWidth: sizing.borderWidth,
+      borderWidth: StyleSheet.hairlineWidth,
       borderColor: c.danger,
     },
     confirmTitle: {
@@ -916,8 +916,8 @@ function createStyles(c: WorkspaceColors) {
     actionButtonPrimary: {
       backgroundColor: c.blue,
     },
-    actionButtonDisabled: { opacity: 0.4 },
-    pressed: { opacity: 0.7 },
+    actionButtonDisabled: { opacity: workspaceTheme.interaction.disabledOpacity },
+    pressed: { opacity: workspaceTheme.interaction.pressedOpacity },
     actionButtonText: {
       ...t.detail,
       fontWeight: '600',

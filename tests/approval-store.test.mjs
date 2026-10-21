@@ -5,7 +5,7 @@ import { ApprovalConflictError } from '../src/approvals/contracts.ts';
 import { ApiError } from '../src/api/errors.ts';
 import { approvalFixture, settledApproval, approvalSummary, approvalResolution } from './helpers/approval-fixtures.ts';
 
-const ready = (pendingApprovals = [], instanceId = 'instance-a') => ({ event: 'ready', data: { instanceId, serverTime: '2026-10-20T00:00:00.000Z', agentStatuses: [], pendingApprovals } });
+const ready = (pendingApprovals = [], instanceId = 'instance-a') => ({ event: 'ready', data: { instanceId, serverTime: '2026-10-20T00:00:00.000Z', agentStatuses: [], pendingApprovals, activities: [] } });
 const update = (approval = settledApproval()) => ({ event: 'approval_updated', data: { ...approvalResolution(approval), instanceId: 'instance-a' } });
 const pending = (approval = approvalFixture()) => ({ event: 'approval_pending', data: { ...approval, instanceId: 'instance-a' } });
 const deferred = () => { let resolve, reject; const promise = new Promise((ok, fail) => { resolve = ok; reject = fail; }); return { promise, resolve, reject }; };
@@ -22,6 +22,11 @@ function setup(overrides = {}) {
   const store = new ApprovalStore(client); store.setActive(true);
   return { store, calls };
 }
+test('共享活动推送不会被误合并成审批轻量回执', () => {
+  const { store } = setup(); store.receive(ready([approvalFixture()])); const before = store.getSnapshot();
+  store.receive({ event: 'activity_updated', data: { id: 'approval-a', spaceId: 'thread-a', instanceId: 'instance-a', status: 'completed' } });
+  assert.equal(store.getSnapshot(), before); store.dispose();
+});
 test('ready 整体替换 pending，断线期间消失项补读权威终态而不猜测', async () => {
   const { store, calls } = setup(); store.receive(ready([approvalFixture()])); assert.equal(store.canDecide('approval-a'), true);
   store.setConnection('reconnecting'); assert.equal(store.canDecide('approval-a'), false);

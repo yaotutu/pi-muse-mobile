@@ -43,9 +43,9 @@ test('stopRun 使用 spaceId 与 runId 调用 conversation stop 契约', async (
   });
 });
 
-test('getSnapshot 直接读取 /api/agent 快照，不请求已下线的 /api/actions/pending', async () => {
+test('getSnapshot 直接读取 /api/agent 快照（无 tasks 字段），不请求已下线的 /api/actions/pending', async () => {
   const snapshot = {
-    tasks: [], goals: [], monitors: [], memories: [],
+    goals: [], monitors: [], memories: [],
     identity: { name: '', tone: '' },
   };
   await withFetch(async (url) => {
@@ -57,31 +57,121 @@ test('getSnapshot 直接读取 /api/agent 快照，不请求已下线的 /api/ac
   });
 });
 
-test('getTask 保留 task 与 events 详情响应结构', async () => {
-  const detail = { task: { id: 'task/1', title: '任务' }, events: [{ id: 'event-1' }] };
+test('listJobs 正确拼接 query 参数并解包 jobs 列表', async () => {
+  const jobs = [{ id: 'job-1', title: '提醒', prompt: '提示词', kind: 'job', daily: true, at: '09:00', enabled: true, status: 'scheduled', createdAt: '2026-10-20T00:00:00Z', updatedAt: '2026-10-20T00:00:00Z', error: null }];
   await withFetch(async (url) => {
-    assert.equal(url, 'https://api.example/api/agent/tasks/task%2F1');
-    return jsonResponse(detail);
+    assert.equal(url, 'https://api.example/api/jobs?spaceId=sp-1&sort=updatedAt&order=desc');
+    return jsonResponse({ jobs });
   }, async () => {
     const client = new HttpApiClient('https://api.example', () => undefined, () => {});
-    assert.deepEqual(await client.getTask('task/1'), detail);
+    const res = await client.listJobs({ spaceId: 'sp-1', sort: 'updatedAt', order: 'desc' });
+    assert.deepEqual(res, jobs);
+  });
+
+  await withFetch(async (url) => {
+    assert.equal(url, 'https://api.example/api/jobs');
+    return jsonResponse({ jobs: [] });
+  }, async () => {
+    const client = new HttpApiClient('https://api.example', () => undefined, () => {});
+    const res = await client.listJobs();
+    assert.deepEqual(res, []);
   });
 });
 
-test('controlTask 将必需 target 原样放入请求体', async () => {
-  const targets = ['job'];
-  let requestIndex = 0;
-  await withFetch(async (url, init) => {
-    assert.equal(url, 'https://api.example/api/agent/tasks/task-1/control');
-    assert.equal(init.method, 'POST');
-    assert.deepEqual(JSON.parse(init.body), { action: 'cancel', target: targets[requestIndex] });
-    requestIndex += 1;
-    return jsonResponse({ id: 'task-1' });
+test('listJobs 遇到响应结构缺少 jobs 数组时抛 502', async () => {
+  await withFetch(async () => jsonResponse({ jobs: 'not-an-array' }), async () => {
+    const client = new HttpApiClient('https://api.example', () => undefined, () => {});
+    await assert.rejects(client.listJobs(), (err) => err instanceof ApiError && err.status === 502);
+  });
+});
+
+test('getJob 请求 /api/jobs/:id 并返回 job 与 events 结构', async () => {
+  const detail = {
+    job: { id: 'job/1', title: '任务', prompt: '内容', kind: 'job', daily: false, at: '2026-10-21T00:00:00Z', enabled: false, status: 'succeeded', createdAt: '2026-10-20T00:00:00Z', updatedAt: '2026-10-20T00:00:00Z', lastResult: '完成', error: null },
+    events: [{ id: 'event-1', taskId: 'job/1', date: '2026-10-20T00:00:00Z', kind: 'status', title: 'Created', detail: 'Created' }],
+  };
+  await withFetch(async (url) => {
+    assert.equal(url, 'https://api.example/api/jobs/job%2F1');
+    return jsonResponse(detail);
   }, async () => {
     const client = new HttpApiClient('https://api.example', () => undefined, () => {});
-    for (const target of targets) await client.controlTask('task-1', 'cancel', target);
+    assert.deepEqual(await client.getJob('job/1'), detail);
   });
-  assert.equal(requestIndex, targets.length);
+});
+
+test('getTask 兼容旧调用并重定向至 /api/jobs/:id', async () => {
+  const detail = {
+    job: { id: 'job/1', title: '任务', prompt: '内容', kind: 'job', daily: false, at: '2026-10-21T00:00:00Z', enabled: false, status: 'succeeded', createdAt: '2026-10-20T00:00:00Z', updatedAt: '2026-10-20T00:00:00Z', lastResult: '完成', error: null },
+    events: [{ id: 'event-1', taskId: 'job/1', date: '2026-10-20T00:00:00Z', kind: 'status', title: 'Created', detail: 'Created' }],
+  };
+  await withFetch(async (url) => {
+    assert.equal(url, 'https://api.example/api/jobs/job%2F1');
+    return jsonResponse(detail);
+  }, async () => {
+    const client = new HttpApiClient('https://api.example', () => undefined, () => {});
+    const res = await client.getTask('job/1');
+    assert.equal(res.task.id, 'job/1');
+    assert.equal(res.task.result, '完成');
+    assert.deepEqual(res.events, detail.events);
+  });
+});
+
+test('controlJob 向 /api/jobs/:id/control 发送纯 action（无冗余 target）', async () => {
+  let requestBody;
+  await withFetch(async (url, init) => {
+    assert.equal(url, 'https://api.example/api/jobs/job-1/control');
+    assert.equal(init.method, 'POST');
+    requestBody = JSON.parse(init.body);
+    return jsonResponse({ id: 'job-1', status: 'paused' });
+  }, async () => {
+    const client = new HttpApiClient('https://api.example', () => undefined, () => {});
+    const res = await client.controlJob('job-1', 'pause');
+    assert.deepEqual(requestBody, { action: 'pause' });
+    assert.equal(res.id, 'job-1');
+  });
+});
+
+test('controlTask 兼容旧调用并将 action 发送至 /api/jobs/:id/control', async () => {
+  let requestBody;
+  await withFetch(async (url, init) => {
+    assert.equal(url, 'https://api.example/api/jobs/job-1/control');
+    assert.equal(init.method, 'POST');
+    requestBody = JSON.parse(init.body);
+    return jsonResponse({ id: 'job-1', status: 'cancelled', lastResult: '已取消' });
+  }, async () => {
+    const client = new HttpApiClient('https://api.example', () => undefined, () => {});
+    const res = await client.controlTask('job-1', 'cancel', 'job');
+    assert.deepEqual(requestBody, { action: 'cancel' });
+    assert.equal(res.id, 'job-1');
+    assert.equal(res.result, '已取消');
+  });
+});
+
+test('updateJob 向 /api/jobs/:id 发送 PATCH 请求', async () => {
+  let requestBody;
+  await withFetch(async (url, init) => {
+    assert.equal(url, 'https://api.example/api/jobs/job-1');
+    assert.equal(init.method, 'PATCH');
+    requestBody = JSON.parse(init.body);
+    return jsonResponse({ id: 'job-1', prompt: '修改后的提示词', daily: true, at: '08:30' });
+  }, async () => {
+    const client = new HttpApiClient('https://api.example', () => undefined, () => {});
+    const res = await client.updateJob('job-1', { prompt: '修改后的提示词', daily: true, at: '08:30' });
+    assert.deepEqual(requestBody, { prompt: '修改后的提示词', daily: true, at: '08:30' });
+    assert.equal(res.prompt, '修改后的提示词');
+  });
+});
+
+test('deleteJob 向 /api/jobs/:id 发送 DELETE 请求', async () => {
+  await withFetch(async (url, init) => {
+    assert.equal(url, 'https://api.example/api/jobs/job-1');
+    assert.equal(init.method, 'DELETE');
+    return jsonResponse({ ok: true, id: 'job-1' });
+  }, async () => {
+    const client = new HttpApiClient('https://api.example', () => undefined, () => {});
+    const res = await client.deleteJob('job-1');
+    assert.deepEqual(res, { ok: true, id: 'job-1' });
+  });
 });
 
 test('401 触发注入回调并抛出带状态码的 ApiError', async () => {
@@ -260,39 +350,57 @@ const requestCases = [
     expect: { name: '小助手', tone: '简洁' },
   },
   {
+    name: 'listMemories 序列化声明参数并请求 /api/memories',
+    call: (client) => client.listMemories({ q: 'test', limit: 5, sort: 'updatedAt', order: 'desc' }),
+    method: 'GET',
+    url: `${BASE}/api/memories?q=test&limit=5&sort=updatedAt&order=desc`,
+    body: undefined,
+    respond: { memories: [{ id: 'memory-1', text: 'test', source: 'Apps UI', createdAt: '2026-10-20T00:00:00.000Z', updatedAt: '2026-10-20T00:00:00.000Z' }] },
+    expect: { memories: [{ id: 'memory-1', text: 'test', source: 'Apps UI', createdAt: '2026-10-20T00:00:00.000Z', updatedAt: '2026-10-20T00:00:00.000Z' }] },
+  },
+  {
+    name: 'getMemory 编码记忆 ID 并请求 /api/memories/:id',
+    call: (client) => client.getMemory('memory/1'),
+    method: 'GET',
+    url: `${BASE}/api/memories/memory%2F1`,
+    body: undefined,
+    respond: { id: 'memory/1', text: '记忆详情', source: 'Apps UI', createdAt: '2026-10-20T00:00:00.000Z', updatedAt: '2026-10-20T00:00:00.000Z' },
+    expect: { id: 'memory/1', text: '记忆详情', source: 'Apps UI', createdAt: '2026-10-20T00:00:00.000Z', updatedAt: '2026-10-20T00:00:00.000Z' },
+  },
+  {
     name: 'addMemory 省略来源时只提交 text',
     call: (client) => client.addMemory('我喜欢简洁的回答'),
     method: 'POST',
-    url: `${BASE}/api/agent/memories`,
+    url: `${BASE}/api/memories`,
     body: { text: '我喜欢简洁的回答' },
-    respond: { id: 'memory-1', text: '我喜欢简洁的回答' },
-    expect: { id: 'memory-1', text: '我喜欢简洁的回答' },
+    respond: { id: 'memory-1', text: '我喜欢简洁的回答', source: 'Apps UI', createdAt: '2026-10-20T00:00:00.000Z', updatedAt: '2026-10-20T00:00:00.000Z' },
+    expect: { id: 'memory-1', text: '我喜欢简洁的回答', source: 'Apps UI', createdAt: '2026-10-20T00:00:00.000Z', updatedAt: '2026-10-20T00:00:00.000Z' },
   },
   {
     name: 'addMemory 带来源时同时提交 text 与 source',
     call: (client) => client.addMemory('喜欢简洁', 'chat'),
     method: 'POST',
-    url: `${BASE}/api/agent/memories`,
+    url: `${BASE}/api/memories`,
     body: { text: '喜欢简洁', source: 'chat' },
-    respond: { id: 'memory-1', text: '喜欢简洁', source: 'chat' },
-    expect: { id: 'memory-1', text: '喜欢简洁', source: 'chat' },
+    respond: { id: 'memory-1', text: '喜欢简洁', source: 'chat', createdAt: '2026-10-20T00:00:00.000Z', updatedAt: '2026-10-20T00:00:00.000Z' },
+    expect: { id: 'memory-1', text: '喜欢简洁', source: 'chat', createdAt: '2026-10-20T00:00:00.000Z', updatedAt: '2026-10-20T00:00:00.000Z' },
   },
   {
-    name: 'editMemory 编码记忆 ID 并只提交新文本',
+    name: 'editMemory 编码记忆 ID 并以 PATCH 提交新文本',
     call: (client) => client.editMemory('memory/1', '改过的记忆'),
-    method: 'POST',
-    url: `${BASE}/api/agent/memories/memory%2F1`,
+    method: 'PATCH',
+    url: `${BASE}/api/memories/memory%2F1`,
     body: { text: '改过的记忆' },
-    respond: { id: 'memory/1', text: '改过的记忆' },
-    expect: { id: 'memory/1', text: '改过的记忆' },
+    respond: { id: 'memory/1', text: '改过的记忆', source: 'Apps UI', createdAt: '2026-10-20T00:00:00.000Z', updatedAt: '2026-10-20T00:00:00.000Z' },
+    expect: { id: 'memory/1', text: '改过的记忆', source: 'Apps UI', createdAt: '2026-10-20T00:00:00.000Z', updatedAt: '2026-10-20T00:00:00.000Z' },
   },
   {
-    name: 'forgetMemory 走 forget 子路径且丢弃响应载荷',
+    name: 'forgetMemory 以 DELETE 移除记忆且丢弃响应载荷',
     call: (client) => client.forgetMemory('memory/一'),
-    method: 'POST',
-    url: `${BASE}/api/agent/memories/memory%2F%E4%B8%80/forget`,
-    body: {},
-    respond: { ok: true },
+    method: 'DELETE',
+    url: `${BASE}/api/memories/memory%2F%E4%B8%80`,
+    body: undefined,
+    respond: { ok: true, id: 'memory/一' },
     expect: undefined,
   },
   {

@@ -8,6 +8,8 @@
 import { ApiError } from '../api/errors';
 import { assertSpaceAlias } from '../api/space-contracts';
 import { parsePendingApprovals } from '../approvals/contracts';
+import { parseActivityOverview } from '../activities/contracts';
+import { isActiveActivity } from '../activities/types';
 import type {
   AgentStatus,
   AgentStatusResponse,
@@ -142,11 +144,17 @@ export function parseRuntimeReady(value: unknown): Extract<RuntimeEvent, { event
   const instanceId = ensureString(entry.instanceId, 'ready.data.instanceId');
   const serverTime = ensureString(entry.serverTime, 'ready.data.serverTime');
   if (!Array.isArray(entry.agentStatuses)) throw new ApiError(502, 'ready.data.agentStatuses 不是数组');
+  if (!Array.isArray(entry.activities)) throw new ApiError(502, 'ready.data.activities 不是数组');
+  const activities = entry.activities.map(parseActivityOverview);
+  if (new Set(activities.map((item) => item.id)).size !== activities.length || activities.some((item) => !isActiveActivity(item))) {
+    throw new ApiError(502, 'ready 活动集合含重复项或终态，无法作为完整当前集合');
+  }
   return {
     instanceId,
     serverTime,
     agentStatuses: entry.agentStatuses.map(ensureAgentStatus),
     pendingApprovals: parsePendingApprovals({ approvals: entry.pendingApprovals }),
+    activities,
   };
 }
 

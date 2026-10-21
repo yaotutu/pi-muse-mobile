@@ -21,6 +21,7 @@ pi-muse 的官方移动客户端（iOS / Android / 平板，Expo + React Native 
 - **接口事实来源 = 服务端提供的 swagger 式 API 文档页面**。文档就绪前，从 pi-muse 源码只读提取：`src/http/app.ts`、`src/http/workspace-routes.ts`、`src/http/contracts/rest.ts`，以及 `web/src/lib/api.ts`（已验证的消费端实现，SSE 解析直接翻译它）。
 - **遇到不合理的接口：停下来报告用户，由用户介入协调服务端修改**。绝不自行修改服务端，也不迁就别扭的接口硬写。发现的问题记录到 `docs/notes.md`。
 - 服务端 agent 自己维护的测试 web 页面与本仓库无关，不关心、不维护、不评价。
+- **文件与目录命名红线（强制）**：任何情况下，所有新建、重命名、移动、临时生成或引导用户创建的文件和文件夹名称，严禁包含任何特殊字符，尤其绝对不能包含空格。仅允许英文字母、数字、`-`、`_` 和 `.`，多词组合统一使用 kebab-case（如 `ui-references/`），绝不使用空格分隔。
 - 添加详细中文注释，重点解释职责边界、协议契约和安全约束，不逐行复述代码。
 
 ## 测试与最终验收（强约束）
@@ -44,8 +45,8 @@ pi-muse 的官方移动客户端（iOS / Android / 平板，Expo + React Native 
 - **无导航库**：4 个主 tab 状态机；左侧会话栏揭示并推动聊天前景右移；点击会话信息区打开根层全屏会话面板，内部胶囊 Tab 平级切换。旧工作区及旁路预览入口已删除，以用户确认截图和 `src/workspace/` 为准。
 - **SSE 消费**：`expo/fetch`（原生流式支持）+ 自研 AG-UI 事件解析/聚合，翻译 pi-muse 的 `web/src/lib/api.ts`（分帧）与 `web/src/chat/chat-state.ts`（StreamAggregator）。
 - **工具卡与 markdown**：真实消费 UI 已随旧工作区删除；HTTP/SSE、工具展示纯逻辑与回归测试保留，后续接入新版时继续使用自研渲染，不引 CopilotKit SDK。链接仍须限制 http/https。
-- **状态管理**：useState/Context + 连接内存store；新版已挂载真实连接、会话恢复、聊天、运行状态（`src/runtime/`）、审批（`src/approvals/`）与只读活动历史（`src/activities/`）。三者共用唯一通知流；活动以通知失效及打开／前台／聊天结束／手动刷新回读，不承诺严格实时、不恢复旧 `getSnapshot`／五秒轮询。活动只覆盖模型登记的工作，不冒充全部聊天run的持久历史；其余未接领域明确标“尚未接入”，不得混入示例数据冒充服务端数据。
-- **视觉**：一切颜色/圆角/字号/布局常量从 `src/ui/tokens.ts` 取；新版使用 `workspaceTheme`/`workspacePalettes`，支持亮暗主题，禁止组件里散写魔法值。
+- **状态管理**：useState/Context + 连接内存store；新版挂载真实连接、会话恢复、聊天、运行状态（`src/runtime/`）、审批（`src/approvals/`）、只读活动历史（`src/activities/`）及全局长期记忆（`src/memories/`）。运行／审批／活动共用唯一通知流；活动消费完整 `ready.activities` 与 `activity_updated`，没有活动revision，不用时间排序，过程进展／步骤按需回读。记忆没有SSE，按打开／前台／成功写入／手动刷新回读；写入结果未明保留草稿并锁定重提，必须完整读取及用户明确核对，不自动重试。不恢复旧 `getSnapshot`／五秒轮询。活动只覆盖模型登记的工作，不冒充全部聊天run的持久历史；其余未接领域明确标“尚未接入”，不得混入示例数据冒充服务端数据。
+- **视觉与主题**：主题功能独立在 `src/theme/`；三套 preset（经典蓝白／晨光白／深夜黑）及注册表是配色唯一来源，组件通过 `useTheme()` 消费语义颜色，不固定引用某套配色。圆角／字号／布局／间距的实现集中 `src/theme/tokens.ts`，既有组件统一从 `src/ui/tokens.ts` 兼容入口取；禁止组件里散写魔法值。使用共享 `ThemePicker`／`ThemeToggle`／`ThemeStatusBar`，不在业务页复制主题分支。默认经典蓝白，独立本机偏好键保存选择；不得携带服务地址或凭据，不以主题为 key 重建业务。维护说明见 `docs/themes.md`。
 - Expo Web dev 端口固定 **8082**（避开 openmuse 的 8081）。
 
 进度、阶段计划与页面规格见 `docs/HANDOFF.md`。

@@ -18,6 +18,7 @@ test('冷启动只有新版工作区，更新与安全区仍由根级持有', ()
     '../update/UpdateProvider',
     '../update/update-manager',
     '../workspace/WorkspaceScreen',
+    '../theme/ThemeProvider',
   ]);
   const source = read('src/app/AppRoot.tsx');
   assert.match(source, /<WorkspaceScreen\s*\/>/);

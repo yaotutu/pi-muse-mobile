@@ -1,28 +1,30 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ChevronRight, FilePenLine, ShieldCheck } from 'lucide-react-native';
 import { useApprovals } from '../approvals/ApprovalProvider';
 import { hasApprovalPreview } from '../approvals/approval-store';
 import { approvalScopeLabel, approvalStatusLabel, executionLabel } from '../approvals/presentation';
 import type { ApprovalDecision, ApprovalFilter, ApprovalRecord, SettledApprovalStatus } from '../approvals/types';
 import { spacing, workspaceTheme, type WorkspaceColors } from '../ui/tokens';
-import { useWorkspaceTheme } from './WorkspaceTheme';
+import { useTheme } from '../theme/ThemeProvider';
 import { useRuntimeStore } from '../runtime/RuntimeProvider';
+import { EmptyState, SectionHeading, StatusPill, type StatusTone } from './primitives';
 
 const HISTORY_STATUSES: { value?: SettledApprovalStatus; label: string }[] = [
   { label: '全部状态' }, { value: 'approved', label: '已批准' }, { value: 'denied', label: '已拒绝' },
   { value: 'expired', label: '已过期' }, { value: 'cancelled', label: '已撤销' },
 ];
-function useStyles() { const { colors } = useWorkspaceTheme(); return useMemo(() => createStyles(colors), [colors]); }
+function useStyles() { const { colors } = useTheme(); return useMemo(() => createStyles(colors), [colors]); }
 function Action({ label, onPress, disabled, primary, danger }: { label: string; onPress: () => void; disabled?: boolean; primary?: boolean; danger?: boolean }) {
   const styles = useStyles();
   return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled: !!disabled }} disabled={disabled} onPress={onPress}
-    style={[styles.button, primary && styles.primary, disabled && styles.disabled]}><Text style={[styles.buttonText, primary && styles.onAccent, danger && styles.danger]}>{label}</Text></Pressable>;
+    style={({ pressed }) => [styles.button, primary && styles.primary, danger && styles.dangerButton, disabled && styles.disabled, pressed && styles.pressed]}><Text style={[styles.buttonText, primary && styles.onAccent, danger && styles.danger]}>{label}</Text></Pressable>;
 }
 
 /** 全屏会话面板内的审批领域；不混入活动历史，也不创建额外导航层或连接。 */
 export function ApprovalPanel({ spaceId }: { spaceId: string }) {
   const { store, snapshot } = useApprovals(); const runtime = useRuntimeStore();
-  const styles = useStyles(); const { colors } = useWorkspaceTheme();
+  const styles = useStyles(); const { colors } = useTheme();
   const [mode, setMode] = useState<'pending' | 'history'>('pending');
   const [scope, setScope] = useState<'all' | 'space'>('all');
   const [status, setStatus] = useState<SettledApprovalStatus>();
@@ -55,8 +57,7 @@ export function ApprovalPanel({ spaceId }: { spaceId: string }) {
   };
 
   return <View style={styles.root} testID="approval-panel">
-    <Text style={styles.heading}>审批</Text>
-    <Text style={styles.caption}>批准仅授权这一次文件操作；是否写入成功，以执行回执为准。</Text>
+    <SectionHeading title="每一次授权，都由你决定" eyebrow="YOUR PERMISSION" description="批准仅授权这一次文件操作；是否写入成功，以执行回执为准。" />
     {!snapshot.synchronized && <View style={styles.card}>
       <Text accessibilityRole="alert" style={styles.body}>审批状态待同步，暂时不能提交决定。</Text>
       <Text style={styles.caption}>以下是最后观测内容，不代表授权仍然有效。</Text>
@@ -105,7 +106,7 @@ export function ApprovalPanel({ spaceId }: { spaceId: string }) {
       {mode === 'pending' ? <>
         <Action label={snapshot.refreshing ? '正在补读待审批' : '补读待审批'} disabled={snapshot.refreshing} onPress={() => void store.refreshPending()} />
         {!!snapshot.error && <Text accessibilityRole="alert" style={styles.error}>{snapshot.error}</Text>}
-        {!pending.length && <Text style={styles.body}>{snapshot.synchronized ? '当前范围没有待审批项' : '正在等待服务端的完整待审批集合'}</Text>}
+        {!pending.length && <EmptyState icon={ShieldCheck} title={snapshot.synchronized ? '没有待处理的审批' : '审批状态同步中'} description={snapshot.synchronized ? '当前范围没有待审批项。需要你的授权时，会在这里显示完整的操作预览。' : '正在等待服务端的完整待审批集合，暂时不能作决定。'} />}
         {pending.map((item) => <ApprovalRow key={item.id} record={item} onOpen={() => setSelectedId(item.id)} />)}
       </> : <>
         <View style={styles.row}>{HISTORY_STATUSES.map((item) => <Choice key={item.value ?? 'all'} label={item.label} selected={status === item.value} onPress={() => setStatus(item.value)} />)}</View>
@@ -113,7 +114,7 @@ export function ApprovalPanel({ spaceId }: { spaceId: string }) {
         {snapshot.history.dirty && <Text style={styles.caption}>历史有更新，刷新可读取最新列表；不把待审批混入历史。</Text>}
         {snapshot.history.loading && <ActivityIndicator accessibilityLabel="正在读取审批历史" color={colors.muted} />}
         {historyMatches && !!snapshot.history.error && <Text accessibilityRole="alert" style={styles.error}>{snapshot.history.error}</Text>}
-        {historyMatches && snapshot.history.loaded && !history.length && !snapshot.history.error && <Text style={styles.body}>当前范围没有审批历史</Text>}
+        {historyMatches && snapshot.history.loaded && !history.length && !snapshot.history.error && <EmptyState icon={ShieldCheck} title="当前范围没有审批历史" description="已结束的授权记录与独立执行回执会保留在这里。" />}
         {history.map((item) => <ApprovalRow key={item.id} record={item} onOpen={() => setSelectedId(item.id)} />)}
         {historyMatches && snapshot.history.hasMore && <Action label="加载更多审批历史" disabled={snapshot.history.loading} onPress={() => void store.loadHistory(filter, true)} />}
       </>}
@@ -123,23 +124,25 @@ export function ApprovalPanel({ spaceId }: { spaceId: string }) {
 
 function Choice({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
   const styles = useStyles();
-  return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected }} onPress={onPress} style={[styles.button, selected && styles.selected]}><Text style={styles.buttonText}>{label}</Text></Pressable>;
+  return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected }} onPress={onPress} style={[styles.button, selected && styles.selected]}><Text style={[styles.buttonText, !selected && styles.choiceText]}>{label}</Text></Pressable>;
 }
 function ApprovalRow({ record, onOpen }: { record: ApprovalRecord; onOpen: () => void }) {
-  const styles = useStyles();
+  const styles = useStyles(); const { colors } = useTheme();
   const title = 'title' in record ? record.title : '审批详情待同步';
-  return <Pressable accessibilityRole="button" accessibilityLabel={`查看审批 ${title}`} testID={`approval-open-${record.id}`} onPress={onOpen} style={styles.card}>
-    <Text style={styles.title}>{title}</Text><Text style={styles.body}>{approvalStatusLabel(record.status)}</Text>
+  return <Pressable accessibilityRole="button" accessibilityLabel={`查看审批 ${title}`} testID={`approval-open-${record.id}`} onPress={onOpen} style={({ pressed }) => [styles.approvalRow, pressed && styles.pressed]}>
+    <View style={styles.fileIcon}><FilePenLine size={workspaceTheme.layout.iconSize} color={colors.muted} strokeWidth={1.5} /></View><View style={styles.rowBody}>
+    <View style={styles.row}><Text style={[styles.title, styles.flex]}>{title}</Text><ChevronRight size={workspaceTheme.layout.iconSize - spacing[8]} color={colors.faint} /></View><View style={styles.pillWrap}><StatusPill label={approvalStatusLabel(record.status)} tone={approvalTone(record.status)} /></View>
     <Text style={styles.caption}>来源空间：{record.spaceId ?? '未关联会话'}</Text>
     {record.subagentId !== null && <Text style={styles.caption}>子代理：{record.subagentId}</Text>}
     {record.status !== 'pending' && <Text style={styles.caption}>{executionLabel(record.execution)}</Text>}
     <Text style={styles.caption}>{record.resolvedAt ?? record.createdAt} · 查看完整预览与详情</Text>
+    </View>
   </Pressable>;
 }
 function ApprovalHeading({ record }: { record: ApprovalRecord }) {
   const styles = useStyles();
   return <View style={styles.card}>
-    <Text style={styles.title}>{'title' in record ? record.title : '审批详情'}</Text><Text style={styles.body}>{approvalStatusLabel(record.status)}</Text>
+    <Text style={styles.title}>{'title' in record ? record.title : '审批详情'}</Text><View style={styles.pillWrap}><StatusPill label={approvalStatusLabel(record.status)} tone={approvalTone(record.status)} /></View>
     <Text selectable style={styles.caption}>审批：{record.id} · revision {record.revision}</Text>
     <Text selectable style={styles.caption}>来源空间：{record.spaceId ?? '未关联会话'}</Text>
     {(['runId', 'toolCallId', 'subagentId', 'activityId'] as const).map((key) => record[key] !== null && <Text key={key} selectable style={styles.caption}>{key}：{record[key]}</Text>)}
@@ -147,6 +150,9 @@ function ApprovalHeading({ record }: { record: ApprovalRecord }) {
     {record.decidedAt !== null && <Text style={styles.caption}>人工决定：{record.decidedAt}</Text>}
     {record.resolvedAt !== null && <Text style={styles.caption}>状态结束：{record.resolvedAt}</Text>}
   </View>;
+}
+function approvalTone(status: ApprovalRecord['status']): StatusTone {
+  return status === 'pending' ? 'warning' : status === 'approved' ? 'success' : status === 'denied' ? 'danger' : 'neutral';
 }
 function Preview({ title, content, empty }: { title: string; content: string; empty: string }) {
   const styles = useStyles();
@@ -158,19 +164,23 @@ function Preview({ title, content, empty }: { title: string; content: string; em
   </View>;
 }
 const createStyles = (colors: WorkspaceColors) => StyleSheet.create({
-  root: { gap: spacing[12], paddingBottom: spacing[24] },
+  root: { gap: spacing[18], paddingBottom: spacing[24] },
   heading: { ...workspaceTheme.typography.section, color: colors.ink },
   title: { ...workspaceTheme.typography.itemTitle, color: colors.ink },
   body: { ...workspaceTheme.typography.detail, color: colors.muted },
   caption: { ...workspaceTheme.typography.caption, color: colors.faint },
   error: { ...workspaceTheme.typography.detail, color: colors.danger },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing[8], alignItems: 'center' },
-  card: { borderRadius: workspaceTheme.radius.card, backgroundColor: colors.surface, padding: spacing[16], gap: spacing[8] },
-  button: { minHeight: workspaceTheme.layout.smallControl, justifyContent: 'center', alignItems: 'center', paddingHorizontal: spacing[14], paddingVertical: spacing[8], borderRadius: workspaceTheme.radius.round, backgroundColor: colors.control, alignSelf: 'flex-start' },
+  card: { borderRadius: workspaceTheme.radius.card, backgroundColor: colors.surface, padding: spacing[20], gap: spacing[12] },
+  button: { minHeight: workspaceTheme.layout.smallControl, justifyContent: 'center', alignItems: 'center', paddingHorizontal: spacing[16], paddingVertical: spacing[10], borderRadius: workspaceTheme.radius.round, backgroundColor: colors.surface, alignSelf: 'flex-start' },
   buttonText: { ...workspaceTheme.typography.status, color: colors.ink },
-  primary: { backgroundColor: colors.blue }, selected: { backgroundColor: colors.selected },
+  primary: { backgroundColor: colors.blue }, selected: { backgroundColor: colors.selected }, choiceText: { color: colors.muted },
+  dangerButton: { backgroundColor: colors.dangerSoft }, pressed: { opacity: workspaceTheme.interaction.pressedOpacity },
   onAccent: { color: colors.onAccent }, danger: { color: colors.danger }, disabled: { opacity: workspaceTheme.interaction.disabledOpacity },
   previewBlock: { gap: spacing[8], marginTop: spacing[8] },
-  preview: { maxHeight: workspaceTheme.layout.approvalPreviewMaxHeight, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line, borderRadius: workspaceTheme.radius.listItem },
-  previewContent: { padding: spacing[12] }, previewText: { ...workspaceTheme.typography.detail, color: colors.ink },
+  preview: { maxHeight: workspaceTheme.layout.approvalPreviewMaxHeight, backgroundColor: colors.canvas, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line, borderRadius: workspaceTheme.radius.field },
+  previewContent: { padding: spacing[16] }, previewText: { ...workspaceTheme.typography.mono, color: colors.ink },
+  approvalRow: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: spacing[20], gap: spacing[14], borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
+  fileIcon: { width: workspaceTheme.layout.rowIcon, height: workspaceTheme.layout.rowIcon, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center', borderRadius: workspaceTheme.radius.round },
+  rowBody: { flex: 1, gap: spacing[8], minWidth: 0 }, flex: { flex: 1 }, pillWrap: { alignSelf: 'flex-start' },
 });

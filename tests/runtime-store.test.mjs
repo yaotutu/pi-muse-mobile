@@ -7,7 +7,7 @@ import { ApprovalStore } from '../src/approvals/approval-store.ts';
 import { approvalFixture, approvalResolution } from './helpers/approval-fixtures.ts';
 
 const status = (overrides = {}) => ({ activityId: null, spaceId: 'a', runId: 'run-a', revision: 1, source: 'chat', jobId: null, title: '当前执行', status: 'running', phase: 'waiting_model', label: '等待模型响应', tools: [], subagents: [], pendingApprovalIds: [], startedAt: '2026-10-19T10:00:00.000Z', updatedAt: '2026-10-19T10:00:00.000Z', endedAt: null, ...overrides });
-const ready = (runs = [], instanceId = 'instance-a') => ({ event: 'ready', data: { instanceId, serverTime: '2026-10-19T10:00:00.000Z', agentStatuses: runs, pendingApprovals: [] } });
+const ready = (runs = [], instanceId = 'instance-a') => ({ event: 'ready', data: { instanceId, serverTime: '2026-10-19T10:00:00.000Z', agentStatuses: runs, pendingApprovals: [], activities: [] } });
 const update = (run, instanceId = 'instance-a') => ({ event: 'agent_status_updated', data: { ...run, instanceId } });
 const tick = () => new Promise(setImmediate);
 function fixture() {

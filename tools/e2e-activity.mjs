@@ -22,10 +22,15 @@ const title = `ACTIVITY_E2E_${stamp}`;
 const secondTitle = `ACTIVITY_SECOND_${stamp}`;
 const delivery = `DELIVERED_${stamp}`;
 const checks = []; const runs = []; const ownActivityIds = [];
+const activityEvents = []; const readySets = [];
 let token; let created = false; let baseline = []; let initialVersion; let failure; let driver; let driverExit;
 const api = new HttpApiClient(base, () => token, () => { throw new Error('Real service rejected authentication'); });
 const activities = new ActivityStore(api);
-const runtime = new RuntimeStore(api, { onEvent: activities.receive, onConnection: activities.setConnection });
+const runtime = new RuntimeStore(api, { onEvent: (event) => {
+  if (event.event === 'ready') readySets.push(event.data.activities.filter((item) => item.spaceId === spaceId));
+  if (event.event === 'activity_updated' && event.data.spaceId === spaceId) activityEvents.push(event.data);
+  activities.receive(event);
+}, onConnection: activities.setConnection });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const record = (name, data = {}) => { checks.push({ name, ...data }); console.log('PASS', name); };
 function write(name, data) { writeFileSync(join(output, name), JSON.stringify(data, null, 2)); }
@@ -87,6 +92,13 @@ try {
   assert.equal(list[0].title, title); assert.equal(list[0].status, 'awaiting_continuation'); assert.deepEqual(list[0].runIds, [first.runId]);
   const incomplete = await detail(id); assert.ok(incomplete.steps.some((s) => s.kind === 'execution')); assert.ok(incomplete.steps.some((s) => s.kind === 'tool')); assert.ok(incomplete.steps.some((s) => s.kind === 'model'));
   assert.equal(incomplete.activity.result, null); write('incomplete.json', incomplete);
+  await until(() => activityEvents.some((event) => event.id === id && event.status === 'awaiting_continuation'), 'real unfinished activity push');
+  assert.ok(activityEvents.some((event) => event.id === id && event.status === 'running'));
+  let readyCount = readySets.length; runtime.retry();
+  await until(() => readySets.length > readyCount, 'reconnect ready includes unfinished activity');
+  assert.deepEqual(activities.getSnapshot().activeActivities.filter((item) => item.spaceId === spaceId).map((item) => item.id), [id]);
+  assert.deepEqual(readySets.at(-1).map((item) => item.id), [id]);
+  record('actual activity_updated status frames and reconnect ready current-set replacement');
   record('real tool/model/execution steps; run success does not complete work', { activityId: id, runId: first.runId });
 
   // 原生驱动读取实际 UI；上下文不含 Token，失败截图不包含聊天原始载荷。
@@ -94,13 +106,20 @@ try {
   driver = spawn('python3', [new URL('./e2e-activity-native.py', import.meta.url).pathname, output], { stdio: 'inherit', env: process.env });
   driver.on('exit', (code) => { driverExit = code ?? 1; });
   driver.on('error', () => { driverExit = 1; });
-  await until(() => existsSync(join(output, 'native-background')), 'native list/detail and background verified', 120_000);
+  // 包含 Expo Go 冷启动、真实长详情滚动与逐项 UIAutomator 采样，不是服务端运行超时。
+  await until(() => existsSync(join(output, 'native-foreground-ready')), 'native list/detail visible for live status verification', 240_000);
   const continued = await run(`I explicitly ask you to CONTINUE the SAME work item ${title}, activity id ${id}. Bind this run to that existing activity; do not register a new one. Call currentTime once for stage two, then deliver a brief final summary that includes ${delivery}. After delivering it, explicitly mark this original activity completed with that delivered summary as result.`);
   list = await storeList(); assert.equal(list.length, 1); assert.equal(list[0].id, id); assert.equal(list[0].status, 'completed');
   const complete = await detail(id); assert.deepEqual(complete.activity.runIds, [first.runId, continued.runId]); assert.ok(complete.activity.result?.includes(delivery));
   assert.ok(complete.steps.some((s) => s.runId === continued.runId)); write('completed.json', complete);
+  await until(() => activityEvents.some((event) => event.id === id && event.status === 'completed'), 'real completed activity push');
+  assert.ok(activityEvents.findLast((event) => event.id === id).result?.includes(delivery));
+  assert.ok(!activities.getSnapshot().activeActivities.some((item) => item.id === id));
+  readyCount = readySets.length; runtime.retry(); await until(() => readySets.length > readyCount, 'reconnect after activity completion');
+  assert.deepEqual(readySets.at(-1), []); assert.ok(!activities.getSnapshot().activeActivities.some((item) => item.id === id));
+  write('activity-events.json', { activityEvents, readySets }); record('completed push carries delivered result; reconnect excludes terminal activity');
   phase('completed', { id }); record('explicit continuation appends run to same activity and delivered result completes it');
-  await until(() => existsSync(join(output, 'native-completed')), 'native foreground consumes completed result', 180_000);
+  await until(() => existsSync(join(output, 'native-completed')), 'native live completion and subsequent background verified', 240_000);
 
   const second = await run(`Start a NEW independent work item titled exactly ${secondTitle}. Explicitly register a new activity, goal "Check pagination", deliverable "A current-time summary". Call currentTime once, deliver its time as a summary, then explicitly mark this NEW activity completed with the delivered summary as result. Do not change the earlier completed activity.`);
   list = await storeList(); assert.equal(list.length, 2); const secondId = list.find((a) => a.id !== id)?.id; assert.ok(secondId); ownActivityIds.push(secondId);
@@ -109,12 +128,12 @@ try {
   const page2 = await api.listActivities({ spaceId, status: 'completed', limit: 1, cursor: page1.nextCursor }); assert.equal(page2.activities[0].id, id); assert.equal(page2.hasMore, false);
   assert.equal((await api.listActivities({ spaceId, status: 'awaiting_continuation' })).activities.length, 0);
   await assert.rejects(api.getActivity(`missing-${stamp}`), (e) => e.status === 404);
-  write('pagination.json', { page1, page2 }); record('real nonempty pagination, opaque cursor, status/thread filters and missing detail');
+  write('pagination.json', { page1, page2 }); record('real nonempty pagination, opaque cursor, status/space filters and missing detail');
   phase('second', { id, secondId, expectedIds: list.map((a) => a.id) });
-  await until(() => existsSync(join(output, 'native-done')), 'native filters, task entry and final screenshots', 180_000);
+  await until(() => existsSync(join(output, 'native-done')), 'native filters, task entry and final screenshots', 240_000);
   await until(() => driverExit === 0, 'native driver exits', 10_000);
   const native = JSON.parse(readFileSync(join(output, 'native-results.json'), 'utf8')); assert.equal(native.passed, true);
-  record('Android native list/detail, filters, foreground recovery, themes and task entry', { checks: native.checks.length });
+  record('Android native live completion without refresh, foreground discovery, timeline, filters, themes and task entry', { checks: native.checks.length });
 } catch (e) {
   failure = e; phase('failed', { error: e.message }); console.error('FAIL', e.message);
 } finally {

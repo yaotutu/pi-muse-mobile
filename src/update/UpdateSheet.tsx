@@ -1,11 +1,13 @@
 // 收起弹层不取消后台持有的下载任务。
 
-import { StyleSheet, Text, View } from 'react-native';
+import { useMemo } from 'react';
+import { ActivityIndicator, StyleSheet, Text, View, type DimensionValue } from 'react-native';
 import { Button } from '../ui/Buttons';
 import { ErrorNotice } from '../ui/Feedback';
 import { Sheet } from '../ui/Sheet';
 import { Card } from '../ui/Surfaces';
-import { colors, spacing, typography } from '../ui/tokens';
+import { spacing, workspaceTheme, type WorkspaceColors } from '../ui/tokens';
+import { useTheme } from '../theme/ThemeProvider';
 import type { UpdateSheetProps, UpdateSnapshot } from './types';
 
 export function UpdateSheet({
@@ -17,11 +19,15 @@ export function UpdateSheet({
   onRetryDownload,
   onOpenSettings,
 }: UpdateSheetProps) {
+  const styles = useStyles(); const { colors } = useTheme();
   const subtitle = buildSubtitle(snapshot);
   return (
     <Sheet title="应用更新" subtitle={subtitle} onClose={onClose}>
       <View style={{ gap: spacing.lg }}>
         <StatusBlock snapshot={snapshot} />
+        {snapshot.status === 'downloading' && <View accessibilityRole="progressbar" accessibilityLabel="安装包下载进度" accessibilityValue={snapshot.totalBytes ? { min: 0, max: 100, now: Math.round(Math.min(1, snapshot.bytesWritten / snapshot.totalBytes) * 100) } : undefined}>
+          {snapshot.totalBytes ? <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${Math.min(100, snapshot.bytesWritten / snapshot.totalBytes * 100)}%` as DimensionValue }]} /></View> : <ActivityIndicator color={colors.blue} />}
+        </View>}
 
         <ErrorNotice error={snapshot.error} />
 
@@ -48,6 +54,7 @@ export function UpdateSheet({
 }
 
 function StatusBlock({ snapshot }: { snapshot: UpdateSnapshot }) {
+  const styles = useStyles();
   switch (snapshot.status) {
     case 'unsupported':
       return (
@@ -299,9 +306,11 @@ function stageHint(stage: UpdateSnapshot['errorStage']): string {
   }
 }
 
-const styles = StyleSheet.create({
-  heading: { ...typography.heading, fontWeight: '600', color: colors.ink },
-  detail: { ...typography.text, color: colors.muted, marginTop: spacing.xs },
-  hint: { ...typography.muted, color: colors.muted, marginTop: spacing.sm },
-  notice: { ...typography.muted, color: colors.muted },
+function useStyles() { const { colors } = useTheme(); return useMemo(() => createStyles(colors), [colors]); }
+const createStyles = (colors: WorkspaceColors) => StyleSheet.create({
+  heading: { ...workspaceTheme.typography.itemTitle, color: colors.ink },
+  detail: { ...workspaceTheme.typography.detail, color: colors.muted, marginTop: spacing.sm },
+  hint: { ...workspaceTheme.typography.caption, color: colors.faint, marginTop: spacing.sm },
+  notice: { ...workspaceTheme.typography.caption, color: colors.muted },
+  progressTrack: { height: spacing[6], borderRadius: workspaceTheme.radius.round, backgroundColor: colors.surface, overflow: 'hidden' }, progressFill: { height: '100%', backgroundColor: colors.blue, borderRadius: workspaceTheme.radius.round },
 });

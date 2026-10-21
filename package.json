@@ -34,6 +34,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node --import ./tests/register-source.mjs --test tests/*.test.mjs",
     "test:e2e:activity": "node --import ./tests/register-source.mjs tools/e2e-activity.mjs",
+    "test:e2e:memories": "node --import ./tests/register-source.mjs tools/e2e-memories.mjs",
+    "test:e2e:themes": "node --import ./tests/register-source.mjs tools/e2e-themes.mjs",
     "proxy": "node tools/dev-proxy.mjs",
     "test:e2e:spaces": "node --import ./tests/register-source.mjs tools/e2e-spaces.mjs"
   },

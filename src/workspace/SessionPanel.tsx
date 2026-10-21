@@ -2,7 +2,7 @@
  * 全屏当前会话面板；同层 Tab 切换不重建会话。
  *
  * 边界：不持服务端/存储；仅消费 props；切 Tab 不重建 Modal/Header；
- * 颜色来自 WorkspaceTheme context（亮/暗双套），布局/字号/圆角仍取 src/ui/tokens.ts 的 workspaceTheme 静态值。
+ * 颜色来自主题 context（三套配色），布局/字号/圆角仍取 src/ui/tokens.ts 的 workspaceTheme 静态值。
  */
 
 import { useMemo, useState, type ReactNode } from 'react';
@@ -16,26 +16,26 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { StatusBar } from 'expo-status-bar';
+import { ThemeStatusBar } from '../theme/ThemeStatusBar';
 import type { LucideIcon } from 'lucide-react-native';
 import {
-  Bot,
   Clock,
   List,
   Monitor,
-  Moon,
   ShieldCheck,
   RotateCcw,
-  Sun,
   X,
+  FolderOpen,
 } from 'lucide-react-native';
 
 import { workspaceTheme, spacing, type WorkspaceColors } from '../ui/tokens';
-import { useWorkspaceTheme } from './WorkspaceTheme';
+import { useTheme } from '../theme/ThemeProvider';
+import { ThemeToggle } from '../theme/ThemeToggle';
 import { CurrentExecution } from './CurrentExecution';
 import { ApprovalPanel } from './ApprovalPanel';
 import { ActivityPanel } from './ActivityPanel';
 import { MAIN_SPACE } from '../spaces/space-state';
+import { EmptyState, MuseAvatar, StatusPill } from './primitives';
 
 export type SessionTab = 'activity' | 'approvals' | 'workspace' | 'history';
 
@@ -71,9 +71,9 @@ export interface SessionPanelProps {
   reducedMotion: boolean;
 }
 
-// 子组件共用：读 context -> useMemo 出当前主题下的 StyleSheet。颜色覆盖来自 WorkspaceTheme，布局/字号仍走 workspaceTheme 静态值。
+// 子组件共用：读 context -> useMemo 出当前主题下的 StyleSheet。颜色覆盖来自主题 context，布局/字号仍走 workspaceTheme 静态值。
 function usePanelStyles() {
-  const { colors } = useWorkspaceTheme();
+  const { colors } = useTheme();
   return useMemo(() => createStyles(colors), [colors]);
 }
 
@@ -100,9 +100,9 @@ function createStyles(colors: WorkspaceColors) {
       paddingBottom: workspaceTheme.layout.sessionHeaderBottom,
     },
     headerSideButton: {
-      width: workspaceTheme.layout.controlSize,
-      height: workspaceTheme.layout.controlSize,
-      borderRadius: workspaceTheme.layout.controlSize / 2,
+      width: workspaceTheme.layout.smallControl,
+      height: workspaceTheme.layout.smallControl,
+      borderRadius: workspaceTheme.radius.round,
       backgroundColor: colors.control,
       alignItems: 'center',
       justifyContent: 'center',
@@ -116,24 +116,14 @@ function createStyles(colors: WorkspaceColors) {
       alignItems: 'center',
       justifyContent: 'flex-start',
     },
-    avatarRing: {
-      width: workspaceTheme.layout.sessionAvatar,
-      height: workspaceTheme.layout.sessionAvatar,
-      borderRadius: workspaceTheme.layout.sessionAvatar / 2,
-      backgroundColor: colors.avatar,
-      alignItems: 'center',
-      justifyContent: 'center',
-      overflow: 'hidden',
-    },
     name: {
       marginTop: workspaceTheme.layout.sessionNameTop,
       ...workspaceTheme.typography.heroName,
       color: colors.ink,
+      maxWidth: workspaceTheme.layout.sessionNameMaxWidth,
     },
     status: {
-      marginTop: spacing.xs,
-      ...workspaceTheme.typography.heroStatus,
-      color: colors.muted,
+      marginTop: spacing.sm,
     },
 
     tablistWrap: {
@@ -155,10 +145,13 @@ function createStyles(colors: WorkspaceColors) {
       alignItems: 'center',
       justifyContent: 'center',
       borderRadius: tabInnerHeight / 2,
+      gap: workspaceTheme.layout.tabLabelGap,
     },
     tabSelected: {
       backgroundColor: colors.selected,
     },
+    tabLabel: { ...workspaceTheme.typography.navigation, color: colors.faint },
+    tabLabelSelected: { color: colors.ink },
 
     scroll: {
       flex: 1,
@@ -211,7 +204,7 @@ export function SessionPanel({
   reducedMotion,
 }: SessionPanelProps) {
   const styles = usePanelStyles();
-  const { mode, toggle, colors } = useWorkspaceTheme();
+  const { colors } = useTheme();
   const [historyActivityId, setHistoryActivityId] = useState<string>();
 
   // Web 类型约束：RN View 类型不包含 onKeyDown，必须以断言方式注入；原生端忽略。
@@ -241,11 +234,6 @@ export function SessionPanel({
     };
   }, [tab, onTab]);
 
-  // 亮色面板需要暗字 statusBar；暗色面板需要亮字。主题切换不卸载 Modal（依赖 provider，不依赖 key）。
-  const statusBarStyle = mode === 'dark' ? 'light' : 'dark';
-  const isDark = mode === 'dark';
-  const ThemeIcon = isDark ? Sun : Moon;
-  const themeToggleLabel = isDark ? '切换到亮色主题' : '切换到暗色主题';
 
   return (
     <Modal
@@ -257,7 +245,7 @@ export function SessionPanel({
       navigationBarTranslucent
       testID="workspace-session-modal"
     >
-      <StatusBar style={statusBarStyle} />
+      <ThemeStatusBar />
       <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
         <View style={styles.column}>
           <View style={styles.header}>
@@ -277,19 +265,11 @@ export function SessionPanel({
             </Pressable>
 
             <View style={styles.headerCenter} pointerEvents="none">
-              <View
-                style={styles.avatarRing}
-                accessibilityLabel="会话头像"
-                accessibilityRole="image"
-              >
-                <Bot size={workspaceTheme.layout.sessionAvatar / 2} color={colors.ink} strokeWidth={1.5} />
-              </View>
+              <MuseAvatar size={workspaceTheme.layout.sessionAvatar} />
               <Text style={styles.name} numberOfLines={1}>
                 {spaceName}
               </Text>
-              <Text style={styles.status} numberOfLines={1}>
-                {status}
-              </Text>
+              <View style={styles.status}><StatusPill label={status} /></View>
             </View>
 
             <View style={styles.headerActions}>
@@ -297,20 +277,7 @@ export function SessionPanel({
               disabled={deleting || resetting} onPress={onReset} style={styles.headerSideButton} testID="workspace-reset-conversation">
               <RotateCcw size={workspaceTheme.layout.navigationIconSize} color={colors.ink} />
             </Pressable>}
-            <Pressable
-              onPress={toggle}
-              accessibilityRole="button"
-              accessibilityLabel={themeToggleLabel}
-              hitSlop={spacing.md}
-              style={styles.headerSideButton}
-              testID="workspace-session-theme-toggle"
-            >
-              <ThemeIcon
-                size={workspaceTheme.layout.navigationIconSize}
-                color={colors.ink}
-                strokeWidth={2}
-              />
-            </Pressable>
+            <ThemeToggle style={styles.headerSideButton} testID="workspace-session-theme-toggle" />
             </View>
           </View>
 
@@ -336,16 +303,19 @@ export function SessionPanel({
                   >
                     <Icon
                       size={workspaceTheme.layout.iconSize}
-                      color={colors.ink}
+                      color={selected ? colors.ink : colors.faint}
                       strokeWidth={selected ? 2 : 1.6}
                     />
+                    <Text style={[styles.tabLabel, selected && styles.tabLabelSelected]}>{TAB_LABELS[t]}</Text>
                   </Pressable>
                 );
               })}
             </View>
           </View>
 
+          {/* 内容长度随 Tab 改变；从顶部阅读新内容，不继承其他 Tab 的滚动偏移。领域草稿仍由 store 保留。 */}
           <ScrollView
+            key={tab}
             style={styles.scroll}
             contentContainerStyle={styles.content}
             showsVerticalScrollIndicator={false}
@@ -354,7 +324,7 @@ export function SessionPanel({
             {tab === 'approvals' && <ApprovalPanel key={spaceId} spaceId={spaceId} />}
             {tab === 'workspace' && <>
               {settings}
-              <EmptyState text="工作区文件尚未接入" />
+              <WorkspaceFilesPlaceholder text="工作区文件尚未接入" />
               {spaceId !== MAIN_SPACE && onDelete && <Pressable accessibilityRole="button" accessibilityLabel="删除当前空间"
                 disabled={deleting || resetting} onPress={onDelete} style={styles.card}>
                 <Text style={[styles.rowTitle, { color: colors.danger }]}>{deleting ? '正在删除空间…' : '删除当前空间'}</Text>
@@ -369,11 +339,6 @@ export function SessionPanel({
   );
 }
 
-function EmptyState({ text }: { text: string }) {
-  const styles = usePanelStyles();
-  return (
-    <View style={styles.emptyBox}>
-      <Text style={styles.emptyText}>{text}</Text>
-    </View>
-  );
+function WorkspaceFilesPlaceholder({ text }: { text: string }) {
+  return <EmptyState icon={FolderOpen} title={text} description="空间规则与技能已可使用；文件浏览将在接入后开放。" compact />;
 }

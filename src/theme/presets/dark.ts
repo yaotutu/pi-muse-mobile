@@ -1,0 +1,32 @@
+import type { ThemeDefinition } from '../types';
+
+/** 保留已验收的深色配色，与浅色主题共享语义和几何。 */
+export const darkTheme = {
+  id: 'dark',
+  name: '深夜黑',
+  description: '深色画布，低调蓝光',
+  appearance: 'dark',
+  colors: {
+    canvas: '#080909',
+    surface: '#1D1F20',
+    control: '#2D3031',
+    selected: '#383C3D',
+    ink: '#F4F5F3',
+    muted: '#AAAEAE',
+    faint: '#8D9393',
+    line: '#303434',
+    blue: '#0873E9',
+    blueSoft: '#102C49',
+    accentText: '#92C6FF',
+    onAccent: '#FFFFFF',
+    danger: '#FFAAA3',
+    dangerSoft: '#382321',
+    success: '#A8D5BA',
+    successSoft: '#1F332B',
+    warning: '#E7C48D',
+    warningSoft: '#352F22',
+    avatar: '#25332E',
+    overlay: 'rgba(0,0,0,0.35)',
+    scrim: 'rgba(0,0,0,0.7)',
+  },
+} as const satisfies ThemeDefinition;

@@ -22,9 +22,14 @@ def sh(*args):
 
 def refresh():
     global tree
-    sh('shell', 'uiautomator', 'dump', '/sdcard/activity-e2e.xml')
-    tree = ET.fromstring(sh('exec-out', 'cat', '/sdcard/activity-e2e.xml'))
-    return tree
+    for _ in range(4):
+        result = sh('shell', 'uiautomator', 'dump', '/sdcard/activity-e2e.xml')
+        # 宿主冷启动偶尔返回 null root 且退出码为 0；不能把上次的 XML 当成当前界面。
+        if b'dumped to' in result:
+            tree = ET.fromstring(sh('exec-out', 'cat', '/sdcard/activity-e2e.xml'))
+            return tree
+        time.sleep(.5)
+    raise AssertionError('UIAutomator did not produce a fresh hierarchy')
 
 
 def bounds(node):
@@ -46,9 +51,15 @@ def text():
 
 
 def swipe(down=False):
-    # 限定在内容区，不误触顶栏或底部主 Tab；down 表示回到列表顶部。
-    y1, y2 = (height*.38, height*.85) if down else (height*.87, height*.40)
-    sh('shell', 'input', 'swipe', str(int(width*.92)), str(int(y1)), str(int(width*.92)), str(int(y2)), '400')
+    # 从真实纵向 ScrollView 取触点，不能把旧版头部高度写死；down 表示回到列表顶部。
+    areas = [bounds(n) for n in tree.iter('node') if n.get('class') == 'android.widget.ScrollView' and visible(n)
+             and bounds(n)[2]-bounds(n)[0] > width*.5 and bounds(n)[3]-bounds(n)[1] > height*.25]
+    x1, top, x2, bottom = areas[0] if areas else (0, height*.42, width, height*.94)
+    upper, lower = top+(bottom-top)*.24, bottom-(bottom-top)*.08
+    y1, y2 = (upper, lower) if down else (lower, upper)
+    # 留出 Android 系统返回手势热区，滚动不应触发页面返回。
+    x = x2-(x2-x1)*.25
+    sh('shell', 'input', 'swipe', str(int(x)), str(int(y1)), str(int(x)), str(int(y2)), '400')
     time.sleep(.3)
 
 
@@ -107,7 +118,8 @@ def screenshot(name):
 
 
 def save(passed=False, error=None):
-    (root/'native-results.json').write_text(json.dumps({'passed': passed, 'checks': checks, 'error': error}, ensure_ascii=False, indent=2))
+    (root/'native-results.json').write_text(json.dumps({'passed': passed, 'checks': checks, 'error': error,
+        'unverified': ['Live-execution associated-activity shortcut requires separate active-run acceptance; ready does not retain terminal runs.']}, ensure_ascii=False, indent=2))
 
 
 def passed(name, **data):
@@ -134,11 +146,13 @@ def timeline(filename):
     observed = []
     for _ in range(30):
         refresh()
+        (root/'timeline-scan.xml').write_bytes(ET.tostring(tree, encoding='utf-8'))
         ids = [n.get('resource-id', '') for n in tree.iter('node') if visible(n) and n.get('resource-id', '').startswith('activity-step-')]
         for step_id in ids:
             assert step_id in expected_ids, ('Unexpected step', step_id)
             if step_id not in observed:
                 observed.append(step_id)
+                print('NATIVE TIMELINE', filename, len(observed), '/', len(expected_ids), flush=True)
         if len(observed) == len(expected_ids):
             break
         swipe()
@@ -163,6 +177,12 @@ try:
         time.sleep(1)
     context = phase('incomplete')
     refresh()
+    # Expo Go 的可拖动 Tools 浮球可能遮住右上角主题键；移动宿主控件，不修改产品布局。
+    tools = find('Tools')
+    if tools is not None and tools.get('package') == 'host.exp.exponent':
+        x1, y1, x2, y2 = bounds(tools)
+        sh('shell', 'input', 'swipe', str((x1+x2)//2), str((y1+y2)//2), str(int(width*.95)), str(int(height*.55)), '1000')
+        refresh()
     if find('关闭会话面板') is not None:
         tap('关闭会话面板')
     if find('关闭空间侧栏') is not None:
@@ -182,15 +202,14 @@ try:
     screenshot('incomplete-overview')
     passed('session history consumes actual unfinished activity without claiming completion')
     timeline('incomplete.json')
-    # 保留在详情页退后台，由真实服务在后台推进同一工作。
-    sh('shell', 'input', 'keyevent', 'KEYCODE_HOME')
-    (root/'native-background').write_text('Backgrounded on actual activity detail')
+    # 在详情页顶部保持前台；下一轮由真实服务推进，不能用刷新/重开掩盖漏推送。
+    seek(context['title'], scroll=True, down=True)
+    (root/'native-foreground-ready').write_text('Actual detail visible; waiting for live completion')
     context = phase('completed')
-    sh('shell', 'am', 'start', '-a', 'android.intent.action.VIEW', '-d', 'exp://127.0.0.1:8082', 'host.exp.exponent')
     seek('结果：', scroll=True, down=True)
     seek(context['delivery'])
     screenshot('completed-overview')
-    passed('foreground automatically consumes delivered completed result on original detail')
+    passed('foreground detail consumes live completed status/result without refresh or navigation')
     tap('刷新活动详情', scroll=True, down=True)
     seek(context['delivery'], scroll=True)
     passed('explicit detail refresh retains actual delivered result')
@@ -202,19 +221,23 @@ try:
     # 重新从顶部遍历，校验跨 run 的步骤复合键及原始顺序。
     tap('刷新活动详情', scroll=True, down=True)
     timeline('completed.json')
+    sh('shell', 'input', 'keyevent', 'KEYCODE_HOME')
     (root/'native-completed').write_text('Native completion and two-run steps verified')
     context = phase('second')
+    sh('shell', 'am', 'start', '-a', 'android.intent.action.VIEW', '-d', 'exp://127.0.0.1:8082', 'host.exp.exponent')
     tap('返回活动列表', scroll=True, down=True)
-    tap('刷新活动列表')
     seek(context['secondTitle'], scroll=True)
     screenshot('two-activities-list')
-    passed('manual refresh discovers a new real activity on first page')
+    passed('foreground recovery discovers new actual activity without manual refresh')
+    tap('刷新活动列表', scroll=True, down=True)
+    seek(context['secondTitle'], scroll=True)
+    passed('manual list refresh retains the new actual activity')
     tap('当前空间活动', scroll=True, down=True)
     tap('全部空间活动')
     seek(context['secondTitle'], scroll=True)
     tap('activity-open-'+context['secondId'], scroll=True)
     seek('已完成')
-    passed('all-session filter opens second real completed activity')
+    passed('all-space filter opens second real completed activity')
     tap('返回活动列表', scroll=True, down=True)
     tap('当前空间活动')
     status_filter('等待明确继续')
@@ -223,9 +246,11 @@ try:
     passed('status filter shows real empty result, not completed work')
     status_filter('全部活动状态')
     tap('workspace-session-tab-activity')
-    tap('查看关联活动', scroll=True, down=True)
-    seek(context['secondTitle'], scroll=True, down=True)
-    passed('current execution opens its explicitly associated activity')
+    # ready 权威替换不保留终态，历史入口不能依赖“当前执行”仍有某个已结束 run。
+    tap('查看活动历史', scroll=True)
+    tap('activity-open-'+context['secondId'], scroll=True)
+    seek(context['secondTitle'])
+    passed('current execution history entry opens actual persisted activity without requiring a retained terminal run')
     tap('关闭会话面板')
     tap('任务')
     seek('活动与执行历史')
@@ -233,10 +258,10 @@ try:
     seek(context['secondTitle'])
     screenshot('main-task-entry-detail')
     passed('main task entry consumes same actual activity detail')
-    # 返回原主会话与聊天页，不替用户清除设备已保存连接信息。
+    # 返回原主空间与聊天页，不替用户清除设备已保存连接信息。
     tap('聊天')
     tap('打开空间侧栏')
-    tap('主会话', scroll=True, down=True)
+    tap('主空间', scroll=True, down=True)
     pid = sh('shell', 'pidof', 'host.exp.exponent').decode().strip().split()[0]
     logs = sh('logcat', '-d', '--pid='+pid, 'ReactNativeJS:E', 'AndroidRuntime:E', '*:S').decode()
     (root/'native-errors.log').write_text(logs)

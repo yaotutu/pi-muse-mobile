@@ -13,10 +13,16 @@ import { fetch as expoFetch } from 'expo/fetch';
 import type {
   AgentTask,
   ConversationSnapshot,
+  DeleteJobResult,
   DeleteSpaceResult,
   Goal,
   GoalStatus,
   Identity,
+  JobAction,
+  JobDetail,
+  JobEvent,
+  JobItem,
+  JobsQuery,
   MemoryItem,
   Monitor,
   TaskDetails,
@@ -24,6 +30,7 @@ import type {
   SpaceInstructions,
   SpaceSkill,
   SpaceSkills,
+  UpdateJobInput,
   WorkspaceSnapshot,
 } from './types';
 import {
@@ -53,7 +60,9 @@ import { RuntimeSseParser, RuntimeSseParseError, decodeRuntimeFrame } from '../r
 import type { ApprovalPage, ApprovalQuery, ApprovalView } from '../approvals/types';
 import { ApprovalConflictError, parseApprovalPage, parseApprovalResolution, parseApprovalView, parsePendingApprovals } from '../approvals/contracts';
 import type { ActivityQuery } from '../activities/types';
-import { parseActivityDetail, parseActivityPage } from '../activities/contracts';
+import { parseActivityDetail, parseActivityOverview, parseActivityPage } from '../activities/contracts';
+import type { MemoryQuery } from '../memories/types';
+import { parseMemoryItem, parseMemoryPage, parseMemoryRemoval } from '../memories/contracts';
 
 export type TransportState = { kind: 'online' | 'offline'; token?: string; error?: string };
 export type HttpApiOptions = { onTransportState?: (state: TransportState) => void; timeoutMs?: number; headerTimeoutMs?: number };
@@ -374,10 +383,12 @@ export class HttpApiClient implements ApiClient {
 
   async getSnapshot(signal?: AbortSignal): Promise<WorkspaceSnapshot> {
     // 审批由 GET /api/events 与 /api/approvals/* 独立同步，不再请求已下线的 /api/actions/pending。
+    // 定时任务已迁移至独立 /api/jobs 接口，/api/agent 响应体中不再包含 tasks 字段。
+    // monitors 与 memories 亦已迁移至独立接口，快照权威提供 goals 与 identity。
     const workspace = await this.request<WorkspaceSnapshot>('/api/agent', { signal });
     if (
       !workspace ||
-      !['tasks', 'goals', 'monitors', 'memories'].every((key) => Array.isArray(workspace[key as keyof WorkspaceSnapshot])) ||
+      !Array.isArray(workspace.goals) ||
       typeof workspace.identity?.name !== 'string' ||
       typeof workspace.identity?.tone !== 'string'
     ) {
@@ -386,15 +397,84 @@ export class HttpApiClient implements ApiClient {
     return workspace;
   }
 
-  async getTask(id: string): Promise<TaskDetails> {
-    return this.request<TaskDetails>(`/api/agent/tasks/${encodeURIComponent(id)}`);
+  // --- 定时任务（/api/jobs） ---
+
+  async listJobs(query?: JobsQuery, signal?: AbortSignal): Promise<JobItem[]> {
+    const params = new URLSearchParams();
+    if (query?.spaceId) params.set('spaceId', query.spaceId);
+    if (query?.threadId) params.set('threadId', query.threadId);
+    if (query?.sort) params.set('sort', query.sort);
+    if (query?.order) params.set('order', query.order);
+    const suffix = params.toString() ? `?${params.toString()}` : '';
+    const data = await this.request<{ jobs: JobItem[] }>(`/api/jobs${suffix}`, { signal });
+    if (!data || !Array.isArray(data.jobs)) {
+      throw new ApiError(502, '定时任务列表响应格式不正确');
+    }
+    return data.jobs;
   }
 
-  async controlTask(id: string, action: TaskAction, target: TaskControlTarget = 'job'): Promise<AgentTask> {
-    return this.request<AgentTask>(`/api/agent/tasks/${encodeURIComponent(id)}/control`, {
+  async getJob(id: string, signal?: AbortSignal): Promise<JobDetail> {
+    const data = await this.request<{ job?: JobItem; task?: JobItem; events?: JobEvent[] }>(
+      `/api/jobs/${encodeURIComponent(id)}`,
+      { signal },
+    );
+    const job = data?.job ?? data?.task;
+    if (!job || !Array.isArray(data?.events)) {
+      throw new ApiError(502, '定时任务详情响应格式不正确');
+    }
+    return {
+      job,
+      events: data.events,
+    };
+  }
+
+  async controlJob(id: string, action: JobAction, signal?: AbortSignal): Promise<JobItem> {
+    return this.request<JobItem>(`/api/jobs/${encodeURIComponent(id)}/control`, {
       method: 'POST',
-      body: { action, target },
+      body: { action },
+      signal,
     });
+  }
+
+  async updateJob(id: string, updates: UpdateJobInput, signal?: AbortSignal): Promise<JobItem> {
+    return this.request<JobItem>(`/api/jobs/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: updates,
+      signal,
+    });
+  }
+
+  async deleteJob(id: string, signal?: AbortSignal): Promise<DeleteJobResult> {
+    return this.request<DeleteJobResult>(`/api/jobs/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      signal,
+    });
+  }
+
+  // --- 兼容旧版任务调用（重定向至 /api/jobs 契约） ---
+
+  async getTask(id: string, signal?: AbortSignal): Promise<TaskDetails> {
+    const detail = await this.getJob(id, signal);
+    return {
+      task: {
+        ...detail.job,
+        result: detail.job.lastResult ?? detail.job.result,
+      },
+      events: detail.events,
+    };
+  }
+
+  async controlTask(
+    id: string,
+    action: TaskAction,
+    _target?: TaskControlTarget,
+    signal?: AbortSignal,
+  ): Promise<AgentTask> {
+    const job = await this.controlJob(id, action, signal);
+    return {
+      ...job,
+      result: job.lastResult ?? job.result,
+    };
   }
 
   async controlMonitor(id: string, action: MonitorAction): Promise<Monitor> {
@@ -479,25 +559,42 @@ export class HttpApiClient implements ApiClient {
     return this.request<Identity>('/api/agent/identity', { method: 'POST', body: input });
   }
 
-  async addMemory(text: string, source?: string): Promise<MemoryItem> {
-    return this.request<MemoryItem>('/api/agent/memories', {
-      method: 'POST',
-      body: source ? { text, source } : { text },
-    });
+  /** 搜索参数只原样编码声明字段；省略 q 读取完整列表，不借用 /api/agent。 */
+  async listMemories(query: MemoryQuery = {}, signal?: AbortSignal) {
+    const params = new URLSearchParams();
+    if (query.q !== undefined) params.set('q', query.q);
+    if (query.limit !== undefined) params.set('limit', String(query.limit));
+    if (query.sort !== undefined) params.set('sort', query.sort);
+    if (query.order !== undefined) params.set('order', query.order);
+    const suffix = params.toString();
+    return parseMemoryPage(await this.request(`/api/memories${suffix ? `?${suffix}` : ''}`, { signal }));
   }
 
-  async editMemory(id: string, text: string): Promise<MemoryItem> {
-    return this.request<MemoryItem>(`/api/agent/memories/${encodeURIComponent(id)}`, {
+  async getMemory(id: string, signal?: AbortSignal): Promise<MemoryItem> {
+    return parseMemoryItem(await this.request(`/api/memories/${encodeURIComponent(id)}`, { signal }), id);
+  }
+
+  async addMemory(text: string, source?: string, signal?: AbortSignal): Promise<MemoryItem> {
+    return parseMemoryItem(await this.request('/api/memories', {
       method: 'POST',
+      body: source !== undefined ? { text, source } : { text },
+      signal,
+    }));
+  }
+
+  async editMemory(id: string, text: string, signal?: AbortSignal): Promise<MemoryItem> {
+    return parseMemoryItem(await this.request(`/api/memories/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
       body: { text },
-    });
+      signal,
+    }), id);
   }
 
-  async forgetMemory(id: string): Promise<void> {
-    await this.request<{ ok: boolean }>(`/api/agent/memories/${encodeURIComponent(id)}/forget`, {
-      method: 'POST',
-      body: {},
-    });
+  async forgetMemory(id: string, signal?: AbortSignal): Promise<void> {
+    parseMemoryRemoval(await this.request(`/api/memories/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      signal,
+    }), id);
   }
 
   async getProfile(): Promise<Profile> {
@@ -624,7 +721,8 @@ export class HttpApiClient implements ApiClient {
             const approval = parseApprovalView(decoded.data);
             if (approval.status !== 'pending') throw new ApiError(502, '待审批事件不是 pending 状态');
             event = { event: decoded.event, data: { ...approval, instanceId: readyInstanceId } };
-          } else event = { event: 'approval_updated', data: { ...parseApprovalResolution(decoded.data), instanceId: readyInstanceId } };
+          } else if (decoded.event === 'approval_updated') event = { event: 'approval_updated', data: { ...parseApprovalResolution(decoded.data), instanceId: readyInstanceId } };
+          else event = { event: 'activity_updated', data: { ...parseActivityOverview(decoded.data), instanceId: readyInstanceId } };
           try { onEvent(event); } catch (error) { markCallbackFailed(); throw error; }
         }
       }

@@ -1,14 +1,15 @@
 /**
  * 按钮原语。纯交互/纯展示：不持有业务状态，不发请求。
- * 视觉对照 OpenMuse ui.tsx，尺寸与色值一律取自 ./tokens。
+ * 与工作区共用胶囊几何和亮暗主题，不持有业务状态。
  */
 
 import type { LucideIcon } from 'lucide-react-native';
 import type { ReactNode } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, type ViewStyle } from 'react-native';
-import { colors, radius, sizing, spacing, typography } from './tokens';
+import { sizing, spacing, workspaceTheme } from './tokens';
+import { useTheme } from '../theme/ThemeProvider';
 
-/** 主按钮（浅蓝底）/ 次按钮（灰底）通用原语；danger 只换文字与图标色。 */
+/** 主按钮使用独立白色前景；次按钮与危险动作使用语义表面色。 */
 export function Button({
   children,
   onPress,
@@ -23,7 +24,7 @@ export function Button({
   children: ReactNode;
   onPress: () => void;
   icon?: LucideIcon;
-  /** 主形态：bubbleUser 底色 */
+  /** 主形态：蓝色底与白色前景 */
   primary?: boolean;
   disabled?: boolean;
   /** 忙态：图标位换成 spinner 并禁点 */
@@ -32,7 +33,8 @@ export function Button({
   danger?: boolean;
   style?: ViewStyle;
 }) {
-  const color = danger ? colors.danger : colors.ink;
+  const { colors } = useTheme();
+  const color = primary ? colors.onAccent : danger ? colors.danger : colors.ink;
   return (
     <Pressable
       accessibilityRole="button"
@@ -41,10 +43,10 @@ export function Button({
       onPress={onPress}
       style={({ pressed }) => [
         styles.button,
-        { backgroundColor: primary ? colors.bubbleUser : colors.subtle },
+        { backgroundColor: primary ? colors.blue : danger ? colors.dangerSoft : colors.control },
         small && styles.buttonSmall,
-        (disabled || busy) && { opacity: 0.5 },
-        pressed && { transform: [{ scale: 0.98 }] },
+        (disabled || busy) && { opacity: workspaceTheme.interaction.disabledOpacity },
+        pressed && { opacity: workspaceTheme.interaction.pressedOpacity },
         style,
       ]}
     >
@@ -69,6 +71,7 @@ export function IconButton({
   label: string;
   onPress: () => void;
 }) {
+  const { colors } = useTheme();
   return (
     <Pressable
       accessibilityRole="button"
@@ -76,7 +79,7 @@ export function IconButton({
       onPress={onPress}
       style={({ pressed }) => [
         styles.iconButton,
-        { backgroundColor: pressed ? colors.line : colors.card },
+        { backgroundColor: pressed ? colors.selected : colors.control },
       ]}
     >
       <Icon size={sizing[20]} strokeWidth={1.8} color={colors.ink} />
@@ -92,18 +95,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.sm,
     paddingHorizontal: spacing[17],
-    minHeight: sizing[42],
+    minHeight: workspaceTheme.layout.smallControl,
     paddingVertical: spacing[10],
-    borderRadius: radius.button,
+    borderRadius: workspaceTheme.radius.round,
   },
-  buttonSmall: { minHeight: sizing[38], paddingVertical: spacing[7], paddingHorizontal: spacing[13] },
-  buttonText: { ...typography.button, fontWeight: '600' },
-  /** IconButton：44×44 正圆命中区（触控最小尺寸），白底压下变灰 */
+  buttonSmall: { minHeight: workspaceTheme.layout.smallControl, paddingVertical: spacing[7], paddingHorizontal: spacing[13] },
+  buttonText: { ...workspaceTheme.typography.status, fontWeight: '500' },
+  /** IconButton：保留 44×44 触控命中区。 */
   iconButton: {
     width: sizing.touchTarget,
     height: sizing.touchTarget,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: radius[22],
+    borderRadius: workspaceTheme.radius.round,
   },
 });

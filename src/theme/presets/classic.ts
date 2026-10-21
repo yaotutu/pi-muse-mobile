@@ -1,0 +1,32 @@
+import type { ThemeDefinition } from '../types';
+
+/** 恢复原先白底、冷灰、蓝色的基线；仅弱文字和蓝色微调至正文对比度 4.5。 */
+export const classicTheme = {
+  id: 'classic',
+  name: '经典蓝白',
+  description: '黑白灰底色，蓝色点睛',
+  appearance: 'light',
+  colors: {
+    canvas: '#FFFFFF',
+    surface: '#F2F3F5',
+    control: '#E9EBEF',
+    selected: '#DDE1E7',
+    ink: '#172027',
+    muted: '#606A74',
+    faint: '#66707A',
+    line: '#E1E5EA',
+    blue: '#0871E5',
+    blueSoft: '#E5F0FD',
+    accentText: '#155B9F',
+    onAccent: '#FFFFFF',
+    danger: '#B33730',
+    dangerSoft: '#FBEFED',
+    success: '#267047',
+    successSoft: '#E3F3E8',
+    warning: '#89601C',
+    warningSoft: '#FDF0DF',
+    avatar: '#F6F4F7',
+    overlay: 'rgba(23,32,39,0.12)',
+    scrim: 'rgba(23,32,39,0.35)',
+  },
+} as const satisfies ThemeDefinition;

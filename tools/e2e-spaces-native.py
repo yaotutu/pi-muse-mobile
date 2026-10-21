@@ -23,8 +23,14 @@ def sh(*args):
 
 def refresh():
     global tree
-    sh('shell', 'uiautomator', 'dump', '/sdcard/spaces-e2e.xml')
-    tree = ET.fromstring(sh('exec-out', 'cat', '/sdcard/spaces-e2e.xml'))
+    for _ in range(4):
+        result = sh('shell', 'uiautomator', 'dump', '/sdcard/spaces-e2e.xml')
+        # 冷启动可能返回 null root 且退出码为 0；拒绝读取上一次残留的界面树。
+        if b'dumped to' in result:
+            tree = ET.fromstring(sh('exec-out', 'cat', '/sdcard/spaces-e2e.xml'))
+            return
+        time.sleep(.5)
+    raise AssertionError('UIAutomator did not produce a fresh hierarchy')
 
 
 def find(label):
@@ -174,7 +180,7 @@ try:
     tap('关闭会话面板')
     reset_dialog()
     tap('确认重置会话')
-    wait(lambda: find('打开空间侧栏') is not None and '开始一段新的对话' in text(), 'reset returns to a genuinely empty chat')
+    wait(lambda: find('打开空间侧栏') is not None and find('conversation-empty') is not None, 'reset returns to a genuinely empty chat')
     assert context['firstMarker'] not in text()
     screenshot('reset-default-empty')
     flag('native-reset-default')
@@ -187,7 +193,7 @@ try:
     assert find('同时清理定时任务与网页监控').get('checked') == 'true'
     screenshot('reset-confirm-clear-schedules')
     tap('确认重置会话')
-    wait(lambda: find('打开空间侧栏') is not None and '开始一段新的对话' in text(), 'explicit cascade reset returns to chat')
+    wait(lambda: find('打开空间侧栏') is not None and find('conversation-empty') is not None, 'explicit cascade reset returns to chat')
     flag('native-reset-cleared')
     wait(lambda: (root / 'api-clear-verified').exists(), 'opt-in reset deletes the owned monitor and preserves settings')
     passed('explicit checkbox changes the actual reset request and removes the owned monitor')

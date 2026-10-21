@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { HttpApiClient } from '../src/api/http-client.ts';
 import { ApiError } from '../src/api/errors.ts';
+import { activityFixture } from './helpers/activity-fixtures.ts';
 import { approvalFixture, approvalResolution } from './helpers/approval-fixtures.ts';
 
 const BASE = 'https://server-a';
@@ -58,7 +59,44 @@ const agentStatus = (overrides = {}) => ({
   ...overrides,
 });
 
-const frame = (event, payload, newline = '\n') => `event: ${event}\ndata: ${JSON.stringify(event === 'ready' ? { pendingApprovals: [], ...payload } : payload)}${newline}${newline}`;
+const frame = (event, payload, newline = '\n') => `event: ${event}\ndata: ${JSON.stringify(event === 'ready' ? { pendingApprovals: [], activities: [], ...payload } : payload)}${newline}${newline}`;
+
+test('subscribeRuntime ready 当前活动与 activity_updated 概览独立解析，同一条流不额外请求', async () => {
+  const activity = activityFixture(); const complete = activityFixture({ status: 'completed', result: '交付摘要' });
+  const stream = makeStream(); let requests = 0;
+  await withFetch(async (url) => {
+    requests++; assert.equal(url, `${BASE}/api/events`);
+    stream.push(frame('ready', { instanceId: 'inst-1', serverTime: 't', agentStatuses: [], activities: [activity] }));
+    stream.push('event: future_activity_event\ndata: not-json\n\n');
+    stream.push(frame('activity_updated', { ...complete, instanceId: 'inst-1', secret: 'not-public' }));
+    stream.close(); return new Response(stream);
+  }, async () => {
+    const received = []; const api = new HttpApiClient(BASE, () => 'token-1', () => {});
+    await api.subscribeRuntime((event) => received.push(event));
+    assert.equal(received.length, 2); assert.deepEqual(received[0].data.activities, [activity]);
+    assert.deepEqual(received[1], { event: 'activity_updated', data: { ...complete, instanceId: 'inst-1' } });
+  });
+  assert.equal(requests, 1);
+});
+
+test('subscribeRuntime 缺活动集合、重复/终态 ready、坏活动或跨实例活动必须报502', async () => {
+  const ready = { instanceId: 'inst-1', serverTime: 't', agentStatuses: [] };
+  const cases = [
+    [['ready', { ...ready, activities: undefined }]],
+    [['ready', { ...ready, activities: [activityFixture(), activityFixture()] }]],
+    ...['completed', 'failed', 'stopped', 'interrupted'].map((status) => [['ready', { ...ready, activities: [activityFixture({ status, result: status === 'completed' ? '交付' : null })] }]]),
+    [['ready', ready], ['activity_updated', { ...activityFixture(), status: 'future', instanceId: 'inst-1' }]],
+    [['ready', ready], ['activity_updated', { ...activityFixture(), instanceId: 'other' }]],
+    [['ready', ready], ['activity_updated', { id: 'activity-a', instanceId: 'inst-1' }]],
+  ];
+  for (const events of cases) {
+    const stream = makeStream();
+    await withFetch(async () => { for (const [event, data] of events) stream.push(frame(event, data)); stream.close(); return new Response(stream); }, async () => {
+      const api = new HttpApiClient(BASE, () => 'token-1', () => {});
+      await assert.rejects(api.subscribeRuntime(() => {}), (error) => error.status === 502);
+    });
+  }
+});
 
 // ---------------------------------------------------------------------------
 // getAgentStatus

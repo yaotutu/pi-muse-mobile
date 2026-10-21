@@ -3,22 +3,30 @@ import type {
   AgentTask,
   AgUiEvent,
   ConversationSnapshot,
+  DeleteJobResult,
   DeleteSpaceResult,
   Goal,
   GoalStatus,
   Identity,
-  MemoryItem,
+  JobAction,
+  JobDetail,
+  JobEvent,
+  JobEventKind,
+  JobItem,
+  JobsQuery,
   Monitor,
   ResetSpaceResult,
   TaskDetails,
   SpaceInfo,
   SpaceInstructions,
   SpaceSkills,
+  UpdateJobInput,
   WorkspaceSnapshot,
 } from './types';
 import type { AgentStatusResponse, RuntimeEvent } from '../runtime/types';
 import type { ApprovalClient } from '../approvals/types';
 import type { ActivityClient } from '../activities/types';
+import type { MemoryClient } from '../memories/types';
 
 /** 增量聊天只提交一条新用户消息；历史与工具消息始终由服务端持有。 */
 export type RunInput = {
@@ -33,7 +41,7 @@ export type RunInput = {
 /**
  * 客户端接口：页面只依赖此抽象，不感知 mock/HTTP 差异。
  */
-export interface ApiClient extends ApprovalClient, ActivityClient {
+export interface ApiClient extends ApprovalClient, ActivityClient, MemoryClient {
   /** POST /api/session → {token, mode}；客户端不按时间过期，失效以服务端401为准。 */
   createSession(accessKey?: string): Promise<{ token: string; mode: string }>;
   /** GET /api/spaces（按活跃倒序） */
@@ -70,17 +78,27 @@ export interface ApiClient extends ApprovalClient, ActivityClient {
   /** DELETE /api/spaces/:id 彻底删除空间并清点副作用；服务端 401/404/409 语义保留 */
   deleteSpace(spaceId: string, signal?: AbortSignal): Promise<DeleteSpaceResult>;
 
-  // --- 定时任务（GET /api/agent/tasks/:id + POST /api/agent/tasks/:id/control） ---
+  // --- 定时任务（GET /api/jobs, GET /api/jobs/:id, POST /api/jobs/:id/control, PATCH /api/jobs/:id, DELETE /api/jobs/:id） ---
 
-  /** 定时任务详情（含时间线 events） */
-  getTask(id: string): Promise<TaskDetails>;
-  /**
-   * 控制定时任务：服务端契约 target 固定为 job（后台任务 API 已下线）。
-   */
+  /** 查询定时任务列表：全量返回不分页，支持空间过滤与排序 */
+  listJobs(query?: JobsQuery, signal?: AbortSignal): Promise<JobItem[]>;
+  /** 读取指定定时任务详情（含时间线 events） */
+  getJob(id: string, signal?: AbortSignal): Promise<JobDetail>;
+  /** 控制定时任务生命周期（pause/resume/cancel/retry） */
+  controlJob(id: string, action: JobAction, signal?: AbortSignal): Promise<JobItem>;
+  /** 直接编辑定时任务提示词、时刻周期或归属空间 */
+  updateJob(id: string, updates: UpdateJobInput, signal?: AbortSignal): Promise<JobItem>;
+  /** 彻底删除指定定时任务 */
+  deleteJob(id: string, signal?: AbortSignal): Promise<DeleteJobResult>;
+
+  /** 兼容旧版：获取任务详情（重定向到 /api/jobs/:id，转换为 TaskDetails） */
+  getTask(id: string, signal?: AbortSignal): Promise<TaskDetails>;
+  /** 兼容旧版：控制任务（重定向到 /api/jobs/:id/control，去掉冗余 target） */
   controlTask(
     id: string,
     action: TaskAction,
     target?: TaskControlTarget,
+    signal?: AbortSignal,
   ): Promise<AgentTask>;
 
   // --- 监控（创建走聊天 monitor 工具，页面只做控制） ---
@@ -100,9 +118,6 @@ export interface ApiClient extends ApprovalClient, ActivityClient {
   // --- 身份 / 记忆 / 人设 ---
 
   saveIdentity(input: IdentityInput): Promise<Identity>;
-  addMemory(text: string, source?: string): Promise<MemoryItem>;
-  editMemory(id: string, text: string): Promise<MemoryItem>;
-  forgetMemory(id: string): Promise<void>;
   /** SOUL/USER 人设文本（空串=未设置） */
   getProfile(): Promise<Profile>;
   saveProfile(profile: Profile): Promise<Profile>;
@@ -120,7 +135,17 @@ export interface ApiClient extends ApprovalClient, ActivityClient {
   subscribeRuntime(onEvent: (event: RuntimeEvent) => void, signal?: AbortSignal): Promise<void>;
 }
 
-export type TaskAction = 'pause' | 'resume' | 'cancel' | 'retry';
+export type {
+  DeleteJobResult,
+  JobAction,
+  JobDetail,
+  JobEvent,
+  JobEventKind,
+  JobItem,
+  JobsQuery,
+  UpdateJobInput,
+};
+export type TaskAction = JobAction;
 export type TaskControlTarget = 'job';
 export type MonitorAction = 'pause' | 'resume' | 'stop';
 export type { ApprovalDecision } from '../approvals/types';

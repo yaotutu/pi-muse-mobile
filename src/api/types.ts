@@ -77,38 +77,48 @@ export type AgUiEvent = {
 };
 
 // ---------------------------------------------------------------------------
-// 工作区快照（GET /api/agent）
+// 定时任务（Jobs）：查询、详情、控制、更新与删除（/api/jobs）
 // ---------------------------------------------------------------------------
 
-export type TaskKind = 'job';
-export type TaskStatus =
-  | 'queued'
-  | 'running'
+export type JobKind = 'job';
+export type JobStatus =
   | 'scheduled'
+  | 'running'
   | 'paused'
   | 'succeeded'
   | 'failed'
-  | 'cancelled';
+  | 'cancelled'
+  | 'queued';
 
-export type AgentTask = {
+export type JobItem = {
   id: string;
   title: string;
   prompt: string;
-  kind: TaskKind;
-  status: TaskStatus;
+  kind: JobKind;
+  daily: boolean;
+  at: string;
+  enabled: boolean;
+  status: JobStatus;
   createdAt: string;
   updatedAt: string;
-  /** 定时任务下次触发时间；一次性任务完成后无此字段 */
+  /** 下次计划触发时间（ISO 8601） */
   nextRunAt?: string;
+  /** 最近一次触发时间（ISO 8601） */
+  lastRunAt?: string;
+  /** 最近一次执行结果文本摘要 */
+  lastResult?: string;
+  /** 兼容别名：旧字段名为 result，现统一规范为 lastResult */
   result?: string;
+  /** 错误信息（上次执行失败时非 null） */
   error: string | null;
+  /** 所属空间 ID */
+  originSpaceId?: string;
+  /** 兼容字段：等同于 originSpaceId */
+  originThreadId?: string;
 };
 
-/** GET /api/agent/tasks/:id 返回的任务与时间线组合。 */
-export type TaskDetails = { task: AgentTask; events: TaskEvent[] };
-
-/** 任务详情（GET /api/agent/tasks/:id）的时间线条目 */
-export type TaskEventKind =
+/** 定时任务详情时间线条目（GET /api/jobs/:id） */
+export type JobEventKind =
   | 'plan'
   | 'step'
   | 'observation'
@@ -116,14 +126,54 @@ export type TaskEventKind =
   | 'result'
   | 'error'
   | 'status';
-export type TaskEvent = {
+
+export type JobEvent = {
   id: string;
   taskId: string;
   date: string;
-  kind: TaskEventKind;
+  kind: JobEventKind;
   title: string;
   detail: string;
 };
+
+/** GET /api/jobs/:id 响应契约 */
+export type JobDetail = { job: JobItem; events: JobEvent[] };
+
+/** GET /api/jobs 查询参数 */
+export type JobsQuery = {
+  spaceId?: string;
+  threadId?: string;
+  sort?: 'nextRunAt' | 'updatedAt' | 'createdAt';
+  order?: 'asc' | 'desc';
+};
+
+/** 定时任务生命周期控制动作（POST /api/jobs/:id/control） */
+export type JobAction = 'pause' | 'resume' | 'cancel' | 'retry';
+
+/** 定时任务直接编辑请求载荷（PATCH /api/jobs/:id） */
+export type UpdateJobInput = {
+  prompt?: string;
+  daily?: boolean;
+  at?: string;
+  originSpaceId?: string;
+  originThreadId?: string;
+};
+
+/** DELETE /api/jobs/:id 响应契约 */
+export type DeleteJobResult = {
+  ok: true;
+  id: string;
+};
+
+// --- 兼容旧版命名别名 ---
+export type TaskKind = JobKind;
+export type TaskStatus = JobStatus;
+export type AgentTask = JobItem;
+export type TaskEventKind = JobEventKind;
+export type TaskEvent = JobEvent;
+export type TaskDetails = { task: AgentTask; events: TaskEvent[] };
+export type TaskAction = JobAction;
+export type TaskControlTarget = 'job';
 
 export type GoalStatus = 'active' | 'paused' | 'completed' | 'archived';
 export type Milestone = { id: string; title: string; done: boolean; doneAt?: string };
@@ -195,9 +245,12 @@ export type Identity = {
 };
 
 export type WorkspaceSnapshot = {
-  tasks: AgentTask[];
+  /** 废弃字段：服务端已从 /api/agent 彻底移除，定时任务请通过 GET /api/jobs 获取 */
+  tasks?: AgentTask[];
   goals: Goal[];
-  monitors: Monitor[];
-  memories: MemoryItem[];
+  /** 废弃字段：服务端已迁移至独立端点，快照中可选 */
+  monitors?: Monitor[];
+  /** 废弃字段：服务端已迁移至独立端点，快照中可选 */
+  memories?: MemoryItem[];
   identity: Identity;
 };

@@ -17,6 +17,8 @@ export type ActivityOverview = {
   updatedAt: string;
   finishedAt: string | null;
 };
+/** ready 只包含未结束的工作；等待明确继续仍属于当前活动，不是终态。 */
+export const isActiveActivity = (activity: ActivityOverview) => !['completed', 'failed', 'stopped', 'interrupted'].includes(activity.status);
 export const stepKinds = ['execution', 'model', 'tool', 'subagent', 'approval', 'file_commit'] as const;
 export const stepStatuses = ['running', 'succeeded', 'failed', 'denied', 'cancelled', 'expired', 'interrupted'] as const;
 export type ActivityStep = {

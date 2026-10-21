@@ -7,6 +7,8 @@ import { ApprovalStore } from '../approvals/approval-store';
 import { ApprovalProvider } from '../approvals/ApprovalProvider';
 import { ActivityStore } from '../activities/activity-store';
 import { ActivityProvider } from '../activities/ActivityProvider';
+import { MemoryStore } from '../memories/memory-store';
+import { MemoryProvider } from '../memories/MemoryProvider';
 
 const Context = createContext<RuntimeStore | null>(null);
 
@@ -17,6 +19,7 @@ export function RuntimeProvider({ children }: { children: ReactNode }) {
   const [foreground, setForeground] = useState(AppState.currentState === 'active');
   const approvals = useMemo(() => new ApprovalStore(api), [api]);
   const activities = useMemo(() => new ActivityStore(api), [api]);
+  const memories = useMemo(() => new MemoryStore(api), [api]);
   const store = useMemo(() => new RuntimeStore(api, {
     onEvent: (event) => { approvals.receive(event); activities.receive(event); },
     onConnection: (state) => { approvals.setConnection(state); activities.setConnection(state); },
@@ -27,11 +30,11 @@ export function RuntimeProvider({ children }: { children: ReactNode }) {
   }, []);
   const enabled = !!connection?.enabled && (Platform.OS === 'web' || foreground);
   useEffect(() => {
-    approvals.setActive(enabled); activities.setActive(enabled); store.setActive(enabled);
-    return () => { store.setActive(false); approvals.setActive(false); activities.setActive(false); };
-  }, [store, approvals, activities, enabled, connection?.snapshot.refreshVersion]);
-  useEffect(() => () => { store.dispose(); approvals.dispose(); activities.dispose(); }, [store, approvals, activities]);
-  return <Context.Provider value={store}><ApprovalProvider store={approvals}><ActivityProvider store={activities}>{children}</ActivityProvider></ApprovalProvider></Context.Provider>;
+    approvals.setActive(enabled); activities.setActive(enabled); memories.setActive(enabled); store.setActive(enabled);
+    return () => { store.setActive(false); approvals.setActive(false); activities.setActive(false); memories.setActive(false); };
+  }, [store, approvals, activities, memories, enabled, connection?.snapshot.refreshVersion]);
+  useEffect(() => () => { store.dispose(); approvals.dispose(); activities.dispose(); memories.dispose(); }, [store, approvals, activities, memories]);
+  return <Context.Provider value={store}><ApprovalProvider store={approvals}><ActivityProvider store={activities}><MemoryProvider store={memories}>{children}</MemoryProvider></ActivityProvider></ApprovalProvider></Context.Provider>;
 }
 
 export function useRuntimeStore() {

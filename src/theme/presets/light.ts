@@ -1,0 +1,32 @@
+import type { ThemeDefinition } from '../types';
+
+/** 保留当前暖白、灰绿色表面的浅色方案，不覆盖经典蓝白。 */
+export const lightTheme = {
+  id: 'light',
+  name: '晨光白',
+  description: '暖白底色，柔和灰绿',
+  appearance: 'light',
+  colors: {
+    canvas: '#FAFAF7',
+    surface: '#EDEEEA',
+    control: '#E1E4DF',
+    selected: '#D1D7D0',
+    ink: '#1E2824',
+    muted: '#58665E',
+    faint: '#606D63',
+    line: '#D9DED7',
+    blue: '#0871E5',
+    blueSoft: '#E1EEFC',
+    accentText: '#155B9F',
+    onAccent: '#FFFFFF',
+    danger: '#B33730',
+    dangerSoft: '#F9E6E1',
+    success: '#267047',
+    successSoft: '#E1EDE3',
+    warning: '#89601C',
+    warningSoft: '#F3EAD6',
+    avatar: '#DBE3D9',
+    overlay: 'rgba(23,32,39,0.12)',
+    scrim: 'rgba(23,32,39,0.35)',
+  },
+} as const satisfies ThemeDefinition;

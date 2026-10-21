@@ -2,6 +2,29 @@
 
 遇到不合理/不顺手的服务端接口：先在此登记（现状 / 期望形状 / 理由），然后**停下来报告用户**，由用户介入协调服务端 agent 修改。服务端契约更新后再继续。
 
+## 2026-10-21：主题最终验收环境中断，待稳定窗口
+
+- 主题代码、本机偏好及永久 `test:e2e:themes` 已实现，本地405/405、typecheck、lint及三平台导出通过。当前不是主题接口缺失，也不是通过修改服务端来解决的问题。
+- 实际17890＋Android已验证三套配色、草稿／当前空间／会话面板／筛选保留、真实连接Modal、一次原生实际聊天与HTTP／SSE终态、晨光白及深夜黑跨进程恢复；整轮尚未走完经典蓝白冷启动、320dp窄屏及最后的原生错误日志断言。
+- 00:27左右模拟器ADB离线并消失，之后qemu进程与Metro8082均不在。验收部署sourceHash从 `b9ce61299f8c` 变为结束时 `16a0d846daf5`，随后只读健康检查又为 `6467aac7d5f1`。原生驱动和部署一致性断言均失败，严格保持待真实接口验收，不能拼接为通过。
+- 79个客户端源码模块与本轮开始未变；专用空间经API删除、原有空间保留，未改服务端源码／配置／存储／Git或读取设备凭据。原始失败证据 `/var/folders/hl/dngy2s057pq4wyny6k87sj9w0000gn/T/pimuse-themes-e2e-run.2Fifyn/`，本地日志及抽离一致性证据 `/tmp/pimuse-themes-20261020-235959/`。
+- 后续记忆／活动原生回归按前置门禁未启动。需先协调稳定部署并恢复模拟器、Metro，再从头验收；本轮不提交／推送，不用旧结果或mock替代。此前审批自然过期等独立未验项仍保留。
+
+## 活动推送与长期记忆接口差异（2026-10-20）
+
+- **核对部署**：实际17890的 docs／OpenAPI／health 均为 info.version `0.1.0+5711a4829036`，commit `59013f5af4529ee10fb33ded675e897d8115f61d`、sourceHash `5711a4829036132d58f05e7b68e709c9d7c1aa0980c4ab13957ed27da4803cfd`、dirty/source。本节是新一轮接入，不把下方旧部署结果当作本轮验收。
+- **活动文档措辞滞后**：`/api/events` 明确声明必需的 `ready.activities` 和 `activity_updated`，真实首帧也包含数组；但活动查询说明仍残留“没有新增SSE”的旧说法。客户端以事件端点的完整契约为准，当前非终态集合整体替换，状态概览按接收顺序更新；步骤和过程进展仍查询，不增加第二条通知流或轮询。建议后端同步查询文案，避免其他消费端继续忽略活动事件。
+- **记忆默认来源不一致**：新增记忆的 OpenAPI 将 `source` 默认值描述为 `Apps UI`，真实未传来源的原生新增实际返回 `Web UI`。首轮测试严格来源断言失败，未伪称整轮通过，专用条目已通过API删除且原有记忆未变。已向用户报告；建议后端统一默认值与文档。`source` 本身是可显式传入的自由文本字段，客户端现明确发送 `Mobile UI`，按契约使用该字段而不依赖不一致的默认值；编辑继续保留服务端来源。未改服务端源码、配置、存储或Git。
+- **记忆写入边界**：没有记忆SSE、revision或幂等键，不以 `/api/agent` 大快照替代独立读取，不跨空间伪造隔离。成功后回读，网络／超时／取消／5xx结果未明时保留草稿并锁定重提，要求读取全部记忆和用户明确核对；不自动重试或用相同正文猜测成功。
+- **本轮最终结果**：在上述同一部署，活动SSE／历史和记忆两个永久真实端到端测试最终均退出0；分别11组整轮＋14组Android检查、11组整轮＋8组Android检查通过，专用数据经API清理、原有内容保留。383/383本地测试、lint、typecheck及diff检查通过，未跑mock；67个`src/`模块在最终验收前后未变。证据 `/tmp/pimuse-mainline-20261020/acceptance.json`，详细真实与本地故障注入边界见 `HANDOFF.md` 文首。上述默认来源与旧SSE文案仍属后端文档差异，不因客户端显式传参或本轮通过而记为后端已修复。
+- **原审批协调项独立保留**：本轮不复验自然过期，不据活动／记忆主线结果声称提前TIMEOUT／cancelled已修复。新一轮最终验收状态与未覆盖边界见 `HANDOFF.md` 文首。
+
+## UI 重构的真实联调范围补充（2026-10-20）
+
+- **本轮没有新增必须协调的接口阻塞**：实际17890、固定 sourceHash `af4338505f9890d54def781c1f1bb33b440a49b17cd98dafcf85547f0001fbfa`，活动历史、原生审批批准／拒绝、活跃运行关联跳转与Stop、同址连接测试、聊天流式与进程恢复、默认／可选重置均已分别完成真实客户端验收。详细范围、清理及未验边界见 `HANDOFF.md` 文首与 `/tmp/pimuse-ui-20261020/acceptance.json`。
+- **通知边界不是接口缺陷**：`ready` 不保留已结束 run，不能要求漫长历史验收后“当前执行”仍持有某次终态。持久历史入口独立验证；明确的 run→activity 跳转已在真实待审批的活跃运行中原生验证，并经HTTP核对绑定后精确Stop。不修改 ready 整体替换规则，也不恢复旧快照或轮询来伪造当前执行。
+- **自动过期仍是未复验项**：下方提前 TIMEOUT／cancelled 是此前部署的真实历史记录，本轮UI重构没有重新触发自然过期路径。新 sourceHash 的主流程通过不能证明过期路径已修复，也不能把旧复现写成在当前部署再次复现；该项继续保留待针对性复验，不新增虚假的后端修复结论。
+
 ## 修复后复验：重置计数已修复，审批自动过期仍待协调（2026-10-20）
 
 - **重置计数已解除**：实际17890的新部署 sourceHash 为 `8e1dc7c935c630e34f2e169076ace246e78e95ef11cc52df37dde0f78d26bf7e`，commit 仍为 `59013f5af4529ee10fb33ded675e897d8115f61d`、dirty/source，docs/OpenAPI/health 一致。与上次快照逐项比较，端点及 schema 未变，无需前端再次改字段。新文档明确计数包含关闭活跃运行时撤销的审批；真实 pending 重置后 cancelled、空历史、新 session，回执已正确返回 `cancelledApprovals=1`。旧的0值记录仅保留为历史，不再标作当前阻塞。
@@ -176,3 +199,32 @@
 
 - **监控 HTTP 全链路缺可控 fixture**：本轮隔离 mock 工作区没有监控条目，`tests/support/fake-model.ts` 提供了 schedule/memory/write 等固定触发分支，但没有 monitor 触发分支；不能仅发送监控文案就宣称已创建并验收。客户端演示模式的创建、暂停、恢复、停止与超过三条折叠已实测，HTTP 控制请求契约已有自动化测试；真实 HTTP 监控控制仍需服务端提供可控监控 fixture 或在授权真实模型环境联调，不是控制端点已确认失败。
 - 工具投影、天气结构化与会话标题等历史协调项没有因演示通过而解除；本轮没有调用真实远程模型，也没有修改服务端源码或配置。
+
+## 定时任务（Jobs）独立资源迁移与快照调整（2026-10-21）
+
+- **服务端接口调整核实**：
+  - `GET /api/agent` 已彻底移除 `tasks` 字段，且 `monitors` 与 `memories` 已迁移至独立接口，快照响应体仅保证返回 `identity` 与 `goals`。客户端已移除对快照中 `tasks` 等字段的强制数组校验，避免 502。
+  - 旧接口 `GET /api/agent/tasks/:id` 与 `POST /api/agent/tasks/:id/control` 服务端已返回 501 下线。
+  - 新增独立资源 `/api/jobs`（列表查询支持 `spaceId`、`sort`、`order`）、`GET /api/jobs/:id`、`POST /api/jobs/:id/control`（已移除冗余 `target: "job"`）、`PATCH /api/jobs/:id`、`DELETE /api/jobs/:id`。
+  - 字段变更：任务结果字段统一规范为 `lastResult`，客户端提供 `result` 别名平滑兼容。
+- **客户端契约与实现落地**：
+  - 更新 `src/api/types.ts`、`src/api/contracts.ts`、`src/api/http-client.ts`，新增 `listJobs`、`getJob`、`controlJob`、`updateJob`、`deleteJob` 标准接口，并保留 `getTask` 与 `controlTask` 作为无缝向前兼容封装。
+  - 更新 `tests/http-api.test.mjs`，通过 411 项自动化测试及真实服务 `http://192.168.55.201:17890/` 联调验证。
+
+## 长期记忆（Memories）独立资源迁移与端点调整（2026-10-21）
+
+- **服务端接口调整核实**：
+  - `GET /api/agent` 已彻底移除 `memories` 字段；客户端此前已支持可选读取，快照不依赖 `memories`。
+  - 旧接口下线：`GET /api/agent/memories`、`POST /api/agent/memories/:id`、`POST /api/agent/memories/:id/forget` 服务端均返回 501。
+  - 新独立端点就绪：
+    - 列表与搜索：`GET /api/memories`，支持 `q`、`limit`、`sort`（`updatedAt` / `createdAt`）、`order`（`asc` / `desc`）。
+    - 新增记忆：`POST /api/memories`，请求体 `{ text: string, source?: string }`。
+    - 单条详情：`GET /api/memories/:id`，不存在返回 404。
+    - 编辑文本：`PATCH /api/memories/:id`，请求体 `{ text: string }`，返回更新后的 `MemoryItem`。
+    - 删除记忆：`DELETE /api/memories/:id`，无请求体，成功返回 `{ ok: true, id: string }`。
+- **客户端契约与实现落地**：
+  - 更新 `src/memories/types.ts`：扩展 `MemoryQuery` 支持 `sort` 与 `order`，在 `MemoryClient` 接口新增 `getMemory`。
+  - 更新 `src/memories/contracts.ts`：增强 `parseMemoryRemoval` 严格校验返回的 `ok: true` 及 `id`。
+  - 更新 `src/api/http-client.ts`：修改 `listMemories`、`addMemory`、`editMemory`、`forgetMemory` 指向新路由及对应 HTTP 动词（PATCH/DELETE），实现 `getMemory`。
+  - 更新 `tests/http-api.test.mjs` 与 `tests/memory-api.test.mjs`：增加 `listMemories`、`getMemory` 测试用例，覆盖 PATCH/DELETE 及 query 参数。
+  - 验证：414/414 单元测试、`npx tsc --noEmit`、`npx expo lint` 全绿，并在实际服务 `http://192.168.55.201:17890/` 上完成会话创建、增删改查全流程真实联调及清理。

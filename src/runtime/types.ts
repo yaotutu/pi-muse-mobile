@@ -5,6 +5,7 @@
  * 运行与审批共用一条通知连接，分别交给各自的内存 store；用户决定仍走独立 HTTP。
  */
 import type { ApprovalResolution, ApprovalView } from '../approvals/types';
+import type { ActivityOverview } from '../activities/types';
 
 export type RunSource = 'chat' | 'job';
 
@@ -79,7 +80,7 @@ export type AgentStatusResponse = {
   status: AgentStatus;
 };
 
-/** 两个集合都必须完整替换；审批 revision 跨实例有效，不能跟随运行缓存一起清零。 */
+/** 三个集合分别完整替换；活动集合不包含终态，不能拿它清空持久历史。 */
 export type RuntimeReadyEvent = {
   event: 'ready';
   data: {
@@ -87,6 +88,7 @@ export type RuntimeReadyEvent = {
     serverTime: string;
     agentStatuses: AgentStatus[];
     pendingApprovals: ApprovalView[];
+    activities: ActivityOverview[];
   };
 };
 
@@ -98,4 +100,5 @@ export type RuntimeAgentStatusUpdatedEvent = {
 /** 本轮订阅对外契约；未知事件由传输层直接跳过，不向上抛。 */
 export type RuntimeEvent = RuntimeReadyEvent | RuntimeAgentStatusUpdatedEvent
   | { event: 'approval_pending'; data: ApprovalView & { instanceId: string } }
-  | { event: 'approval_updated'; data: ApprovalResolution & { instanceId: string } };
+  | { event: 'approval_updated'; data: ApprovalResolution & { instanceId: string } }
+  | { event: 'activity_updated'; data: ActivityOverview & { instanceId: string } };
