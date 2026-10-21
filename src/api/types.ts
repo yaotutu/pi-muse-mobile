@@ -188,6 +188,26 @@ export type Goal = {
   updatedAt: string;
 };
 
+export type GoalsQuery = {
+  status?: GoalStatus;
+  category?: string;
+  sort?: 'updatedAt' | 'createdAt';
+  order?: 'asc' | 'desc';
+};
+
+export type UpdateGoalInput = {
+  title?: string;
+  description?: string;
+  category?: string;
+  status?: GoalStatus;
+};
+
+/** DELETE /api/goals/:id 响应契约 */
+export type DeleteGoalResult = {
+  ok: true;
+  id: string;
+};
+
 export type MonitorCondition = 'change' | 'contains';
 export type MonitorStatus = 'active' | 'paused' | 'stopped';
 export type Monitor = {
@@ -247,7 +267,8 @@ export type Identity = {
 export type WorkspaceSnapshot = {
   /** 废弃字段：服务端已从 /api/agent 彻底移除，定时任务请通过 GET /api/jobs 获取 */
   tasks?: AgentTask[];
-  goals: Goal[];
+  /** 废弃字段：服务端已从 /api/agent 彻底移除，长期目标请通过 GET /api/goals 获取 */
+  goals?: Goal[];
   /** 废弃字段：服务端已迁移至独立端点，快照中可选 */
   monitors?: Monitor[];
   /** 废弃字段：服务端已迁移至独立端点，快照中可选 */

@@ -2,6 +2,34 @@
 
 遇到不合理/不顺手的服务端接口：先在此登记（现状 / 期望形状 / 理由），然后**停下来报告用户**，由用户介入协调服务端 agent 修改。服务端契约更新后再继续。
 
+## 2026-10-21：长期目标（Goals）REST 独立接口与快照解耦迁移完成
+
+- **快照解耦**：`GET /api/agent` 不再提供 `goals` 字段，`src/api/types.ts` 中 `WorkspaceSnapshot.goals` 已调整为可选，`HttpApiClient.getSnapshot()` 移除了对 `goals` 数组的强校验断言，避免客户端误报 502。
+- **独立端点全面对齐**：
+  - 列表查询：`GET /api/goals`，支持 `status`、`category`、`sort`（`updatedAt` / `createdAt`）、`order`（`asc` / `desc`）过滤与排序，解包 `{ goals: Goal[] }`。
+  - 单项详情：`GET /api/goals/:id`，不存在时返回 404。
+  - 创建目标：`POST /api/goals`，请求体支持 `title`、`description`、`category`、`milestones: string[]`。
+  - 修改目标：`PATCH /api/goals/:id`，支持 `title`、`description`、`category`、`status`；当 `status` 设为 `completed` 时，服务端自动将名下全部里程碑置为完成。
+  - 快捷状态迁移：`ApiClient.setGoalStatus` 统一委托为 `PATCH /api/goals/:id`，移除已下线的 `/status` 子路径。
+  - 里程碑切换：`POST /api/goals/:id/milestones/:mid/toggle` 移出 `/api/agent` 前缀。
+  - 删除目标：改为标准的 `DELETE /api/goals/:id`，返回 `{ ok: true, id }`。
+- **废弃端点验证**：服务端对 `/api/agent/goals*` 等旧路由统一返回 501 Not Implemented，客户端契约与测试均已完成更新与断言覆盖。
+
+## 2026-10-21：活动真实回归中部署再次切换，整体待新部署验收
+
+- **不是当前服务仍离线**：主题和记忆分别在 `59013f5 / cadddbbe1c88` 部署完整通过（8组整轮＋9组原生、12组整轮＋8组原生），活动第一阶段真实登记、SSE、重连集合及原生3步顺序也已验证。但11:55左右继续run收到 `RUN_ERROR: Response cancelled`，当时清理连接失败；恢复后的health已是 `63fc83c / 71c06ad4ae0d`，现在HTTP200。这个换版窗口不能当作整个任务已经验收通过。
+- **契约核对**：新旧OpenAPI没有增删路径／方法，请求及2xx成功响应快照一致，主要补充operationId和错误响应字段。协议形状未变不代表运行实现未变，仍须在用户确认稳定的新部署从头跑三项真实原生端到端，不能仅补活动后半段。新旧文档及结构差异保存在 `/tmp/pimuse-recheck-20261021.33EwvY/openapi-new.json`、`contract-diff.json`。
+- **安全恢复清理**：重新正常鉴权，逐字核对本轮专用空间指令，仅删除 `activity-e2e-mvhkr93s`；关联活动详情404、同空间活动列表为空，其他原有空间保留，未读取或覆盖设备凭据。`recovery-cleanup.json` 记录恢复清理，不篡改原始失败整轮 `activity-interrupted/results.json`；客户端79个产品源码模块全程未变。模拟器已通过正常界面回主空间，不将此恢复操作冒充活动完整原生验收。
+- **本地与当前状态**：最终414/414本地测试、typecheck、lint、脚本语法及Android／iOS Hermes／Web导出通过；未跑mock，不以导出替代运行验收。主题／记忆驱动前期失败与修正、当前部署边界及未覆盖场景详见 `HANDOFF.md` 文首和总索引 `acceptance.json`。本轮测试／文档仍未提交、未推送；等待稳定窗口，不再启动模型验收。审批自然过期等独立协调项没有在新部署复验，不声称已修复。
+
+## 2026-10-21：整理后接口清单与未挂载领域
+
+- **基线**：客户端已整理并提交为 `9aca44f`，重新检查时工作区干净。真实17890的 docs／OpenAPI／health 对齐，info.version 为 `0.1.0+cadddbbe1c88`，sourceHash 为 `cadddbbe1c88722b4f1dca56fcfc5c24bbbf9f701053495ffa2fa517825ec83b`；不以此前部署或未提交工作区作为当前验收基线。
+- **定时任务可推进，但未完成界面对接**：当前文档已声明 `/api/jobs` 列表、`/api/jobs/{id}` 详情／编辑／删除及 `/control` 生命周期控制；客户端有相应HTTP方法，任务页仍明确显示“定时任务管理尚未接入”。实际鉴权后的空列表、六组排序参数及不存在详情404已只读核对；没有现有任务可读详情，也没有验证调度、生命周期或写入，不能据此宣称Jobs模块验收完成。后续优先串列表／详情及必要控制，不恢复旧工作区大快照。
+- **目标／监控存在客户端协议遗留**：当前文档使用 `/api/goals/*` 和 `/api/monitors/*`；`src/api/http-client.ts` 中未挂载的目标方法及 `controlMonitor` 仍使用文档外的 `/api/agent/goals/*`、`/api/agent/monitors/*`。目前主界面没有调用这些方法，不是主题／记忆／活动主线的运行阻塞；接入相应领域前必须按当前契约迁移，不能直接恢复旧调用或修改服务端兼容旧客户端。本轮未提交这些领域的真实写入，也不根据文档差异猜测未声明别名的实际行为。
+- **旧总快照校验亦未迁移**：新旧部署的 `/api/agent` 文档均只声明 `identity`，新部署实际HTTP200也只返回该字段；但 `HttpApiClient.getSnapshot()` 仍强制要求 `goals` 数组，因而产生客户端校验502，不是服务端返回502。只读实证 `legacy-snapshot-audit.json`。当前产品源码无调用者，仅旧HTTP测试仍使用带goals的夹具，414项通过不能证明此旧方法符合新契约。后续不恢复旧快照／轮询，目标应独立消费 `/api/goals`；清理或迁移未挂载的旧接口层时一并处理，不能直接拿它组装新功能。
+- **其他领域**：`/api/profile`、全局及空间级Dream接口已出现在当前文档，原生编辑／管理界面尚未接入；本轮仅记录就绪清单，不把文档存在等同于业务链路已验证。只读清单及Jobs探测证据在 `/tmp/pimuse-recheck-20261021.33EwvY/api-gap-audit.json`、`jobs-read-only.json`；主题、记忆和活动的完整复验结果另见 `HANDOFF.md` 最新记录。
+
 ## 2026-10-21：主题最终验收环境中断，待稳定窗口
 
 - 主题代码、本机偏好及永久 `test:e2e:themes` 已实现，本地405/405、typecheck、lint及三平台导出通过。当前不是主题接口缺失，也不是通过修改服务端来解决的问题。

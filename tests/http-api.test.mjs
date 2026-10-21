@@ -45,7 +45,6 @@ test('stopRun 使用 spaceId 与 runId 调用 conversation stop 契约', async (
 
 test('getSnapshot 直接读取 /api/agent 快照（无 tasks 字段），不请求已下线的 /api/actions/pending', async () => {
   const snapshot = {
-    goals: [], monitors: [], memories: [],
     identity: { name: '', tone: '' },
   };
   await withFetch(async (url) => {
@@ -82,6 +81,70 @@ test('listJobs 遇到响应结构缺少 jobs 数组时抛 502', async () => {
   await withFetch(async () => jsonResponse({ jobs: 'not-an-array' }), async () => {
     const client = new HttpApiClient('https://api.example', () => undefined, () => {});
     await assert.rejects(client.listJobs(), (err) => err instanceof ApiError && err.status === 502);
+  });
+});
+
+test('listGoals 正确拼接 query 参数并解包 goals 列表', async () => {
+  const goals = [{
+    id: 'goal-1',
+    title: '完成目标',
+    description: '说明',
+    category: 'study',
+    status: 'active',
+    milestones: [{ id: 'm-1', title: '步骤1', done: false }],
+    createdAt: '2026-10-20T00:00:00Z',
+    updatedAt: '2026-10-20T00:00:00Z',
+  }];
+  await withFetch(async (url) => {
+    assert.equal(url, 'https://api.example/api/goals?status=active&category=study&sort=createdAt&order=asc');
+    return jsonResponse({ goals });
+  }, async () => {
+    const client = new HttpApiClient('https://api.example', () => undefined, () => {});
+    const res = await client.listGoals({ status: 'active', category: 'study', sort: 'createdAt', order: 'asc' });
+    assert.deepEqual(res, goals);
+  });
+
+  await withFetch(async (url) => {
+    assert.equal(url, 'https://api.example/api/goals');
+    return jsonResponse({ goals: [] });
+  }, async () => {
+    const client = new HttpApiClient('https://api.example', () => undefined, () => {});
+    const res = await client.listGoals();
+    assert.deepEqual(res, []);
+  });
+});
+
+test('listGoals 遇到响应结构缺少 goals 数组时抛 502', async () => {
+  await withFetch(async () => jsonResponse({ goals: 'not-an-array' }), async () => {
+    const client = new HttpApiClient('https://api.example', () => undefined, () => {});
+    await assert.rejects(client.listGoals(), (err) => err instanceof ApiError && err.status === 502);
+  });
+});
+
+test('getGoal 请求 /api/goals/:id 并返回目标对象', async () => {
+  const goal = {
+    id: 'goal/1',
+    title: '完成目标',
+    description: '说明',
+    category: 'study',
+    status: 'active',
+    milestones: [],
+    createdAt: '2026-10-20T00:00:00Z',
+    updatedAt: '2026-10-20T00:00:00Z',
+  };
+  await withFetch(async (url) => {
+    assert.equal(url, 'https://api.example/api/goals/goal%2F1');
+    return jsonResponse(goal);
+  }, async () => {
+    const client = new HttpApiClient('https://api.example', () => undefined, () => {});
+    assert.deepEqual(await client.getGoal('goal/1'), goal);
+  });
+});
+
+test('getGoal 遇到缺少 id 响应时抛 502', async () => {
+  await withFetch(async () => jsonResponse({ title: '缺少 id' }), async () => {
+    const client = new HttpApiClient('https://api.example', () => undefined, () => {});
+    await assert.rejects(client.getGoal('goal-1'), (err) => err instanceof ApiError && err.status === 502);
   });
 });
 
@@ -281,7 +344,7 @@ const requestCases = [
     expect: { id: 'monitor/一', status: 'paused' },
   },
   {
-    name: 'createGoal 原样提交含里程碑的创建载荷',
+    name: 'createGoal 原样提交含里程碑的创建载荷至 /api/goals',
     call: (client) => client.createGoal({
       title: '完成 v1',
       description: '两句话说清',
@@ -289,7 +352,7 @@ const requestCases = [
       milestones: ['组件库', '聊天链路'],
     }),
     method: 'POST',
-    url: `${BASE}/api/agent/goals`,
+    url: `${BASE}/api/goals`,
     body: {
       title: '完成 v1',
       description: '两句话说清',
@@ -300,40 +363,40 @@ const requestCases = [
     expect: { id: 'goal-1', title: '完成 v1' },
   },
   {
-    name: 'updateGoal 编码目标 ID 并逐字转发编辑载荷',
+    name: 'updateGoal 编码目标 ID 并以 PATCH 提交编辑载荷至 /api/goals/:id',
     call: (client) => client.updateGoal('goal/1', { title: '改名', description: '', category: '' }),
-    method: 'POST',
-    url: `${BASE}/api/agent/goals/goal%2F1`,
+    method: 'PATCH',
+    url: `${BASE}/api/goals/goal%2F1`,
     body: { title: '改名', description: '', category: '' },
     respond: { id: 'goal/1', title: '改名' },
     expect: { id: 'goal/1', title: '改名' },
   },
   {
-    name: 'setGoalStatus 走 status 子路径并只提交 status',
+    name: 'setGoalStatus 以 PATCH 提交 status 字段至 /api/goals/:id',
     call: (client) => client.setGoalStatus('goal/1', 'completed'),
-    method: 'POST',
-    url: `${BASE}/api/agent/goals/goal%2F1/status`,
+    method: 'PATCH',
+    url: `${BASE}/api/goals/goal%2F1`,
     body: { status: 'completed' },
     respond: { id: 'goal/1', status: 'completed' },
     expect: { id: 'goal/1', status: 'completed' },
   },
   {
-    name: 'toggleMilestone 同时编码目标与里程碑 ID',
+    name: 'toggleMilestone 同时编码目标与里程碑 ID 并调用新路径',
     call: (client) => client.toggleMilestone('goal/一', 'ms/1'),
     method: 'POST',
-    url: `${BASE}/api/agent/goals/goal%2F%E4%B8%80/milestones/ms%2F1/toggle`,
+    url: `${BASE}/api/goals/goal%2F%E4%B8%80/milestones/ms%2F1/toggle`,
     body: {},
     respond: { id: 'goal/一', milestones: [{ id: 'ms/1', done: true }] },
     expect: { id: 'goal/一', milestones: [{ id: 'ms/1', done: true }] },
   },
   {
-    name: 'removeGoal 走 remove 子路径且丢弃响应载荷',
+    name: 'removeGoal 以 DELETE 调用 /api/goals/:id 并返回删除回执',
     call: (client) => client.removeGoal('goal/1'),
-    method: 'POST',
-    url: `${BASE}/api/agent/goals/goal%2F1/remove`,
-    body: {},
-    respond: { ok: true },
-    expect: undefined,
+    method: 'DELETE',
+    url: `${BASE}/api/goals/goal%2F1`,
+    body: undefined,
+    respond: { ok: true, id: 'goal/1' },
+    expect: { ok: true, id: 'goal/1' },
   },
   {
     name: 'saveIdentity 原样提交身份字段',

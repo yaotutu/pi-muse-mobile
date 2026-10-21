@@ -70,7 +70,25 @@ try {
   driver.on('exit', (code) => { driverExit = code ?? 1; }); driver.on('error', () => { driverExit = 1; });
   await native('created');
   const created = await ownMemory(texts.initial); id = created.id;
-  assert.equal(created.source, 'Mobile UI'); pass('native create stored exact text, timestamps and explicit mobile source', { id }); phase('created');
+  assert.equal(created.source, 'Mobile UI'); pass('native create stored exact text, timestamps and explicit mobile source', { id });
+  assert.deepEqual(await api.getMemory(id), created);
+  // 新版独立详情与排序必须实际消费；只读已有条目，不为制造排序差异修改用户数据。
+  // 空库补一条本轮专用锚点，避免单条列表的排序断言空转；随后立即通过 API 删除。
+  const sortAnchor = baseline.length === 0 ? await api.addMemory(`${marker} sort-anchor`, 'Mobile UI') : undefined;
+  if (sortAnchor) ownIds.add(sortAnchor.id);
+  for (const sort of ['createdAt', 'updatedAt']) {
+    for (const order of ['asc', 'desc']) {
+      const sorted = (await api.listMemories({ sort, order })).memories;
+      assert.deepEqual(sorted.find((memory) => memory.id === id), created);
+      assert.equal(sorted.length, baseline.length + 1 + Number(!!sortAnchor), 'Sorted full list must retain all records');
+      for (let index = 1; index < sorted.length; index++) {
+        const delta = Date.parse(sorted[index][sort]) - Date.parse(sorted[index - 1][sort]);
+        assert.ok(order === 'asc' ? delta >= 0 : delta <= 0, `Real memory ${sort}/${order} order`);
+      }
+    }
+  }
+  if (sortAnchor) await api.forgetMemory(sortAnchor.id);
+  pass('real single-memory detail and all createdAt/updatedAt sort directions match the declared contract'); phase('created');
   await native('edited');
   const edited = await ownMemory(texts.edited); assert.equal(edited.id, id); assert.equal(edited.createdAt, created.createdAt);
   assert.equal(edited.source, created.source); assert.ok(Date.parse(edited.updatedAt) >= Date.parse(created.updatedAt));
@@ -87,8 +105,9 @@ try {
   await native('deleted');
   assert.ok(!(await api.listMemories()).memories.some((memory) => memory.id === id));
   assert.equal((await api.listMemories({ q: marker })).memories.length, 0);
+  await assert.rejects(api.getMemory(id), (error) => error.status === 404);
   await assert.rejects(api.editMemory(id, texts.initial), (error) => error.status === 404);
-  pass('confirmed native deletion removed only the dedicated memory; later edit returns404'); phase('done');
+  pass('confirmed native deletion removed only the dedicated memory; later detail and edit return404'); phase('done');
   await native('done'); await until(() => driverExit === 0, 'native process success', 10_000);
   const result = JSON.parse(readFileSync(join(output, 'native-results.json'), 'utf8')); assert.equal(result.passed, true);
   pass('Android themes, search, draft navigation, foreground, delete and current-process error checks', { checks: result.checks.length });

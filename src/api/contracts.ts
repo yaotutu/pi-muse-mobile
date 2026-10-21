@@ -3,10 +3,12 @@ import type {
   AgentTask,
   AgUiEvent,
   ConversationSnapshot,
+  DeleteGoalResult,
   DeleteJobResult,
   DeleteSpaceResult,
   Goal,
   GoalStatus,
+  GoalsQuery,
   Identity,
   JobAction,
   JobDetail,
@@ -20,6 +22,7 @@ import type {
   SpaceInfo,
   SpaceInstructions,
   SpaceSkills,
+  UpdateGoalInput,
   UpdateJobInput,
   WorkspaceSnapshot,
 } from './types';
@@ -105,15 +108,22 @@ export interface ApiClient extends ApprovalClient, ActivityClient, MemoryClient 
 
   controlMonitor(id: string, action: MonitorAction): Promise<Monitor>;
 
-  // --- 目标 ---
+  // --- 目标（GET /api/goals 独立端点，快照中已不再包含 goals） ---
 
-  createGoal(input: GoalInput): Promise<Goal>;
-  /** 编辑不含里程碑（服务端编辑端点不接受 milestones） */
-  updateGoal(id: string, input: Partial<Omit<GoalInput, 'milestones'>>): Promise<Goal>;
-  /** completed 自动勾掉全部里程碑；重新激活不回退勾选 */
-  setGoalStatus(id: string, status: GoalStatus): Promise<Goal>;
-  toggleMilestone(goalId: string, milestoneId: string): Promise<Goal>;
-  removeGoal(id: string): Promise<void>;
+  /** 查询目标列表：全量返回不分页，支持 status、category、sort (updatedAt/createdAt)、order (asc/desc) 过滤与排序 */
+  listGoals(query?: GoalsQuery, signal?: AbortSignal): Promise<Goal[]>;
+  /** 读取指定目标详情 */
+  getGoal(id: string, signal?: AbortSignal): Promise<Goal>;
+  /** 创建目标：支持标题、描述、分类及初始里程碑列表 */
+  createGoal(input: GoalInput, signal?: AbortSignal): Promise<Goal>;
+  /** 编辑目标：支持标题、描述、分类或状态（completed 会自动将名下所有里程碑勾选完成） */
+  updateGoal(id: string, input: UpdateGoalInput, signal?: AbortSignal): Promise<Goal>;
+  /** 兼容快捷设置状态：等价于 updateGoal(id, { status }) */
+  setGoalStatus(id: string, status: GoalStatus, signal?: AbortSignal): Promise<Goal>;
+  /** 切换指定里程碑完成状态（POST /api/goals/:id/milestones/:mid/toggle） */
+  toggleMilestone(goalId: string, milestoneId: string, signal?: AbortSignal): Promise<Goal>;
+  /** 彻底删除指定目标（DELETE /api/goals/:id） */
+  removeGoal(id: string, signal?: AbortSignal): Promise<DeleteGoalResult>;
 
   // --- 身份 / 记忆 / 人设 ---
 
@@ -136,13 +146,16 @@ export interface ApiClient extends ApprovalClient, ActivityClient, MemoryClient 
 }
 
 export type {
+  DeleteGoalResult,
   DeleteJobResult,
+  GoalsQuery,
   JobAction,
   JobDetail,
   JobEvent,
   JobEventKind,
   JobItem,
   JobsQuery,
+  UpdateGoalInput,
   UpdateJobInput,
 };
 export type TaskAction = JobAction;

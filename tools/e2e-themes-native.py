@@ -58,8 +58,9 @@ def scroll(down=False):
     start, end = (high, low) if down else (low, high)
     # 不在系统返回手势热区滚动，否则 Android 会先离开应用页而非滚动设置。
     x = int(right-(right-left)*.25)
-    sh('shell', 'input', 'swipe', str(x), str(int(start)), str(x), str(int(end)), '300')
-    time.sleep(.25)
+    # 使用完整触屏拖动，给冷启动后的模拟器足够时间交接 Pressable 与原生滚动手势。
+    sh('shell', 'input', 'touchscreen', 'swipe', str(x), str(int(start)), str(x), str(int(end)), '1000')
+    time.sleep(.5)
 
 
 def wait(label, scrolling=False, down=False, seconds=45):

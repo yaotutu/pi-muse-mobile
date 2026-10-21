@@ -22,8 +22,16 @@ def sh(*args):
 
 def refresh():
     global tree
-    for _ in range(5):
-        result = sh('shell', 'uiautomator', 'dump', '/sdcard/memories-e2e.xml')
+    for attempt in range(5):
+        try:
+            result = sh('shell', 'uiautomator', 'dump', '/sdcard/memories-e2e.xml')
+        except subprocess.CalledProcessError as error:
+            # 仅有界重试被终止的只读采样；不重放业务操作，也不读取上次 XML 冒充新界面。
+            if error.returncode != 137 or attempt == 4:
+                raise
+            print('RETRY native hierarchy dump terminated with137', attempt + 1, flush=True)
+            time.sleep(.5)
+            continue
         if b'dumped to' in result:
             tree = ET.fromstring(sh('exec-out', 'cat', '/sdcard/memories-e2e.xml'))
             return
@@ -86,6 +94,14 @@ def seek(part, scroll=False, down=False):
     raise AssertionError('Missing visible text: '+part)
 
 
+def dismiss_keyboard():
+    # 硬件键盘模式下 BACK 会离开应用，只在系统确认软键盘可见时发送。
+    state = sh('shell', 'dumpsys', 'input_method').decode()
+    if 'mInputShown=true' in state or 'mIsInputViewShown=true' in state:
+        sh('shell', 'input', 'keyevent', 'KEYCODE_BACK')
+        time.sleep(.3)
+
+
 def enter(label, value):
     tap(label, scroll=True, down=True)
     refresh()
@@ -96,10 +112,7 @@ def enter(label, value):
     sh('shell', 'input', 'keyevent', 'KEYCODE_MOVE_END')
     sh('shell', 'input', 'keyevent', *(['KEYCODE_DEL']*(old_length+1)))
     sh('shell', 'input', 'text', value.replace(' ', '%s'))
-    # AVD 使用硬件键盘时 BACK 会退出整个应用，必须先核对软键盘是否真的显示。
-    state = sh('shell', 'dumpsys', 'input_method').decode()
-    if 'mInputShown=true' in state or 'mIsInputViewShown=true' in state:
-        sh('shell', 'input', 'keyevent', 'KEYCODE_BACK')
+    dismiss_keyboard()
     time.sleep(.3)
     refresh()
     assert find(label).get('text') == value, 'Native text entry did not replace exact field content'
@@ -211,7 +224,10 @@ try:
     signal('background')
     phase('foreground')
     sh('shell', 'am', 'start', '-a', 'android.intent.action.VIEW', '-d', 'exp://127.0.0.1:8082', 'host.exp.exponent')
-    seek(draft, scroll=True, down=True)
+    # 回前台可能恢复 IME 并将视口锚到搜索框；先正常收起键盘，再向正文寻找真实草稿。
+    seek('长期记忆')
+    dismiss_keyboard()
+    seek(draft, scroll=True)
     seek(context['texts']['foreground'], scroll=True)
     screenshot('foreground-light')
     passed('foreground reloads externally edited memory and preserves draft')

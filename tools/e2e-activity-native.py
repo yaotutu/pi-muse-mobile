@@ -22,8 +22,16 @@ def sh(*args):
 
 def refresh():
     global tree
-    for _ in range(4):
-        result = sh('shell', 'uiautomator', 'dump', '/sdcard/activity-e2e.xml')
+    for attempt in range(4):
+        try:
+            result = sh('shell', 'uiautomator', 'dump', '/sdcard/activity-e2e.xml')
+        except subprocess.CalledProcessError as error:
+            # 只重试被系统终止的只读层级采样，不重放操作或使用旧 XML 伪造界面通过。
+            if error.returncode != 137 or attempt == 3:
+                raise
+            print('RETRY native hierarchy dump terminated with137', attempt + 1, flush=True)
+            time.sleep(.5)
+            continue
         # 宿主冷启动偶尔返回 null root 且退出码为 0；不能把上次的 XML 当成当前界面。
         if b'dumped to' in result:
             tree = ET.fromstring(sh('exec-out', 'cat', '/sdcard/activity-e2e.xml'))

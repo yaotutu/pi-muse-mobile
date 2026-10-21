@@ -13,10 +13,12 @@ import { fetch as expoFetch } from 'expo/fetch';
 import type {
   AgentTask,
   ConversationSnapshot,
+  DeleteGoalResult,
   DeleteJobResult,
   DeleteSpaceResult,
   Goal,
   GoalStatus,
+  GoalsQuery,
   Identity,
   JobAction,
   JobDetail,
@@ -30,6 +32,7 @@ import type {
   SpaceInstructions,
   SpaceSkill,
   SpaceSkills,
+  UpdateGoalInput,
   UpdateJobInput,
   WorkspaceSnapshot,
 } from './types';
@@ -384,11 +387,10 @@ export class HttpApiClient implements ApiClient {
   async getSnapshot(signal?: AbortSignal): Promise<WorkspaceSnapshot> {
     // 审批由 GET /api/events 与 /api/approvals/* 独立同步，不再请求已下线的 /api/actions/pending。
     // 定时任务已迁移至独立 /api/jobs 接口，/api/agent 响应体中不再包含 tasks 字段。
-    // monitors 与 memories 亦已迁移至独立接口，快照权威提供 goals 与 identity。
+    // monitors、memories 与 goals 亦已迁移至独立接口，快照权威提供 identity。
     const workspace = await this.request<WorkspaceSnapshot>('/api/agent', { signal });
     if (
       !workspace ||
-      !Array.isArray(workspace.goals) ||
       typeof workspace.identity?.name !== 'string' ||
       typeof workspace.identity?.tone !== 'string'
     ) {
@@ -523,35 +525,57 @@ export class HttpApiClient implements ApiClient {
     }
   }
 
-  async createGoal(input: GoalInput): Promise<Goal> {
-    return this.request<Goal>('/api/agent/goals', { method: 'POST', body: input });
+  // --- 长期目标（/api/goals） ---
+
+  async listGoals(query?: GoalsQuery, signal?: AbortSignal): Promise<Goal[]> {
+    const params = new URLSearchParams();
+    if (query?.status) params.set('status', query.status);
+    if (query?.category) params.set('category', query.category);
+    if (query?.sort) params.set('sort', query.sort);
+    if (query?.order) params.set('order', query.order);
+    const suffix = params.toString() ? `?${params.toString()}` : '';
+    const data = await this.request<{ goals: Goal[] }>(`/api/goals${suffix}`, { signal });
+    if (!data || !Array.isArray(data.goals)) {
+      throw new ApiError(502, '长期目标列表响应格式不正确');
+    }
+    return data.goals;
   }
 
-  async updateGoal(id: string, input: Partial<Omit<GoalInput, 'milestones'>>): Promise<Goal> {
-    return this.request<Goal>(`/api/agent/goals/${encodeURIComponent(id)}`, {
-      method: 'POST',
+  async getGoal(id: string, signal?: AbortSignal): Promise<Goal> {
+    const goal = await this.request<Goal>(`/api/goals/${encodeURIComponent(id)}`, { signal });
+    if (!goal || typeof goal.id !== 'string') {
+      throw new ApiError(502, '目标详情响应格式不正确');
+    }
+    return goal;
+  }
+
+  async createGoal(input: GoalInput, signal?: AbortSignal): Promise<Goal> {
+    return this.request<Goal>('/api/goals', { method: 'POST', body: input, signal });
+  }
+
+  async updateGoal(id: string, input: UpdateGoalInput, signal?: AbortSignal): Promise<Goal> {
+    return this.request<Goal>(`/api/goals/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
       body: input,
+      signal,
     });
   }
 
-  async setGoalStatus(id: string, status: GoalStatus): Promise<Goal> {
-    return this.request<Goal>(`/api/agent/goals/${encodeURIComponent(id)}/status`, {
-      method: 'POST',
-      body: { status },
-    });
+  async setGoalStatus(id: string, status: GoalStatus, signal?: AbortSignal): Promise<Goal> {
+    return this.updateGoal(id, { status }, signal);
   }
 
-  async toggleMilestone(goalId: string, milestoneId: string): Promise<Goal> {
+  async toggleMilestone(goalId: string, milestoneId: string, signal?: AbortSignal): Promise<Goal> {
     return this.request<Goal>(
-      `/api/agent/goals/${encodeURIComponent(goalId)}/milestones/${encodeURIComponent(milestoneId)}/toggle`,
-      { method: 'POST', body: {} },
+      `/api/goals/${encodeURIComponent(goalId)}/milestones/${encodeURIComponent(milestoneId)}/toggle`,
+      { method: 'POST', body: {}, signal },
     );
   }
 
-  async removeGoal(id: string): Promise<void> {
-    await this.request<{ ok: boolean }>(`/api/agent/goals/${encodeURIComponent(id)}/remove`, {
-      method: 'POST',
-      body: {},
+  async removeGoal(id: string, signal?: AbortSignal): Promise<DeleteGoalResult> {
+    return this.request<DeleteGoalResult>(`/api/goals/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      signal,
     });
   }
 
