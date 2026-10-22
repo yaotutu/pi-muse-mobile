@@ -16,7 +16,7 @@ const server = createServer(async (req, res) => {
   const cors = {
     'access-control-allow-origin': req.headers.origin ?? '*',
     'access-control-allow-headers': 'Authorization,Content-Type',
-    'access-control-allow-methods': 'GET,POST,PUT,DELETE,OPTIONS',
+    'access-control-allow-methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
     'access-control-max-age': '86400',
   };
   if (req.method === 'OPTIONS') {
