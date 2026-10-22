@@ -77,10 +77,12 @@ export function ConversationView({
   }, [recentTerminal, conversation]);
 
   const busy = conversation.running || runtime.running;
+  const pending = session.pendingSubmission;
   const canSend =
     !!connection?.enabled &&
     runtime.synchronized &&
     !busy &&
+    !pending &&
     !conversation.loading &&
     !conversation.historyFailed &&
     !session.deleted &&
@@ -111,9 +113,6 @@ export function ConversationView({
     void conversation.send(
       session.draft,
       () => sessions.setDraft(spaceId, ''),
-      (text) => {
-        if (!sessions.get(spaceId).draft) sessions.setDraft(spaceId, text);
-      },
     );
   };
   const followLatest = () => {
@@ -154,8 +153,38 @@ export function ConversationView({
             )
           )}
           {conversation.views.map((message) => (
-            <Message key={message.id} message={message} />
+            <Message
+              key={message.id}
+              message={message}
+              pendingStatus={pending && pending.messageId === message.id ? pending.status : undefined}
+            />
           ))}
+          {pending?.status === 'failed' && (
+            <View style={styles.pendingBanner}>
+              <Text accessibilityRole="alert" style={styles.error}>
+                {pending.error ?? '消息未送达服务端'}
+              </Text>
+              {session.draft.length > 0 ? (
+                <Text style={styles.mutedText}>输入框已有草稿：请先复制保存或清空当前草稿，再恢复此消息</Text>
+              ) : (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="恢复到输入框"
+                  style={styles.actionButton}
+                  onPress={() => sessions.restorePendingSubmissionToDraft(spaceId)}
+                >
+                  <Text style={styles.actionText}>恢复到输入框</Text>
+                </Pressable>
+              )}
+            </View>
+          )}
+          {pending?.status === 'unconfirmed' && (
+            <View style={styles.pendingBanner}>
+              <Text accessibilityRole="alert" style={styles.mutedText}>
+                {pending.error ?? '消息保存状态待确认，请重新同步核对'}
+              </Text>
+            </View>
+          )}
           {conversation.running && <TypingIndicator />}
           {!!stopError && <Text accessibilityRole="alert" style={styles.error}>{stopError}</Text>}
           {!!conversation.error && <Text accessibilityRole="alert" style={styles.error}>{conversation.error}</Text>}
@@ -165,7 +194,7 @@ export function ConversationView({
               <Text style={styles.actionText}>核对重置结果</Text>
             </Pressable>
           </>}
-          {(conversation.historyFailed || connection?.snapshot.status === 'authentication-required') && (
+          {(conversation.historyFailed || pending?.status === 'unconfirmed' || connection?.snapshot.status === 'authentication-required') && (
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="重新同步会话"
@@ -244,15 +273,29 @@ export function ConversationView({
   );
 }
 
-function Message({ message }: { message: MessageView }) {
+function Message({ message, pendingStatus }: { message: MessageView; pendingStatus?: 'sending' | 'failed' | 'unconfirmed' }) {
   const styles = useStyles();
   return (
     <View style={styles.messageBlock}>
       {!!message.text && (
-        <View style={[styles.message, message.role === 'user' ? styles.userMessage : styles.assistantMessage]}>
+        <View style={[
+          styles.message,
+          message.role === 'user' ? styles.userMessage : styles.assistantMessage,
+          pendingStatus === 'failed' && styles.userMessageFailed,
+          pendingStatus === 'unconfirmed' && styles.userMessageUnconfirmed,
+        ]}>
           <Text selectable style={[styles.messageText, message.role === 'user' && styles.userMessageText]}>
             {message.text}
           </Text>
+          {pendingStatus === 'sending' && (
+            <Text style={styles.messageSubtext}>发送中…</Text>
+          )}
+          {pendingStatus === 'failed' && (
+            <Text style={styles.messageSubtext}>未发送</Text>
+          )}
+          {pendingStatus === 'unconfirmed' && (
+            <Text style={styles.messageSubtext}>待确认</Text>
+          )}
         </View>
       )}
       {message.toolCalls.map((tool) => <ToolCard key={tool.id} tool={tool} />)}
@@ -384,4 +427,16 @@ const createStyles = (c: WorkspaceColors) =>
       alignSelf: 'center',
     },
     actionText: { ...t.status, color: c.onAccent },
+    userMessageFailed: { backgroundColor: c.danger },
+    userMessageUnconfirmed: { opacity: 0.75 },
+    messageSubtext: { ...t.caption, color: c.onAccent, marginTop: spacing[4], alignSelf: 'flex-end' },
+    pendingBanner: {
+      padding: spacing[12],
+      borderRadius: r.card,
+      backgroundColor: c.surface,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: c.line,
+      gap: spacing[8],
+      alignItems: 'center',
+    },
   });

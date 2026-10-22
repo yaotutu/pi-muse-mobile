@@ -5,6 +5,18 @@ import { MAIN_SPACE } from './space-state';
 
 export const INSTRUCTIONS_LIMIT = 20_000;
 
+/** A01: 客户端未确认提交条目（内存持有，随空间与 epoch 隔离，连接销毁即释放，不持久化正文）。 */
+export type PendingSubmission = {
+  messageId: string;
+  runId: string;
+  text: string;
+  epoch: number;
+  status: 'sending' | 'failed' | 'unconfirmed';
+  error?: string;
+  /** 流内已收到且流已终止的终态 RUN_ERROR 证据（内存）：卸载/切回后首次完整历史对账仍可判未发送。 */
+  terminalError?: string;
+};
+
 type Field<T> = {
   loaded: boolean;
   loading: boolean;
@@ -22,6 +34,8 @@ export type SpaceState = {
   resetting: boolean;
   resetUncertain: boolean;
   draft: string;
+  /** A01: 单空间单epoch独占一条未确认提交，收到权威历史包含原user ID前始终保留 */
+  pendingSubmission: PendingSubmission | null;
   instructions: Field<string>;
   skills: Field<Record<string, boolean>> & { catalog: SpaceSkills['skills']; diagnostics: NonNullable<SpaceSkills['diagnostics']>; notice?: string };
 };
@@ -40,10 +54,13 @@ export class SpaceStore {
   private version = 0;
   private lifecycleVersion = 0;
   private enabled = true;
+  private disposed = false;
 
   constructor(private readonly api: ApiClient) {}
   setEnabled(enabled: boolean) { this.enabled = enabled; }
-  private available(id: string) { return this.enabled && this.canWrite(id); }
+  private available(id: string) { return this.enabled && !this.disposed && this.canWrite(id); }
+  /** dispose 后的工作区整体失效：阻止已销毁 Hook 发起新发送或回写正文。 */
+  isDisposed() { return this.disposed; }
 
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   getVersion = () => this.version;
@@ -52,7 +69,7 @@ export class SpaceStore {
   get(id: string): SpaceState {
     let entry = this.sessions.get(id);
     if (!entry) {
-      entry = { epoch: 0, sessionId: null, deleted: false, deleting: false, resetting: false, resetUncertain: false, draft: '', instructions: field(''), skills: { ...field<Record<string, boolean>>({}), catalog: [], diagnostics: [] } };
+      entry = { epoch: 0, sessionId: null, deleted: false, deleting: false, resetting: false, resetUncertain: false, draft: '', pendingSubmission: null, instructions: field(''), skills: { ...field<Record<string, boolean>>({}), catalog: [], diagnostics: [] } };
       this.sessions.set(id, entry);
     }
     return entry;
@@ -61,10 +78,57 @@ export class SpaceStore {
     const entry = this.get(id);
     return entry.epoch === epoch && this.canWrite(id);
   }
-  canWrite(id: string) { const entry = this.get(id); return !entry.deleted && !entry.deleting && !entry.resetting && !entry.resetUncertain; }
+  canWrite(id: string) { const entry = this.get(id); return !this.disposed && !entry.deleted && !entry.deleting && !entry.resetting && !entry.resetUncertain; }
   hasSettingsWrite(id: string) { const entry = this.get(id); return entry.instructions.saving || entry.skills.saving; }
   hasDirtySettings(id: string) { const entry = this.get(id); return entry.instructions.draft !== entry.instructions.saved || !equalSwitches(entry.skills.draft, entry.skills.saved); }
   setDraft(id: string, value: string) { if (this.canWrite(id)) { this.get(id).draft = value; this.changed(); } }
+  setPendingSubmission(id: string, epoch: number, submission: PendingSubmission) {
+    const entry = this.get(id);
+    if (!this.disposed && entry.epoch === epoch && this.canWrite(id)) {
+      entry.pendingSubmission = submission;
+      this.changed();
+    }
+  }
+  /** 绑定 messageId + epoch 的状态更新：迟到响应不能改写下一轮（或 dispose 后）的暂存条目。 */
+  updatePendingSubmissionStatus(
+    id: string,
+    epoch: number,
+    messageId: string,
+    update: { status: PendingSubmission['status']; error?: string; terminalError?: string },
+  ) {
+    const entry = this.get(id);
+    if (!this.disposed && entry.epoch === epoch && entry.pendingSubmission?.messageId === messageId) {
+      entry.pendingSubmission = {
+        ...entry.pendingSubmission,
+        status: update.status,
+        error: update.error ?? entry.pendingSubmission.error,
+        terminalError: update.terminalError ?? entry.pendingSubmission.terminalError,
+      };
+      this.changed();
+    }
+  }
+  /** 释放暂存；传 messageId 时仅当与当前条目一致才清除，避免迟到确认清掉新一轮提交。 */
+  clearPendingSubmission(id: string, epoch?: number, messageId?: string) {
+    const entry = this.get(id);
+    if (epoch === undefined || entry.epoch === epoch) {
+      if (entry.pendingSubmission && (messageId === undefined || entry.pendingSubmission.messageId === messageId)) {
+        entry.pendingSubmission = null;
+        this.changed();
+      }
+    }
+  }
+  /** 仅恢复终态 failed 的未发送正文；草稿已有任何输入（含纯空白）都不覆盖。 */
+  restorePendingSubmissionToDraft(id: string): boolean {
+    const entry = this.get(id);
+    if (this.disposed || !this.canWrite(id)) return false;
+    if (entry.draft.length > 0) return false;
+    const pending = entry.pendingSubmission;
+    if (!pending || pending.status !== 'failed') return false;
+    entry.draft = pending.text;
+    entry.pendingSubmission = null;
+    this.changed();
+    return true;
+  }
   setInstructions(id: string, value: string) { if (this.canWrite(id) && !this.get(id).instructions.saving) { this.get(id).instructions.draft = value; this.changed(); } }
   setSkill(id: string, name: string, enabled: boolean) {
     const entry = this.get(id);
@@ -89,6 +153,7 @@ export class SpaceStore {
     if (entry.sessionId !== null || entry.resetUncertain) {
       entry.epoch++;
       entry.draft = '';
+      entry.pendingSubmission = null;
       this.cancelReads(id);
     }
     entry.sessionId = sessionId;
@@ -103,6 +168,7 @@ export class SpaceStore {
     // 与删除不同，空间设置（包括未保存草稿）和私有工作区必须保留。
     entry.resetting = true;
     entry.epoch++;
+    entry.pendingSubmission = null;
     this.lifecycleVersion++;
     this.cancelReads(id);
     this.changed();
@@ -111,6 +177,7 @@ export class SpaceStore {
       if (this.get(id) !== entry) return undefined;
       entry.sessionId = result.sessionId;
       entry.draft = '';
+      entry.pendingSubmission = null;
       entry.resetUncertain = false;
       return result;
     } catch (error) {
@@ -267,10 +334,25 @@ export class SpaceStore {
     this.sessions.delete(id);
     const blank = this.get(id);
     blank.epoch = entry.epoch + 1;
+    blank.pendingSubmission = null;
     blank.deleted = true;
     this.lifecycleVersion++;
     this.changed();
   }
   revive(id: string) { const entry = this.get(id); if (entry.deleted) { entry.deleted = false; this.changed(); } }
-  dispose() { this.enabled = false; for (const controller of this.reads.values()) controller.abort(); this.reads.clear(); this.listeners.clear(); }
+  /**
+   * 连接工作区整体销毁：释放全部内存态（含未确认提交正文与草稿），并拒绝任何迟到回写。
+   * 与 setEnabled(false)（离线与草稿保留）不同，dispose 后 store 不可复用。
+   */
+  dispose() {
+    this.disposed = true;
+    this.enabled = false;
+    for (const entry of this.sessions.values()) {
+      entry.pendingSubmission = null;
+      entry.draft = '';
+    }
+    for (const controller of this.reads.values()) controller.abort();
+    this.reads.clear();
+    this.listeners.clear();
+  }
 }

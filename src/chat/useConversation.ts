@@ -1,19 +1,57 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { useApi } from '../api/ApiProvider';
 import { useSpaceState, useSpaceStore } from '../spaces/SpaceProvider';
-import { isRequestCancelled, requestCancelled } from '../api/errors';
+import { ApiError, isRequestCancelled, requestCancelled } from '../api/errors';
 import { useServiceConnection } from '../connection/ConnectionProvider';
 import { StreamAggregator, projectHistory, type MessageView } from './chat-state';
+import type { ConversationMessage, ConversationSnapshot } from '../api/types';
 
 let clientSequence = 0;
 const nextClientId = (prefix: string) => `${prefix}-${Date.now()}-${++clientSequence}`;
 
-/** 单次挂载仅服务一个空间的一个聊天代次；父级以 spaceId + epoch 隔离重置前的请求。 */
+/**
+ * 契约明确的运行前置拒绝（server routes.ts 在开启 SSE 前返回，与 status/code 精确对应）。
+ * 其中 RUN_ID_CONFLICT / MESSAGE_ID_CONFLICT 表示服务端已持有同 ID 消息，
+ * 不直接判定，必须先与权威历史对账。
+ */
+const PRE_RUN_REJECTS: Record<string, { status: number; conflictsWithPersisted?: boolean }> = {
+  MODEL_NOT_CONFIGURED: { status: 503 },
+  SHUTDOWN: { status: 503 },
+  INVALID_INPUT: { status: 400 },
+  UNSUPPORTED_SPACE: { status: 400 },
+  agent_thread_locked: { status: 409 },
+  HISTORY_CONFLICT: { status: 409 },
+  RUN_ID_CONFLICT: { status: 409, conflictsWithPersisted: true },
+  MESSAGE_ID_CONFLICT: { status: 409, conflictsWithPersisted: true },
+};
+const preRunRejectOf = (error: unknown): { code: string; conflictsWithPersisted: boolean } | null => {
+  if (!(error instanceof ApiError)) return null;
+  // routes.ts 的 schema 拒绝（Invalid conversation request）返回 400 且无 code，同属未接受。
+  if (error.status === 400 && !error.code) return { code: 'SCHEMA_INVALID', conflictsWithPersisted: false };
+  const entry = error.code ? PRE_RUN_REJECTS[error.code] : undefined;
+  if (!entry || entry.status !== error.status) return null;
+  return { code: error.code!, conflictsWithPersisted: entry.conflictsWithPersisted === true };
+};
+const preRunRejectMessage = (error: ApiError) =>
+  error.code === 'MODEL_NOT_CONFIGURED'
+    ? '服务端模型未配置，消息未发送'
+    : error.message || '服务端拒绝执行，消息未发送';
+
+/**
+ * 单次挂载仅服务一个空间的一个聊天代次；父级以 spaceId + epoch 隔离重置前的请求。
+ *
+ * A01 所有权契约：消息出现在权威历史（role=user 且原 messageId 匹配）之前，
+ * 正文所有权在客户端（SpaceStore.pendingSubmission）；确认落盘后才移交服务端。
+ * 任何终态判断只依据确切证据（权威历史包含原 ID、或终态运行证据后的完整历史核对），
+ * 网络错误、404、仍 running 一律保持 unconfirmed，绝不自动重发。
+ */
 export function useConversation(spaceId: string, refreshKey = 0) {
   const api = useApi();
   const sessions = useSpaceStore();
-  const { epoch } = useSpaceState(spaceId);
+  const spaceState = useSpaceState(spaceId);
+  const epoch = spaceState.epoch;
+  const pendingSubmission = spaceState.pendingSubmission;
   const writable = sessions.canWrite(spaceId);
   const connection = useServiceConnection();
   const enabled = connection?.enabled ?? true;
@@ -31,6 +69,54 @@ export function useConversation(spaceId: string, refreshKey = 0) {
   const aliveRef = useRef(false);
   const historyRequest = useRef<AbortController | null>(null);
   const current = () => aliveRef.current && sessions.isCurrent(spaceId, epoch);
+
+  /** 权威历史核对：原 ID 已落盘则释放暂存；缺失且持有终态证据（含条目内存的流内 RUN_ERROR 记录）才可判定未发送。 */
+  const reconcilePendingWithHistory = useCallback(
+    (
+      messages: ConversationMessage[],
+      messageId: string,
+      allowFail: boolean,
+      failError?: string,
+    ): boolean => {
+      const persisted = messages.some((m) => m.role === 'user' && m.id === messageId);
+      if (persisted) {
+        sessions.clearPendingSubmission(spaceId, epoch, messageId);
+        return true;
+      }
+      const terminalSeen = sessions.get(spaceId).pendingSubmission?.terminalError != null;
+      if (allowFail || terminalSeen) {
+        sessions.updatePendingSubmissionStatus(spaceId, epoch, messageId, {
+          status: 'failed',
+          error: failError ?? sessions.get(spaceId).pendingSubmission?.terminalError ?? '消息未送达服务端',
+        });
+      }
+      return false;
+    },
+    [sessions, spaceId, epoch],
+  );
+
+  /**
+   * 单点查询某次 run 的运行状态。返回终态证据，或 null（404 / 查询失败 / 仍运行）。
+   * 竞态防线：拿到终态证据后必须重新读历史——查询期间落盘的消息不能被旧快照误判为未发送。
+   * 只返回证据与历史，不写 revisionRef 等 Hook 状态；apply 由调用方在 alive/epoch/messageId 校验后执行。
+   * 返回 latest 供调用方直接采用本次终态后的历史，避免重复请求。
+   */
+  const probeRunTerminal = useCallback(
+    async (
+      runId: string,
+    ): Promise<{ terminal: true; message?: string; latest: ConversationSnapshot } | null> => {
+      try {
+        const response = await api.getAgentStatus(spaceId, runId);
+        const status = response.status.status;
+        if (status === 'running') return null;
+        const fresh = await api.getConversation(spaceId);
+        return { terminal: true, message: status === 'failed' ? '消息未送达服务端' : undefined, latest: fresh };
+      } catch {
+        return null;
+      }
+    },
+    [api, spaceId],
+  );
 
   useEffect(() => {
     let previous = AppState.currentState;
@@ -74,6 +160,35 @@ export function useConversation(spaceId: string, refreshKey = 0) {
         const history = await api.getConversation(spaceId, controller.signal);
         if (alive && sessions.isCurrent(spaceId, epoch)) {
           revisionRef.current = history.revision;
+          const pending = sessions.get(spaceId).pendingSubmission;
+          if (pending && pending.epoch === epoch) {
+            const persisted = history.messages.some((m) => m.role === 'user' && m.id === pending.messageId);
+            if (!persisted && pending.status === 'unconfirmed') {
+              // 首读缺失不等于未发送：先看内存证据，再查该 run 的终态，均以终态之后的历史对账。
+              const probe = pending.terminalError != null
+                ? { terminal: true as const, message: pending.terminalError, latest: history }
+                : await probeRunTerminal(pending.runId);
+              if (!alive || !sessions.isCurrent(spaceId, epoch)) return;
+              // 卸载/取消期间不得写 Hook 状态；代次与 messageId 校验后 probe 可能已被新提交替换。
+              if (sessions.get(spaceId).pendingSubmission?.messageId !== pending.messageId) return;
+              if (probe) {
+                revisionRef.current = probe.latest.revision;
+                reconcilePendingWithHistory(probe.latest.messages, pending.messageId, true, probe.message);
+                setViews(projectHistory(probe.latest.messages));
+                // 终态证据 + 完整历史：无论释放或判 failed，都不是历史失败，解除发送锁。
+                setHistoryFailed(false);
+                setError(undefined);
+                setLoading(false);
+                return;
+              }
+              // 查询失败 / 404 / 仍 running：保守待确认，保持发送锁定。
+              setViews(projectHistory(history.messages));
+              setLoading(false);
+              return;
+            }
+            // sending / failed / unconfirmed 但已持久化：按当前快照直接对账。
+            reconcilePendingWithHistory(history.messages, pending.messageId, pending.status === 'failed', pending.error);
+          }
           setViews(projectHistory(history.messages));
           setHistoryFailed(false);
           setError(undefined);
@@ -88,7 +203,7 @@ export function useConversation(spaceId: string, refreshKey = 0) {
       }
     })();
     return () => { alive = false; controller.abort(); if (historyRequest.current === controller) historyRequest.current = null; };
-  }, [api, spaceId, historyVersion, enabled, refreshVersion, refreshKey, epoch, sessions, writable]);
+  }, [api, spaceId, historyVersion, enabled, refreshVersion, refreshKey, epoch, sessions, writable, probeRunTerminal, reconcilePendingWithHistory]);
 
   useEffect(() => {
     if (!writable) {
@@ -106,21 +221,34 @@ export function useConversation(spaceId: string, refreshKey = 0) {
     finally { if (historyRequest.current === controller) historyRequest.current = null; }
   };
 
-  const send = async (raw: string, onAccepted: () => void, onFailure: (text: string) => void) => {
+  const send = async (raw: string, onAccepted: () => void) => {
     const text = raw.trim();
-    if (!enabled || !sessions.isCurrent(spaceId, epoch) || !text || loading || historyFailed || abortRef.current || !revisionRef.current) return;
+    if (!enabled || sessions.isDisposed() || !sessions.isCurrent(spaceId, epoch) || !text || loading || historyFailed || abortRef.current || !revisionRef.current) return;
+    if (sessions.get(spaceId).pendingSubmission) return; // 上一条未确认提交未处理前，禁止重复发送或覆盖
+
     historyRequest.current?.abort();
+    const messageId = nextClientId('u');
+    const runId = nextClientId('run');
+
+    // 发送前先暂存，再清输入框（A01 核心契约：权威历史保存前客户端持有正文所有权）。
+    sessions.setPendingSubmission(spaceId, epoch, {
+      messageId,
+      runId,
+      text,
+      epoch,
+      status: 'sending',
+    });
     onAccepted();
     setError(undefined);
+
     const controller = new AbortController();
     abortRef.current = controller;
-    const runId = nextClientId('run');
     runIdRef.current = runId;
 
     // 历史是服务端事实；客户端只发送新消息和读取历史时的版本，不再复制用户序列。
     const expectedRevision = revisionRef.current;
     const userView: MessageView = {
-      id: nextClientId('u'),
+      id: messageId,
       role: 'user',
       text,
       toolCalls: [],
@@ -128,6 +256,10 @@ export function useConversation(spaceId: string, refreshKey = 0) {
     const aggregator = new StreamAggregator([...views, userView]);
     setViews([...aggregator.messages]);
     setRunning(true);
+
+    let runErrorOccurred = false;
+    let runErrorMessage: string | undefined;
+
     try {
       await api.runAgent(
         {
@@ -139,57 +271,155 @@ export function useConversation(spaceId: string, refreshKey = 0) {
         (event) => {
           if (!current() || controller.signal.aborted) return;
           aggregator.push(event);
-          if (event.type === 'RUN_ERROR') setError(event.code === 'STOPPED' ? undefined : event.message ?? '助手运行失败，请重试');
+          if (event.type === 'RUN_ERROR') {
+            runErrorOccurred = true;
+            runErrorMessage = event.message ?? '助手运行失败，请重试';
+            // 终态证据持久在暂存条目内存：卸载/切回后首次完整历史对账仍可判定未发送。
+            if (event.code !== 'STOPPED') {
+              sessions.updatePendingSubmissionStatus(spaceId, epoch, messageId, {
+                status: 'sending',
+                terminalError: runErrorMessage,
+              });
+            }
+            setError(event.code === 'STOPPED' ? undefined : runErrorMessage);
+          }
           setViews([...aggregator.messages]);
         },
         controller.signal,
       );
-      if (!current()) return;
+
+      if (!current()) {
+        // 组件已卸载但代次仍有效：只能保守标记待确认，交给重新挂载后的历史同步对账。
+        // terminalError 已在 RUN_ERROR 事件回调写入条目，此处状态降级不丢终态证据。
+        if (sessions.isCurrent(spaceId, epoch)) {
+          sessions.updatePendingSubmissionStatus(spaceId, epoch, messageId, { status: 'unconfirmed' });
+        }
+        return;
+      }
+
       try {
         if (!enabledRef.current) {
           aggregator.settle();
-          if (current()) { setViews([...aggregator.messages]); setHistoryFailed(true); }
+          if (current()) {
+            setViews([...aggregator.messages]);
+            setHistoryFailed(true);
+            sessions.updatePendingSubmissionStatus(spaceId, epoch, messageId, { status: 'unconfirmed' });
+          }
           return;
         }
+
         const history = await syncAfterRun();
         if (current()) {
           revisionRef.current = history.revision;
-          setViews(projectHistory(history.messages));
+          // 终态 RUN_ERROR + 完整历史缺失原 ID = 确切未发送证据；正常结束缺失仍待确认。
+          const released = reconcilePendingWithHistory(history.messages, messageId, runErrorOccurred, runErrorMessage);
+          if (released) {
+            setViews(projectHistory(history.messages));
+            setHistoryFailed(false);
+            // 已落盘 + RUN_ERROR：消息所有权已移交服务端，但运行失败的事实必须保留展示。
+            setError(runErrorOccurred ? runErrorMessage : undefined);
+          } else if (runErrorOccurred) {
+            // failed 不是历史失败：完整历史与版本已成功读取，保留 pending 阻塞即可，允许恢复后手动发送。
+            setViews(projectHistory(history.messages));
+            setHistoryFailed(false);
+            setError(runErrorMessage);
+          } else {
+            sessions.updatePendingSubmissionStatus(spaceId, epoch, messageId, {
+              status: 'unconfirmed',
+              error: '消息保存状态未明，请重新同步核对',
+            });
+            setHistoryFailed(true);
+            setViews(projectHistory(history.messages));
+          }
         }
       } catch (syncError) {
-        // 权威历史拉取失败：保留聚合视图（已验证的降级路径）
+        // 权威历史拉取失败：保留聚合视图（已验证的降级路径），保持待确认，不自动重发。
         aggregator.settle();
         if (current()) {
           setViews([...aggregator.messages]);
           // 内容可以保留展示，但没有新版本不能安全发送下一轮。
           setHistoryFailed(true);
+          sessions.updatePendingSubmissionStatus(spaceId, epoch, messageId, {
+            status: 'unconfirmed',
+            error: '回复已结束，但会话同步失败，请重新加载后继续',
+          });
           if (!isRequestCancelled(syncError)) setError('回复已结束，但会话同步失败，请重新加载后继续');
         }
       }
     } catch (e) {
       aggregator.settle();
       if (current()) setViews([...aggregator.messages]);
+
       if (current() && (controller.signal.aborted || isRequestCancelled(e))) {
-        if (!enabledRef.current) { setHistoryFailed(true); return; }
+        if (!enabledRef.current) {
+          setHistoryFailed(true);
+          sessions.updatePendingSubmissionStatus(spaceId, epoch, messageId, { status: 'unconfirmed' });
+          return;
+        }
         // 停止也可能已落盘部分回复；恢复服务端历史与版本后才允许发送下一轮。
         try {
           const history = await syncAfterRun();
           if (current()) {
             revisionRef.current = history.revision;
-            setViews(projectHistory(history.messages));
+            const released = reconcilePendingWithHistory(history.messages, messageId, false);
+            if (released) {
+              setViews(projectHistory(history.messages));
+            } else {
+              sessions.updatePendingSubmissionStatus(spaceId, epoch, messageId, {
+                status: 'unconfirmed',
+                error: '已停止但保存状态未确认',
+              });
+              setHistoryFailed(true);
+              setViews(projectHistory(history.messages));
+            }
           }
         } catch (syncError) {
           if (current()) {
             setHistoryFailed(true);
+            sessions.updatePendingSubmissionStatus(spaceId, epoch, messageId, { status: 'unconfirmed' });
             if (!isRequestCancelled(syncError)) setError('停止后无法同步会话，请重新加载');
           }
         }
-      } else if (current()) {
-        setError(e instanceof Error ? e.message : String(e));
-        // 失败后保留待发送文本，但不覆盖用户在流式期间另写的新草稿。
-        onFailure(text);
-        // 请求可能已落盘，也可能因版本冲突被拒绝；先恢复权威历史再允许发送。
-        setHistoryFailed(true);
+      } else if (preRunRejectOf(e)) {
+        // 契约明确的前置拒绝（SSE 开启前返回）：先与权威历史对账/刷新 revision，绝不清空旧历史。
+        const message = e instanceof ApiError ? preRunRejectMessage(e) : '服务端拒绝执行，消息未发送';
+        sessions.updatePendingSubmissionStatus(spaceId, epoch, messageId, { status: 'sending', terminalError: message });
+        try {
+          if (!current()) throw requestCancelled();
+          const history = await syncAfterRun();
+          if (current()) {
+            revisionRef.current = history.revision;
+            // 有原 ID 释放、无原 ID 判 failed；HISTORY_CONFLICT 已由本次回读拿到新 revision 解除，
+            // 恢复草稿后可手动重提，绝不自动发送。
+            reconcilePendingWithHistory(history.messages, messageId, true, message);
+            setViews(projectHistory(history.messages));
+            setHistoryFailed(false);
+            setError(message);
+          }
+        } catch (syncError) {
+          // 前置拒绝后历史回读失败：保守待确认并锁定发送，后续 reload 可解锁。
+          if (current()) {
+            setHistoryFailed(true);
+            sessions.updatePendingSubmissionStatus(spaceId, epoch, messageId, {
+              status: 'unconfirmed',
+              error: message,
+            });
+            if (!isRequestCancelled(syncError)) setError(message);
+          }
+        }
+      } else {
+        // 网络错误 / 408 / 不明 5xx：保存状态未明，保守待确认并锁定发送，绝不自动重发。
+        const errText = e instanceof Error ? e.message : String(e);
+        if (current()) {
+          setError(errText);
+          setHistoryFailed(true);
+        }
+        if (sessions.isCurrent(spaceId, epoch)) {
+          sessions.updatePendingSubmissionStatus(spaceId, epoch, messageId, {
+            status: 'unconfirmed',
+            error: errText,
+          });
+        }
       }
     } finally {
       const stale = !sessions.isCurrent(spaceId, epoch);
@@ -223,5 +453,30 @@ export function useConversation(spaceId: string, refreshKey = 0) {
     setLoading(true);
     setHistoryVersion((value) => value + 1);
   };
-  return { views, running, error, loading: loading || !enabled, historyFailed, send, stop, reload };
+
+  // 权威视图叠加客户端未确认提交（按原 ID 去重，不重复展示）。
+  const displayedViews =
+    pendingSubmission && pendingSubmission.epoch === epoch && !views.some((v) => v.id === pendingSubmission.messageId)
+      ? [
+          ...views,
+          {
+            id: pendingSubmission.messageId,
+            role: 'user' as const,
+            text: pendingSubmission.text,
+            toolCalls: [],
+          },
+        ]
+      : views;
+
+  return {
+    views: displayedViews,
+    running,
+    error,
+    loading: loading || !enabled,
+    historyFailed,
+    send,
+    stop,
+    reload,
+    pendingSubmission,
+  };
 }

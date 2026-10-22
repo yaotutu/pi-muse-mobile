@@ -28,7 +28,11 @@ registerHooks({
   },
   load(url, context, nextLoad) {
     if (sourceRoots.some((root) => url.startsWith(root)) && /\.tsx?$/.test(url)) {
-      const output = ts.transpileModule(readFileSync(fileURLToPath(url), 'utf8'), {
+      // 必须带上真实文件名：transpileModule 依据扩展名决定 TS 还是 TSX 解析。
+      // 缺省时按 TSX 解析，泛型箭头函数与类型断言会被当成 JSX 破坏源码。
+      const fileName = fileURLToPath(url);
+      const output = ts.transpileModule(readFileSync(fileName, 'utf8'), {
+        fileName,
         compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
       });
       return { format: 'module', source: output.outputText, shortCircuit: true };
