@@ -1,7 +1,7 @@
 /**
  * 手机端小修与实际后端专项回归脚本。
  * 显式 opt-in：E2E_ALLOW_LIVE=1 且必须提供 E2E_API_BASE_URL。
- * 
+ *
  * 验收流程：
  * 1. 真实鉴权（E2E_ACCESS_KEY 或已有连接认证），核对 /docs、/openapi.json 与 /api/health 部署一致性。
  * 2. 真实大模型调用至少一次：在专属空间下通过 runAgent 进行真实对话，验证流式返回及落盘。
