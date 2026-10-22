@@ -461,7 +461,7 @@ export class HttpApiClient implements ApiClient {
   }
 
   async controlMonitor(id: string, action: MonitorAction): Promise<Monitor> {
-    return this.request<Monitor>(`/api/agent/monitors/${encodeURIComponent(id)}/control`, {
+    return this.request<Monitor>(`/api/monitors/${encodeURIComponent(id)}/control`, {
       method: 'POST',
       body: { action },
     });

@@ -340,7 +340,7 @@ const requestCases = [
     name: 'controlMonitor 编码 ID 并只提交 action',
     call: (client) => client.controlMonitor('monitor/一', 'pause'),
     method: 'POST',
-    url: `${BASE}/api/agent/monitors/monitor%2F%E4%B8%80/control`,
+    url: `${BASE}/api/monitors/monitor%2F%E4%B8%80/control`,
     body: { action: 'pause' },
     respond: { id: 'monitor/一', status: 'paused' },
     expect: { id: 'monitor/一', status: 'paused' },
