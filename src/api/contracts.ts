@@ -1,6 +1,5 @@
 /** 页面依赖的客户端契约；网络实现不向上泄露传输细节。 */
 import type {
-  AgentTask,
   AgUiEvent,
   ConversationSnapshot,
   DeleteGoalResult,
@@ -18,7 +17,6 @@ import type {
   JobsQuery,
   Monitor,
   ResetSpaceResult,
-  TaskDetails,
   SpaceInfo,
   SpaceInstructions,
   SpaceSkills,
@@ -96,16 +94,6 @@ export interface ApiClient extends ApprovalClient, ActivityClient, MemoryClient 
   /** 彻底删除指定定时任务 */
   deleteJob(id: string, signal?: AbortSignal): Promise<DeleteJobResult>;
 
-  /** 兼容旧版：获取任务详情（重定向到 /api/jobs/:id，转换为 TaskDetails） */
-  getTask(id: string, signal?: AbortSignal): Promise<TaskDetails>;
-  /** 兼容旧版：控制任务（重定向到 /api/jobs/:id/control，去掉冗余 target） */
-  controlTask(
-    id: string,
-    action: TaskAction,
-    target?: TaskControlTarget,
-    signal?: AbortSignal,
-  ): Promise<AgentTask>;
-
   // --- 监控（创建走聊天 monitor 工具，页面只做控制） ---
 
   controlMonitor(id: string, action: MonitorAction): Promise<Monitor>;
@@ -160,8 +148,6 @@ export type {
   UpdateGoalInput,
   UpdateJobInput,
 };
-export type TaskAction = JobAction;
-export type TaskControlTarget = 'job';
 export type MonitorAction = 'pause' | 'resume' | 'stop';
 export type { ApprovalDecision } from '../approvals/types';
 export type GoalInput = {

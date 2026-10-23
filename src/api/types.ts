@@ -159,16 +159,6 @@ export type DeleteJobResult = {
   id: string;
 };
 
-// --- 兼容旧版命名别名 ---
-export type TaskKind = JobKind;
-export type TaskStatus = JobStatus;
-export type AgentTask = JobItem;
-export type TaskEventKind = JobEventKind;
-export type TaskEvent = JobEvent;
-export type TaskDetails = { task: AgentTask; events: TaskEvent[] };
-export type TaskAction = JobAction;
-export type TaskControlTarget = 'job';
-
 export type GoalStatus = 'active' | 'paused' | 'completed' | 'archived';
 export type Milestone = { id: string; title: string; done: boolean; doneAt?: string };
 export type Goal = {
@@ -259,13 +249,5 @@ export type Identity = {
 };
 
 export type WorkspaceSnapshot = {
-  /** 废弃字段：服务端已从 /api/agent 彻底移除，定时任务请通过 GET /api/jobs 获取 */
-  tasks?: AgentTask[];
-  /** 废弃字段：服务端已从 /api/agent 彻底移除，长期目标请通过 GET /api/goals 获取 */
-  goals?: Goal[];
-  /** 废弃字段：服务端已迁移至独立端点，快照中可选 */
-  monitors?: Monitor[];
-  /** 废弃字段：服务端已迁移至独立端点，快照中可选 */
-  memories?: MemoryItem[];
   identity: Identity;
 };

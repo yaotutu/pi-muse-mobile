@@ -11,7 +11,6 @@
 
 import { fetch as expoFetch } from 'expo/fetch';
 import type {
-  AgentTask,
   ConversationSnapshot,
   DeleteGoalResult,
   DeleteJobResult,
@@ -26,7 +25,6 @@ import type {
   JobsQuery,
   MemoryItem,
   Monitor,
-  TaskDetails,
   SpaceInfo,
   SpaceInstructions,
   SpaceSkill,
@@ -43,8 +41,6 @@ import {
   type MonitorAction,
   type Profile,
   type RunInput,
-  type TaskAction,
-  type TaskControlTarget,
 } from './contracts';
 import { ApiError, isRequestCancelled, requestCancelled, responseError } from './errors';
 import { parseSseFrames } from './sse';
@@ -439,25 +435,6 @@ export class HttpApiClient implements ApiClient {
       method: 'DELETE',
       signal,
     }), id);
-  }
-
-  // --- 兼容旧版任务调用（重定向至 /api/jobs 契约） ---
-
-  async getTask(id: string, signal?: AbortSignal): Promise<TaskDetails> {
-    const detail = await this.getJob(id, signal);
-    return {
-      task: detail.job,
-      events: detail.events,
-    };
-  }
-
-  async controlTask(
-    id: string,
-    action: TaskAction,
-    _target?: TaskControlTarget,
-    signal?: AbortSignal,
-  ): Promise<AgentTask> {
-    return this.controlJob(id, action, signal);
   }
 
   async controlMonitor(id: string, action: MonitorAction): Promise<Monitor> {

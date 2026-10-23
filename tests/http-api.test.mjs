@@ -45,7 +45,7 @@ test('stopRun 使用 spaceId 与 runId 调用 conversation stop 契约', async (
   });
 });
 
-test('getSnapshot 直接读取 /api/agent 快照（无 tasks 字段），不请求已下线的 /api/actions/pending', async () => {
+test('getSnapshot 直接读取 /api/agent 快照，不请求已下线的 /api/actions/pending', async () => {
   const snapshot = {
     identity: { name: '', tone: '' },
   };
@@ -164,23 +164,6 @@ test('getJob 请求 /api/jobs/:id 并返回 job 与 events 结构', async () => 
   });
 });
 
-test('getTask 兼容旧调用并重定向至 /api/jobs/:id', async () => {
-  const detail = {
-    job: { id: 'job/1', title: '任务', prompt: '内容', kind: 'job', daily: false, at: '2026-10-21T00:00:00Z', enabled: false, status: 'succeeded', createdAt: '2026-10-20T00:00:00Z', updatedAt: '2026-10-20T00:00:00Z', lastResult: '完成', error: null },
-    events: [{ id: 'event-1', taskId: 'job/1', date: '2026-10-20T00:00:00Z', kind: 'status', title: 'Created', detail: 'Created' }],
-  };
-  await withFetch(async (url) => {
-    assert.equal(url, 'https://api.example/api/jobs/job%2F1');
-    return jsonResponse(detail);
-  }, async () => {
-    const client = new HttpApiClient('https://api.example', () => undefined, () => {});
-    const res = await client.getTask('job/1');
-    assert.equal(res.task.id, 'job/1');
-    assert.equal(res.task.lastResult, '完成');
-    assert.deepEqual(res.events, detail.events);
-  });
-});
-
 test('controlJob 向 /api/jobs/:id/control 发送纯 action（无冗余 target）', async () => {
   let requestBody;
   await withFetch(async (url, init) => {
@@ -193,22 +176,6 @@ test('controlJob 向 /api/jobs/:id/control 发送纯 action（无冗余 target�
     const res = await client.controlJob('job-1', 'pause');
     assert.deepEqual(requestBody, { action: 'pause' });
     assert.equal(res.id, 'job-1');
-  });
-});
-
-test('controlTask 兼容旧调用并将 action 发送至 /api/jobs/:id/control', async () => {
-  let requestBody;
-  await withFetch(async (url, init) => {
-    assert.equal(url, 'https://api.example/api/jobs/job-1/control');
-    assert.equal(init.method, 'POST');
-    requestBody = JSON.parse(init.body);
-    return jsonResponse(jobFixture({ status: 'cancelled', lastResult: '已取消' }));
-  }, async () => {
-    const client = new HttpApiClient('https://api.example', () => undefined, () => {});
-    const res = await client.controlTask('job-1', 'cancel', 'job');
-    assert.deepEqual(requestBody, { action: 'cancel' });
-    assert.equal(res.id, 'job-1');
-    assert.equal(res.lastResult, '已取消');
   });
 });
 

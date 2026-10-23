@@ -56,10 +56,10 @@ test('JSON超时只报告连接失败，不清Token且不自动重试写操作',
 test('5xx及断网与401分开，业务4xx不误判Token失效', async () => {
   const events = []; let unauthorized = 0;
   const api = new HttpApiClient('https://server-a', () => 'token-a', () => unauthorized++, { onTransportState: (e) => events.push(e) });
-  await withFetch(async () => json({ error: 'unavailable' }, 503), async () => assert.rejects(api.getTask('a'), (e) => e.status === 503));
-  await withFetch(async () => { throw new TypeError('network down'); }, async () => assert.rejects(api.getTask('a'), (e) => e.status === 0));
+  await withFetch(async () => json({ error: 'unavailable' }, 503), async () => assert.rejects(api.getJob('a'), (e) => e.status === 503));
+  await withFetch(async () => { throw new TypeError('network down'); }, async () => assert.rejects(api.getJob('a'), (e) => e.status === 0));
   assert.deepEqual(events.map((e) => e.kind), ['offline', 'offline']);
-  await withFetch(async () => json({ error: 'forbidden' }, 403), async () => assert.rejects(api.getTask('a'), (e) => e.status === 403));
+  await withFetch(async () => json({ error: 'forbidden' }, 403), async () => assert.rejects(api.getJob('a'), (e) => e.status === 403));
   assert.equal(events.length, 2);
   assert.equal(unauthorized, 0);
 });
@@ -81,10 +81,10 @@ test('取消后的迟到JSON成功不能标记连接在线', async () => {
   const body = deferred(); const events = [];
   await withFetch(async () => ({ ok: true, status: 200, json: () => body.promise }), async () => {
     const api = new HttpApiClient('https://server-a', () => 'token-a', () => {}, { onTransportState: (e) => events.push(e) });
-    const pending = api.getTask('a');
+    const pending = api.getJob('a');
     await new Promise(setImmediate);
     api.cancelPending();
-    body.resolve({ task: { id: 'a' }, events: [] });
+    body.resolve({ job: { id: 'a', title: 'Test', prompt: 'Test', kind: 'job', daily: true, at: '09:00', enabled: true, status: 'scheduled', createdAt: '2026-10-20T00:00:00Z', updatedAt: '2026-10-20T00:00:00Z', error: null }, events: [] });
     await assert.rejects(pending, (e) => e.name === 'AbortError');
     assert.deepEqual(events, []);
   });
@@ -94,7 +94,7 @@ test('401回调携带请求发送时的Token，而不是后来替换的Token', a
   const response = deferred(); const unauthorized = []; let token = 'token-a';
   await withFetch((url, init) => { assert.equal(init.headers.authorization, 'Bearer token-a'); return response.promise; }, async () => {
     const api = new HttpApiClient('https://server-a', () => token, (sent) => unauthorized.push(sent));
-    const pending = api.getTask('a'); token = 'token-b';
+    const pending = api.getJob('a'); token = 'token-b';
     response.resolve(json({ error: 'old token rejected' }, 401));
     await assert.rejects(pending, (e) => e.status === 401);
     assert.deepEqual(unauthorized, ['token-a']);
@@ -106,11 +106,11 @@ test('暂停阻止新后台请求，恢复可继续；退役客户端不能重�
   await withFetch(async () => { calls++; return json({ job: { id: 'a', title: 'Test', prompt: 'Test', kind: 'job', daily: true, at: '09:00', enabled: true, status: 'scheduled', createdAt: '2026-10-20T00:00:00Z', updatedAt: '2026-10-20T00:00:00Z', error: null }, events: [] }); }, async () => {
     const api = new HttpApiClient('https://server-a', () => 'token-a', () => {});
     api.suspend();
-    await assert.rejects(api.getTask('a'), (e) => e.name === 'AbortError');
+    await assert.rejects(api.getJob('a'), (e) => e.name === 'AbortError');
     assert.equal(calls, 0);
-    api.resume(); await api.getTask('a'); assert.equal(calls, 1);
+    api.resume(); await api.getJob('a'); assert.equal(calls, 1);
     api.retire(); api.resume();
-    await assert.rejects(api.getTask('a'), (e) => e.name === 'AbortError');
+    await assert.rejects(api.getJob('a'), (e) => e.name === 'AbortError');
     assert.equal(calls, 1);
   });
 });
