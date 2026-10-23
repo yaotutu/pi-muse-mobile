@@ -1,8 +1,7 @@
 /** A01 对话流程隔离测试支架（模拟 React 运行时驱动真实 Hook 与 SpaceStore 生产路径，非原生运行）。 */
 
-import { SpaceStore } from '../../src/spaces/space-store';
 import type { ApiClient } from '../../src/api/contracts';
-import type { AgUiEvent, ConversationMessage, ConversationSnapshot } from '../../src/api/types';
+import type { AgUiEvent, ConversationSnapshot } from '../../src/api/types';
 import type { AgentStatusResponse, RunStatus } from '../../src/runtime/types';
 
 export type MockApiHandlers = {
@@ -41,7 +40,7 @@ export function agentStatusOf(spaceId: string, runId: string, status: RunStatus)
   };
 }
 
-export function createMockApi(handlers: MockApiHandlers = {}): ApiClient {
+export function createMockApi(handlers: MockApiHandlers = {}) {
   return {
     getConversation: handlers.getConversation ?? (async () => ({ messages: [], revision: 'rev-0' })),
     runAgent: handlers.runAgent ?? (async () => {}),
@@ -88,5 +87,5 @@ export function createMockApi(handlers: MockApiHandlers = {}): ApiClient {
     addMemory: async () => ({} as any),
     editMemory: async () => ({} as any),
     forgetMemory: async () => ({} as any),
-  };
+  } satisfies Partial<ApiClient>;
 }

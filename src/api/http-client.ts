@@ -67,6 +67,8 @@ import type { MemoryQuery } from '../memories/types';
 import { parseMemoryItem, parseMemoryPage, parseMemoryRemoval } from '../memories/contracts';
 import { parseJob, parseJobDetail, parseJobRemoval, parseJobs, parseServerTimeZone } from './job-contracts';
 import { parseIdentity, parseProfile, parseWorkspaceSnapshot } from './profile-contracts';
+import { parseDreamOverview, parseDreamSpace } from '../dream/contracts';
+import { DREAM_RUN_TIMEOUT_MS, type DreamPendingDecision, type DreamSpaceSettingsInput } from '../dream/types';
 
 export type TransportState = { kind: 'online' | 'offline'; token?: string; error?: string };
 export type HttpApiOptions = { onTransportState?: (state: TransportState) => void; timeoutMs?: number; headerTimeoutMs?: number };
@@ -159,11 +161,19 @@ export class HttpApiClient implements ApiClient {
 
   private async request<T>(
     path: string,
-    init?: { method?: string; body?: unknown; anonymous?: boolean; tokenOverride?: { value?: string }; signal?: AbortSignal },
+    init?: {
+      method?: string;
+      body?: unknown;
+      anonymous?: boolean;
+      tokenOverride?: { value?: string };
+      signal?: AbortSignal;
+      /** 仅覆盖单个请求预算；默认仍使用全局 15 秒，不改变其他调用。 */
+      timeoutMs?: number;
+    },
   ): Promise<T> {
     if ((this.retired || this.paused) && path !== '/api/conversation/stop') throw requestCancelled();
     const token = init?.anonymous ? undefined : init?.tokenOverride ? init.tokenOverride.value : this.getToken();
-    const control = this.control(this.options.timeoutMs ?? 15_000, init?.signal);
+    const control = this.control(init?.timeoutMs ?? this.options.timeoutMs ?? 15_000, init?.signal);
     try {
       control.assertActive();
       const response = await expoFetch(`${this.baseUrl}${path}`, {
@@ -610,6 +620,59 @@ export class HttpApiClient implements ApiClient {
     return parseProfile(await this.request<unknown>('/api/profile', {
       method: 'PUT', body: profile, signal,
     }));
+  }
+
+  // --- Dream（/api/agent/dream + /api/spaces/:id/dream） ---
+
+  async getDreamOverview(signal?: AbortSignal) {
+    return parseDreamOverview(await this.request<unknown>('/api/agent/dream', { signal }));
+  }
+
+  async saveGlobalDreamPrompt(prompt: string, signal?: AbortSignal) {
+    return parseDreamOverview(await this.request<unknown>('/api/agent/dream', {
+      method: 'PUT',
+      body: { globalPrompt: prompt },
+      signal,
+    }));
+  }
+
+  async getSpaceDream(spaceId: string, signal?: AbortSignal) {
+    const path = `/api/spaces/${encodeURIComponent(spaceId)}/dream`;
+    return parseDreamSpace(await this.request<unknown>(path, { signal }), spaceId);
+  }
+
+  async updateSpaceDream(spaceId: string, settings: DreamSpaceSettingsInput, signal?: AbortSignal) {
+    const path = `/api/spaces/${encodeURIComponent(spaceId)}/dream`;
+    return parseDreamSpace(await this.request<unknown>(path, {
+      method: 'PUT',
+      body: settings,
+      signal,
+    }), spaceId);
+  }
+
+  async runSpaceDream(spaceId: string, signal?: AbortSignal) {
+    const path = `/api/spaces/${encodeURIComponent(spaceId)}/dream/run`;
+    // 同步等待受限模型轮；300 秒只作用于本请求，不改变全局 HTTP 预算。
+    return parseDreamSpace(await this.request<unknown>(path, {
+      method: 'POST',
+      body: {},
+      signal,
+      timeoutMs: DREAM_RUN_TIMEOUT_MS,
+    }), spaceId);
+  }
+
+  async resolveSpaceDreamPending(
+    spaceId: string,
+    pendingId: string,
+    decision: DreamPendingDecision,
+    signal?: AbortSignal,
+  ) {
+    const path = `/api/spaces/${encodeURIComponent(spaceId)}/dream/pending/${encodeURIComponent(pendingId)}`;
+    return parseDreamSpace(await this.request<unknown>(path, {
+      method: 'POST',
+      body: decision,
+      signal,
+    }), spaceId);
   }
 
   // --- 运行状态（GET /api/agent/status + GET /api/events） ---

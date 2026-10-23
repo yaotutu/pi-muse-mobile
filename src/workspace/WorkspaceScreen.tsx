@@ -1,4 +1,4 @@
-import { BookOpen, Check, ChevronRight, Download, Menu, MessageCircle, PanelsTopLeft, Search, Server, Shapes, ShieldCheck, Square, SquareCheck, SquarePen, UserRound, X, type LucideIcon } from 'lucide-react-native';
+import { BookOpen, Check, ChevronRight, Download, Menu, MessageCircle, Moon, PanelsTopLeft, Search, Server, Shapes, ShieldCheck, Square, SquareCheck, SquarePen, UserRound, X, type LucideIcon } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ThemeStatusBar } from '../theme/ThemeStatusBar';
 import { Animated, BackHandler, Easing, Keyboard, KeyboardAvoidingView, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
@@ -25,6 +25,8 @@ import { useGoals } from '../goals/GoalProvider';
 import { MemoryPanel } from './MemoryPanel';
 import { ProfilePanel } from './ProfilePanel';
 import { ProfileProvider, useProfile } from '../profile/ProfileProvider';
+import { DreamProvider } from '../dream/DreamProvider';
+import { DreamPanel } from './DreamPanel';
 import { ConversationView } from './ConversationView';
 import { SessionPanel, type SessionTab } from './SessionPanel';
 import { SpaceSettings } from './SpaceSettings';
@@ -59,7 +61,7 @@ function ConnectedWorkspace() {
   const content = connection.client && connection.snapshot.workspaceReady
     ? <ApiProvider client={connection.client} key={connection.snapshot.workspaceKey}>
       {/* 资料与空间同属当前连接；Provider 先于页面挂载，主会话名称可直接消费已读取身份。 */}
-      <ProfileProvider><SpaceProvider><RuntimeProvider><LiveWorkspace manager={connection.manager} snapshot={connection.snapshot} openConnection={openConnection} /></RuntimeProvider></SpaceProvider></ProfileProvider>
+      <DreamProvider><ProfileProvider><SpaceProvider><RuntimeProvider><LiveWorkspace manager={connection.manager} snapshot={connection.snapshot} openConnection={openConnection} /></RuntimeProvider></SpaceProvider></ProfileProvider></DreamProvider>
     </ApiProvider>
     : <DisconnectedWorkspace manager={connection.manager} snapshot={connection.snapshot} openConnection={openConnection} />;
   return <ConnectionProvider value={value}>
@@ -72,12 +74,14 @@ type WorkspaceConnectionProps = { manager: ConnectionManager; snapshot: Connecti
 function connectionLabel(snapshot: ConnectionSnapshot) {
   return { loading: '正在读取连接配置', unconfigured: '未连接服务器', connecting: '正在连接服务器', online: '已连接', offline: '服务器暂时不可用', 'authentication-required': '需要重新认证', resetting: '正在清理本地数据', 'reset-error': '本地数据清理未完成', 'storage-error': '连接配置读取失败' }[snapshot.status];
 }
-function AppsPage({ snapshot, openConnection, memoryAvailable = false, profileAvailable = false }: Pick<WorkspaceConnectionProps, 'snapshot' | 'openConnection'> & { memoryAvailable?: boolean; profileAvailable?: boolean }) {
+function AppsPage({ snapshot, openConnection, memoryAvailable = false, profileAvailable = false, dreamAvailable = false, currentSpaceId }: Pick<WorkspaceConnectionProps, 'snapshot' | 'openConnection'> & { memoryAvailable?: boolean; profileAvailable?: boolean; dreamAvailable?: boolean; currentSpaceId?: string }) {
   const styles = useStyles(); const { colors } = useTheme(); const update = useAppUpdate();
   const [memoryOpen, setMemoryOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [dreamOpen, setDreamOpen] = useState(false);
   if (memoryOpen && memoryAvailable) return <ScrollView key="memory" keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}><MemoryPanel onBack={() => setMemoryOpen(false)} /></ScrollView>;
   if (profileOpen && profileAvailable) return <ScrollView key="profile" keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}><ProfilePanel onBack={() => setProfileOpen(false)} /></ScrollView>;
+  if (dreamOpen && dreamAvailable && currentSpaceId) return <ScrollView key="dream" keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}><DreamPanel currentSpaceId={currentSpaceId} onBack={() => setDreamOpen(false)} /></ScrollView>;
   return <ScrollView key="apps" contentContainerStyle={styles.otherPage}>
     <View style={styles.appIntro}><MuseAvatar size={l.sessionAvatar} /><View style={styles.threadText}><Text style={styles.pageTitle}>Pi Muse</Text><Text style={styles.mutedText}>你的灵感，一起实现。</Text></View></View>
     <Text style={styles.sectionLabel}>连接与设备</Text>
@@ -101,8 +105,11 @@ function AppsPage({ snapshot, openConnection, memoryAvailable = false, profileAv
     <Pressable accessibilityRole="button" accessibilityLabel="打开长期记忆" accessibilityState={{ disabled: !memoryAvailable }} disabled={!memoryAvailable} onPress={() => setMemoryOpen(true)} style={styles.settingsRow}>
       <View style={styles.rowIcon}><BookOpen size={l.iconSize} strokeWidth={1.6} color={colors.ink} /></View><View style={styles.threadText}><Text style={styles.itemTitle}>长期记忆</Text><Text style={styles.caption}>{memoryAvailable ? '查询、搜索与管理所有空间共用的记忆' : '连接真实服务后管理全局记忆'}</Text></View><ChevronRight size={sizing[18]} color={colors.faint} />
     </Pressable>
+    <Pressable accessibilityRole="button" accessibilityLabel="打开Dream记忆整理" accessibilityState={{ disabled: !dreamAvailable }} disabled={!dreamAvailable} onPress={() => setDreamOpen(true)} style={[styles.settingsRow, !dreamAvailable && styles.settingsDisabled]}>
+      <View style={styles.rowIcon}><Moon size={l.iconSize} strokeWidth={1.6} color={colors.ink} /></View><View style={styles.threadText}><Text style={styles.itemTitle}>Dream 记忆整理</Text><Text style={styles.caption}>{dreamAvailable ? '查看整理状态、编辑提示词与处理待决建议' : '连接真实服务后可用'}</Text></View><ChevronRight size={sizing[18]} color={colors.faint} />
+    </Pressable>
     <ThemePicker />
-    <View style={styles.privacyNote}><ShieldCheck size={sizing[18]} color={colors.faint} /><Text style={[styles.caption, styles.threadText]}>连接你自己的服务，数据归你所有。助手资料与长期记忆已接入；其他应用能力尚未接入。</Text></View>
+    <View style={styles.privacyNote}><ShieldCheck size={sizing[18]} color={colors.faint} /><Text style={[styles.caption, styles.threadText]}>连接你自己的服务，数据归你所有。助手资料、长期记忆与 Dream 已接入；其他应用能力尚未接入。</Text></View>
   </ScrollView>;
 }
 function DisconnectedWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
@@ -217,7 +224,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
     onMoveShouldSetPanResponder: (event, gesture) => Math.abs(gesture.dx) > l.gestureThreshold && Math.abs(gesture.dx) > Math.abs(gesture.dy) * l.gestureAxisRatio && (drawerOpen ? gesture.dx < 0 : event.nativeEvent.pageX - gesture.dx < l.edgeGestureWidth && gesture.dx > 0),
     onPanResponderRelease: (_event, gesture) => { if (gesture.dx < -l.gestureThreshold) setDrawerOpen(false); if (gesture.dx > l.gestureThreshold) openDrawer(); },
   }), [drawerOpen, openDrawer]);
-  const otherPage = page === 'chat' ? null : page === 'apps' ? <AppsPage snapshot={snapshot} openConnection={openConnection} memoryAvailable profileAvailable /> : page === 'activity' ? !sessionOpen && <TasksPage spaceId={spaces.currentSpace} /> : !sessionOpen && <GoalsPanel />;
+  const otherPage = page === 'chat' ? null : page === 'apps' ? <AppsPage snapshot={snapshot} openConnection={openConnection} memoryAvailable profileAvailable dreamAvailable currentSpaceId={spaces.currentSpace} /> : page === 'activity' ? !sessionOpen && <TasksPage spaceId={spaces.currentSpace} /> : !sessionOpen && <GoalsPanel />;
   return <View style={styles.root} testID="workspace-screen"><ThemeStatusBar />
     <View style={[styles.viewport, { width: contentWidth }]} {...pan.panHandlers}>
       <View style={[styles.drawer, { width: drawerWidth }]} pointerEvents={drawerOpen ? 'auto' : 'none'} aria-hidden={!drawerOpen}
