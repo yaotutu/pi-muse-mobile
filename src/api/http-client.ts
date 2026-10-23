@@ -45,6 +45,7 @@ import {
 import { ApiError, isRequestCancelled, requestCancelled, responseError } from './errors';
 import { parseSseFrames } from './sse';
 import { parseResetSpace, parseSpaces } from './space-contracts';
+import { parseGoal, parseGoals, parseMilestoneToggle, parseGoalRemoval } from './goal-contracts';
 import type {
   AgentStatusResponse,
   RuntimeEvent,
@@ -492,31 +493,27 @@ export class HttpApiClient implements ApiClient {
     if (query?.sort) params.set('sort', query.sort);
     if (query?.order) params.set('order', query.order);
     const suffix = params.toString() ? `?${params.toString()}` : '';
-    const data = await this.request<{ goals: Goal[] }>(`/api/goals${suffix}`, { signal });
-    if (!data || !Array.isArray(data.goals)) {
-      throw new ApiError(502, '长期目标列表响应格式不正确');
-    }
-    return data.goals;
+    const data = await this.request<unknown>(`/api/goals${suffix}`, { signal });
+    return parseGoals(data);
   }
 
   async getGoal(id: string, signal?: AbortSignal): Promise<Goal> {
-    const goal = await this.request<Goal>(`/api/goals/${encodeURIComponent(id)}`, { signal });
-    if (!goal || typeof goal.id !== 'string') {
-      throw new ApiError(502, '目标详情响应格式不正确');
-    }
-    return goal;
+    const data = await this.request<unknown>(`/api/goals/${encodeURIComponent(id)}`, { signal });
+    return parseGoal(data, id);
   }
 
   async createGoal(input: GoalInput, signal?: AbortSignal): Promise<Goal> {
-    return this.request<Goal>('/api/goals', { method: 'POST', body: input, signal });
+    const data = await this.request<unknown>('/api/goals', { method: 'POST', body: input, signal });
+    return parseGoal(data);
   }
 
   async updateGoal(id: string, input: UpdateGoalInput, signal?: AbortSignal): Promise<Goal> {
-    return this.request<Goal>(`/api/goals/${encodeURIComponent(id)}`, {
+    const data = await this.request<unknown>(`/api/goals/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       body: input,
       signal,
     });
+    return parseGoal(data, id);
   }
 
   async setGoalStatus(id: string, status: GoalStatus, signal?: AbortSignal): Promise<Goal> {
@@ -524,17 +521,19 @@ export class HttpApiClient implements ApiClient {
   }
 
   async toggleMilestone(goalId: string, milestoneId: string, signal?: AbortSignal): Promise<Goal> {
-    return this.request<Goal>(
+    const data = await this.request<unknown>(
       `/api/goals/${encodeURIComponent(goalId)}/milestones/${encodeURIComponent(milestoneId)}/toggle`,
       { method: 'POST', body: {}, signal },
     );
+    return parseMilestoneToggle(data, goalId, milestoneId);
   }
 
   async removeGoal(id: string, signal?: AbortSignal): Promise<DeleteGoalResult> {
-    return this.request<DeleteGoalResult>(`/api/goals/${encodeURIComponent(id)}`, {
+    const data = await this.request<unknown>(`/api/goals/${encodeURIComponent(id)}`, {
       method: 'DELETE',
       signal,
     });
+    return parseGoalRemoval(data, id);
   }
 
   async saveIdentity(input: IdentityInput): Promise<Identity> {
