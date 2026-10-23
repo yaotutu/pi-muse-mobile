@@ -104,13 +104,20 @@ def hide_keyboard():
 
 def select_space():
     def selected():
-        identity = find('打开当前会话面板')
-        return identity is not None and find('收起空间侧栏') is None and any(
-            n.get('text') == context['spaceId'] for n in identity.iter('node'))
+        # 会话面板可能处于打开或关闭态；选中身份显示在全局树，不能只找关闭态按钮。
+        return (find('打开当前会话面板') is not None or find('关闭会话面板') is not None) \
+            and find('关闭空间侧栏') is None \
+            and any(n.get('text') == context['spaceId'] for n in tree.iter('node'))
 
     tap('打开空间侧栏')
     tap(context['spaceId'], scroll=True)
+    refresh()
+    # 目标空间已处于选中态时，点击行本身不会关闭侧栏；显式关闭再核对身份。
+    if find('关闭空间侧栏') is not None:
+        tap('关闭空间侧栏')
     wait(selected, 'test space selected and drawer closed')
+    if find('关闭会话面板') is not None:
+        tap('关闭会话面板')
 
 
 def reset_dialog():
@@ -134,6 +141,9 @@ try:
             tap('Continue')
         elif find('Wait') is not None:
             tap('Wait')
+        elif find('React Native dev menu') is not None or find('TOOLS') is not None:
+            # Expo Go 冷启动可能恢复开发菜单；关闭它，不清应用数据或用户配置。
+            tap('Close')
         elif find('关闭会话面板') is not None:
             tap('关闭会话面板')
         elif find('聊天') is not None:

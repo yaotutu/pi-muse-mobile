@@ -105,7 +105,7 @@ try {
   pass('canonical space list/configuration/activity/approval consumers and shared notification stream');
 
   // 仅为验收重置选项准备一个归属明确且暂停的监控，不借此接入尚未实现的监控管理 UI。
-  const response = await fetch(`${base}/api/agent/monitors`, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(15_000),
+  const response = await fetch(`${base}/api/monitors`, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(15_000),
     headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify({ url: 'https://example.com', condition: 'contains', value: fileMarker, title: `Migration acceptance ${stamp}`, intervalMinutes: 1440, originSpaceId: spaceId }) });
   assert.equal(response.status, 200); const monitor = await response.json(); assert.equal(monitor.originSpaceId, spaceId);
   await api.controlMonitor(monitor.id, 'pause');
@@ -122,10 +122,12 @@ try {
     const afterDefault = await binding(); assert.notEqual(afterDefault, originalSession);
     assert.deepEqual(await api.getConversation(spaceId), { revision: 'empty', messages: [] });
     await configuration(instructions, savedSkills);
-    assert.ok((await api.getSnapshot()).monitors.some((m) => m.id === monitor.id)); write('api-default-verified', true);
+    const monitorsAfterDefault = await api.request('/api/monitors');
+    assert.ok(monitorsAfterDefault.monitors.some((m) => m.id === monitor.id)); write('api-default-verified', true);
     await until(() => existsSync(join(output, 'native-reset-cleared')), 'native opt-in cascade reset', 120_000);
     assert.notEqual(await binding(), afterDefault); assert.deepEqual(await api.getConversation(spaceId), { revision: 'empty', messages: [] });
-    assert.equal((await api.getSnapshot()).monitors.some((m) => m.id === monitor.id), false);
+    const monitorsAfterCascade = await api.request('/api/monitors');
+    assert.equal(monitorsAfterCascade.monitors.some((m) => m.id === monitor.id), false);
     await configuration(instructions, savedSkills); write('api-clear-verified', true);
     await until(() => driverExit === 0, 'native driver exits', 60_000);
     assert.equal(JSON.parse(readFileSync(join(output, 'native-results.json'), 'utf8')).passed, true);
@@ -206,7 +208,8 @@ try {
       assert.equal(after.includes(spaceId), false); assert.ok(baseline.every((id) => after.includes(id)));
       assert.equal((await api.getPendingApprovals()).some((a) => a.spaceId === spaceId), false);
       assert.deepEqual((await api.listActivities({ spaceId })).activities, []);
-      assert.equal((await api.getSnapshot()).monitors.some((m) => m.originSpaceId === spaceId), false);
+      const remainingMonitors = await api.request('/api/monitors');
+      assert.equal(remainingMonitors.monitors.some((m) => m.originSpaceId === spaceId), false);
       pass('DELETE cleanup removes only this test space, its file/approvals/monitor; existing spaces remain');
     }
     if (version) { assert.deepEqual(await deployment('end'), version); pass('deployment identity remains unchanged throughout acceptance'); }
