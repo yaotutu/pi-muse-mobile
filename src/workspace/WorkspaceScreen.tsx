@@ -1,4 +1,4 @@
-import { ArrowUpRight, BookOpen, Check, ChevronRight, Download, Menu, MessageCircle, PanelsTopLeft, Search, Server, Shapes, ShieldCheck, Square, SquareCheck, SquarePen, X, type LucideIcon } from 'lucide-react-native';
+import { BookOpen, Check, ChevronRight, Download, Menu, MessageCircle, PanelsTopLeft, Search, Server, Shapes, ShieldCheck, Square, SquareCheck, SquarePen, X, type LucideIcon } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ThemeStatusBar } from '../theme/ThemeStatusBar';
 import { Animated, BackHandler, Easing, Keyboard, KeyboardAvoidingView, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
@@ -19,6 +19,8 @@ import { spacing, sizing, workspaceTheme, type WorkspaceColors } from '../ui/tok
 import { ConnectionPanel } from './ConnectionPanel';
 import { TasksPage } from './JobsPanel';
 import { useJobs } from '../jobs/JobProvider';
+import { GoalsPanel } from './GoalsPanel';
+import { useGoals } from '../goals/GoalProvider';
 import { MemoryPanel } from './MemoryPanel';
 import { ConversationView } from './ConversationView';
 import { SessionPanel, type SessionTab } from './SessionPanel';
@@ -26,7 +28,7 @@ import { SpaceSettings } from './SpaceSettings';
 import { useTheme } from '../theme/ThemeProvider';
 import { ThemePicker } from '../theme/ThemePicker';
 import { ThemeToggle } from '../theme/ThemeToggle';
-import { EmptyState, IconControl, MuseAvatar, StatusPill, useReducedMotion } from './primitives';
+import { IconControl, MuseAvatar, StatusPill, useReducedMotion } from './primitives';
 
 type WorkspacePage = 'chat' | 'activity' | 'goals' | 'apps';
 type WorkspaceNotice = { text: string; tone: 'success' | 'error' };
@@ -127,6 +129,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
   const activities = useActivityStore();
   const { store: jobs } = useJobs();
   const { store: approvals } = useApprovals();
+  const { store: goals } = useGoals();
   const runtime = useSpaceRuntime(spaces.currentSpace);
   const [page, setPage] = useState<WorkspacePage>('chat');
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -149,7 +152,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
   const name = spaces.currentSpace === MAIN_SPACE ? 'Pi Muse' : spaces.currentSpace;
   const ClearSchedulesIcon = clearSchedules ? SquareCheck : Square;
   const reloadSpaces = spaces.reload;
-  const refresh = useCallback(() => { void reloadSpaces(); activities.invalidate(); jobs.invalidate(); setHistoryRefresh((value) => value + 1); }, [reloadSpaces, activities, jobs]);
+  const refresh = useCallback(() => { void reloadSpaces(); activities.invalidate(); jobs.invalidate(); goals.invalidate(); setHistoryRefresh((value) => value + 1); }, [reloadSpaces, activities, jobs, goals]);
   useEffect(() => {
     // 原生键盘出现时让出阅读空间；系统 Back 收起键盘也必须恢复完整顶栏与主导航。
     const show = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => setKeyboardVisible(true));
@@ -202,10 +205,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
     onMoveShouldSetPanResponder: (event, gesture) => Math.abs(gesture.dx) > l.gestureThreshold && Math.abs(gesture.dx) > Math.abs(gesture.dy) * l.gestureAxisRatio && (drawerOpen ? gesture.dx < 0 : event.nativeEvent.pageX - gesture.dx < l.edgeGestureWidth && gesture.dx > 0),
     onPanResponderRelease: (_event, gesture) => { if (gesture.dx < -l.gestureThreshold) setDrawerOpen(false); if (gesture.dx > l.gestureThreshold) openDrawer(); },
   }), [drawerOpen, openDrawer]);
-  const otherPage = page === 'chat' ? null : page === 'apps' ? <AppsPage snapshot={snapshot} openConnection={openConnection} memoryAvailable /> : page === 'activity' ? !sessionOpen && <TasksPage spaceId={spaces.currentSpace} /> : <View style={styles.goalPage}>
-    <EmptyState icon={SquareCheck} title="给想做的事，一个方向" description="目标尚未接入。当前可以在聊天中与 Pi Muse 探讨你的计划；这里不会展示模拟进度。" />
-    <Pressable accessibilityRole="button" accessibilityLabel="去聊天讨论目标" onPress={() => setPage('chat')} style={styles.secondaryButton}><Text style={styles.actionLabel}>从聊天开始</Text><ArrowUpRight size={sizing[18]} color={colors.ink} /></Pressable>
-  </View>;
+  const otherPage = page === 'chat' ? null : page === 'apps' ? <AppsPage snapshot={snapshot} openConnection={openConnection} memoryAvailable /> : page === 'activity' ? !sessionOpen && <TasksPage spaceId={spaces.currentSpace} /> : !sessionOpen && <GoalsPanel />;
   return <View style={styles.root} testID="workspace-screen"><ThemeStatusBar />
     <View style={[styles.viewport, { width: contentWidth }]} {...pan.panHandlers}>
       <View style={[styles.drawer, { width: drawerWidth }]} pointerEvents={drawerOpen ? 'auto' : 'none'} aria-hidden={!drawerOpen}
@@ -287,7 +287,7 @@ const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   threadRow: { minHeight: l.drawerRowHeight, flexDirection: 'row', alignItems: 'center', gap: spacing[14], paddingHorizontal: spacing[14], paddingVertical: spacing[12], borderRadius: r.listItem }, threadSelected: { backgroundColor: c.surface }, threadText: { flex: 1, gap: spacing[4], minWidth: 0 }, drawerFooter: { height: l.drawerFooterHeight, flexDirection: 'row', alignItems: 'center', gap: spacing[12], borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.line },
   drawerSearch: { flex: 1, minWidth: 0, height: l.controlSize, borderRadius: r.round, backgroundColor: c.surface, flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing[14], gap: spacing[8] }, searchInput: { ...t.status, color: c.ink, flex: 1, minWidth: 0, height: l.smallControl },
   pageHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: l.sidePadding, paddingTop: spacing[12], paddingBottom: spacing[8] },
-  otherPage: { paddingTop: l.pageTop, paddingHorizontal: l.sidePadding, paddingBottom: spacing[24], gap: spacing[18] }, goalPage: { flex: 1, justifyContent: 'center', paddingHorizontal: l.sidePadding, paddingBottom: l.headerHeight }, pageTitle: { ...t.heroName, color: c.ink }, itemTitle: { ...t.itemTitle, color: c.ink }, mutedText: { ...t.detail, color: c.muted }, caption: { ...t.caption, color: c.faint }, error: { ...t.caption, color: c.danger },
+  otherPage: { paddingTop: l.pageTop, paddingHorizontal: l.sidePadding, paddingBottom: spacing[24], gap: spacing[18] }, pageTitle: { ...t.heroName, color: c.ink }, itemTitle: { ...t.itemTitle, color: c.ink }, mutedText: { ...t.detail, color: c.muted }, caption: { ...t.caption, color: c.faint }, error: { ...t.caption, color: c.danger },
   exampleCard: { padding: spacing[20], borderRadius: r.card, backgroundColor: c.surface, gap: spacing[16], marginBottom: spacing[16] }, settingsRow: { flexDirection: 'row', alignItems: 'center', gap: spacing[14], paddingVertical: spacing[16], paddingHorizontal: spacing[16] },
   settingsGroup: { borderRadius: r.card, backgroundColor: c.surface, overflow: 'hidden' }, rowIcon: { width: l.rowIcon, height: l.rowIcon, borderRadius: r.round, backgroundColor: c.control, alignItems: 'center', justifyContent: 'center' },
   sectionLabel: { ...t.caption, color: c.faint, marginTop: spacing[12], marginLeft: spacing[6] }, appIntro: { flexDirection: 'row', alignItems: 'center', gap: spacing[18], paddingVertical: spacing[12] },
