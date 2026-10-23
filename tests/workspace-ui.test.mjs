@@ -92,9 +92,9 @@ test('原生输入时压缩会话信息区并隐藏主导航，键盘事件监�
 });
 
 test('工具结果缺席不是运行中证据，结束或停止后的空结果保持中性提示', () => {
-  const chat = read('src/workspace/ConversationView.tsx');
-  assert.match(chat, /尚未收到工具结果/);
-  assert.doesNotMatch(chat, /工具执行中| · 执行中/);
+  const card = read('src/workspace/ToolResultCard.tsx');
+  assert.match(card, /尚无结果/);
+  assert.doesNotMatch(card, /工具执行中| · 执行中/);
 });
 
 test('侧栏只切换或创建空间，不复制参考产品的功能导航；搜索只过滤本地已读空间', () => {

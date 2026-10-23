@@ -206,6 +206,13 @@ export const themeTokens = {
     navigation: { fontSize: 10, lineHeight: 14 },
     mono: { fontSize: 12, lineHeight: 20, fontFamily: 'monospace' },
   },
+  /** 聊天 Markdown 的层级与横向内容尺寸，三套主题只提供语义颜色。 */
+  messageContent: {
+    heading1: { fontSize: 23, lineHeight: 32 },
+    heading2: { fontSize: 20, lineHeight: 28 },
+    heading3: { fontSize: 18, lineHeight: 26 },
+    tableCellMinWidth: 128,
+  },
   motion: { drawerDuration: 280, feedbackDuration: 1800, replyDuration: 3600, pulseDuration: 750, enterDuration: 240 },
   interaction: { disabledOpacity: 0.4, pressedOpacity: 0.65 },
 } as const;

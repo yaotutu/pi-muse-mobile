@@ -2,15 +2,13 @@
  * 聊天会话主视图：消息列表、工具调用卡片、输入框与运行终态历史同步。
  *
  * 边界：单实例绑定单个空间的聊天代次（父级以 spaceId + epoch 隔离生命周期）；
- * 工具展示复用纯逻辑（tool-presentation / file-scope），不猜测审批决定。
+ * assistant Markdown 与工具专用展示由独立组件负责，不猜测审批决定。
  */
-import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, Plus, Square, Terminal, Wrench } from 'lucide-react-native';
+import { ArrowDown, ArrowUp, Plus, Square } from 'lucide-react-native';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type TextStyle } from 'react-native';
 import { useApi } from '../api/ApiProvider';
 import type { MessageView } from '../chat/chat-state';
-import { fileScope } from '../chat/file-scope';
-import { parseToolRecord, toolResultContent, toolTextField } from '../chat/tool-presentation';
 import { useConversation } from '../chat/useConversation';
 import { useServiceConnection } from '../connection/ConnectionProvider';
 import { useSpaceRuntime } from '../runtime/RuntimeProvider';
@@ -18,6 +16,8 @@ import { useSpaceState, useSpaceStore } from '../spaces/SpaceProvider';
 import { sizing, spacing, workspaceTheme, type WorkspaceColors } from '../ui/tokens';
 import { useTheme } from '../theme/ThemeProvider';
 import { TypingIndicator } from './primitives';
+import { MessageContent } from './MessageContent';
+import { ToolResultCard } from './ToolResultCard';
 
 const { layout: l, radius: r, typography: t } = workspaceTheme;
 
@@ -284,9 +284,9 @@ function Message({ message, pendingStatus }: { message: MessageView; pendingStat
           pendingStatus === 'failed' && styles.userMessageFailed,
           pendingStatus === 'unconfirmed' && styles.userMessageUnconfirmed,
         ]}>
-          <Text selectable style={[styles.messageText, message.role === 'user' && styles.userMessageText]}>
-            {message.text}
-          </Text>
+          {message.role === 'user'
+            ? <Text selectable style={[styles.messageText, styles.userMessageText]}>{message.text}</Text>
+            : <MessageContent text={message.text} />}
           {pendingStatus === 'sending' && (
             <Text style={styles.messageSubtext}>发送中…</Text>
           )}
@@ -298,28 +298,9 @@ function Message({ message, pendingStatus }: { message: MessageView; pendingStat
           )}
         </View>
       )}
-      {message.toolCalls.map((tool) => <ToolCard key={tool.id} tool={tool} />)}
+      {message.toolCalls.map((tool) => <ToolResultCard key={tool.id} tool={tool} />)}
     </View>
   );
-}
-
-/** 工具卡只整理已有结果，不从“有结果”推断成功，也不猜测对应的审批。 */
-function ToolCard({ tool }: { tool: MessageView['toolCalls'][number] }) {
-  const styles = useStyles(); const { colors } = useTheme();
-  const [expanded, setExpanded] = useState(false);
-  const scope = fileScope(toolTextField(parseToolRecord(tool.args), 'path'));
-  const { summary, failure, fallback } = toolResultContent(tool.result);
-  const output = failure || summary || fallback;
-  const Chevron = expanded ? ChevronUp : ChevronDown;
-  return <View style={styles.toolCard}>
-    <Pressable accessibilityRole="button" accessibilityLabel={`${expanded ? '收起' : '展开'}工具 ${tool.name}`} accessibilityState={{ expanded }} onPress={() => setExpanded((value) => !value)} style={styles.toolHeading}>
-      <View style={styles.toolIcon}><Wrench size={sizing[16]} color={colors.muted} /></View>
-      <View style={styles.toolLabel}><Text style={styles.toolTitle}>{tool.name}</Text><Text style={styles.caption}>{scope ?? '工具调用'}{failure ? ' · 执行失败' : output ? ' · 查看结果' : ' · 尚无结果'}</Text></View>
-      <Chevron size={sizing[16]} color={colors.faint} />
-    </Pressable>
-    {!!failure && <Text selectable style={styles.error}>{failure}</Text>}
-    {expanded && <View style={styles.toolOutput}><Terminal size={sizing[14]} color={colors.faint} /><Text selectable style={[styles.toolResult, failure && styles.error]}>{output ?? '尚未收到工具结果；运行状态请查看会话面板。'}</Text></View>}
-  </View>;
 }
 
 const createStyles = (c: WorkspaceColors) =>
@@ -339,6 +320,7 @@ const createStyles = (c: WorkspaceColors) =>
       backgroundColor: c.surface,
       borderTopLeftRadius: l.bubbleTail,
       alignSelf: 'flex-start',
+      width: l.assistantMessageWidth,
       maxWidth: l.assistantMessageWidth,
     },
     userMessage: {
@@ -348,19 +330,6 @@ const createStyles = (c: WorkspaceColors) =>
     },
     messageText: { ...t.message, color: c.ink },
     userMessageText: { color: c.onAccent },
-    toolCard: {
-      backgroundColor: c.surface,
-      padding: spacing[16],
-      borderRadius: r.card,
-      gap: spacing[8],
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: c.line,
-    },
-    toolHeading: { flexDirection: 'row', alignItems: 'center', gap: spacing[12] },
-    toolIcon: { width: l.rowIcon, height: l.rowIcon, backgroundColor: c.control, alignItems: 'center', justifyContent: 'center', borderRadius: r.round },
-    toolLabel: { flex: 1, gap: spacing[2] }, toolTitle: { ...t.status, color: c.ink },
-    toolOutput: { flexDirection: 'row', gap: spacing[8], paddingTop: spacing[10], borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.line },
-    toolResult: { flex: 1, ...t.detail, color: c.muted },
     composer: {
       flexDirection: 'row',
       alignItems: 'center',
