@@ -66,6 +66,7 @@ import { parseActivityDetail, parseActivityOverview, parseActivityPage } from '.
 import type { MemoryQuery } from '../memories/types';
 import { parseMemoryItem, parseMemoryPage, parseMemoryRemoval } from '../memories/contracts';
 import { parseJob, parseJobDetail, parseJobRemoval, parseJobs, parseServerTimeZone } from './job-contracts';
+import { parseIdentity, parseProfile, parseWorkspaceSnapshot } from './profile-contracts';
 
 export type TransportState = { kind: 'online' | 'offline'; token?: string; error?: string };
 export type HttpApiOptions = { onTransportState?: (state: TransportState) => void; timeoutMs?: number; headerTimeoutMs?: number };
@@ -392,15 +393,7 @@ export class HttpApiClient implements ApiClient {
     // 审批由 GET /api/events 与 /api/approvals/* 独立同步，不再请求已下线的 /api/actions/pending。
     // 定时任务已迁移至独立 /api/jobs 接口，/api/agent 响应体中不再包含 tasks 字段。
     // monitors、memories 与 goals 亦已迁移至独立接口，快照权威提供 identity。
-    const workspace = await this.request<WorkspaceSnapshot>('/api/agent', { signal });
-    if (
-      !workspace ||
-      typeof workspace.identity?.name !== 'string' ||
-      typeof workspace.identity?.tone !== 'string'
-    ) {
-      throw new ApiError(502, '服务器工作区响应格式不正确，请确认服务器版本与地址');
-    }
-    return workspace;
+    return parseWorkspaceSnapshot(await this.request<unknown>('/api/agent', { signal }));
   }
 
   // --- 定时任务（/api/jobs） ---
@@ -565,8 +558,10 @@ export class HttpApiClient implements ApiClient {
     return parseGoalRemoval(data, id);
   }
 
-  async saveIdentity(input: IdentityInput): Promise<Identity> {
-    return this.request<Identity>('/api/agent/identity', { method: 'POST', body: input });
+  async saveIdentity(input: IdentityInput, signal?: AbortSignal): Promise<Identity> {
+    return parseIdentity(await this.request<unknown>('/api/agent/identity', {
+      method: 'POST', body: input, signal,
+    }));
   }
 
   /** 搜索参数只原样编码声明字段；省略 q 读取完整列表，不借用 /api/agent。 */
@@ -607,12 +602,14 @@ export class HttpApiClient implements ApiClient {
     }), id);
   }
 
-  async getProfile(): Promise<Profile> {
-    return this.request<Profile>('/api/profile');
+  async getProfile(signal?: AbortSignal): Promise<Profile> {
+    return parseProfile(await this.request<unknown>('/api/profile', { signal }));
   }
 
-  async saveProfile(profile: Profile): Promise<Profile> {
-    return this.request<Profile>('/api/profile', { method: 'PUT', body: profile });
+  async saveProfile(profile: Profile, signal?: AbortSignal): Promise<Profile> {
+    return parseProfile(await this.request<unknown>('/api/profile', {
+      method: 'PUT', body: profile, signal,
+    }));
   }
 
   // --- 运行状态（GET /api/agent/status + GET /api/events） ---

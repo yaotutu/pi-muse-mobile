@@ -165,6 +165,10 @@ export const themeTokens = {
     statusMaxWidth: 200,
     avatarBadge: 22,
     inputMinHeight: 54,
+    /** 资料页文本输入固定可读高度，长文本在输入框内滚动。 */
+    profileTextHeight: 176,
+    /** 窄屏语气选项可自动折行，避免单选项压缩文字。 */
+    profileToneMinWidth: 92,
     switchWidth: 44,
     switchHeight: 26,
     switchThumb: 20,

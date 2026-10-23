@@ -1,4 +1,4 @@
-import { BookOpen, Check, ChevronRight, Download, Menu, MessageCircle, PanelsTopLeft, Search, Server, Shapes, ShieldCheck, Square, SquareCheck, SquarePen, X, type LucideIcon } from 'lucide-react-native';
+import { BookOpen, Check, ChevronRight, Download, Menu, MessageCircle, PanelsTopLeft, Search, Server, Shapes, ShieldCheck, Square, SquareCheck, SquarePen, UserRound, X, type LucideIcon } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ThemeStatusBar } from '../theme/ThemeStatusBar';
 import { Animated, BackHandler, Easing, Keyboard, KeyboardAvoidingView, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
@@ -23,6 +23,8 @@ import { useMonitors } from '../monitors/MonitorProvider';
 import { GoalsPanel } from './GoalsPanel';
 import { useGoals } from '../goals/GoalProvider';
 import { MemoryPanel } from './MemoryPanel';
+import { ProfilePanel } from './ProfilePanel';
+import { ProfileProvider, useProfile } from '../profile/ProfileProvider';
 import { ConversationView } from './ConversationView';
 import { SessionPanel, type SessionTab } from './SessionPanel';
 import { SpaceSettings } from './SpaceSettings';
@@ -56,7 +58,8 @@ function ConnectedWorkspace() {
   }), [connection.snapshot, connection.enabled, connection.manager, openConnection]);
   const content = connection.client && connection.snapshot.workspaceReady
     ? <ApiProvider client={connection.client} key={connection.snapshot.workspaceKey}>
-      <SpaceProvider><RuntimeProvider><LiveWorkspace manager={connection.manager} snapshot={connection.snapshot} openConnection={openConnection} /></RuntimeProvider></SpaceProvider>
+      {/* 资料与空间同属当前连接；Provider 先于页面挂载，主会话名称可直接消费已读取身份。 */}
+      <ProfileProvider><SpaceProvider><RuntimeProvider><LiveWorkspace manager={connection.manager} snapshot={connection.snapshot} openConnection={openConnection} /></RuntimeProvider></SpaceProvider></ProfileProvider>
     </ApiProvider>
     : <DisconnectedWorkspace manager={connection.manager} snapshot={connection.snapshot} openConnection={openConnection} />;
   return <ConnectionProvider value={value}>
@@ -69,11 +72,13 @@ type WorkspaceConnectionProps = { manager: ConnectionManager; snapshot: Connecti
 function connectionLabel(snapshot: ConnectionSnapshot) {
   return { loading: '正在读取连接配置', unconfigured: '未连接服务器', connecting: '正在连接服务器', online: '已连接', offline: '服务器暂时不可用', 'authentication-required': '需要重新认证', resetting: '正在清理本地数据', 'reset-error': '本地数据清理未完成', 'storage-error': '连接配置读取失败' }[snapshot.status];
 }
-function AppsPage({ snapshot, openConnection, memoryAvailable = false }: Pick<WorkspaceConnectionProps, 'snapshot' | 'openConnection'> & { memoryAvailable?: boolean }) {
+function AppsPage({ snapshot, openConnection, memoryAvailable = false, profileAvailable = false }: Pick<WorkspaceConnectionProps, 'snapshot' | 'openConnection'> & { memoryAvailable?: boolean; profileAvailable?: boolean }) {
   const styles = useStyles(); const { colors } = useTheme(); const update = useAppUpdate();
   const [memoryOpen, setMemoryOpen] = useState(false);
-  if (memoryOpen && memoryAvailable) return <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}><MemoryPanel onBack={() => setMemoryOpen(false)} /></ScrollView>;
-  return <ScrollView contentContainerStyle={styles.otherPage}>
+  const [profileOpen, setProfileOpen] = useState(false);
+  if (memoryOpen && memoryAvailable) return <ScrollView key="memory" keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}><MemoryPanel onBack={() => setMemoryOpen(false)} /></ScrollView>;
+  if (profileOpen && profileAvailable) return <ScrollView key="profile" keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}><ProfilePanel onBack={() => setProfileOpen(false)} /></ScrollView>;
+  return <ScrollView key="apps" contentContainerStyle={styles.otherPage}>
     <View style={styles.appIntro}><MuseAvatar size={l.sessionAvatar} /><View style={styles.threadText}><Text style={styles.pageTitle}>Pi Muse</Text><Text style={styles.mutedText}>你的灵感，一起实现。</Text></View></View>
     <Text style={styles.sectionLabel}>连接与设备</Text>
     <View style={styles.settingsGroup}>
@@ -88,12 +93,16 @@ function AppsPage({ snapshot, openConnection, memoryAvailable = false }: Pick<Wo
         <Text style={styles.caption}>{update.snapshot.status === 'unsupported' ? '当前环境不支持自动安装' : '检查版本、下载与安装进度'}</Text></View><ChevronRight size={sizing[18]} color={colors.faint} />
     </Pressable>}
     </View>
+    <Text style={styles.sectionLabel}>助手与个人资料</Text>
+    <Pressable accessibilityRole="button" accessibilityLabel="打开助手与用户资料" accessibilityState={{ disabled: !profileAvailable }} disabled={!profileAvailable} onPress={() => setProfileOpen(true)} style={[styles.settingsRow, !profileAvailable && styles.settingsDisabled]}>
+      <View style={styles.rowIcon}><UserRound size={l.iconSize} strokeWidth={1.6} color={colors.ink} /></View><View style={styles.threadText}><Text style={styles.itemTitle}>助手与用户资料</Text><Text style={styles.caption}>{profileAvailable ? '设置全空间共用的名字、语气、人设与用户资料' : '连接真实服务后可用'}</Text></View><ChevronRight size={sizing[18]} color={colors.faint} />
+    </Pressable>
     <Text style={styles.sectionLabel}>助手记忆</Text>
     <Pressable accessibilityRole="button" accessibilityLabel="打开长期记忆" accessibilityState={{ disabled: !memoryAvailable }} disabled={!memoryAvailable} onPress={() => setMemoryOpen(true)} style={styles.settingsRow}>
       <View style={styles.rowIcon}><BookOpen size={l.iconSize} strokeWidth={1.6} color={colors.ink} /></View><View style={styles.threadText}><Text style={styles.itemTitle}>长期记忆</Text><Text style={styles.caption}>{memoryAvailable ? '查询、搜索与管理所有空间共用的记忆' : '连接真实服务后管理全局记忆'}</Text></View><ChevronRight size={sizing[18]} color={colors.faint} />
     </Pressable>
     <ThemePicker />
-    <View style={styles.privacyNote}><ShieldCheck size={sizing[18]} color={colors.faint} /><Text style={[styles.caption, styles.threadText]}>连接你自己的服务，数据归你所有。长期记忆已接入；人设与其他应用能力尚未接入。</Text></View>
+    <View style={styles.privacyNote}><ShieldCheck size={sizing[18]} color={colors.faint} /><Text style={[styles.caption, styles.threadText]}>连接你自己的服务，数据归你所有。助手资料与长期记忆已接入；其他应用能力尚未接入。</Text></View>
   </ScrollView>;
 }
 function DisconnectedWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
@@ -124,6 +133,7 @@ function Navigation({ page, onPage }: { page: WorkspacePage; onPage: (page: Work
 
 function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
   const connection = useServiceConnection();
+  const { snapshot: profile } = useProfile();
   const spaces = useSpaces(!!connection?.enabled, snapshot.refreshVersion);
   const session = useSpaceState(spaces.currentSpace);
   const sessions = useSpaceStore(); const runtimeStore = useRuntimeStore();
@@ -151,7 +161,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
   const [drawerProgress] = useState(() => new Animated.Value(0));
   const statusLabel = snapshot.status === 'authentication-required' || snapshot.status === 'reset-error' || snapshot.status === 'storage-error'
     ? connectionLabel(snapshot) : runtime.label;
-  const name = spaces.currentSpace === MAIN_SPACE ? 'Pi Muse' : spaces.currentSpace;
+  const name = spaces.currentSpace === MAIN_SPACE ? (profile.identity?.name ?? 'Pi Muse') : spaces.currentSpace;
   const ClearSchedulesIcon = clearSchedules ? SquareCheck : Square;
   const reloadSpaces = spaces.reload;
   const refresh = useCallback(() => { void reloadSpaces(); activities.invalidate(); jobs.invalidate(); monitors.invalidate(); goals.invalidate(); setHistoryRefresh((value) => value + 1); }, [reloadSpaces, activities, jobs, monitors, goals]);
@@ -207,7 +217,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
     onMoveShouldSetPanResponder: (event, gesture) => Math.abs(gesture.dx) > l.gestureThreshold && Math.abs(gesture.dx) > Math.abs(gesture.dy) * l.gestureAxisRatio && (drawerOpen ? gesture.dx < 0 : event.nativeEvent.pageX - gesture.dx < l.edgeGestureWidth && gesture.dx > 0),
     onPanResponderRelease: (_event, gesture) => { if (gesture.dx < -l.gestureThreshold) setDrawerOpen(false); if (gesture.dx > l.gestureThreshold) openDrawer(); },
   }), [drawerOpen, openDrawer]);
-  const otherPage = page === 'chat' ? null : page === 'apps' ? <AppsPage snapshot={snapshot} openConnection={openConnection} memoryAvailable /> : page === 'activity' ? !sessionOpen && <TasksPage spaceId={spaces.currentSpace} /> : !sessionOpen && <GoalsPanel />;
+  const otherPage = page === 'chat' ? null : page === 'apps' ? <AppsPage snapshot={snapshot} openConnection={openConnection} memoryAvailable profileAvailable /> : page === 'activity' ? !sessionOpen && <TasksPage spaceId={spaces.currentSpace} /> : !sessionOpen && <GoalsPanel />;
   return <View style={styles.root} testID="workspace-screen"><ThemeStatusBar />
     <View style={[styles.viewport, { width: contentWidth }]} {...pan.panHandlers}>
       <View style={[styles.drawer, { width: drawerWidth }]} pointerEvents={drawerOpen ? 'auto' : 'none'} aria-hidden={!drawerOpen}
@@ -291,7 +301,7 @@ const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   pageHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: l.sidePadding, paddingTop: spacing[12], paddingBottom: spacing[8] },
   otherPage: { paddingTop: l.pageTop, paddingHorizontal: l.sidePadding, paddingBottom: spacing[24], gap: spacing[18] }, pageTitle: { ...t.heroName, color: c.ink }, itemTitle: { ...t.itemTitle, color: c.ink }, mutedText: { ...t.detail, color: c.muted }, caption: { ...t.caption, color: c.faint }, error: { ...t.caption, color: c.danger },
   exampleCard: { padding: spacing[20], borderRadius: r.card, backgroundColor: c.surface, gap: spacing[16], marginBottom: spacing[16] }, settingsRow: { flexDirection: 'row', alignItems: 'center', gap: spacing[14], paddingVertical: spacing[16], paddingHorizontal: spacing[16] },
-  settingsGroup: { borderRadius: r.card, backgroundColor: c.surface, overflow: 'hidden' }, rowIcon: { width: l.rowIcon, height: l.rowIcon, borderRadius: r.round, backgroundColor: c.control, alignItems: 'center', justifyContent: 'center' },
+  settingsGroup: { borderRadius: r.card, backgroundColor: c.surface, overflow: 'hidden' }, settingsDisabled: { opacity: workspaceTheme.interaction.disabledOpacity }, rowIcon: { width: l.rowIcon, height: l.rowIcon, borderRadius: r.round, backgroundColor: c.control, alignItems: 'center', justifyContent: 'center' },
   sectionLabel: { ...t.caption, color: c.faint, marginTop: spacing[12], marginLeft: spacing[6] }, appIntro: { flexDirection: 'row', alignItems: 'center', gap: spacing[18], paddingVertical: spacing[12] },
   privacyNote: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing[8], marginHorizontal: spacing[6], marginTop: spacing[16] }, eyebrow: { ...t.eyebrow, color: c.faint },
   emptyTitle: { ...t.heroName, color: c.ink, textAlign: 'center' }, notice: { position: 'absolute', left: l.sidePadding, right: l.sidePadding, top: l.headerHeight, ...t.caption, color: c.ink, backgroundColor: c.control, padding: spacing[12], borderRadius: r.listItem },

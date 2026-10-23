@@ -126,10 +126,11 @@ export interface ApiClient extends ApprovalClient, ActivityClient, MemoryClient 
 
   // --- 身份 / 记忆 / 人设 ---
 
-  saveIdentity(input: IdentityInput): Promise<Identity>;
+  /** 身份编辑只提交 name/tone；avatar 与 showChatUpdates 由服务端原样保留。 */
+  saveIdentity(input: IdentityInput, signal?: AbortSignal): Promise<Identity>;
   /** SOUL/USER 人设文本（空串=未设置） */
-  getProfile(): Promise<Profile>;
-  saveProfile(profile: Profile): Promise<Profile>;
+  getProfile(signal?: AbortSignal): Promise<Profile>;
+  saveProfile(profile: Profile, signal?: AbortSignal): Promise<Profile>;
 
   // --- 运行状态（GET /api/agent/status + GET /api/events） ---
 

@@ -464,18 +464,16 @@ const requestCases = [
     expect: { ok: true, id: 'goal/1' },
   },
   {
-    name: 'saveIdentity 原样提交身份字段',
+    name: 'saveIdentity 只提交身份编辑字段并保留响应 optional',
     call: (client) => client.saveIdentity({
       name: '小助手',
-      tone: '简洁',
-      avatar: 'avatar/1.png',
-      showChatUpdates: false,
+      tone: 'concise',
     }),
     method: 'POST',
     url: `${BASE}/api/agent/identity`,
-    body: { name: '小助手', tone: '简洁', avatar: 'avatar/1.png', showChatUpdates: false },
-    respond: { name: '小助手', tone: '简洁' },
-    expect: { name: '小助手', tone: '简洁' },
+    body: { name: '小助手', tone: 'concise' },
+    respond: { name: '小助手', tone: 'concise', avatar: 'sky', showChatUpdates: true },
+    expect: { name: '小助手', tone: 'concise', avatar: 'sky', showChatUpdates: true },
   },
   {
     name: 'listMemories 序列化声明参数并请求 /api/memories',
