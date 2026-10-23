@@ -1,0 +1,345 @@
+import { useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Globe } from 'lucide-react-native';
+import { useMonitors } from '../monitors/MonitorProvider';
+import {
+  availableMonitorActions,
+  monitorActionLabel,
+  monitorConditionLabel,
+  monitorStatusLabel,
+  monitorStatusTone,
+} from '../monitors/monitor-store';
+import type { MonitorsQuery } from '../api/types';
+import { useTheme } from '../theme/ThemeProvider';
+import { spacing, workspaceTheme, type WorkspaceColors } from '../ui/tokens';
+import { EmptyState, SectionHeading, StatusPill } from './primitives';
+
+function useStyles() {
+  const { colors } = useTheme();
+  return useMemo(() => createStyles(colors), [colors]);
+}
+
+function Button({
+  label,
+  onPress,
+  selected,
+  disabled,
+  accessibilityLabel,
+  tone,
+}: {
+  label: string;
+  onPress: () => void;
+  selected?: boolean;
+  disabled?: boolean;
+  accessibilityLabel?: string;
+  tone?: 'danger';
+}) {
+  const styles = useStyles();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? label}
+      accessibilityState={{ selected, disabled: !!disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.button,
+        selected && styles.selected,
+        tone === 'danger' && styles.dangerButton,
+        disabled && styles.disabled,
+        pressed && styles.pressed,
+      ]}
+    >
+      <Text style={[styles.buttonText, selected && styles.selectedText, tone === 'danger' && styles.dangerText]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function formatDate(iso?: string): string {
+  if (!iso) return '尚未检查';
+  try {
+    const d = new Date(iso);
+    if (!Number.isFinite(d.getTime())) return iso;
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  } catch {
+    return iso;
+  }
+}
+
+export function MonitorsPanel({ spaceId }: { spaceId: string }) {
+  const { store, snapshot: state } = useMonitors();
+  const styles = useStyles();
+  const { colors } = useTheme();
+  const [stopTarget, setStopTarget] = useState<{ id: string; title: string }>();
+
+  useEffect(() => {
+    store.open();
+    return () => store.close();
+  }, [store]);
+
+  useEffect(() => {
+    if (
+      state.query.spaceId &&
+      state.query.spaceId !== spaceId &&
+      !state.uncertain &&
+      !state.writing
+    ) {
+      store.setQuery({ ...state.query, spaceId });
+    }
+  }, [spaceId, store, state.query, state.uncertain, state.writing]);
+
+  const disabled = !store.canWrite();
+  const listDisabled = disabled || !!stopTarget || !!state.deleteTarget;
+  const locked = state.writing || state.uncertain;
+  const query = (patch: Partial<MonitorsQuery>) => {
+    setStopTarget(undefined);
+    store.setQuery({ ...state.query, ...patch });
+  };
+
+  return (
+    <View style={styles.root} testID="monitors-panel">
+      <SectionHeading
+        title="网页监控"
+        eyebrow="WEB MONITORS"
+        description="查看网页巡检状态与最近结果。"
+      />
+
+      <View style={styles.hint}>
+        <Text style={styles.body}>新建监控请在聊天中告诉 Pi Muse 网页链接、触发条件和检查间隔。</Text>
+      </View>
+
+      <View style={styles.toolbar}>
+        <Text style={styles.caption}>{state.loaded ? `${state.monitors.length} 项监控` : '网页监控列表'}</Text>
+        <Button
+          label="刷新"
+          accessibilityLabel="刷新网页监控"
+          disabled={state.loading || state.writing}
+          onPress={() => { setStopTarget(undefined); void store.refresh(); }}
+        />
+      </View>
+
+      {state.loading && (
+        <ActivityIndicator color={colors.muted} accessibilityLabel="正在读取网页监控" />
+      )}
+      {state.stale && state.loaded && (
+        <View style={styles.warning}><Text style={styles.warningText}>显示上次读取的监控；刷新成功前不能操作。</Text></View>
+      )}
+      {!!state.error && (
+        <Text accessibilityRole="alert" style={styles.error}>
+          {state.error}
+        </Text>
+      )}
+      {!!state.notice && (
+        <Text accessibilityLiveRegion="polite" style={styles.notice}>
+          {state.notice}
+        </Text>
+      )}
+
+      {state.uncertain && (
+        <View style={styles.card}>
+          <Text style={styles.title}>提交结果待核对</Text>
+          <Text style={styles.body}>操作可能已经生效。请刷新完整列表，核对目标监控的状态或是否仍存在，然后手动解除锁定；不会自动重试。</Text>
+          <Button
+            label="已核对监控结果，解除锁定"
+            disabled={!state.reviewed || state.loading || state.stale}
+            onPress={store.acknowledgeReviewed}
+          />
+        </View>
+      )}
+
+      {/* 筛选与排序由服务端执行；空结果必须按当前空间条件解释。 */}
+      <Text style={styles.groupLabel}>范围</Text>
+      <View style={styles.row}>
+        <Button
+          label="全部空间"
+          accessibilityLabel="全部空间监控"
+          selected={!state.query.spaceId}
+          disabled={locked}
+          onPress={() => query({ spaceId: undefined })}
+        />
+        <Button
+          label="当前空间"
+          accessibilityLabel="当前空间监控"
+          selected={state.query.spaceId === spaceId}
+          disabled={locked}
+          onPress={() => query({ spaceId })}
+        />
+      </View>
+
+      <Text style={styles.groupLabel}>排序</Text>
+      <View style={styles.row}>
+        {(
+          [
+            ['createdAt', '创建时间'],
+            ['lastCheckedAt', '最近检查'],
+            ['status', '状态'],
+          ] as const
+        ).map(([sort, label]) => (
+          <Button
+            key={sort}
+            label={label}
+            accessibilityLabel={`按${label}排序`}
+            selected={state.query.sort === sort}
+            disabled={locked}
+            onPress={() => query({ sort })}
+          />
+        ))}
+        <Button
+          label={state.query.order === 'asc' ? '升序' : '降序'}
+          accessibilityLabel={`排序方向：${state.query.order === 'asc' ? '升序' : '降序'}`}
+          disabled={locked}
+          onPress={() => query({ order: state.query.order === 'asc' ? 'desc' : 'asc' })}
+        />
+      </View>
+
+      {/* 空态 */}
+      {state.loaded && !state.loading && !state.stale && !state.error && !state.monitors.length && (
+        <EmptyState
+          icon={Globe}
+          title={state.query.spaceId ? '当前空间没有网页监控' : '还没有网页监控'}
+          description={state.query.spaceId ? '可以切换到全部空间查看其他监控。' : '可以在聊天中创建第一项网页监控。'}
+        />
+      )}
+
+      {/* 停止为不可恢复的终态，只在用户确认具体监控后发请求。 */}
+      {stopTarget && (
+        <View style={styles.confirmCard} accessibilityViewIsModal>
+          <Text style={styles.title}>停止“{stopTarget.title}”？</Text>
+          <Text style={styles.body}>停止后不能恢复，此网页将不再检查。需要继续监控时须在聊天中重新创建。</Text>
+          <View style={styles.row}>
+            <Button label="确认停止" tone="danger" accessibilityLabel={`确认停止 ${stopTarget.title}`} disabled={disabled} onPress={() => { const id = stopTarget.id; setStopTarget(undefined); void store.control(id, 'stop'); }} />
+            <Button label="保留监控" accessibilityLabel={`取消停止 ${stopTarget.title}`} onPress={() => setStopTarget(undefined)} />
+          </View>
+        </View>
+      )}
+
+      {/* 删除确认对话框 */}
+      {state.deleteTarget && (
+        <View style={styles.confirmCard} accessibilityViewIsModal>
+          <Text style={styles.title}>删除“{state.deleteTarget.title}”？</Text>
+          <Text style={styles.body}>将永久删除此监控，停止后续检查与通知。</Text>
+          <Text selectable style={styles.caption}>
+            监控 ID：{state.deleteTarget.id}
+          </Text>
+          <View style={styles.row}>
+            <Button
+              label="确认删除"
+              tone="danger"
+              accessibilityLabel={`确认删除 ${state.deleteTarget.title}`}
+              disabled={disabled}
+              onPress={() => void store.confirmDelete()}
+            />
+            <Button
+              label="取消删除"
+              accessibilityLabel={`取消删除 ${state.deleteTarget.title}`}
+              disabled={state.writing}
+              onPress={store.cancelDelete}
+            />
+          </View>
+        </View>
+      )}
+
+      {/* 监控项列表 */}
+      {state.monitors.map((item) => {
+        const actions = availableMonitorActions(item);
+        return (
+          <View key={item.id} testID={`monitor-item-${item.id}`} style={styles.card}>
+            <View style={styles.row}>
+              <StatusPill
+                label={monitorStatusLabel(item.status)}
+                tone={monitorStatusTone(item.status)}
+              />
+              <Text style={styles.caption}>每 {item.intervalMinutes} 分钟检查一次</Text>
+            </View>
+
+            <Text selectable style={styles.title}>
+              {item.title}
+            </Text>
+
+            <Text selectable style={styles.url}>
+              {item.url}
+            </Text>
+
+            <View style={styles.details}>
+              <Text style={styles.body}>条件：{monitorConditionLabel(item.condition, item.value)}</Text>
+              <Text style={styles.caption}>累计检查 {item.checks} 次 · 最近检查 {formatDate(item.lastCheckedAt)}</Text>
+              <Text style={styles.caption}>最近通知：{item.lastNotifiedAt ? formatDate(item.lastNotifiedAt) : '尚无'}</Text>
+              <Text selectable style={styles.caption}>来源空间：{item.originSpaceId ?? '服务端未记录'}</Text>
+            </View>
+
+            {item.error ? (
+              <Text selectable accessibilityRole="alert" style={styles.error}>
+                抓取错误：{item.error}
+              </Text>
+            ) : null}
+
+            {item.status === 'stopped' && (
+              <Text style={styles.caption}>
+                已停止为终态，不可恢复。如需继续监控请重新在聊天中创建。
+              </Text>
+            )}
+
+            <View style={styles.row}>
+              {actions.map((act) => (
+                <Button
+                  key={act}
+                  label={monitorActionLabel(act)}
+                  accessibilityLabel={`${monitorActionLabel(act)} ${item.title}`}
+                  disabled={listDisabled}
+                  onPress={() => act === 'stop' ? setStopTarget({ id: item.id, title: item.title }) : void store.control(item.id, act)}
+                />
+              ))}
+              <Button
+                label="删除"
+                accessibilityLabel={`删除 ${item.title}`}
+                disabled={listDisabled}
+                onPress={() => { setStopTarget(undefined); store.requestDelete(item.id); }}
+              />
+            </View>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+const createStyles = (colors: WorkspaceColors) =>
+  StyleSheet.create({
+    root: { gap: spacing[14], paddingBottom: spacing[24] },
+    row: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing[8] },
+    toolbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing[8] },
+    title: { ...workspaceTheme.typography.itemTitle, color: colors.ink },
+    body: { ...workspaceTheme.typography.detail, color: colors.muted },
+    caption: { ...workspaceTheme.typography.caption, color: colors.faint },
+    groupLabel: { ...workspaceTheme.typography.caption, color: colors.muted },
+    url: { ...workspaceTheme.typography.detail, color: colors.accentText, flexShrink: 1 },
+    details: { gap: spacing[4] },
+    error: { ...workspaceTheme.typography.detail, color: colors.danger },
+    notice: { ...workspaceTheme.typography.detail, color: colors.success },
+    warning: { padding: spacing[12], borderRadius: workspaceTheme.radius.field, backgroundColor: colors.warningSoft },
+    warningText: { ...workspaceTheme.typography.status, color: colors.warning },
+    hint: { paddingHorizontal: spacing[14], paddingVertical: spacing[12], borderRadius: workspaceTheme.radius.field, backgroundColor: colors.blueSoft },
+    confirmCard: { padding: spacing[20], borderRadius: workspaceTheme.radius.card, backgroundColor: colors.dangerSoft, gap: spacing[12] },
+    card: {
+      padding: spacing[20],
+      borderRadius: workspaceTheme.radius.card,
+      backgroundColor: colors.surface,
+      gap: spacing[12],
+    },
+    button: {
+      minHeight: workspaceTheme.layout.smallControl,
+      paddingHorizontal: spacing[14],
+      paddingVertical: spacing[8],
+      justifyContent: 'center',
+      borderRadius: workspaceTheme.radius.round,
+      backgroundColor: colors.control,
+      alignSelf: 'flex-start',
+    },
+    buttonText: { ...workspaceTheme.typography.status, color: colors.ink },
+    selected: { backgroundColor: colors.blueSoft },
+    selectedText: { color: colors.accentText },
+    dangerButton: { backgroundColor: colors.dangerSoft, borderColor: colors.danger, borderWidth: 1 },
+    dangerText: { color: colors.danger },
+    disabled: { opacity: workspaceTheme.interaction.disabledOpacity },
+    pressed: { opacity: workspaceTheme.interaction.pressedOpacity },
+  });

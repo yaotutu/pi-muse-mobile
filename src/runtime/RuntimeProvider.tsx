@@ -13,6 +13,8 @@ import { JobStore } from '../jobs/job-store';
 import { JobProvider } from '../jobs/JobProvider';
 import { GoalStore } from '../goals/goal-store';
 import { GoalProvider } from '../goals/GoalProvider';
+import { MonitorStore } from '../monitors/monitor-store';
+import { MonitorProvider } from '../monitors/MonitorProvider';
 
 const Context = createContext<RuntimeStore | null>(null);
 
@@ -26,6 +28,7 @@ export function RuntimeProvider({ children }: { children: ReactNode }) {
   const memories = useMemo(() => new MemoryStore(api), [api]);
   const jobs = useMemo(() => new JobStore(api), [api]);
   const goals = useMemo(() => new GoalStore(api), [api]);
+  const monitors = useMemo(() => new MonitorStore(api), [api]);
   const store = useMemo(() => new RuntimeStore(api, {
     onEvent: (event) => { approvals.receive(event); activities.receive(event); jobs.receive(event); },
     onConnection: (state) => { approvals.setConnection(state); activities.setConnection(state); },
@@ -36,11 +39,11 @@ export function RuntimeProvider({ children }: { children: ReactNode }) {
   }, []);
   const enabled = !!connection?.enabled && (Platform.OS === 'web' || foreground);
   useEffect(() => {
-    approvals.setActive(enabled); activities.setActive(enabled); memories.setActive(enabled); jobs.setActive(enabled); goals.setActive(enabled); store.setActive(enabled);
-    return () => { store.setActive(false); approvals.setActive(false); activities.setActive(false); memories.setActive(false); jobs.setActive(false); goals.setActive(false); };
-  }, [store, approvals, activities, memories, jobs, goals, enabled, connection?.snapshot.refreshVersion]);
-  useEffect(() => () => { store.dispose(); approvals.dispose(); activities.dispose(); memories.dispose(); jobs.dispose(); goals.dispose(); }, [store, approvals, activities, memories, jobs, goals]);
-  return <Context.Provider value={store}><ApprovalProvider store={approvals}><ActivityProvider store={activities}><MemoryProvider store={memories}><JobProvider store={jobs}><GoalProvider store={goals}>{children}</GoalProvider></JobProvider></MemoryProvider></ActivityProvider></ApprovalProvider></Context.Provider>;
+    approvals.setActive(enabled); activities.setActive(enabled); memories.setActive(enabled); jobs.setActive(enabled); goals.setActive(enabled); monitors.setActive(enabled); store.setActive(enabled);
+    return () => { store.setActive(false); approvals.setActive(false); activities.setActive(false); memories.setActive(false); jobs.setActive(false); goals.setActive(false); monitors.setActive(false); };
+  }, [store, approvals, activities, memories, jobs, goals, monitors, enabled, connection?.snapshot.refreshVersion]);
+  useEffect(() => () => { store.dispose(); approvals.dispose(); activities.dispose(); memories.dispose(); jobs.dispose(); goals.dispose(); monitors.dispose(); }, [store, approvals, activities, memories, jobs, goals, monitors]);
+  return <Context.Provider value={store}><ApprovalProvider store={approvals}><ActivityProvider store={activities}><MemoryProvider store={memories}><JobProvider store={jobs}><GoalProvider store={goals}><MonitorProvider store={monitors}>{children}</MonitorProvider></GoalProvider></JobProvider></MemoryProvider></ActivityProvider></ApprovalProvider></Context.Provider>;
 }
 
 export function useRuntimeStore() {

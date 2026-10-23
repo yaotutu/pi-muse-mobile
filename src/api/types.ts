@@ -192,6 +192,13 @@ export type DeleteGoalResult = {
   id: string;
 };
 
+/** GET /api/monitors 查询参数 */
+export type MonitorsQuery = {
+  spaceId?: string;
+  sort?: 'createdAt' | 'lastCheckedAt' | 'status';
+  order?: 'asc' | 'desc';
+};
+
 export type MonitorCondition = 'change' | 'contains';
 export type MonitorStatus = 'active' | 'paused' | 'stopped';
 export type Monitor = {
@@ -208,6 +215,14 @@ export type Monitor = {
   error?: string;
   /** 服务端回填来源空间 ID；未提供来源时缺省 */
   originSpaceId?: string;
+  lastNotifiedAt?: string;
+  lastMatched?: boolean;
+};
+
+/** DELETE /api/monitors/:id 响应契约 */
+export type DeleteMonitorResult = {
+  ok: true;
+  id: string;
 };
 
 /** 空间专属规则；重置聊天会话时保留，空串表示清空规则内容。 */

@@ -19,6 +19,7 @@ import { spacing, sizing, workspaceTheme, type WorkspaceColors } from '../ui/tok
 import { ConnectionPanel } from './ConnectionPanel';
 import { TasksPage } from './JobsPanel';
 import { useJobs } from '../jobs/JobProvider';
+import { useMonitors } from '../monitors/MonitorProvider';
 import { GoalsPanel } from './GoalsPanel';
 import { useGoals } from '../goals/GoalProvider';
 import { MemoryPanel } from './MemoryPanel';
@@ -128,6 +129,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
   const sessions = useSpaceStore(); const runtimeStore = useRuntimeStore();
   const activities = useActivityStore();
   const { store: jobs } = useJobs();
+  const { store: monitors } = useMonitors();
   const { store: approvals } = useApprovals();
   const { store: goals } = useGoals();
   const runtime = useSpaceRuntime(spaces.currentSpace);
@@ -152,7 +154,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
   const name = spaces.currentSpace === MAIN_SPACE ? 'Pi Muse' : spaces.currentSpace;
   const ClearSchedulesIcon = clearSchedules ? SquareCheck : Square;
   const reloadSpaces = spaces.reload;
-  const refresh = useCallback(() => { void reloadSpaces(); activities.invalidate(); jobs.invalidate(); goals.invalidate(); setHistoryRefresh((value) => value + 1); }, [reloadSpaces, activities, jobs, goals]);
+  const refresh = useCallback(() => { void reloadSpaces(); activities.invalidate(); jobs.invalidate(); monitors.invalidate(); goals.invalidate(); setHistoryRefresh((value) => value + 1); }, [reloadSpaces, activities, jobs, monitors, goals]);
   useEffect(() => {
     // 原生键盘出现时让出阅读空间；系统 Back 收起键盘也必须恢复完整顶栏与主导航。
     const show = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => setKeyboardVisible(true));
@@ -180,7 +182,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
     try {
       const result = await sessions.deleteSpace(id);
       if (!result) return;
-      runtimeStore.forgetSpace(id); activities.forgetSpace(id); jobs.invalidate(); spaces.removeSpace(id); setSessionOpen(false); setDeleteConfirm(false); setNotice(undefined); await spaces.reload();
+      runtimeStore.forgetSpace(id); activities.forgetSpace(id); jobs.invalidate(); monitors.invalidate(); spaces.removeSpace(id); setSessionOpen(false); setDeleteConfirm(false); setNotice(undefined); await spaces.reload();
     } catch (error) { setNotice({ text: error instanceof Error ? error.message : String(error), tone: 'error' }); }
   };
   const reset = async () => {

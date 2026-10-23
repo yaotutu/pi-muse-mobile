@@ -4,6 +4,7 @@ import type {
   ConversationSnapshot,
   DeleteGoalResult,
   DeleteJobResult,
+  DeleteMonitorResult,
   DeleteSpaceResult,
   Goal,
   GoalStatus,
@@ -16,6 +17,7 @@ import type {
   JobItem,
   JobsQuery,
   Monitor,
+  MonitorsQuery,
   ResetSpaceResult,
   SpaceInfo,
   SpaceInstructions,
@@ -96,7 +98,14 @@ export interface ApiClient extends ApprovalClient, ActivityClient, MemoryClient 
 
   // --- 监控（创建走聊天 monitor 工具，页面只做控制） ---
 
-  controlMonitor(id: string, action: MonitorAction): Promise<Monitor>;
+  /** 查询网页监控列表：全量返回不分页，支持 spaceId、sort (createdAt/lastCheckedAt/status)、order (asc/desc) 过滤与排序 */
+  listMonitors(query?: MonitorsQuery, signal?: AbortSignal): Promise<Monitor[]>;
+  /** 读取指定网页监控详情 */
+  getMonitor(id: string, signal?: AbortSignal): Promise<Monitor>;
+  /** 控制监控生命周期（pause/resume/stop） */
+  controlMonitor(id: string, action: MonitorAction, signal?: AbortSignal): Promise<Monitor>;
+  /** 彻底删除指定网页监控项 */
+  deleteMonitor(id: string, signal?: AbortSignal): Promise<DeleteMonitorResult>;
 
   // --- 目标（GET /api/goals 独立端点，快照中已不再包含 goals） ---
 
@@ -145,6 +154,7 @@ export type {
   JobEventKind,
   JobItem,
   JobsQuery,
+  MonitorsQuery,
   UpdateGoalInput,
   UpdateJobInput,
 };

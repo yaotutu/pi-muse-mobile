@@ -14,6 +14,7 @@ import type {
   ConversationSnapshot,
   DeleteGoalResult,
   DeleteJobResult,
+  DeleteMonitorResult,
   DeleteSpaceResult,
   Goal,
   GoalStatus,
@@ -25,6 +26,7 @@ import type {
   JobsQuery,
   MemoryItem,
   Monitor,
+  MonitorsQuery,
   SpaceInfo,
   SpaceInstructions,
   SpaceSkill,
@@ -46,6 +48,7 @@ import { ApiError, isRequestCancelled, requestCancelled, responseError } from '.
 import { parseSseFrames } from './sse';
 import { parseResetSpace, parseSpaces } from './space-contracts';
 import { parseGoal, parseGoals, parseMilestoneToggle, parseGoalRemoval } from './goal-contracts';
+import { parseDeleteMonitorResult, parseMonitor, parseMonitors } from './monitor-contracts';
 import type {
   AgentStatusResponse,
   RuntimeEvent,
@@ -438,11 +441,37 @@ export class HttpApiClient implements ApiClient {
     }), id);
   }
 
-  async controlMonitor(id: string, action: MonitorAction): Promise<Monitor> {
-    return this.request<Monitor>(`/api/monitors/${encodeURIComponent(id)}/control`, {
+  async listMonitors(query: MonitorsQuery = {}, signal?: AbortSignal): Promise<Monitor[]> {
+    const params = new URLSearchParams();
+    // 显式传入的筛选字段必须原样上送；空串/非法值交给服务端 400，不能静默扩大查询范围。
+    if (query.spaceId !== undefined) params.set('spaceId', query.spaceId);
+    if (query.sort !== undefined) params.set('sort', query.sort);
+    if (query.order !== undefined) params.set('order', query.order);
+    const suffix = params.toString();
+    const result = await this.request<unknown>(`/api/monitors${suffix ? `?${suffix}` : ''}`, { signal });
+    return parseMonitors(result);
+  }
+
+  async getMonitor(id: string, signal?: AbortSignal): Promise<Monitor> {
+    const result = await this.request<unknown>(`/api/monitors/${encodeURIComponent(id)}`, { signal });
+    return parseMonitor(result, id);
+  }
+
+  async controlMonitor(id: string, action: MonitorAction, signal?: AbortSignal): Promise<Monitor> {
+    const result = await this.request<unknown>(`/api/monitors/${encodeURIComponent(id)}/control`, {
       method: 'POST',
       body: { action },
+      signal,
     });
+    return parseMonitor(result, id);
+  }
+
+  async deleteMonitor(id: string, signal?: AbortSignal): Promise<DeleteMonitorResult> {
+    const result = await this.request<unknown>(`/api/monitors/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      signal,
+    });
+    return parseDeleteMonitorResult(result, id);
   }
 
   async listApprovals(query: ApprovalQuery = {}, signal?: AbortSignal): Promise<ApprovalPage> {

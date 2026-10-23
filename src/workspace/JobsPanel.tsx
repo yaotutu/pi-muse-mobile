@@ -8,20 +8,25 @@ import { useTheme } from '../theme/ThemeProvider';
 import { spacing, workspaceTheme, type WorkspaceColors } from '../ui/tokens';
 import { EmptyState, SectionHeading, StatusPill, type StatusTone } from './primitives';
 import { ActivityPanel } from './ActivityPanel';
+import { MonitorsPanel } from './MonitorsPanel';
 
 function useStyles() { const { colors } = useTheme(); return useMemo(() => createStyles(colors), [colors]); }
-function Button({ label, onPress, selected, disabled }: { label: string; onPress: () => void; selected?: boolean; disabled?: boolean }) {
+function Button({ label, onPress, selected, disabled, role = 'button' }: { label: string; onPress: () => void; selected?: boolean; disabled?: boolean; role?: 'button' | 'tab' }) {
   const styles = useStyles();
-  return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected, disabled: !!disabled }} disabled={disabled} onPress={onPress}
+  return <Pressable accessibilityRole={role} accessibilityLabel={label} accessibilityState={{ selected, disabled: !!disabled }} disabled={disabled} onPress={onPress}
     style={({ pressed }) => [styles.button, selected && styles.selected, disabled && styles.disabled, pressed && styles.pressed]}><Text style={styles.buttonText}>{label}</Text></Pressable>;
 }
 
 /** 任务主页面只增加同层切换，不改变四个主 Tab 或会话面板的历史入口。 */
 export function TasksPage({ spaceId }: { spaceId: string }) {
-  const [tab, setTab] = useState<'activity' | 'jobs'>('activity'); const styles = useStyles();
+  const [tab, setTab] = useState<'activity' | 'jobs' | 'monitors'>('activity'); const styles = useStyles();
   return <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.page}>
-    <View style={styles.row}><Button label="活动历史" selected={tab === 'activity'} onPress={() => setTab('activity')} /><Button label="定时任务" selected={tab === 'jobs'} onPress={() => setTab('jobs')} /></View>
-    {tab === 'activity' ? <ActivityPanel key={spaceId} spaceId={spaceId} defaultScope="all" /> : <JobsPanel spaceId={spaceId} />}
+    <View accessibilityRole="tablist" accessibilityLabel="任务内容" style={styles.row}>
+      <Button role="tab" label="活动历史" selected={tab === 'activity'} onPress={() => setTab('activity')} />
+      <Button role="tab" label="定时任务" selected={tab === 'jobs'} onPress={() => setTab('jobs')} />
+      <Button role="tab" label="网页监控" selected={tab === 'monitors'} onPress={() => setTab('monitors')} />
+    </View>
+    {tab === 'activity' ? <ActivityPanel key={spaceId} spaceId={spaceId} defaultScope="all" /> : tab === 'jobs' ? <JobsPanel spaceId={spaceId} /> : <MonitorsPanel spaceId={spaceId} />}
   </ScrollView>;
 }
 function jobTone(status: JobStatus): StatusTone {
