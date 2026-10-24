@@ -48,7 +48,6 @@ test('会话信息区为头像、名称和状态独立留足空间', () => {
   assert.ok(l.headerHeight >= identityHeight, '聊天正文不能进入会话信息区');
   assert.ok(l.headerHeight + l.chatContentTop < 156 + 20, '有消息的聊天顶部应比旧布局紧凑');
   assert.equal(l.sessionHeaderBottom, 28, '不缩小连接页共用的标题间距');
-  assert.ok(l.chatNavigationHeight >= 44);
 });
 
 for (const theme of availableThemes) {
@@ -79,6 +78,7 @@ test('胶囊按钮、导航与会话 Tab 保留至少 44 点触控区', () => {
   const l = workspaceTheme.layout;
   assert.ok(l.controlSize >= 44 && l.smallControl >= 44);
   assert.ok(l.sessionTabsHeight - l.sessionTabInset * 2 >= 44);
-  assert.ok(l.navigationHeight >= 44);
+  assert.equal(l.navigationHeight, 66, '四个主页面共用导航高度');
+  assert.equal('chatNavigationHeight' in l, false, '不为聊天页保留独立导航高度');
   assert.ok(l.composerHeight >= l.smallControl + l.composerPadding * 2);
 });

@@ -131,7 +131,6 @@ export const themeTokens = {
     composerInputPadding: 14,
     composerBottom: 12,
     navigationHeight: 66,
-    chatNavigationHeight: 58,
     navigationBottom: 4,
     sessionTabsHeight: 66,
     sessionTabInset: 6,
