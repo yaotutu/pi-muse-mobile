@@ -35,7 +35,7 @@ import { FilesPanel } from './FilesPanel';
 import { ApprovalPanel } from './ApprovalPanel';
 import { ActivityPanel } from './ActivityPanel';
 import { MAIN_SPACE } from '../spaces/space-state';
-import { MuseAvatar, StatusPill } from './primitives';
+import { MuseAvatar, StatusPill, type StatusTone } from './primitives';
 
 export type SessionTab = 'activity' | 'approvals' | 'workspace' | 'history';
 
@@ -59,6 +59,7 @@ export interface SessionPanelProps {
   spaceId: string;
   spaceName: string;
   status: string;
+  statusTone: StatusTone;
   tab: SessionTab;
   onTab: (tab: SessionTab) => void;
   onClose: () => void;
@@ -97,7 +98,7 @@ function createStyles(colors: WorkspaceColors) {
       alignItems: 'flex-start',
       paddingHorizontal: workspaceTheme.layout.sidePadding,
       paddingTop: workspaceTheme.layout.sessionTop,
-      paddingBottom: workspaceTheme.layout.sessionHeaderBottom,
+      paddingBottom: workspaceTheme.layout.sessionPanelHeaderBottom,
     },
     headerSideButton: {
       width: workspaceTheme.layout.smallControl,
@@ -117,7 +118,7 @@ function createStyles(colors: WorkspaceColors) {
       justifyContent: 'flex-start',
     },
     name: {
-      marginTop: workspaceTheme.layout.sessionNameTop,
+      marginTop: workspaceTheme.layout.sessionPanelNameTop,
       ...workspaceTheme.typography.heroName,
       color: colors.ink,
       maxWidth: workspaceTheme.layout.sessionNameMaxWidth,
@@ -128,7 +129,7 @@ function createStyles(colors: WorkspaceColors) {
 
     tablistWrap: {
       paddingHorizontal: workspaceTheme.layout.sidePadding,
-      marginBottom: workspaceTheme.layout.contentTop,
+      marginBottom: workspaceTheme.layout.sessionPanelTabsBottom,
     },
     tablist: {
       height: workspaceTheme.layout.sessionTabsHeight,
@@ -192,6 +193,7 @@ export function SessionPanel({
   spaceId,
   spaceName,
   status,
+  statusTone,
   tab,
   onTab,
   onClose,
@@ -269,7 +271,7 @@ export function SessionPanel({
               <Text style={styles.name} numberOfLines={1}>
                 {spaceName}
               </Text>
-              <View style={styles.status}><StatusPill label={status} /></View>
+              <View style={styles.status}><StatusPill label={status} tone={statusTone} /></View>
             </View>
 
             <View style={styles.headerActions}>

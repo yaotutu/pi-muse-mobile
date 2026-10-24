@@ -371,7 +371,8 @@ const createStyles = (c: WorkspaceColors) =>
     hidden: { display: 'none' },
     chatScroll: { flex: 1 },
     messageList: {
-      paddingTop: l.contentTop,
+      // 顶栏已经为完整会话信息区占位；这里只留消息与状态胶囊间的呼吸空间。
+      paddingTop: l.chatContentTop,
       paddingHorizontal: l.sidePadding,
       paddingBottom: spacing[24],
       gap: l.messageGap,

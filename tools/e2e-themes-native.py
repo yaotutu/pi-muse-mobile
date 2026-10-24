@@ -74,6 +74,11 @@ def wait(label, scrolling=False, down=False, seconds=45):
             scroll(down)
         else:
             time.sleep(.4)
+    # 最后一次滚动可能发生在 deadline 边界；超时判定前必须再看一次 fresh hierarchy。
+    refresh()
+    node = find(label)
+    if node is not None:
+        return node
     raise AssertionError('Missing native UI: '+label)
 
 
@@ -86,22 +91,81 @@ def tap(label, scrolling=False, down=False):
 
 
 def enter(label, value):
+    def typed_text(node):
+        text = node.get('text')
+        hint = node.get('hint')
+        # Android 可能把空输入的 placeholder 同时导出为 text 与 hint；仅此情形视作空值。
+        return '' if text == '' or (hint is not None and text == hint) else text
+
     tap(label)
     refresh()
     field = find(label)
     assert field.get('focused') == 'true' and field.get('class') == 'android.widget.EditText', 'Text input did not actually acquire focus: '+label
-    count = len(field.get('text', ''))
-    sh('shell', 'input', 'keyevent', 'KEYCODE_MOVE_END')
-    sh('shell', 'input', 'keyevent', *(['KEYCODE_DEL']*(count+1)))
+    # 多行框中 MOVE_END 只到当前行末；用原生全选快捷键后一次删除整段内容。
+    sh('shell', 'input', 'keycombination', 'KEYCODE_CTRL_LEFT', 'KEYCODE_A')
+    sh('shell', 'input', 'keyevent', 'KEYCODE_DEL')
+    # RN 受控输入可能在 DEL 注入后才异步清空；用有限采样次数等待连续两次稳定空值。
+    empty_reads = 0
+    for _ in range(3):
+        refresh()
+        field = find(label)
+        if field is not None and field.get('class') == 'android.widget.EditText' and field.get('focused') == 'true' and typed_text(field) == '':
+            empty_reads += 1
+            if empty_reads == 2:
+                break
+        else:
+            empty_reads = 0
+        time.sleep(.15)
+    assert empty_reads == 2, 'Input did not stabilize at an empty focused value: '+label
     # 分段 ASCII 输入并回读，避免长 ADB 文本被截断；不提交消息。
     for offset in range(0, len(value), 90):
         part = value[offset:offset+90].replace(' ', '%s').replace('"', '\\"')
         sh('shell', 'input', 'text', part)
-    state = sh('shell', 'dumpsys', 'input_method').decode()
-    if 'mInputShown=true' in state or 'mIsInputViewShown=true' in state:
+
+    def window_state():
+        return sh('shell', 'dumpsys', 'window').decode()
+
+    def app_focused(state):
+        focus = re.search(r'mCurrentFocus=[^\n]*', state)
+        return focus is not None and 'host.exp.exponent/' in focus.group()
+
+    def keyboard_visible(state):
+        # 全局 mImeShowing 可能滞后；只认具体 InputMethod 窗口的真实 Surface/可见状态。
+        return any(
+            'mIsImWindow=true' in block and 'mHasSurface=true' in block and 'isVisible=true' in block
+            for match in re.finditer(r'(?ms)^  Window #\d+ .*?(?=^  Window #\d+ |\Z)', state)
+            for block in [match.group(0)]
+            if 'InputMethod}' in block.splitlines()[0]
+        )
+
+    # IMS 的 mInputShown/mIsInputViewShown 可能滞后；只用 WindowManager 显示态和应用焦点判断。
+    shown = False
+    stable = time.time()+1
+    while time.time() < stable:
+        state = window_state()
+        assert app_focused(state), 'Input lost Expo foreground focus: '+label
+        if keyboard_visible(state):
+            shown = True
+            break
+        if time.time() >= stable:
+            break
+        time.sleep(.15)
+    if shown:
         sh('shell', 'input', 'keyevent', 'KEYCODE_BACK')
+        hidden = time.time()+2
+        while time.time() < hidden:
+            state = window_state()
+            if app_focused(state) and not keyboard_visible(state):
+                break
+            time.sleep(.15)
+        state = window_state()
+        assert app_focused(state) and not keyboard_visible(state), 'Keyboard did not hide without leaving Expo: '+label
+    else:
+        assert app_focused(state), 'Input finished outside Expo foreground: '+label
+
     refresh()
-    assert find(label).get('text') == value, 'Exact text input mismatch'
+    field = find(label)
+    assert field is not None and typed_text(field) == value, 'Exact text input mismatch: '+label
 
 
 def capture(name):
@@ -123,23 +187,70 @@ def passed(name):
 def launch():
     sh('shell', 'am', 'force-stop', 'host.exp.exponent')
     sh('shell', 'am', 'start', '-a', 'android.intent.action.VIEW', '-d', 'exp://127.0.0.1:8082', 'host.exp.exponent')
-    wait('打开空间侧栏', seconds=100)
-    tools = find('Tools')
-    if tools is not None:
-        x1, y1, x2, y2 = bounds(tools)
-        sh('shell', 'input', 'swipe', str((x1+x2)//2), str((y1+y2)//2), str(int(width*.96)), str(int(height*.65)), '1000')
+    def expo_menu_visible():
+        texts = {n.get('text') for n in tree.iter('node') if visible(n)}
+        return 'Reload' in texts and 'Go home' in texts and any(text.startswith('SDK version:') for text in texts if text)
+
+    menu_closed = False
+    deadline = time.time()+100
+    while time.time() < deadline:
+        refresh()
+        if expo_menu_visible():
+            # 冷启动偶发的 Expo Go 开发菜单是原生 Modal；身份明确后只关闭一次。
+            if not menu_closed:
+                sh('shell', 'input', 'keyevent', 'KEYCODE_BACK')
+                menu_closed = True
+        elif find('打开空间侧栏') is not None:
+            return
+        time.sleep(.4)
+    raise AssertionError('Fresh native workspace unavailable after Expo startup')
 
 
-def select_space(label, query):
-    tap('打开空间侧栏')
-    enter('搜索空间', query)
-    # 搜索框的值与目标 ID 相同，只能点击空间行的无障碍标签，不能误点输入框。
-    refresh()
-    node = next((n for n in tree.iter('node') if visible(n) and n.get('content-desc') == label and n.get('clickable') == 'true' and n.get('class') != 'android.widget.EditText'), None)
-    assert node is not None, 'Missing actual space row: '+label
+def exact_node(label):
+    return next((n for n in tree.iter('node') if visible(n) and n.get('content-desc') == label), None)
+
+
+def tap_space_row(label):
+    node = exact_node(label)
+    assert node is not None and node.get('clickable') == 'true' and node.get('class') != 'android.widget.EditText', 'Missing actual space row: '+label
     x1, y1, x2, y2 = bounds(node)
     sh('shell', 'input', 'tap', str((x1+x2)//2), str((y1+y2)//2))
-    time.sleep(.4)
+    time.sleep(.35)
+
+
+def space_selected(identity_text):
+    identity = exact_node('打开当前会话面板')
+    # 关闭按钮是常驻侧栏树；前景遮罩只在 drawerOpen 时条件渲染，才是侧栏仍打开的证据。
+    if identity is None or exact_node('收起空间侧栏') is not None:
+        return False
+    return identity_text is None or any(n.get('text') == identity_text for n in identity.iter('node'))
+
+
+def select_space(label, query, identity_text=None):
+    tap('打开空间侧栏')
+    direct = time.time()+1.2
+    while time.time() < direct:
+        refresh()
+        if exact_node(label) is not None:
+            break
+        time.sleep(.25)
+    else:
+        # 只有目标行不在当前视口时才过滤；避免键盘收起动画吞掉首点。
+        enter('搜索空间', query)
+        time.sleep(.35)
+    tap_space_row(label)
+    # 后置条件必须同时证明前景可见和身份正确；补点仅限侧栏与目标行仍然确切存在。
+    for attempt in range(2):
+        settled = time.time()+2.5
+        while time.time() < settled:
+            refresh()
+            if space_selected(identity_text):
+                return
+            time.sleep(.25)
+        refresh()
+        if attempt == 0 and exact_node('收起空间侧栏') is not None and exact_node(label) is not None:
+            tap_space_row(label)
+    assert False, 'Space selection did not reach foreground identity: '+label
 
 
 def choose_theme(theme):
@@ -159,9 +270,7 @@ try:
     width, height = map(int, re.findall(r'(\d+)x(\d+)', original_size)[-1])
     sh('reverse', 'tcp:8082', 'tcp:8082')
     launch()
-    select_space(context['spaceId'], context['spaceId'])
-    identity = wait('打开当前会话面板')
-    assert any(n.get('text') == context['spaceId'] for n in identity.iter('node')), 'Dedicated space must be selected before typing'
+    select_space(context['spaceId'], context['spaceId'], context['spaceId'])
     enter('消息输入框', context['draft'])
     for theme in themes:
         tap('应用')
@@ -206,7 +315,7 @@ try:
         tap('应用')
         choose_theme(theme)
         launch()
-        select_space(context['spaceId'], context['spaceId'])
+        select_space(context['spaceId'], context['spaceId'], context['spaceId'])
         wait(context['response'], seconds=80)
         tap('应用')
         theme_checked(theme)

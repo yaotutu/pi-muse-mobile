@@ -79,7 +79,7 @@ try {
   driver = spawn('python3', [new URL('./e2e-themes-native.py', import.meta.url).pathname, output], { stdio: 'inherit', env: process.env });
   driver.on('exit', (code) => { driverExit = code ?? 1; });
   driver.on('error', () => { driverExit = 1; });
-  await until(() => existsSync(join(output, 'native-chat')), 'native theme selection and real streamed reply', 600_000);
+  await until(() => existsSync(join(output, 'native-chat')), 'native theme selection and real streamed reply', 900_000);
   const history = await api.getConversation(spaceId);
   assert.equal(history.messages.filter((message) => message.role === 'user').length, 1);
   assert.ok(history.messages.some((message) => message.role === 'user' && message.content === prompt));

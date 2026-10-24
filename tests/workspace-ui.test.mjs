@@ -76,8 +76,19 @@ test('会话信息区在聊天正文之前独立占位，长历史不滚入顶�
   const source = read('src/workspace/WorkspaceScreen.tsx');
   assert.ok(source.indexOf('<View style={[styles.chatHeader,') < source.indexOf('<ConversationView key='));
   assert.match(source, /chatHeader: \{ height: l\.headerHeight, flexShrink: 0/);
-  assert.doesNotMatch(read('src/workspace/ConversationView.tsx'), /paddingTop: l\.chatContentTop/);
+  assert.match(read('src/workspace/ConversationView.tsx'), /paddingTop: l\.chatContentTop/);
   assert.match(read('src/workspace/SessionPanel.tsx'), /<ScrollView\s+key=\{tab\}/);
+});
+
+test('会话动态先展示真实状态，说明按需展开，关键警告和入口保持可见', () => {
+  const execution = read('src/workspace/CurrentExecution.tsx');
+  assert.doesNotMatch(execution, /IN THE MOMENT|<SectionHeading/);
+  assert.match(execution, /!runtime\.synchronized && <View style=\{styles\.syncCard\}>/);
+  assert.match(execution, /run\.status === 'failed' && styles\.danger/);
+  assert.match(execution, /run\.pendingApprovalIds\.length/);
+  assert.match(execution, /run\.activityId !== null && onHistory/);
+  assert.match(execution, /accessibilityLabel="状态说明" accessibilityState=\{\{ expanded: showStatusHelp \}\}/);
+  assert.match(execution, /accessibilityLabel="查看活动历史"/);
 });
 
 test('原生输入时压缩会话信息区并隐藏主导航，键盘事件监听随宿主卸载清理', () => {

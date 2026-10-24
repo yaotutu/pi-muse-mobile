@@ -268,7 +268,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
         {drawerOpen && <Pressable accessibilityRole="button" accessibilityLabel="收起空间侧栏" onPress={() => setDrawerOpen(false)} style={styles.foregroundCover} />}
       </Animated.View>
     </View>
-    {sessionOpen && <SessionPanel spaceId={spaces.currentSpace} spaceName={name} status={statusLabel} tab={sessionTab} onTab={(next) => { if (session.resetting || session.deleting) return; setSessionTab(next); setDeleteConfirm(false); setResetConfirm(false); }}
+    {sessionOpen && <SessionPanel spaceId={spaces.currentSpace} spaceName={name} status={statusLabel} statusTone={!runtime.synchronized ? 'warning' : runtime.running ? 'accent' : 'neutral'} tab={sessionTab} onTab={(next) => { if (session.resetting || session.deleting) return; setSessionTab(next); setDeleteConfirm(false); setResetConfirm(false); }}
       onClose={() => { if (!session.deleting && !session.resetting) { setSessionOpen(false); setResetConfirm(false); } }} onDelete={() => { setDeleteConfirm(true); setResetConfirm(false); }} deleting={session.deleting} resetting={session.resetting} reducedMotion={reducedMotion} onSettled={refresh}
       onReset={() => { setSessionTab('workspace'); setDeleteConfirm(false); setClearSchedules(false); setResetConfirm(true); setNotice(undefined); }}
       settings={<>{resetConfirm ? <View style={styles.exampleCard} accessibilityViewIsModal>
