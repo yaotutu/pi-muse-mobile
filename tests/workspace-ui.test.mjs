@@ -61,12 +61,15 @@ test('主题模块不依赖业务领域，独立偏好存储不接触连接地�
   assert.doesNotMatch(read('src/theme/device-preferences.ts'), /deviceConnectionStore|serverUrl|token|accessKey/);
 });
 
-test('聊天空态有稳定入口，建议仅填草稿；真实流使用可关闭的原生动画', () => {
+test('聊天空态只留短句，本地头像与真实流动画均有稳定入口', () => {
   const chat = read('src/workspace/ConversationView.tsx');
   assert.match(chat, /testID="conversation-empty"/);
-  assert.match(chat, /onPress=\{\(\) => sessions\.setDraft\(spaceId, prompt\)\}/);
+  assert.match(chat, /有什么想聊的？/);
+  assert.doesNotMatch(chat, /A LITTLE SPACE|想法，从这里开始|帮我梳理一个想法|一起拆解一个目标/);
   assert.match(chat, /conversation\.running && <TypingIndicator/);
   const primitives = read('src/workspace/primitives.tsx');
+  assert.match(primitives, /require\('\.\.\/\.\.\/assets\/images\/muse-companion\.png'\)/);
+  assert.ok(existsSync(new URL('assets/images/muse-companion.png', root)));
   assert.match(primitives, /if \(reduced\)/);
   assert.match(primitives, /return \(\) => animation\.stop\(\)/);
   assert.doesNotMatch(primitives, /https?:\/\//);

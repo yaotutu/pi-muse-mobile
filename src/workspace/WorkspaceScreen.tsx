@@ -131,10 +131,10 @@ function DisconnectedWorkspace({ snapshot, openConnection }: WorkspaceConnection
 }
 function Navigation({ page, onPage }: { page: WorkspacePage; onPage: (page: WorkspacePage) => void }) {
   const styles = useStyles(); const { colors } = useTheme();
-  return <View accessibilityRole="tablist" accessibilityLabel="主要页面" style={styles.navigation}>
+  return <View accessibilityRole="tablist" accessibilityLabel="主要页面" style={[styles.navigation, page === 'chat' && styles.chatNavigation]}>
     {NAV.map(({ id, label, icon: Icon }) => <Pressable key={id} accessibilityRole="tab" accessibilityLabel={label} accessibilityState={{ selected: page === id }} aria-selected={page === id} onPress={() => onPage(id)} style={({ pressed }) => [styles.navigationItem, pressed && styles.pressed]}>
       <Icon size={l.navigationIconSize} strokeWidth={1.8} color={page === id ? colors.ink : colors.faint} fill={id === 'chat' && page === id ? colors.ink : 'none'} />
-      <Text style={[styles.navigationLabel, page === id && styles.navigationLabelSelected]}>{label}</Text>
+      {page !== 'chat' && <Text style={[styles.navigationLabel, page === id && styles.navigationLabelSelected]}>{label}</Text>}
     </Pressable>)}
   </View>;
 }
@@ -302,8 +302,11 @@ const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   pressed: { opacity: workspaceTheme.interaction.pressedOpacity },
   identity: { alignSelf: 'center', alignItems: 'center', maxWidth: l.identityMaxWidth },
   identityCompact: { height: l.controlSize, flexDirection: 'row', gap: spacing[8] },
-  identityLabel: { paddingHorizontal: spacing[8], paddingTop: spacing[6], gap: spacing[3], alignItems: 'center', maxWidth: '100%' }, identityLabelCompact: { flexShrink: 1, minWidth: 0, paddingHorizontal: 0, paddingTop: 0, alignItems: 'flex-start' }, identityName: { ...t.name, color: c.ink },
-  navigation: { flexDirection: 'row', height: l.navigationHeight, marginHorizontal: spacing[18], marginBottom: l.navigationBottom, alignItems: 'center' }, navigationItem: { flex: 1, minHeight: l.controlSize, gap: l.navigationLabelGap, alignItems: 'center', justifyContent: 'center' }, navigationLabel: { ...t.navigation, color: c.faint }, navigationLabelSelected: { color: c.ink },
+  identityLabel: { paddingHorizontal: spacing[8], paddingTop: spacing[6], gap: spacing[3], alignItems: 'center', maxWidth: '100%' }, identityLabelCompact: { flexShrink: 1, minWidth: 0, paddingHorizontal: 0, paddingTop: 0, alignItems: 'flex-start' }, identityName: { ...t.name, color: c.ink, maxWidth: '100%', textAlign: 'center' },
+  navigation: { flexDirection: 'row', height: l.navigationHeight, marginHorizontal: spacing[18], marginBottom: l.navigationBottom, alignItems: 'center' },
+  // 聊天页以图标保持底部轻盈；无障碍名称仍由每个 tab 的 accessibilityLabel 提供。
+  chatNavigation: { height: l.chatNavigationHeight },
+  navigationItem: { flex: 1, minHeight: l.controlSize, gap: l.navigationLabelGap, alignItems: 'center', justifyContent: 'center' }, navigationLabel: { ...t.navigation, color: c.faint }, navigationLabelSelected: { color: c.ink },
   drawer: { position: 'absolute', top: 0, bottom: 0, left: 0, paddingHorizontal: l.sidePadding, paddingTop: l.drawerTop, backgroundColor: c.canvas }, drawerHeading: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: l.drawerTop, marginBottom: l.drawerTitleBottom }, drawerTitle: { ...t.drawerTitle, color: c.ink }, drawerSection: { ...t.caption, color: c.faint }, drawerSectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing[4], marginBottom: spacing[14] }, drawerList: { gap: spacing[6] },
   threadRow: { minHeight: l.drawerRowHeight, flexDirection: 'row', alignItems: 'center', gap: spacing[14], paddingHorizontal: spacing[14], paddingVertical: spacing[12], borderRadius: r.listItem }, threadSelected: { backgroundColor: c.surface }, threadText: { flex: 1, gap: spacing[4], minWidth: 0 }, drawerFooter: { height: l.drawerFooterHeight, flexDirection: 'row', alignItems: 'center', gap: spacing[12], borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.line },
   drawerSearch: { flex: 1, minWidth: 0, height: l.controlSize, borderRadius: r.round, backgroundColor: c.surface, flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing[14], gap: spacing[8] }, searchInput: { ...t.status, color: c.ink, flex: 1, minWidth: 0, height: l.smallControl },

@@ -4,9 +4,8 @@
  */
 import { type LucideIcon } from 'lucide-react-native';
 import { useEffect, useMemo, useState } from 'react';
-import { Animated, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
-import Svg, { Circle, Defs, Ellipse, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
-import { museAvatar as a, spacing, workspaceTheme, type WorkspaceColors } from '../ui/tokens';
+import { Animated, Image, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { spacing, workspaceTheme, type WorkspaceColors } from '../ui/tokens';
 import { useTheme } from '../theme/ThemeProvider';
 import { useReducedMotion } from '../ui/use-reduced-motion';
 export { useReducedMotion } from '../ui/use-reduced-motion';
@@ -31,27 +30,11 @@ export function IconControl({ icon: Icon, label, onPress, testID, disabled, smal
   </Pressable>;
 }
 
-/** 原创矢量角色，在原生/离线下同样清晰；不依赖远程图片或参考产品素材。 */
+/** 头像为打包进应用的原创位图；会话信息区和面板共用同一离线资源。 */
 export function MuseAvatar({ size = l.headerAvatar }: { size?: number }) {
-  return <View accessibilityRole="image" accessibilityLabel="Pi Muse 头像" style={{ width: size, height: size, borderRadius: r.round, overflow: 'hidden' }}>
-    <Svg width={size} height={size} viewBox="0 0 120 120">
-      <Defs><LinearGradient id="muse-bg" x1="0" y1="0" x2="1" y2="1"><Stop stopColor={a.highlight} /><Stop offset="1" stopColor={a.background} /></LinearGradient>
-        <LinearGradient id="muse-body" x1="0" y1="0" x2="1" y2="1"><Stop stopColor={a.highlight} /><Stop offset="1" stopColor={a.body} /></LinearGradient></Defs>
-      <Circle cx="60" cy="60" r="60" fill="url(#muse-bg)" />
-      <Circle cx="92" cy="27" r="24" fill={a.glint} />
-      <Ellipse cx="60" cy="103" rx="41" ry="8" fill={a.shadow} opacity="0.28" />
-      <Path d="M23 94C21 73 24 31 44 23C66 14 87 34 86 59L91 99C72 112 40 113 23 94Z" fill="url(#muse-body)" />
-      <Ellipse cx="55" cy="53" rx="24" ry="23" fill={a.face} />
-      <Ellipse cx="47" cy="52" rx="2.2" ry="3" fill={a.eye} /><Ellipse cx="63" cy="52" rx="2.2" ry="3" fill={a.eye} />
-      <Path d="M51 62Q55 66 59 62" fill="none" stroke={a.eye} strokeWidth="1.5" strokeLinecap="round" />
-      <Ellipse cx="39" cy="59" rx="4" ry="2" fill={a.blush} opacity="0.65" /><Ellipse cx="70" cy="59" rx="4" ry="2" fill={a.blush} opacity="0.65" />
-      <Path d="M26 55C23 13 84 9 86 57" fill="none" stroke={a.headphones} strokeWidth="5" strokeLinecap="round" />
-      <Rect x="20" y="44" width="10" height="24" rx="5" fill={a.headphones} /><Rect x="80" y="44" width="10" height="24" rx="5" fill={a.headphones} />
-      <Path d="M36 83Q46 90 62 92" fill="none" stroke={a.body} strokeWidth="12" strokeLinecap="round" />
-      <Path d="M66 75L105 70L97 101L58 101Z" fill={a.computer} stroke={a.computerEdge} strokeWidth="1" strokeLinejoin="round" />
-      <Circle cx="82" cy="86" r="2.5" fill={a.glint} opacity="0.7" /><Path d="M52 102H99" stroke={a.computerEdge} strokeWidth="3" strokeLinecap="round" />
-    </Svg>
-  </View>;
+  return <Image accessible accessibilityRole="image" accessibilityLabel="Pi Muse 头像"
+    source={require('../../assets/images/muse-companion.png')} resizeMode="cover"
+    style={{ width: size, height: size, borderRadius: size / 2 }} />;
 }
 
 export function StatusPill({ label, tone = 'neutral', dot = true }: { label: string; tone?: StatusTone; dot?: boolean }) {

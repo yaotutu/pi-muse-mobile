@@ -198,12 +198,7 @@ export function ConversationView({
           ) : (
             !conversation.views.length && (
               <View style={styles.emptyChat} testID="conversation-empty">
-                <Text style={styles.eyebrow}>A LITTLE SPACE FOR BIG IDEAS</Text>
-                <Text style={styles.emptyTitle}>想法，从这里开始。</Text>
-                <Text style={styles.emptyDescription}>一个问题，一点灵感，或者还没成形的计划。{ '\n' }都可以和 Pi Muse 聊聊。</Text>
-                <View style={styles.suggestions}>
-                  {['帮我梳理一个想法', '一起拆解一个目标'].map((prompt) => <Pressable key={prompt} accessibilityRole="button" accessibilityLabel={`填入消息：${prompt}`} disabled={!canSend} onPress={() => sessions.setDraft(spaceId, prompt)} style={({ pressed }) => [styles.suggestion, pressed && styles.pressed]}><Text style={styles.suggestionText}>{prompt}</Text><ArrowUp size={sizing[14]} color={colors.muted} /></Pressable>)}
-                </View>
+                <Text style={styles.emptyHint}>有什么想聊的？</Text>
               </View>
             )
           )}
@@ -372,17 +367,18 @@ const createStyles = (c: WorkspaceColors) =>
     chatScroll: { flex: 1 },
     messageList: {
       // 顶栏已经为完整会话信息区占位；这里只留消息与状态胶囊间的呼吸空间。
+      flexGrow: 1,
       paddingTop: l.chatContentTop,
       paddingHorizontal: l.sidePadding,
       paddingBottom: spacing[24],
       gap: l.messageGap,
     },
     messageBlock: { gap: spacing[8] },
-    message: { padding: l.messagePadding, borderRadius: r.message },
+    message: { padding: l.chatMessagePadding, borderRadius: r.message },
     assistantMessage: {
       backgroundColor: c.surface,
-      borderTopLeftRadius: l.bubbleTail,
       alignSelf: 'flex-start',
+      // Markdown 内部用百分比宽度布局代码块与表格，气泡给出明确宽度以免原生端压缩。
       width: l.assistantMessageWidth,
       maxWidth: l.assistantMessageWidth,
     },
@@ -404,10 +400,8 @@ const createStyles = (c: WorkspaceColors) =>
       marginBottom: l.composerBottom,
       borderRadius: r.round,
       backgroundColor: c.surface,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: c.line,
     },
-    composerFocused: { borderColor: c.faint },
+    composerFocused: { backgroundColor: c.control },
     attachmentArea: { marginHorizontal: l.sidePadding, marginBottom: spacing[8], gap: spacing[6] },
     input: {
       flex: 1,
@@ -418,7 +412,7 @@ const createStyles = (c: WorkspaceColors) =>
       paddingVertical: spacing[8],
       textAlignVertical: 'center',
       maxHeight: l.composerMaxHeight,
-      backgroundColor: c.surface,
+      backgroundColor: 'transparent',
       borderWidth: 0,
       overflow: 'hidden',
     },
@@ -431,19 +425,9 @@ const createStyles = (c: WorkspaceColors) =>
       backgroundColor: c.blue,
     },
     disabled: { opacity: workspaceTheme.interaction.disabledOpacity },
-    pressed: { opacity: workspaceTheme.interaction.pressedOpacity },
-    emptyChat: {
-      alignItems: 'center',
-      paddingTop: spacing[48],
-      paddingBottom: spacing[24],
-      gap: spacing[18],
-    },
-    emptyTitle: { ...t.heroName, color: c.ink, textAlign: 'center' },
-    emptyDescription: { ...t.detail, color: c.muted, textAlign: 'center' },
-    eyebrow: { ...t.eyebrow, color: c.faint, textAlign: 'center' },
-    suggestions: { alignItems: 'center', gap: spacing[10], marginTop: spacing[10] },
-    suggestion: { minHeight: l.smallControl, flexDirection: 'row', alignItems: 'center', gap: spacing[14], borderWidth: StyleSheet.hairlineWidth, borderColor: c.line, borderRadius: r.round, paddingVertical: spacing[8], paddingHorizontal: spacing[18] },
-    suggestionText: { ...t.status, color: c.muted },
+    // 空态只保留低对比短句；整块填满剩余视口，在不同屏高和键盘状态下自然居中。
+    emptyChat: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: spacing[48] },
+    emptyHint: { ...t.detail, color: c.muted, textAlign: 'center' },
     latestButton: { position: 'absolute', bottom: spacing[12], alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: spacing[8], backgroundColor: c.control, paddingHorizontal: spacing[16], minHeight: l.smallControl, borderRadius: r.round, borderWidth: StyleSheet.hairlineWidth, borderColor: c.line },
     mutedText: { ...t.detail, color: c.muted },
     caption: { ...t.caption, color: c.faint },

@@ -1,6 +1,6 @@
 /**
  * 共享视觉常量：业务组件通过 src/ui/tokens.ts 读取，主题模块不依赖业务页面。
- * 几何与头像材质不随配色切换，避免重排或重建会话。
+ * 几何不随配色切换，避免重排或重建会话。
  */
 
 /** 布局间距集中声明；精确数值键保留既有视觉规格，常用语义键便于复用。 */
@@ -108,11 +108,11 @@ export const themeTokens = {
   layout: {
     maxWidth: 720,
     sidePadding: 20,
-    /** 会话信息区仍独立占位；只压缩聊天顶栏，不影响其他页面的首屏。 */
-    headerHeight: 140,
+    /** 会话信息区为头像、名称与状态完整占位，不影响其他页面的首屏。 */
+    headerHeight: 150,
     imageRatio: 0.65,
     headerTop: 12,
-    headerAvatar: 76,
+    headerAvatar: 82,
     compactHeaderAvatar: 36,
     sessionAvatar: 80,
     sessionTop: 14,
@@ -125,20 +125,23 @@ export const themeTokens = {
     smallControl: 44,
     iconSize: 25,
     navigationIconSize: 25,
-    composerHeight: 58,
+    composerHeight: 56,
     composerMaxHeight: 128,
     composerPadding: 6,
     composerInputPadding: 14,
     composerBottom: 12,
     navigationHeight: 66,
+    chatNavigationHeight: 58,
     navigationBottom: 4,
     sessionTabsHeight: 66,
     sessionTabInset: 6,
-    chatContentTop: 12,
-    messageGap: 14,
+    chatContentTop: 14,
+    messageGap: 16,
+    /** 聊天气泡独有的内边距，不波及连接页的通用消息容器。 */
+    chatMessagePadding: 16,
     messagePadding: 18,
     imageWidth: '65%',
-    userMessageWidth: '88%',
+    userMessageWidth: '86%',
     drawerRatio: 0.78,
     drawerMaxWidth: 340,
     drawerTop: 20,
@@ -148,7 +151,6 @@ export const themeTokens = {
     gestureThreshold: 42,
     gestureAxisRatio: 1.3,
     edgeGestureWidth: 28,
-    bubbleTail: 7,
     threadLabelGap: 8,
     stateDotSize: 8,
     typingDotSize: 8,
@@ -185,7 +187,7 @@ export const themeTokens = {
     sheetMaxHeight: '92%',
     identityMaxWidth: '56%',
     sessionNameMaxWidth: '90%',
-    assistantMessageWidth: '96%',
+    assistantMessageWidth: '92%',
   },
   radius: {
     round: 999,
@@ -198,7 +200,7 @@ export const themeTokens = {
     field: 18,
   },
   typography: {
-    message: { fontSize: 17, lineHeight: 26 },
+    message: { fontSize: 16, lineHeight: 25 },
     name: { fontSize: 16, lineHeight: 22 },
     status: { fontSize: 14, lineHeight: 21 },
     heroName: { fontSize: 28, lineHeight: 36, letterSpacing: -0.8 },
@@ -223,12 +225,5 @@ export const themeTokens = {
   },
   motion: { drawerDuration: 280, feedbackDuration: 1800, replyDuration: 3600, pulseDuration: 750, enterDuration: 240 },
   interaction: { disabledOpacity: 0.4, pressedOpacity: 0.65 },
-} as const;
-
-/** 原创 Muse 小像使用独立的材质色，不从截图裁切他人的角色素材。 */
-export const museAvatar = {
-  background: '#DCE4DC', highlight: '#F4F3E9', body: '#C9D0BC', shadow: '#A9B7A3',
-  face: '#F2EAD9', eye: '#3B4742', blush: '#D8B4A4', headphones: '#71897F',
-  computer: '#40554D', computerEdge: '#7F978C', glint: '#E7EEE7',
 } as const;
 

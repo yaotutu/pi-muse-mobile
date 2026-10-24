@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { museAvatar, workspaceTheme } from '../src/ui/tokens.ts';
+import { workspaceTheme } from '../src/ui/tokens.ts';
 import { availableThemes, DEFAULT_THEME_ID, themeRegistry } from '../src/theme/registry.ts';
 
 function luminance(hex) {
@@ -42,13 +42,13 @@ test('经典蓝白恢复原有白底、冷灰及深色文字，不复用暖白�
   assert.equal(themeRegistry.dark.colors.canvas, '#080909');
 });
 
-test('会话信息区为头像、名称和状态独立留足空间，原创头像保持清晰', () => {
+test('会话信息区为头像、名称和状态独立留足空间', () => {
   const { layout: l, typography: t } = workspaceTheme;
   const identityHeight = l.headerAvatar + 6 + t.name.lineHeight + 3 + t.caption.lineHeight + 8;
   assert.ok(l.headerHeight >= identityHeight, '聊天正文不能进入会话信息区');
   assert.ok(l.headerHeight + l.chatContentTop < 156 + 20, '有消息的聊天顶部应比旧布局紧凑');
   assert.equal(l.sessionHeaderBottom, 28, '不缩小连接页共用的标题间距');
-  assert.ok(contrast(museAvatar.eye, museAvatar.face) >= 4.5);
+  assert.ok(l.chatNavigationHeight >= 44);
 });
 
 for (const theme of availableThemes) {
