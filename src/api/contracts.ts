@@ -1,6 +1,8 @@
 /** 页面依赖的客户端契约；网络实现不向上泄露传输细节。 */
 import type {
   AgUiEvent,
+  ConversationAttachment,
+  ConversationMessage,
   ConversationSnapshot,
   DeleteGoalResult,
   DeleteJobResult,
@@ -16,6 +18,7 @@ import type {
   JobEventKind,
   JobItem,
   JobsQuery,
+  MessageAttachmentInput,
   Monitor,
   MonitorsQuery,
   ResetSpaceResult,
@@ -26,6 +29,8 @@ import type {
   UpdateJobInput,
   WorkspaceSnapshot,
 } from './types';
+import { ApiError } from './errors';
+import { isCanonicalBase64 } from '../attachments/validation';
 import type { AgentStatusResponse, RuntimeEvent } from '../runtime/types';
 import type { ApprovalClient } from '../approvals/types';
 import type { ActivityClient } from '../activities/types';
@@ -40,8 +45,110 @@ export type RunInput = {
   runId: string;
   /** 来自 GET /api/conversation；空会话也是明确的 empty 版本。 */
   expectedRevision: string;
-  message: { id: string; content: string };
+  message: {
+    id: string;
+    content: string;
+    /** 可选附件；失败重试与 completed 重放必须保持顺序和原始字节身份。 */
+    attachments?: MessageAttachmentInput[];
+  };
 };
+
+const ATTACHMENT_MIME_TYPES = new Set([
+  'image/png', 'image/jpeg', 'image/gif', 'image/webp',
+  'text/plain', 'text/markdown', 'text/csv', 'text/html', 'image/svg+xml',
+  'application/json', 'application/xml', 'text/xml', 'application/yaml', 'text/yaml',
+  'application/javascript', 'text/javascript', 'text/typescript', 'application/sql',
+  'text/css', 'application/octet-stream',
+]);
+const IMAGE_PREVIEW_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+const SHA256 = /^[a-f0-9]{64}$/;
+
+const invalidHistory = () => new ApiError(502, '服务器返回的会话历史格式不正确，请确认服务器版本与地址');
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+function parseAttachment(value: unknown): ConversationAttachment {
+  if (!isRecord(value)) throw invalidHistory();
+  const allowed = new Set(['id', 'name', 'kind', 'mimeType', 'size', 'sha256', 'image']);
+  if (Object.keys(value).some((key) => !allowed.has(key))) throw invalidHistory();
+  const { id, name, kind, mimeType, size, sha256, image } = value;
+  if (typeof id !== 'string' || !id || id.length > 100 || !/^[A-Za-z0-9._-]+$/.test(id)) throw invalidHistory();
+  if (typeof name !== 'string' || !name || name.length > 200 ||
+    name.includes('/') || name.includes('\\') || /[\u0000-\u001f\u007f]/.test(name)) throw invalidHistory();
+  if (kind !== 'image' && kind !== 'text') throw invalidHistory();
+  if (typeof mimeType !== 'string' || !ATTACHMENT_MIME_TYPES.has(mimeType)) throw invalidHistory();
+  if (typeof size !== 'number' || !Number.isSafeInteger(size) || size <= 0) throw invalidHistory();
+  if (typeof sha256 !== 'string' || !SHA256.test(sha256)) throw invalidHistory();
+
+  let parsedImage: ConversationAttachment['image'];
+  if (image !== undefined) {
+    if (kind !== 'image' || !isRecord(image)) throw invalidHistory();
+    const imageKeys = Object.keys(image);
+    if (imageKeys.length !== 2 || !('mimeType' in image) || !('dataBase64' in image)) throw invalidHistory();
+    const imageMime = image.mimeType;
+    const dataBase64 = image.dataBase64;
+    if (typeof imageMime !== 'string' || !IMAGE_PREVIEW_MIME_TYPES.has(imageMime)) throw invalidHistory();
+    if (typeof dataBase64 !== 'string' || !dataBase64 || !isCanonicalBase64(dataBase64)) throw invalidHistory();
+    parsedImage = { mimeType: imageMime, dataBase64 };
+  }
+  return { id, name, kind, mimeType, size, sha256, ...(parsedImage ? { image: parsedImage } : {}) };
+}
+
+function parseMessage(value: unknown): ConversationMessage {
+  if (!isRecord(value)) throw invalidHistory();
+  const { id, role, content, attachments, toolCalls, toolCallId } = value;
+  if (typeof id !== 'string' || !id) throw invalidHistory();
+  if (role !== 'user' && role !== 'assistant' && role !== 'tool') throw invalidHistory();
+  if (content !== undefined && typeof content !== 'string') throw invalidHistory();
+  if (toolCallId !== undefined && typeof toolCallId !== 'string') throw invalidHistory();
+  if (role !== 'user' && attachments !== undefined) throw invalidHistory();
+
+  let parsedAttachments: ConversationAttachment[] | undefined;
+  if (attachments !== undefined) {
+    if (!Array.isArray(attachments)) throw invalidHistory();
+    parsedAttachments = attachments.map(parseAttachment);
+  }
+
+  let parsedToolCalls: ConversationMessage['toolCalls'];
+  if (toolCalls !== undefined) {
+    if (!Array.isArray(toolCalls)) throw invalidHistory();
+    parsedToolCalls = toolCalls.map((call) => {
+      if (!isRecord(call) || call.type !== 'function' || typeof call.id !== 'string' ||
+        !isRecord(call.function) || typeof call.function.name !== 'string' || typeof call.function.arguments !== 'string') {
+        throw invalidHistory();
+      }
+      return {
+        id: call.id,
+        type: 'function',
+        function: { name: call.function.name, arguments: call.function.arguments },
+      };
+    });
+  }
+  return {
+    id,
+    role,
+    ...(content === undefined ? {} : { content }),
+    ...(parsedAttachments ? { attachments: parsedAttachments } : {}),
+    ...(parsedToolCalls ? { toolCalls: parsedToolCalls } : {}),
+    ...(toolCallId === undefined ? {} : { toolCallId }),
+  };
+}
+
+/** 历史与 MESSAGES_SNAPSHOT 共用同一套附件白名单，防止坏 SHA、data URI 或未知 MIME 进入渲染层。 */
+export function parseConversationMessages(value: unknown): ConversationMessage[] {
+  if (!Array.isArray(value)) throw invalidHistory();
+  return value.map(parseMessage);
+}
+
+export function parseConversationSnapshot(value: unknown): ConversationSnapshot {
+  if (!isRecord(value) || typeof value.revision !== 'string' || !value.revision) throw invalidHistory();
+  return { revision: value.revision, messages: parseConversationMessages(value.messages) };
+}
+
+export function parseMessagesSnapshotEvent(event: AgUiEvent): AgUiEvent {
+  if (event.type !== 'MESSAGES_SNAPSHOT') return event;
+  return { ...event, messages: parseConversationMessages(event.messages) };
+}
 
 /**
  * 客户端接口：页面只依赖此抽象，不感知 mock/HTTP 差异。

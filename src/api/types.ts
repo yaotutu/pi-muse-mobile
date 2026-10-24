@@ -26,6 +26,26 @@ export type ResetSpaceResult = {
 
 export type ChatRole = 'user' | 'assistant' | 'tool';
 
+/** POST /api/conversation/run 的附件上传 DTO；本地派生字段绝不能发给 strict schema。 */
+export type MessageAttachmentInput = {
+  id: string;
+  name: string;
+  mimeType: string;
+  dataBase64: string;
+};
+
+/** GET /api/conversation 与 MESSAGES_SNAPSHOT 的附件元数据；文本正文不回灌。 */
+export type ConversationAttachment = {
+  id: string;
+  name: string;
+  kind: 'image' | 'text';
+  mimeType: string;
+  size: number;
+  sha256: string;
+  /** 仅服务端从真实 user image block 投影的预览；不是任意 URI。 */
+  image?: { mimeType: string; dataBase64: string };
+};
+
 /** 权威历史里 assistant 消息携带的工具调用投影 */
 export type ToolCallProjection = {
   id: string;
@@ -38,6 +58,8 @@ export type ConversationMessage = {
   id: string;
   role: ChatRole;
   content?: string;
+  /** 仅 role=user；按提交顺序返回，图片可有服务端投影的 Base64 预览。 */
+  attachments?: ConversationAttachment[];
   toolCalls?: ToolCallProjection[];
   toolCallId?: string;
 };

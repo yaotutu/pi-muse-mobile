@@ -1,6 +1,8 @@
 import type { ApiClient } from '../api/contracts';
 import { ApiError, isRequestCancelled } from '../api/errors';
 import type { DeleteSpaceResult, ResetSpaceResult, SpaceSkills } from '../api/types';
+import { validateAttachmentDrafts } from '../attachments/validation';
+import type { AttachmentDraft, AttachmentDraftUpdateResult } from '../attachments/types';
 import { MAIN_SPACE } from './space-state';
 
 export const INSTRUCTIONS_LIMIT = 20_000;
@@ -15,6 +17,8 @@ export type PendingSubmission = {
   error?: string;
   /** 流内已收到且流已终止的终态 RUN_ERROR 证据（内存）：卸载/切回后首次完整历史对账仍可判未发送。 */
   terminalError?: string;
+  /** 权威历史确认前的完整原始附件；重试/恢复必须原样复用，不能只保留元数据。 */
+  attachments?: AttachmentDraft[];
 };
 
 type Field<T> = {
@@ -34,6 +38,8 @@ export type SpaceState = {
   resetting: boolean;
   resetUncertain: boolean;
   draft: string;
+  /** 本空间输入框当前附件；离线与系统选择器短暂失焦时保留。 */
+  draftAttachments: AttachmentDraft[];
   /** A01: 单空间单epoch独占一条未确认提交，收到权威历史包含原user ID前始终保留 */
   pendingSubmission: PendingSubmission | null;
   instructions: Field<string>;
@@ -69,7 +75,7 @@ export class SpaceStore {
   get(id: string): SpaceState {
     let entry = this.sessions.get(id);
     if (!entry) {
-      entry = { epoch: 0, sessionId: null, deleted: false, deleting: false, resetting: false, resetUncertain: false, draft: '', pendingSubmission: null, instructions: field(''), skills: { ...field<Record<string, boolean>>({}), catalog: [], diagnostics: [] } };
+      entry = { epoch: 0, sessionId: null, deleted: false, deleting: false, resetting: false, resetUncertain: false, draft: '', draftAttachments: [], pendingSubmission: null, instructions: field(''), skills: { ...field<Record<string, boolean>>({}), catalog: [], diagnostics: [] } };
       this.sessions.set(id, entry);
     }
     return entry;
@@ -82,6 +88,47 @@ export class SpaceStore {
   hasSettingsWrite(id: string) { const entry = this.get(id); return entry.instructions.saving || entry.skills.saving; }
   hasDirtySettings(id: string) { const entry = this.get(id); return entry.instructions.draft !== entry.instructions.saved || !equalSwitches(entry.skills.draft, entry.skills.saved); }
   setDraft(id: string, value: string) { if (this.canWrite(id)) { this.get(id).draft = value; this.changed(); } }
+  /** 附件草稿允许在连接短暂 enabled=false 时写入；仍拒绝 dispose、删除、重置与旧 epoch。 */
+  private canHoldDraftAttachments(id: string, epoch: number) {
+    const entry = this.get(id);
+    return !this.disposed && entry.epoch === epoch && !entry.deleted && !entry.deleting &&
+      !entry.resetting && !entry.resetUncertain;
+  }
+  setDraftAttachments(id: string, epoch: number, attachments: AttachmentDraft[]): AttachmentDraftUpdateResult {
+    if (!this.canHoldDraftAttachments(id, epoch)) return { ok: false, error: '会话已重置或不可写，附件草稿已失效' };
+    const validated = validateAttachmentDrafts(attachments);
+    if (!validated.ok) return validated;
+    this.get(id).draftAttachments = validated.attachments;
+    this.changed();
+    return { ok: true };
+  }
+  appendDraftAttachments(id: string, epoch: number, attachments: AttachmentDraft[]): AttachmentDraftUpdateResult {
+    if (!this.canHoldDraftAttachments(id, epoch)) return { ok: false, error: '会话已重置或不可写，附件草稿已失效' };
+    const incoming = validateAttachmentDrafts(attachments);
+    if (!incoming.ok) return incoming;
+    const combined = [...this.get(id).draftAttachments, ...incoming.attachments];
+    const validated = validateAttachmentDrafts(combined);
+    if (!validated.ok) return validated;
+    this.get(id).draftAttachments = validated.attachments;
+    this.changed();
+    return { ok: true };
+  }
+  removeDraftAttachment(id: string, epoch: number, attachmentId: string): boolean {
+    if (!this.canHoldDraftAttachments(id, epoch)) return false;
+    const entry = this.get(id);
+    if (!entry.draftAttachments.some((attachment) => attachment.id === attachmentId)) return false;
+    entry.draftAttachments = entry.draftAttachments.filter((attachment) => attachment.id !== attachmentId);
+    this.changed();
+    return true;
+  }
+  clearDraftAttachments(id: string, epoch: number): boolean {
+    if (!this.canHoldDraftAttachments(id, epoch)) return false;
+    const entry = this.get(id);
+    if (entry.draftAttachments.length === 0) return false;
+    entry.draftAttachments = [];
+    this.changed();
+    return true;
+  }
   setPendingSubmission(id: string, epoch: number, submission: PendingSubmission) {
     const entry = this.get(id);
     if (!this.disposed && entry.epoch === epoch && this.canWrite(id)) {
@@ -117,15 +164,25 @@ export class SpaceStore {
       }
     }
   }
-  /** 仅恢复终态 failed 的未发送正文；草稿已有任何输入（含纯空白）都不覆盖。 */
+  /** 仅恢复终态 failed 的未发送正文与原始附件；草稿已有任何输入或附件都不覆盖。 */
   restorePendingSubmissionToDraft(id: string): boolean {
     const entry = this.get(id);
     if (this.disposed || !this.canWrite(id)) return false;
-    if (entry.draft.length > 0) return false;
+    if (entry.draft.length > 0 || entry.draftAttachments.length > 0) return false;
     const pending = entry.pendingSubmission;
     if (!pending || pending.status !== 'failed') return false;
     entry.draft = pending.text;
+    entry.draftAttachments = [...(pending.attachments ?? [])];
     entry.pendingSubmission = null;
+    this.changed();
+    return true;
+  }
+  /** 显式手动重试才允许复用原 message/run ID；同时清空旧失败证据，避免下一轮误判。 */
+  retryPendingSubmission(id: string, epoch: number, messageId: string): boolean {
+    const entry = this.get(id);
+    const pending = entry.pendingSubmission;
+    if (this.disposed || entry.epoch !== epoch || pending?.messageId !== messageId || pending.status !== 'failed') return false;
+    entry.pendingSubmission = { ...pending, status: 'sending', error: undefined, terminalError: undefined };
     this.changed();
     return true;
   }
@@ -153,6 +210,7 @@ export class SpaceStore {
     if (entry.sessionId !== null || entry.resetUncertain) {
       entry.epoch++;
       entry.draft = '';
+      entry.draftAttachments = [];
       entry.pendingSubmission = null;
       this.cancelReads(id);
     }
@@ -168,6 +226,7 @@ export class SpaceStore {
     // 与删除不同，空间设置（包括未保存草稿）和私有工作区必须保留。
     entry.resetting = true;
     entry.epoch++;
+    entry.draftAttachments = [];
     entry.pendingSubmission = null;
     this.lifecycleVersion++;
     this.cancelReads(id);
@@ -177,6 +236,7 @@ export class SpaceStore {
       if (this.get(id) !== entry) return undefined;
       entry.sessionId = result.sessionId;
       entry.draft = '';
+      entry.draftAttachments = [];
       entry.pendingSubmission = null;
       entry.resetUncertain = false;
       return result;
@@ -335,6 +395,7 @@ export class SpaceStore {
     const blank = this.get(id);
     blank.epoch = entry.epoch + 1;
     blank.pendingSubmission = null;
+    blank.draftAttachments = [];
     blank.deleted = true;
     this.lifecycleVersion++;
     this.changed();
@@ -350,6 +411,7 @@ export class SpaceStore {
     for (const entry of this.sessions.values()) {
       entry.pendingSubmission = null;
       entry.draft = '';
+      entry.draftAttachments = [];
     }
     for (const controller of this.reads.values()) controller.abort();
     this.reads.clear();

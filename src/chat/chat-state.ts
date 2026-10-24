@@ -10,7 +10,7 @@
  * - role=tool 的历史消息是结果投影，归并进对应 assistant 消息。
  */
 
-import type { AgUiEvent, ConversationMessage } from '../api/types';
+import type { AgUiEvent, ConversationAttachment, ConversationMessage } from '../api/types';
 
 /** 单次工具调用的渲染视图 */
 export type ToolCallView = {
@@ -20,11 +20,16 @@ export type ToolCallView = {
   result?: string;
 };
 
+/** 渲染层只需要附件元数据；SHA 只用于服务端身份，不进入气泡展示。 */
+export type MessageAttachmentView = Omit<ConversationAttachment, 'sha256'>;
+
 /** 消息渲染视图：assistant 消息可同时含文本与多个工具卡 */
 export type MessageView = {
   id: string;
   role: 'user' | 'assistant';
   text: string;
+  /** 仅用户消息附件元数据；文本正文不进入气泡，图片仅消费服务端投影预览。 */
+  attachments?: MessageAttachmentView[];
   toolCalls: ToolCallView[];
   /** 运行中的 assistant 消息（流式聚合中） */
   streaming?: boolean;
@@ -39,6 +44,7 @@ export function projectHistory(messages: ConversationMessage[]): MessageView[] {
         id: message.id,
         role: 'user',
         text: message.content ?? '',
+        ...(message.attachments?.length ? { attachments: message.attachments } : {}),
         toolCalls: [],
       });
     } else if (message.role === 'assistant') {

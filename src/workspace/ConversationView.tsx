@@ -4,10 +4,12 @@
  * 边界：单实例绑定单个空间的聊天代次（父级以 spaceId + epoch 隔离生命周期）；
  * assistant Markdown 与工具专用展示由独立组件负责，不猜测审批决定。
  */
-import { ArrowDown, ArrowUp, Plus, Square } from 'lucide-react-native';
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { ArrowDown, ArrowUp, Square } from 'lucide-react-native';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type TextStyle } from 'react-native';
 import { useApi } from '../api/ApiProvider';
+import { pickMessageAttachments } from '../attachments/picker';
+import { AttachmentAction, AttachmentStrip, MessageAttachments } from '../attachments/AttachmentViews';
 import type { MessageView } from '../chat/chat-state';
 import { useConversation } from '../chat/useConversation';
 import { useServiceConnection } from '../connection/ConnectionProvider';
@@ -59,6 +61,21 @@ export function ConversationView({
   const [showLatest, setShowLatest] = useState(false);
   const [focused, setFocused] = useState(false);
   const [inputHeight, setInputHeight] = useState(l.composerHeight - l.composerPadding * 2);
+  const [selecting, setSelecting] = useState(false);
+  const [attachmentError, setAttachmentError] = useState('');
+  const pickerInFlight = useRef(false);
+  const pickerRequest = useRef(0);
+  const mounted = useRef(true);
+  const currentOwner = useRef({ sessions, spaceId, epoch: session.epoch });
+
+  useLayoutEffect(() => {
+    currentOwner.current = { sessions, spaceId, epoch: session.epoch };
+  }, [sessions, spaceId, session.epoch]);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
 
   useEffect(() => {
     if (previousRunning.current && !conversation.running) onSettled();
@@ -82,6 +99,7 @@ export function ConversationView({
     !!connection?.enabled &&
     runtime.synchronized &&
     !busy &&
+    !selecting &&
     !pending &&
     !conversation.loading &&
     !conversation.historyFailed &&
@@ -107,13 +125,50 @@ export function ConversationView({
     }
   };
 
+  const hasInput = !!session.draft.trim() || session.draftAttachments.length > 0;
   const send = () => {
-    if (!canSend || !session.draft.trim()) return;
+    if (pickerInFlight.current || !canSend || !hasInput) return;
     setStopError('');
     void conversation.send(
       session.draft,
-      () => sessions.setDraft(spaceId, ''),
+      // send 只在消息已进入 pending 后同步调用此回调；失败或结果未明时原件仍由 pending 持有。
+      () => {
+        sessions.setDraft(spaceId, '');
+        sessions.clearDraftAttachments(spaceId, session.epoch);
+        setAttachmentError('');
+      },
+      session.draftAttachments,
     );
+  };
+
+  const selectAttachments = async () => {
+    if (pickerInFlight.current || busy || pending || !sessions.canWrite(spaceId)) return;
+    pickerInFlight.current = true;
+    const request = ++pickerRequest.current;
+    const owner = { sessions, spaceId, epoch: session.epoch, lifecycle: sessions.getLifecycleVersion() };
+    const ownsResult = () => mounted.current && pickerRequest.current === request &&
+      currentOwner.current.sessions === owner.sessions && currentOwner.current.spaceId === owner.spaceId &&
+      currentOwner.current.epoch === owner.epoch && owner.sessions.getLifecycleVersion() === owner.lifecycle &&
+      owner.sessions.get(owner.spaceId).epoch === owner.epoch && owner.sessions.canWrite(owner.spaceId);
+    setSelecting(true);
+    setAttachmentError('');
+    try {
+      const result = await pickMessageAttachments();
+      // 系统选择器会短暂让连接 enabled=false；草稿归属由 store/epoch/lifecycle 决定。
+      if (!ownsResult()) return;
+      if (result.status === 'error') setAttachmentError(result.message);
+      else if (result.status === 'selected') {
+        const appended = owner.sessions.appendDraftAttachments(owner.spaceId, owner.epoch, result.attachments);
+        if (!appended.ok) setAttachmentError(appended.error);
+      }
+    } catch (error) {
+      if (ownsResult()) setAttachmentError(error instanceof Error ? error.message : '选择附件失败，请重试');
+    } finally {
+      if (pickerRequest.current === request) {
+        pickerInFlight.current = false;
+        if (mounted.current) setSelecting(false);
+      }
+    }
   };
   const followLatest = () => {
     // 键盘收缩和转为紧凑顶栏只改变视口尺寸；跟随最新时也要重新锚定，不能截掉尾条回复。
@@ -164,8 +219,8 @@ export function ConversationView({
               <Text accessibilityRole="alert" style={styles.error}>
                 {pending.error ?? '消息未送达服务端'}
               </Text>
-              {session.draft.length > 0 ? (
-                <Text style={styles.mutedText}>输入框已有草稿：请先复制保存或清空当前草稿，再恢复此消息</Text>
+              {session.draft.length > 0 || session.draftAttachments.length > 0 ? (
+                <Text style={styles.mutedText}>输入框已有文字或附件：请先保存或清空当前草稿，再恢复此消息</Text>
               ) : (
                 <Pressable
                   accessibilityRole="button"
@@ -214,11 +269,16 @@ export function ConversationView({
         {showLatest && <Pressable accessibilityRole="button" accessibilityLabel="回到最新消息" onPress={() => { nearBottom.current = true; setShowLatest(false); scroll.current?.scrollToEnd({ animated: true }); }} style={styles.latestButton}><ArrowDown size={sizing[18]} color={colors.ink} /><Text style={styles.caption}>回到最新</Text></Pressable>}
       </View>
       {!visible && <View style={styles.chatBody}>{otherPage}</View>}
-      {visible && (
+      {visible && <>
+        {(session.draftAttachments.length > 0 || !!attachmentError) && <View style={styles.attachmentArea}>
+          <AttachmentStrip items={session.draftAttachments} disabled={selecting || !!pending || busy || !sessions.canWrite(spaceId)} onRemove={(id) => {
+            sessions.removeDraftAttachment(spaceId, session.epoch, id);
+            setAttachmentError('');
+          }} />
+          {!!attachmentError && <Text accessibilityRole="alert" style={styles.error}>{attachmentError}</Text>}
+        </View>}
         <View style={[styles.composer, focused && styles.composerFocused]}>
-          <Pressable accessibilityRole="button" accessibilityLabel="附件尚未接入" style={styles.composerControl} disabled>
-            <Plus size={l.iconSize} color={colors.faint} />
-          </Pressable>
+          <AttachmentAction disabled={busy || !!pending || !sessions.canWrite(spaceId)} selecting={selecting} onPress={() => void selectAttachments()} />
           <TextInput
             accessibilityLabel="消息输入框"
             placeholder="消息"
@@ -261,14 +321,14 @@ export function ConversationView({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={busy ? '停止当前运行' : '发送消息'}
-            disabled={busy ? !runtime.synchronized || session.deleting : !canSend || !session.draft.trim()}
-            style={[styles.sendButton, ((!canSend && !busy) || (!busy && !session.draft.trim())) && styles.disabled]}
+            disabled={busy ? !runtime.synchronized || session.deleting : !canSend || !hasInput}
+            style={[styles.sendButton, ((!canSend && !busy) || (!busy && !hasInput)) && styles.disabled]}
             onPress={() => void (busy ? stop() : send())}
           >
             {busy ? <Square size={sizing[16]} color={colors.onAccent} fill={colors.onAccent} /> : <ArrowUp size={l.iconSize} color={colors.onAccent} />}
           </Pressable>
         </View>
-      )}
+      </>}
     </>
   );
 }
@@ -277,16 +337,18 @@ function Message({ message, pendingStatus }: { message: MessageView; pendingStat
   const styles = useStyles();
   return (
     <View style={styles.messageBlock}>
-      {!!message.text && (
+      {(!!message.text || (message.role === 'user' && !!message.attachments?.length)) && (
         <View style={[
           styles.message,
           message.role === 'user' ? styles.userMessage : styles.assistantMessage,
+          message.role === 'user' && !!message.attachments?.length && styles.userMessageWithAttachments,
           pendingStatus === 'failed' && styles.userMessageFailed,
           pendingStatus === 'unconfirmed' && styles.userMessageUnconfirmed,
         ]}>
-          {message.role === 'user'
+          {!!message.text && (message.role === 'user'
             ? <Text selectable style={[styles.messageText, styles.userMessageText]}>{message.text}</Text>
-            : <MessageContent text={message.text} />}
+            : <MessageContent text={message.text} />)}
+          {message.role === 'user' && !!message.attachments?.length && <MessageAttachments items={message.attachments} />}
           {pendingStatus === 'sending' && (
             <Text style={styles.messageSubtext}>发送中…</Text>
           )}
@@ -328,6 +390,8 @@ const createStyles = (c: WorkspaceColors) =>
       alignSelf: 'flex-end',
       maxWidth: l.userMessageWidth,
     },
+    // 附件列表使用百分比宽度；明确气泡宽度，避免 Android 在内容固有尺寸计算时把附件信息压到零宽。
+    userMessageWithAttachments: { width: l.userMessageWidth },
     messageText: { ...t.message, color: c.ink },
     userMessageText: { color: c.onAccent },
     composer: {
@@ -343,12 +407,7 @@ const createStyles = (c: WorkspaceColors) =>
       borderColor: c.line,
     },
     composerFocused: { borderColor: c.faint },
-    composerControl: {
-      width: l.smallControl,
-      height: l.smallControl,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
+    attachmentArea: { marginHorizontal: l.sidePadding, marginBottom: spacing[8], gap: spacing[6] },
     input: {
       flex: 1,
       minWidth: 0,

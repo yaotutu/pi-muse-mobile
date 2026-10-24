@@ -43,7 +43,10 @@ import {
   type MonitorAction,
   type Profile,
   type RunInput,
+  parseConversationSnapshot,
+  parseMessagesSnapshotEvent,
 } from './contracts';
+import { attachmentUploadOf, validateOutgoingMessage } from '../attachments/validation';
 import { ApiError, isRequestCancelled, requestCancelled, responseError } from './errors';
 import { parseSseFrames } from './sse';
 import { parseResetSpace, parseSpaces } from './space-contracts';
@@ -265,7 +268,9 @@ export class HttpApiClient implements ApiClient {
   }
 
   async getConversation(spaceId: string, signal?: AbortSignal): Promise<ConversationSnapshot> {
-    return this.request<ConversationSnapshot>(`/api/conversation?spaceId=${encodeURIComponent(spaceId)}`, { signal });
+    return parseConversationSnapshot(
+      await this.request<unknown>(`/api/conversation?spaceId=${encodeURIComponent(spaceId)}`, { signal }),
+    );
   }
 
   // --- 空间配置：响应字段必须存在且类型正确，200 但结构错位报 502（与服务端快照校验一致） ---
@@ -348,6 +353,8 @@ export class HttpApiClient implements ApiClient {
     signal?: AbortSignal,
   ): Promise<void> {
     if (this.retired || this.paused) throw requestCancelled();
+    const outgoing = validateOutgoingMessage(input.message.content, input.message.attachments ?? []);
+    if (!outgoing.ok) throw new ApiError(400, outgoing.error);
     const token = this.getToken();
     const control = this.control(this.options.headerTimeoutMs ?? this.options.timeoutMs ?? 15_000, signal);
     const run = { spaceId: input.spaceId, runId: input.runId, token };
@@ -358,7 +365,16 @@ export class HttpApiClient implements ApiClient {
       const response = await expoFetch(`${this.baseUrl}/api/conversation/run`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify(input), signal: control.controller.signal, redirect: 'error',
+        body: JSON.stringify({
+          ...input,
+          message: {
+            id: input.message.id,
+            content: input.message.content,
+            ...(outgoing.attachments.length
+              ? { attachments: outgoing.attachments.map(attachmentUploadOf) }
+              : {}),
+          },
+        }), signal: control.controller.signal, redirect: 'error',
       });
       control.assertActive();
       if (response.status === 401) {
@@ -390,7 +406,13 @@ export class HttpApiClient implements ApiClient {
           buffer = rest;
           for (const event of events) {
             if (event.type === 'RUN_FINISHED' || event.type === 'RUN_ERROR') terminal = true;
-            try { onEvent(event); } catch (error) { callbackFailed = true; throw error; }
+            let safeEvent = event;
+            try {
+              safeEvent = parseMessagesSnapshotEvent(event);
+            } catch {
+              throw new ApiError(502, '服务器返回的会话快照格式不正确，请确认服务器版本与地址');
+            }
+            try { onEvent(safeEvent); } catch (error) { callbackFailed = true; throw error; }
           }
         }
         if (!terminal) throw new ApiError(0, '回复连接意外中断，请重新加载会话后重试');

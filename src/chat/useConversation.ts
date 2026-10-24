@@ -6,6 +6,9 @@ import { ApiError, isRequestCancelled, requestCancelled } from '../api/errors';
 import { useServiceConnection } from '../connection/ConnectionProvider';
 import { StreamAggregator, projectHistory, type MessageView } from './chat-state';
 import type { ConversationMessage, ConversationSnapshot } from '../api/types';
+import { validateOutgoingDraftMessage } from '../attachments/validation';
+import type { AttachmentDraft } from '../attachments/types';
+import type { PendingSubmission } from '../spaces/space-store';
 
 let clientSequence = 0;
 const nextClientId = (prefix: string) => `${prefix}-${Date.now()}-${++clientSequence}`;
@@ -20,6 +23,7 @@ const PRE_RUN_REJECTS: Record<string, { status: number; conflictsWithPersisted?:
   SHUTDOWN: { status: 503 },
   INVALID_INPUT: { status: 400 },
   UNSUPPORTED_SPACE: { status: 400 },
+  REQUEST_TOO_LARGE: { status: 413 },
   agent_thread_locked: { status: 409 },
   HISTORY_CONFLICT: { status: 409 },
   RUN_ID_CONFLICT: { status: 409, conflictsWithPersisted: true },
@@ -221,39 +225,25 @@ export function useConversation(spaceId: string, refreshKey = 0) {
     finally { if (historyRequest.current === controller) historyRequest.current = null; }
   };
 
-  const send = async (raw: string, onAccepted: () => void) => {
-    const text = raw.trim();
-    if (!enabled || sessions.isDisposed() || !sessions.isCurrent(spaceId, epoch) || !text || loading || historyFailed || abortRef.current || !revisionRef.current) return;
-    if (sessions.get(spaceId).pendingSubmission) return; // 上一条未确认提交未处理前，禁止重复发送或覆盖
-
-    historyRequest.current?.abort();
-    const messageId = nextClientId('u');
-    const runId = nextClientId('run');
-
-    // 发送前先暂存，再清输入框（A01 核心契约：权威历史保存前客户端持有正文所有权）。
-    sessions.setPendingSubmission(spaceId, epoch, {
-      messageId,
-      runId,
-      text,
-      epoch,
-      status: 'sending',
-    });
-    onAccepted();
-    setError(undefined);
-
+  /** 新发送与显式重试共用同一套终态对账；区别只在是否复用原 message/run 与附件身份。 */
+  const executeSubmission = async (submission: PendingSubmission) => {
     const controller = new AbortController();
     abortRef.current = controller;
-    runIdRef.current = runId;
+    runIdRef.current = submission.runId;
+    const attachments = submission.attachments ?? [];
 
-    // 历史是服务端事实；客户端只发送新消息和读取历史时的版本，不再复制用户序列。
-    const expectedRevision = revisionRef.current;
+    // 权威历史保存前，客户端以原附件完整载荷构造乐观视图；正文仍只是用户输入文字。
     const userView: MessageView = {
-      id: messageId,
+      id: submission.messageId,
       role: 'user',
-      text,
+      text: submission.text,
+      ...(attachments.length ? { attachments } : {}),
       toolCalls: [],
     };
-    const aggregator = new StreamAggregator([...views, userView]);
+    const baseViews = views.some((view) => view.id === submission.messageId)
+      ? views.map((view) => (view.id === submission.messageId ? userView : view))
+      : [...views, userView];
+    const aggregator = new StreamAggregator(baseViews);
     setViews([...aggregator.messages]);
     setRunning(true);
 
@@ -264,9 +254,13 @@ export function useConversation(spaceId: string, refreshKey = 0) {
       await api.runAgent(
         {
           spaceId,
-          runId,
-          expectedRevision,
-          message: { id: userView.id, content: text },
+          runId: submission.runId,
+          expectedRevision: revisionRef.current!,
+          message: {
+            id: submission.messageId,
+            content: submission.text,
+            ...(attachments.length ? { attachments } : {}),
+          },
         },
         (event) => {
           if (!current() || controller.signal.aborted) return;
@@ -276,7 +270,7 @@ export function useConversation(spaceId: string, refreshKey = 0) {
             runErrorMessage = event.message ?? '助手运行失败，请重试';
             // 终态证据持久在暂存条目内存：卸载/切回后首次完整历史对账仍可判定未发送。
             if (event.code !== 'STOPPED') {
-              sessions.updatePendingSubmissionStatus(spaceId, epoch, messageId, {
+              sessions.updatePendingSubmissionStatus(spaceId, epoch, submission.messageId, {
                 status: 'sending',
                 terminalError: runErrorMessage,
               });
@@ -292,7 +286,7 @@ export function useConversation(spaceId: string, refreshKey = 0) {
         // 组件已卸载但代次仍有效：只能保守标记待确认，交给重新挂载后的历史同步对账。
         // terminalError 已在 RUN_ERROR 事件回调写入条目，此处状态降级不丢终态证据。
         if (sessions.isCurrent(spaceId, epoch)) {
-          sessions.updatePendingSubmissionStatus(spaceId, epoch, messageId, { status: 'unconfirmed' });
+          sessions.updatePendingSubmissionStatus(spaceId, epoch, submission.messageId, { status: 'unconfirmed' });
         }
         return;
       }
@@ -303,7 +297,7 @@ export function useConversation(spaceId: string, refreshKey = 0) {
           if (current()) {
             setViews([...aggregator.messages]);
             setHistoryFailed(true);
-            sessions.updatePendingSubmissionStatus(spaceId, epoch, messageId, { status: 'unconfirmed' });
+            sessions.updatePendingSubmissionStatus(spaceId, epoch, submission.messageId, { status: 'unconfirmed' });
           }
           return;
         }
@@ -312,7 +306,7 @@ export function useConversation(spaceId: string, refreshKey = 0) {
         if (current()) {
           revisionRef.current = history.revision;
           // 终态 RUN_ERROR + 完整历史缺失原 ID = 确切未发送证据；正常结束缺失仍待确认。
-          const released = reconcilePendingWithHistory(history.messages, messageId, runErrorOccurred, runErrorMessage);
+          const released = reconcilePendingWithHistory(history.messages, submission.messageId, runErrorOccurred, runErrorMessage);
           if (released) {
             setViews(projectHistory(history.messages));
             setHistoryFailed(false);
@@ -324,7 +318,7 @@ export function useConversation(spaceId: string, refreshKey = 0) {
             setHistoryFailed(false);
             setError(runErrorMessage);
           } else {
-            sessions.updatePendingSubmissionStatus(spaceId, epoch, messageId, {
+            sessions.updatePendingSubmissionStatus(spaceId, epoch, submission.messageId, {
               status: 'unconfirmed',
               error: '消息保存状态未明，请重新同步核对',
             });
@@ -339,7 +333,7 @@ export function useConversation(spaceId: string, refreshKey = 0) {
           setViews([...aggregator.messages]);
           // 内容可以保留展示，但没有新版本不能安全发送下一轮。
           setHistoryFailed(true);
-          sessions.updatePendingSubmissionStatus(spaceId, epoch, messageId, {
+          sessions.updatePendingSubmissionStatus(spaceId, epoch, submission.messageId, {
             status: 'unconfirmed',
             error: '回复已结束，但会话同步失败，请重新加载后继续',
           });
@@ -353,7 +347,7 @@ export function useConversation(spaceId: string, refreshKey = 0) {
       if (current() && (controller.signal.aborted || isRequestCancelled(e))) {
         if (!enabledRef.current) {
           setHistoryFailed(true);
-          sessions.updatePendingSubmissionStatus(spaceId, epoch, messageId, { status: 'unconfirmed' });
+          sessions.updatePendingSubmissionStatus(spaceId, epoch, submission.messageId, { status: 'unconfirmed' });
           return;
         }
         // 停止也可能已落盘部分回复；恢复服务端历史与版本后才允许发送下一轮。
@@ -361,11 +355,11 @@ export function useConversation(spaceId: string, refreshKey = 0) {
           const history = await syncAfterRun();
           if (current()) {
             revisionRef.current = history.revision;
-            const released = reconcilePendingWithHistory(history.messages, messageId, false);
+            const released = reconcilePendingWithHistory(history.messages, submission.messageId, false);
             if (released) {
               setViews(projectHistory(history.messages));
             } else {
-              sessions.updatePendingSubmissionStatus(spaceId, epoch, messageId, {
+              sessions.updatePendingSubmissionStatus(spaceId, epoch, submission.messageId, {
                 status: 'unconfirmed',
                 error: '已停止但保存状态未确认',
               });
@@ -376,14 +370,14 @@ export function useConversation(spaceId: string, refreshKey = 0) {
         } catch (syncError) {
           if (current()) {
             setHistoryFailed(true);
-            sessions.updatePendingSubmissionStatus(spaceId, epoch, messageId, { status: 'unconfirmed' });
+            sessions.updatePendingSubmissionStatus(spaceId, epoch, submission.messageId, { status: 'unconfirmed' });
             if (!isRequestCancelled(syncError)) setError('停止后无法同步会话，请重新加载');
           }
         }
       } else if (preRunRejectOf(e)) {
         // 契约明确的前置拒绝（SSE 开启前返回）：先与权威历史对账/刷新 revision，绝不清空旧历史。
         const message = e instanceof ApiError ? preRunRejectMessage(e) : '服务端拒绝执行，消息未发送';
-        sessions.updatePendingSubmissionStatus(spaceId, epoch, messageId, { status: 'sending', terminalError: message });
+        sessions.updatePendingSubmissionStatus(spaceId, epoch, submission.messageId, { status: 'sending', terminalError: message });
         try {
           if (!current()) throw requestCancelled();
           const history = await syncAfterRun();
@@ -391,7 +385,7 @@ export function useConversation(spaceId: string, refreshKey = 0) {
             revisionRef.current = history.revision;
             // 有原 ID 释放、无原 ID 判 failed；HISTORY_CONFLICT 已由本次回读拿到新 revision 解除，
             // 恢复草稿后可手动重提，绝不自动发送。
-            reconcilePendingWithHistory(history.messages, messageId, true, message);
+            reconcilePendingWithHistory(history.messages, submission.messageId, true, message);
             setViews(projectHistory(history.messages));
             setHistoryFailed(false);
             setError(message);
@@ -400,7 +394,7 @@ export function useConversation(spaceId: string, refreshKey = 0) {
           // 前置拒绝后历史回读失败：保守待确认并锁定发送，后续 reload 可解锁。
           if (current()) {
             setHistoryFailed(true);
-            sessions.updatePendingSubmissionStatus(spaceId, epoch, messageId, {
+            sessions.updatePendingSubmissionStatus(spaceId, epoch, submission.messageId, {
               status: 'unconfirmed',
               error: message,
             });
@@ -415,7 +409,7 @@ export function useConversation(spaceId: string, refreshKey = 0) {
           setHistoryFailed(true);
         }
         if (sessions.isCurrent(spaceId, epoch)) {
-          sessions.updatePendingSubmissionStatus(spaceId, epoch, messageId, {
+          sessions.updatePendingSubmissionStatus(spaceId, epoch, submission.messageId, {
             status: 'unconfirmed',
             error: errText,
           });
@@ -431,6 +425,51 @@ export function useConversation(spaceId: string, refreshKey = 0) {
         if (stale && sessions.canWrite(spaceId)) setHistoryVersion((value) => value + 1);
       }
     }
+  };
+
+  const send = async (
+    raw: string,
+    onAccepted?: () => void,
+    attachments?: readonly AttachmentDraft[],
+  ) => {
+    const text = raw.trim();
+    if (!enabled || sessions.isDisposed() || !sessions.isCurrent(spaceId, epoch) || loading || historyFailed || abortRef.current || !revisionRef.current) return;
+    if (sessions.get(spaceId).pendingSubmission) return; // 上一条未确认提交未处理前，禁止重复发送或覆盖
+
+    const selectedAttachments = attachments ?? sessions.get(spaceId).draftAttachments;
+    const validated = validateOutgoingDraftMessage(text, selectedAttachments);
+    if (!validated.ok) {
+      setError(validated.error);
+      return;
+    }
+
+    historyRequest.current?.abort();
+    const messageId = nextClientId('u');
+    const runId = nextClientId('run');
+
+    // 发送前先暂存完整正文与附件，再清输入框（A01 核心契约：权威历史保存前客户端持有所有权）。
+    sessions.setPendingSubmission(spaceId, epoch, {
+      messageId,
+      runId,
+      text: validated.text,
+      epoch,
+      status: 'sending',
+      ...(validated.attachments.length ? { attachments: validated.attachments } : {}),
+    });
+    onAccepted?.();
+    setError(undefined);
+    await executeSubmission(sessions.get(spaceId).pendingSubmission!);
+  };
+
+  /** 只允许用户显式重试 failed 轮；复用原 ID 与原始附件，避免把失败轮改写成新消息。 */
+  const retry = async (): Promise<boolean> => {
+    if (!enabled || sessions.isDisposed() || !sessions.isCurrent(spaceId, epoch) || loading || historyFailed || abortRef.current || !revisionRef.current) return false;
+    const pending = sessions.get(spaceId).pendingSubmission;
+    if (!pending || pending.epoch !== epoch || pending.status !== 'failed') return false;
+    if (!sessions.retryPendingSubmission(spaceId, epoch, pending.messageId)) return false;
+    setError(undefined);
+    await executeSubmission({ ...pending, status: 'sending', error: undefined, terminalError: undefined });
+    return true;
   };
 
   const stop = async () => {
@@ -463,6 +502,7 @@ export function useConversation(spaceId: string, refreshKey = 0) {
             id: pendingSubmission.messageId,
             role: 'user' as const,
             text: pendingSubmission.text,
+            ...(pendingSubmission.attachments?.length ? { attachments: pendingSubmission.attachments } : {}),
             toolCalls: [],
           },
         ]
@@ -475,6 +515,7 @@ export function useConversation(spaceId: string, refreshKey = 0) {
     loading: loading || !enabled,
     historyFailed,
     send,
+    retry,
     stop,
     reload,
     pendingSubmission,

@@ -1,13 +1,13 @@
 /** A01 对话流程隔离测试支架（模拟 React 运行时驱动真实 Hook 与 SpaceStore 生产路径，非原生运行）。 */
 
-import type { ApiClient } from '../../src/api/contracts';
+import type { ApiClient, RunInput } from '../../src/api/contracts';
 import type { AgUiEvent, ConversationSnapshot } from '../../src/api/types';
 import type { AgentStatusResponse, RunStatus } from '../../src/runtime/types';
 
 export type MockApiHandlers = {
   getConversation?: (spaceId: string, signal?: AbortSignal) => Promise<ConversationSnapshot>;
   runAgent?: (
-    input: { spaceId: string; runId: string; expectedRevision: string; message: { id: string; content: string } },
+    input: RunInput,
     onEvent: (event: AgUiEvent) => void,
     signal?: AbortSignal,
   ) => Promise<void>;
