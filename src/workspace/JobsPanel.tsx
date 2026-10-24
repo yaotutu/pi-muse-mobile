@@ -1,30 +1,37 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { CalendarClock, ChevronRight } from 'lucide-react-native';
+import { CalendarClock, ChevronRight, Clock3, Globe2 } from 'lucide-react-native';
 import { useJobs } from '../jobs/JobProvider';
 import { availableJobActions, JOB_PROMPT_LIMIT, jobActionLabel, jobStatusLabel, localJobTime } from '../jobs/presentation';
 import type { JobStatus, JobsQuery } from '../api/types';
 import { useTheme } from '../theme/ThemeProvider';
 import { spacing, workspaceTheme, type WorkspaceColors } from '../ui/tokens';
-import { EmptyState, SectionHeading, StatusPill, type StatusTone } from './primitives';
+import { EmptyState, StatusPill, type StatusTone } from './primitives';
 import { ActivityPanel } from './ActivityPanel';
 import { MonitorsPanel } from './MonitorsPanel';
 
 function useStyles() { const { colors } = useTheme(); return useMemo(() => createStyles(colors), [colors]); }
-function Button({ label, onPress, selected, disabled, role = 'button' }: { label: string; onPress: () => void; selected?: boolean; disabled?: boolean; role?: 'button' | 'tab' }) {
+function Button({ label, shortLabel, onPress, selected, disabled }: { label: string; shortLabel?: string; onPress: () => void; selected?: boolean; disabled?: boolean }) {
   const styles = useStyles();
-  return <Pressable accessibilityRole={role} accessibilityLabel={label} accessibilityState={{ selected, disabled: !!disabled }} disabled={disabled} onPress={onPress}
-    style={({ pressed }) => [styles.button, selected && styles.selected, disabled && styles.disabled, pressed && styles.pressed]}><Text style={styles.buttonText}>{label}</Text></Pressable>;
+  return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected, disabled: !!disabled }} disabled={disabled} onPress={onPress}
+    style={({ pressed }) => [styles.button, selected && styles.selected, disabled && styles.disabled, pressed && styles.pressed]}><Text style={styles.buttonText}>{shortLabel ?? label}</Text></Pressable>;
 }
 
-/** 任务主页面只增加同层切换，不改变四个主 Tab 或会话面板的历史入口。 */
+/** 任务主页面与会话面板使用同一组胶囊语言；切换仍只挂载当前领域视图。 */
 export function TasksPage({ spaceId }: { spaceId: string }) {
-  const [tab, setTab] = useState<'activity' | 'jobs' | 'monitors'>('activity'); const styles = useStyles();
+  const [tab, setTab] = useState<'activity' | 'jobs' | 'monitors'>('activity'); const styles = useStyles(); const { colors } = useTheme();
+  const tabs = [
+    { id: 'activity', label: '活动历史', Icon: Clock3 },
+    { id: 'jobs', label: '定时任务', Icon: CalendarClock },
+    { id: 'monitors', label: '网页监控', Icon: Globe2 },
+  ] as const;
   return <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.page}>
-    <View accessibilityRole="tablist" accessibilityLabel="任务内容" style={styles.row}>
-      <Button role="tab" label="活动历史" selected={tab === 'activity'} onPress={() => setTab('activity')} />
-      <Button role="tab" label="定时任务" selected={tab === 'jobs'} onPress={() => setTab('jobs')} />
-      <Button role="tab" label="网页监控" selected={tab === 'monitors'} onPress={() => setTab('monitors')} />
+    <View accessibilityRole="tablist" accessibilityLabel="任务内容" style={styles.tablist}>
+      {tabs.map(({ id, label, Icon }) => <Pressable key={id} accessibilityRole="tab" accessibilityLabel={label} accessibilityState={{ selected: tab === id }}
+        testID={`tasks-tab-${id}`} onPress={() => setTab(id)} style={({ pressed }) => [styles.tab, tab === id && styles.tabSelected, pressed && styles.pressed]}>
+        <Icon size={workspaceTheme.layout.iconSize - spacing[4]} color={tab === id ? colors.ink : colors.faint} strokeWidth={tab === id ? 2 : 1.6} />
+        <Text numberOfLines={1} style={[styles.tabLabel, tab === id && styles.tabLabelSelected]}>{label}</Text>
+      </Pressable>)}
     </View>
     {tab === 'activity' ? <ActivityPanel key={spaceId} spaceId={spaceId} defaultScope="all" /> : tab === 'jobs' ? <JobsPanel spaceId={spaceId} /> : <MonitorsPanel spaceId={spaceId} />}
   </ScrollView>;
@@ -44,24 +51,30 @@ export function JobsPanel({ spaceId }: { spaceId: string }) {
   const locked = state.writing || state.uncertain;
   const query = (patch: Partial<JobsQuery>) => store.setQuery({ ...state.query, ...patch });
   return <View style={styles.root} testID="jobs-panel">
-    <SectionHeading title="定时任务" eyebrow="AT THE RIGHT TIME" description="在聊天中告诉 Pi Muse 何时做什么；这里管理真实的排期与执行记录。" />
-    <View style={styles.row}>
+    <View style={styles.toolbar}>
       {!!state.selectedId && <Button label="返回定时任务列表" disabled={locked || !!editor} onPress={() => store.select()} />}
-      <Button label="刷新定时任务" disabled={state.loading || state.writing} onPress={() => void store.refresh()} />
+      {!state.selectedId && <Text style={styles.caption}>{state.loaded ? `${state.jobs.length} 项定时任务` : '定时任务列表'}</Text>}
+      <Button label="刷新定时任务" shortLabel="刷新" disabled={state.loading || state.writing} onPress={() => void store.refresh()} />
     </View>
-    <Text style={styles.caption}>每日时刻按服务端时区：{state.timeZone ?? '尚未读取'}。一次性任务与下次执行时刻按手机本地时间展示。</Text>
+    <Text style={styles.caption}>每日按服务端时区 {state.timeZone ?? '尚未读取'}；一次性与下次执行按手机本地时间。</Text>
     {!!state.timeZoneError && <Text accessibilityRole="alert" style={styles.error}>{state.timeZoneError}</Text>}
     {state.loading && <ActivityIndicator color={colors.muted} accessibilityLabel="正在读取定时任务" />}
-    {state.stale && state.loaded && <Text style={styles.caption}>最后观测数据，操作前请刷新核对。运行通知仅提示回读，最新调度结果可能稍后落盘。</Text>}
+    {state.stale && state.loaded && <View style={styles.warning}><Text style={styles.warningText}>最后观测数据，操作前请刷新核对。运行通知仅提示回读，最新调度结果可能稍后落盘。</Text></View>}
     {!!state.error && <Text accessibilityRole="alert" style={styles.error}>{state.error}</Text>}
     {!!state.notice && <Text accessibilityLiveRegion="polite" style={styles.body}>{state.notice}</Text>}
-    {state.uncertain && <View style={styles.card}><Text style={styles.title}>提交结果待核对</Text><Text style={styles.body}>网络中断不代表操作未生效。草稿已保留，不会自动重发；先刷新列表与此任务详情，核对后再解除锁定。</Text><Button label="已核对任务结果，解除锁定" disabled={!state.reviewed || state.loading || state.stale} onPress={store.acknowledgeReviewed} /></View>}
+    {state.uncertain && <View style={[styles.card, styles.warning]}><Text style={styles.title}>提交结果待核对</Text><Text style={styles.body}>网络中断不代表操作未生效。草稿已保留，不会自动重发；先刷新列表与此任务详情，核对后再解除锁定。</Text><Button label="已核对任务结果，解除锁定" disabled={!state.reviewed || state.loading || state.stale} onPress={store.acknowledgeReviewed} /></View>}
     {!state.selectedId ? <>
-      <View style={styles.row}><Button label="全部空间定时任务" selected={!state.query.spaceId} onPress={() => query({ spaceId: undefined })} /><Button label="当前空间定时任务" selected={state.query.spaceId === spaceId} onPress={() => query({ spaceId })} /></View>
-      <View style={styles.row}>{([['nextRunAt', '按下次执行'], ['updatedAt', '按更新时间'], ['createdAt', '按创建时间']] as const).map(([sort, label]) => <Button key={sort} label={label} selected={state.query.sort === sort} onPress={() => query({ sort })} />)}<Button label={state.query.order === 'asc' ? '升序' : '降序'} onPress={() => query({ order: state.query.order === 'asc' ? 'desc' : 'asc' })} /></View>
-      {state.loaded && !state.loading && !state.error && !state.jobs.length && <EmptyState icon={CalendarClock} title="还没有定时任务" description="可以回到聊天，试着说：每天早上九点提醒我安排今天的工作。这里不会显示示例任务。" />}
+      <View style={styles.row}><Button label="全部空间定时任务" shortLabel="全部空间" selected={!state.query.spaceId} onPress={() => query({ spaceId: undefined })} /><Button label="当前空间定时任务" shortLabel="当前空间" selected={state.query.spaceId === spaceId} onPress={() => query({ spaceId })} /></View>
+      <View style={styles.sortRow}><ScrollView horizontal showsHorizontalScrollIndicator style={styles.sortScroll} contentContainerStyle={styles.sortOptions} accessibilityLabel="定时任务排序">
+        {([['nextRunAt', '按下次执行', '下次执行'], ['updatedAt', '按更新时间', '更新时间'], ['createdAt', '按创建时间', '创建时间']] as const).map(([sort, label, shortLabel]) => <Button key={sort} label={label} shortLabel={shortLabel} selected={state.query.sort === sort} onPress={() => query({ sort })} />)}
+      </ScrollView><Button label={state.query.order === 'asc' ? '升序' : '降序'} onPress={() => query({ order: state.query.order === 'asc' ? 'desc' : 'asc' })} /></View>
+      {state.loaded && !state.loading && !state.error && !state.jobs.length && <EmptyState compact icon={CalendarClock} title="还没有定时任务" description="在聊天中告诉 Pi Muse 何时执行任务。" />}
       {state.jobs.map((item) => <Pressable key={item.id} testID={`job-open-${item.id}`} accessibilityRole="button" accessibilityLabel={`查看定时任务 ${item.id}`} onPress={() => store.select(item.id)} style={({ pressed }) => [styles.listItem, pressed && styles.pressed]}>
-        <CalendarClock size={workspaceTheme.layout.iconSize} color={colors.muted} /><View style={styles.flex}><Text numberOfLines={2} style={styles.title}>{item.title}</Text><StatusPill label={jobStatusLabel(item.status)} tone={jobTone(item.status)} /><Text style={styles.caption}>{item.daily ? `每天 ${item.at} · 服务端时区` : `一次性 · ${localJobTime(item.at)}`}</Text><Text style={styles.caption}>下次执行：{localJobTime(item.nextRunAt)}</Text><Text style={styles.caption}>来源空间：{item.originSpaceId ?? '服务端未记录'}</Text></View><ChevronRight size={workspaceTheme.layout.iconSize} color={colors.faint} />
+        <View style={styles.listIcon}><CalendarClock size={workspaceTheme.layout.iconSize - spacing[4]} color={colors.muted} /></View><View style={styles.flex}>
+          <View style={styles.titleRow}><Text numberOfLines={2} style={[styles.title, styles.flex]}>{item.title}</Text><ChevronRight size={workspaceTheme.layout.iconSize - spacing[8]} color={colors.faint} /></View>
+          <View style={styles.row}><StatusPill label={jobStatusLabel(item.status)} tone={jobTone(item.status)} /><Text style={styles.caption}>{item.daily ? `每天 ${item.at} · 服务端时区` : `一次性 · ${localJobTime(item.at)}`}</Text></View>
+          <Text style={styles.body}>下次执行：{localJobTime(item.nextRunAt)}</Text><Text style={styles.caption}>来源空间：{item.originSpaceId ?? '服务端未记录'}</Text>
+        </View>
       </Pressable>)}
     </> : <>
       {editor && <View style={styles.card} testID="job-editor">
@@ -93,12 +106,18 @@ export function JobsPanel({ spaceId }: { spaceId: string }) {
   </View>;
 }
 const createStyles = (colors: WorkspaceColors) => StyleSheet.create({
-  page: { paddingHorizontal: workspaceTheme.layout.sidePadding, paddingTop: spacing[20], paddingBottom: spacing[24], gap: spacing[22] },
-  root: { gap: spacing[16], paddingBottom: spacing[24] }, row: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing[8] },
+  page: { paddingHorizontal: workspaceTheme.layout.sidePadding, paddingTop: spacing[12], paddingBottom: spacing[24], gap: spacing[16] },
+  tablist: { height: workspaceTheme.layout.sessionTabsHeight, flexDirection: 'row', alignItems: 'center', padding: workspaceTheme.layout.sessionTabInset, backgroundColor: colors.surface, borderRadius: workspaceTheme.radius.tab },
+  tab: { flex: 1, minWidth: 0, height: workspaceTheme.layout.sessionTabsHeight - workspaceTheme.layout.sessionTabInset * 2, borderRadius: workspaceTheme.radius.round, alignItems: 'center', justifyContent: 'center', gap: workspaceTheme.layout.tabLabelGap },
+  tabSelected: { backgroundColor: colors.selected }, tabLabel: { ...workspaceTheme.typography.navigation, color: colors.faint }, tabLabelSelected: { color: colors.ink },
+  root: { gap: spacing[12], paddingBottom: spacing[24] }, row: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing[8] },
+  toolbar: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: spacing[8] }, sortRow: { flexDirection: 'row', alignItems: 'center', gap: spacing[8] }, sortScroll: { flex: 1, minWidth: 0 }, sortOptions: { gap: spacing[8], paddingRight: spacing[8] },
   flex: { flex: 1, gap: spacing[8], minWidth: 0 }, title: { ...workspaceTheme.typography.itemTitle, color: colors.ink }, body: { ...workspaceTheme.typography.detail, color: colors.muted }, caption: { ...workspaceTheme.typography.caption, color: colors.faint }, error: { ...workspaceTheme.typography.detail, color: colors.danger },
-  card: { padding: spacing[20], borderRadius: workspaceTheme.radius.card, backgroundColor: colors.surface, gap: spacing[12] },
-  button: { minHeight: workspaceTheme.layout.smallControl, paddingHorizontal: spacing[14], paddingVertical: spacing[8], justifyContent: 'center', borderRadius: workspaceTheme.radius.round, backgroundColor: colors.surface, alignSelf: 'flex-start' }, buttonText: { ...workspaceTheme.typography.status, color: colors.ink }, selected: { backgroundColor: colors.blueSoft }, disabled: { opacity: workspaceTheme.interaction.disabledOpacity }, pressed: { opacity: workspaceTheme.interaction.pressedOpacity },
-  listItem: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing[14], paddingVertical: spacing[20], borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
+  card: { padding: spacing[16], borderRadius: workspaceTheme.radius.card, backgroundColor: colors.surface, gap: spacing[10] },
+  warning: { padding: spacing[12], borderRadius: workspaceTheme.radius.field, backgroundColor: colors.warningSoft }, warningText: { ...workspaceTheme.typography.status, color: colors.warning },
+  button: { minHeight: workspaceTheme.layout.smallControl, paddingHorizontal: spacing[12], paddingVertical: spacing[8], justifyContent: 'center', borderRadius: workspaceTheme.radius.round, backgroundColor: colors.control, alignSelf: 'flex-start' }, buttonText: { ...workspaceTheme.typography.status, color: colors.ink }, selected: { backgroundColor: colors.blueSoft }, disabled: { opacity: workspaceTheme.interaction.disabledOpacity }, pressed: { opacity: workspaceTheme.interaction.pressedOpacity },
+  listItem: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing[12], paddingVertical: spacing[14], borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line, minHeight: workspaceTheme.layout.smallControl },
+  listIcon: { width: workspaceTheme.layout.rowIcon, height: workspaceTheme.layout.rowIcon, borderRadius: workspaceTheme.radius.round, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' }, titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing[8] },
   input: { ...workspaceTheme.typography.input, color: colors.ink, backgroundColor: colors.canvas, minHeight: workspaceTheme.layout.inputMinHeight, borderRadius: workspaceTheme.radius.field, padding: spacing[14] }, promptInput: { minHeight: workspaceTheme.layout.composerMaxHeight, textAlignVertical: 'top' },
   event: { borderLeftWidth: spacing[2], borderLeftColor: colors.line, paddingLeft: spacing[16], paddingVertical: spacing[8], gap: spacing[6] },
 });

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Globe } from 'lucide-react-native';
 import { useMonitors } from '../monitors/MonitorProvider';
 import {
@@ -12,7 +12,7 @@ import {
 import type { MonitorsQuery } from '../api/types';
 import { useTheme } from '../theme/ThemeProvider';
 import { spacing, workspaceTheme, type WorkspaceColors } from '../ui/tokens';
-import { EmptyState, SectionHeading, StatusPill } from './primitives';
+import { EmptyState, StatusPill } from './primitives';
 
 function useStyles() {
   const { colors } = useTheme();
@@ -98,16 +98,6 @@ export function MonitorsPanel({ spaceId }: { spaceId: string }) {
 
   return (
     <View style={styles.root} testID="monitors-panel">
-      <SectionHeading
-        title="网页监控"
-        eyebrow="WEB MONITORS"
-        description="查看网页巡检状态与最近结果。"
-      />
-
-      <View style={styles.hint}>
-        <Text style={styles.body}>新建监控请在聊天中告诉 Pi Muse 网页链接、触发条件和检查间隔。</Text>
-      </View>
-
       <View style={styles.toolbar}>
         <Text style={styles.caption}>{state.loaded ? `${state.monitors.length} 项监控` : '网页监控列表'}</Text>
         <Button
@@ -117,6 +107,7 @@ export function MonitorsPanel({ spaceId }: { spaceId: string }) {
           onPress={() => { setStopTarget(undefined); void store.refresh(); }}
         />
       </View>
+      <Text style={styles.caption}>在聊天中创建：提供网页链接、触发条件和检查间隔。</Text>
 
       {state.loading && (
         <ActivityIndicator color={colors.muted} accessibilityLabel="正在读取网页监控" />
@@ -136,7 +127,7 @@ export function MonitorsPanel({ spaceId }: { spaceId: string }) {
       )}
 
       {state.uncertain && (
-        <View style={styles.card}>
+        <View style={[styles.card, styles.warning]}>
           <Text style={styles.title}>提交结果待核对</Text>
           <Text style={styles.body}>操作可能已经生效。请刷新完整列表，核对目标监控的状态或是否仍存在，然后手动解除锁定；不会自动重试。</Text>
           <Button
@@ -148,8 +139,8 @@ export function MonitorsPanel({ spaceId }: { spaceId: string }) {
       )}
 
       {/* 筛选与排序由服务端执行；空结果必须按当前空间条件解释。 */}
-      <Text style={styles.groupLabel}>范围</Text>
-      <View style={styles.row}>
+      <View style={styles.filterRow}>
+        <Text style={styles.groupLabel}>范围</Text>
         <Button
           label="全部空间"
           accessibilityLabel="全部空间监控"
@@ -166,24 +157,26 @@ export function MonitorsPanel({ spaceId }: { spaceId: string }) {
         />
       </View>
 
-      <Text style={styles.groupLabel}>排序</Text>
-      <View style={styles.row}>
-        {(
-          [
-            ['createdAt', '创建时间'],
-            ['lastCheckedAt', '最近检查'],
-            ['status', '状态'],
-          ] as const
-        ).map(([sort, label]) => (
-          <Button
-            key={sort}
-            label={label}
-            accessibilityLabel={`按${label}排序`}
-            selected={state.query.sort === sort}
-            disabled={locked}
-            onPress={() => query({ sort })}
-          />
-        ))}
+      <View style={styles.sortRow}>
+        <Text style={styles.groupLabel}>排序</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator style={styles.sortScroll} contentContainerStyle={styles.sortOptions} accessibilityLabel="网页监控排序">
+          {(
+            [
+              ['createdAt', '创建时间'],
+              ['lastCheckedAt', '最近检查'],
+              ['status', '状态'],
+            ] as const
+          ).map(([sort, label]) => (
+            <Button
+              key={sort}
+              label={label}
+              accessibilityLabel={`按${label}排序`}
+              selected={state.query.sort === sort}
+              disabled={locked}
+              onPress={() => query({ sort })}
+            />
+          ))}
+        </ScrollView>
         <Button
           label={state.query.order === 'asc' ? '升序' : '降序'}
           accessibilityLabel={`排序方向：${state.query.order === 'asc' ? '升序' : '降序'}`}
@@ -194,7 +187,7 @@ export function MonitorsPanel({ spaceId }: { spaceId: string }) {
 
       {/* 空态 */}
       {state.loaded && !state.loading && !state.stale && !state.error && !state.monitors.length && (
-        <EmptyState
+        <EmptyState compact
           icon={Globe}
           title={state.query.spaceId ? '当前空间没有网页监控' : '还没有网页监控'}
           description={state.query.spaceId ? '可以切换到全部空间查看其他监控。' : '可以在聊天中创建第一项网页监控。'}
@@ -244,24 +237,19 @@ export function MonitorsPanel({ spaceId }: { spaceId: string }) {
         const actions = availableMonitorActions(item);
         return (
           <View key={item.id} testID={`monitor-item-${item.id}`} style={styles.card}>
-            <View style={styles.row}>
+            <View style={styles.titleRow}>
+              <Text selectable style={[styles.title, styles.titleFlex]}>{item.title}</Text>
               <StatusPill
                 label={monitorStatusLabel(item.status)}
                 tone={monitorStatusTone(item.status)}
               />
-              <Text style={styles.caption}>每 {item.intervalMinutes} 分钟检查一次</Text>
             </View>
-
-            <Text selectable style={styles.title}>
-              {item.title}
-            </Text>
-
             <Text selectable style={styles.url}>
               {item.url}
             </Text>
 
             <View style={styles.details}>
-              <Text style={styles.body}>条件：{monitorConditionLabel(item.condition, item.value)}</Text>
+              <Text style={styles.body}>每 {item.intervalMinutes} 分钟 · 条件：{monitorConditionLabel(item.condition, item.value)}</Text>
               <Text style={styles.caption}>累计检查 {item.checks} 次 · 最近检查 {formatDate(item.lastCheckedAt)}</Text>
               <Text style={styles.caption}>最近通知：{item.lastNotifiedAt ? formatDate(item.lastNotifiedAt) : '尚无'}</Text>
               <Text selectable style={styles.caption}>来源空间：{item.originSpaceId ?? '服务端未记录'}</Text>
@@ -305,9 +293,13 @@ export function MonitorsPanel({ spaceId }: { spaceId: string }) {
 
 const createStyles = (colors: WorkspaceColors) =>
   StyleSheet.create({
-    root: { gap: spacing[14], paddingBottom: spacing[24] },
+    root: { gap: spacing[12], paddingBottom: spacing[24] },
     row: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing[8] },
     toolbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing[8] },
+    filterRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing[8] },
+    sortRow: { flexDirection: 'row', alignItems: 'center', gap: spacing[8] },
+    sortScroll: { flex: 1, minWidth: 0 }, sortOptions: { gap: spacing[8], paddingRight: spacing[8] },
+    titleRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing[8] }, titleFlex: { flex: 1, minWidth: 0 },
     title: { ...workspaceTheme.typography.itemTitle, color: colors.ink },
     body: { ...workspaceTheme.typography.detail, color: colors.muted },
     caption: { ...workspaceTheme.typography.caption, color: colors.faint },
@@ -318,17 +310,16 @@ const createStyles = (colors: WorkspaceColors) =>
     notice: { ...workspaceTheme.typography.detail, color: colors.success },
     warning: { padding: spacing[12], borderRadius: workspaceTheme.radius.field, backgroundColor: colors.warningSoft },
     warningText: { ...workspaceTheme.typography.status, color: colors.warning },
-    hint: { paddingHorizontal: spacing[14], paddingVertical: spacing[12], borderRadius: workspaceTheme.radius.field, backgroundColor: colors.blueSoft },
     confirmCard: { padding: spacing[20], borderRadius: workspaceTheme.radius.card, backgroundColor: colors.dangerSoft, gap: spacing[12] },
     card: {
-      padding: spacing[20],
+      padding: spacing[16],
       borderRadius: workspaceTheme.radius.card,
       backgroundColor: colors.surface,
-      gap: spacing[12],
+      gap: spacing[8],
     },
     button: {
       minHeight: workspaceTheme.layout.smallControl,
-      paddingHorizontal: spacing[14],
+      paddingHorizontal: spacing[12],
       paddingVertical: spacing[8],
       justifyContent: 'center',
       borderRadius: workspaceTheme.radius.round,
