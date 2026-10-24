@@ -6,7 +6,7 @@ import { goalStatusLabel, goalStatusTone } from '../goals/goal-store';
 import type { GoalsQuery } from '../api/types';
 import { useTheme } from '../theme/ThemeProvider';
 import { spacing, workspaceTheme, type WorkspaceColors } from '../ui/tokens';
-import { EmptyState, SectionHeading, StatusPill } from './primitives';
+import { EmptyState, StatusPill } from './primitives';
 
 function useStyles() {
   const { colors } = useTheme();
@@ -19,12 +19,16 @@ function Button({
   selected,
   disabled,
   primary,
+  shortLabel,
+  danger,
 }: {
   label: string;
   onPress: () => void;
   selected?: boolean;
   disabled?: boolean;
   primary?: boolean;
+  shortLabel?: string;
+  danger?: boolean;
 }) {
   const styles = useStyles();
   return (
@@ -38,11 +42,12 @@ function Button({
         styles.button,
         selected && styles.selected,
         primary && styles.primary,
+        danger && styles.dangerButton,
         disabled && styles.disabled,
         pressed && styles.pressed,
       ]}
     >
-      <Text style={[styles.buttonText, primary && styles.primaryText]}>{label}</Text>
+      <Text style={[styles.buttonText, primary && styles.primaryText, danger && styles.dangerText]}>{shortLabel ?? label}</Text>
     </Pressable>
   );
 }
@@ -74,57 +79,66 @@ export function GoalsPanel() {
   return (
     <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.page}>
       <View style={styles.root} testID="goals-panel">
-        <SectionHeading
-          title="长期目标"
-          eyebrow="TARGETS & MILESTONES"
-          description="记录你的长期计划与里程碑。这里管理真实的目标进展，不会展示模拟进度。"
-        />
-
-        <View style={styles.row}>
+        {/* 主 Tab 已提供页标题；这里只展示全局目标数量和直接操作。 */}
+        <View style={styles.toolbar}>
+          <Text style={[styles.caption, styles.toolbarCount]}>{state.loaded ? `${state.goals.length} 项目标` : '目标列表'}</Text>
           <Button
             label="刷新目标"
+            shortLabel="刷新"
             disabled={state.loading || state.writing}
             onPress={() => void store.refresh()}
           />
           <Button
             label="新建目标"
+            shortLabel="新建"
             disabled={disabled || !!state.creator}
             primary
             onPress={store.startCreate}
           />
         </View>
 
-        <View style={styles.row}>
+        {/* 五个状态作为同一组胶囊；短文案适配窄屏，完整名称留给读屏。 */}
+        <View accessibilityRole="tablist" accessibilityLabel="目标状态筛选" style={styles.tablist}>
           {([
-            [undefined, '全部'],
-            ['active', '进行中'],
-            ['paused', '已暂停'],
-            ['completed', '已完成'],
-            ['archived', '已归档'],
-          ] as const).map(([status, label]) => (
-            <Button
+            [undefined, '全部', '全部'],
+            ['active', '进行中', '进行'],
+            ['paused', '已暂停', '暂停'],
+            ['completed', '已完成', '完成'],
+            ['archived', '已归档', '归档'],
+          ] as const).map(([status, label, shortLabel]) => (
+            <Pressable
               key={label}
-              label={label}
-              selected={state.query.status === status}
+              accessibilityRole="tab"
+              accessibilityLabel={label}
+              accessibilityState={{ selected: state.query.status === status, disabled: locked || !!state.creator }}
               disabled={locked || !!state.creator}
               onPress={() => query({ status })}
-            />
+              style={({ pressed }) => [styles.tab, state.query.status === status && styles.tabSelected, pressed && styles.pressed]}
+            >
+              <Text numberOfLines={1} style={[styles.tabText, state.query.status === status && styles.tabTextSelected]}>
+                {shortLabel}
+              </Text>
+            </Pressable>
           ))}
         </View>
 
-        <View style={styles.row}>
-          {([
-            ['updatedAt', '按更新时间'],
-            ['createdAt', '按创建时间'],
-          ] as const).map(([sort, label]) => (
-            <Button
-              key={sort}
-              label={label}
-              selected={state.query.sort === sort}
-              disabled={locked || !!state.creator}
-              onPress={() => query({ sort })}
-            />
-          ))}
+        <View style={styles.sortRow}>
+          <Text style={styles.groupLabel}>排序</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator style={styles.sortScroll} contentContainerStyle={styles.sortOptions} accessibilityLabel="目标排序">
+            {([
+              ['updatedAt', '按更新时间', '更新时间'],
+              ['createdAt', '按创建时间', '创建时间'],
+            ] as const).map(([sort, label, shortLabel]) => (
+              <Button
+                key={sort}
+                label={label}
+                shortLabel={shortLabel}
+                selected={state.query.sort === sort}
+                disabled={locked || !!state.creator}
+                onPress={() => query({ sort })}
+              />
+            ))}
+          </ScrollView>
           <Button
             label={state.query.order === 'asc' ? '升序' : '降序'}
             disabled={locked || !!state.creator}
@@ -136,7 +150,7 @@ export function GoalsPanel() {
           <ActivityIndicator color={colors.muted} accessibilityLabel="正在读取目标" />
         )}
         {state.stale && state.loaded && (
-          <Text style={styles.caption}>最后观测数据，操作前请刷新核对。请刷新后再进行修改或状态切换。</Text>
+          <View style={styles.warning}><Text style={styles.warningText}>显示上次读取的目标；刷新成功前不能操作。</Text></View>
         )}
         {!!state.notice && (
           <Text accessibilityLiveRegion="polite" style={styles.notice}>
@@ -150,7 +164,7 @@ export function GoalsPanel() {
         )}
 
         {state.uncertain && (
-          <View style={styles.card} testID="goals-uncertain">
+          <View style={[styles.card, styles.warning]} testID="goals-uncertain">
             <Text style={styles.title}>提交结果待核对</Text>
             <Text style={styles.body}>
               请求中断不代表服务端未执行。草稿已保留，不会自动重发；请先刷新目标列表，核对后再解除锁定。
@@ -166,17 +180,19 @@ export function GoalsPanel() {
         {state.creator && (
           <View style={styles.card} testID="goal-creator">
             <Text style={styles.title}>新建目标</Text>
-            <Text style={styles.caption}>标题为必填项。描述、分类和初始里程碑为可选项。</Text>
+            <Text style={styles.caption}>标题必填，其余内容可选。</Text>
+            <Text style={styles.fieldLabel}>标题</Text>
             <TextInput
               accessibilityLabel="目标标题"
               value={state.creator.title}
               editable={!locked}
-              maxLength={200}
+              maxLength={160}
               onChangeText={(title) => store.setCreator({ title })}
               style={styles.input}
               placeholder="目标标题（必填）"
               placeholderTextColor={colors.faint}
             />
+            <Text style={styles.fieldLabel}>描述</Text>
             <TextInput
               accessibilityLabel="目标描述"
               value={state.creator.description}
@@ -188,17 +204,18 @@ export function GoalsPanel() {
               placeholder="目标描述（可选）"
               placeholderTextColor={colors.faint}
             />
+            <Text style={styles.fieldLabel}>分类</Text>
             <TextInput
               accessibilityLabel="目标分类"
               value={state.creator.category}
               editable={!locked}
-              maxLength={100}
+              maxLength={40}
               onChangeText={(category) => store.setCreator({ category })}
               style={styles.input}
               placeholder="目标分类，如：学习、项目、健康（可选）"
               placeholderTextColor={colors.faint}
             />
-            <Text style={styles.caption}>初始里程碑列表（可选，每行一个里程碑）：</Text>
+            <Text style={styles.fieldLabel}>初始里程碑（每行一个）</Text>
             <TextInput
               accessibilityLabel="里程碑列表"
               value={state.creator.milestonesText}
@@ -227,7 +244,7 @@ export function GoalsPanel() {
         )}
 
         {state.deleteTarget && (
-          <View style={styles.card} accessibilityViewIsModal testID="goal-delete-confirm">
+          <View style={styles.confirmCard} accessibilityViewIsModal testID="goal-delete-confirm">
             <Text style={styles.title}>确认删除此目标？</Text>
             <Text selectable style={styles.body}>
               目标“{state.deleteTarget.title}”及其名下所有里程碑将被彻底删除，无法撤销。
@@ -236,7 +253,7 @@ export function GoalsPanel() {
               <Button
                 label={state.writing ? '正在删除目标…' : '确认删除目标'}
                 disabled={disabled}
-                primary
+                danger
                 onPress={() => void store.confirmDelete()}
               />
               <Button
@@ -249,10 +266,10 @@ export function GoalsPanel() {
         )}
 
         {state.loaded && !state.loading && !state.error && !state.goals.length && !state.creator && (
-          <EmptyState
+          <EmptyState compact
             icon={SquareCheck}
             title="还没有长期目标"
-            description="可以在这里新增目标，也可以在聊天中告诉 Pi Muse 你的长期计划。这里不会展示模拟进度。"
+            description="可新建目标，或在聊天中告诉 Pi Muse 你的长期计划。"
           />
         )}
 
@@ -260,21 +277,14 @@ export function GoalsPanel() {
           const doneCount = goal.milestones.filter((m) => m.done).length;
           return (
             <View key={goal.id} style={styles.card} testID={`goal-card-${goal.id}`}>
-              <View style={styles.row}>
+              <View style={styles.titleRow}>
+                <Text selectable style={[styles.title, styles.titleFlex]}>{goal.title}</Text>
                 <StatusPill
                   label={goalStatusLabel(goal.status)}
                   tone={goalStatusTone(goal.status)}
                 />
-                {!!goal.category && (
-                  <View style={styles.categoryBadge}>
-                    <Text style={styles.categoryText}>{goal.category}</Text>
-                  </View>
-                )}
               </View>
-
-              <Text selectable style={styles.title}>
-                {goal.title}
-              </Text>
+              {!!goal.category && <Text style={styles.caption}>{goal.category}</Text>}
               {!!goal.description && (
                 <Text selectable style={styles.body}>
                   {goal.description}
@@ -328,31 +338,31 @@ export function GoalsPanel() {
               )}
 
               <View style={styles.statusSection}>
-                <Text style={styles.caption}>切换状态：</Text>
-                <View style={styles.row}>
+                <Text style={styles.groupLabel}>状态</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator style={styles.statusScroll} contentContainerStyle={styles.sortOptions} accessibilityLabel={`切换目标“${goal.title}”的状态`}>
                   {(['active', 'paused', 'completed', 'archived'] as const).map((status) => (
                     <Button
                       key={status}
                       label={goalStatusLabel(status)}
+                      shortLabel={status === 'active' ? '进行' : status === 'paused' ? '暂停' : status === 'completed' ? '完成' : '归档'}
                       selected={goal.status === status}
                       disabled={disabled || goal.status === status}
                       onPress={() => void store.setStatus(goal.id, status)}
                     />
                   ))}
-                </View>
+                </ScrollView>
               </View>
 
-              <View style={styles.row}>
+              <View style={styles.cardFooter}>
                 <Button
                   label="删除目标"
+                  shortLabel="删除"
+                  danger
                   disabled={disabled}
                   onPress={() => store.requestDelete(goal.id)}
                 />
+                <Text selectable style={[styles.caption, styles.footerTime]}>更新：{localGoalTime(goal.updatedAt)} · 创建：{localGoalTime(goal.createdAt)}</Text>
               </View>
-
-              <Text selectable style={styles.caption}>
-                更新：{localGoalTime(goal.updatedAt)} · 创建：{localGoalTime(goal.createdAt)}
-              </Text>
             </View>
           );
         })}
@@ -365,42 +375,69 @@ const createStyles = (colors: WorkspaceColors) =>
   StyleSheet.create({
     page: {
       paddingHorizontal: workspaceTheme.layout.sidePadding,
-      paddingTop: spacing[20],
+      paddingTop: spacing[12],
       paddingBottom: spacing[24],
-      gap: spacing[22],
     },
-    root: { gap: spacing[16], paddingBottom: spacing[24] },
+    root: { gap: spacing[12], paddingBottom: spacing[24] },
     row: {
       flexDirection: 'row',
       flexWrap: 'wrap',
       alignItems: 'center',
       gap: spacing[8],
     },
+    toolbar: { flexDirection: 'row', alignItems: 'center', gap: spacing[8] },
+    toolbarCount: { flex: 1, minWidth: 0 },
+    tablist: {
+      height: workspaceTheme.layout.sessionTabsHeight,
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: workspaceTheme.layout.sessionTabInset,
+      backgroundColor: colors.surface,
+      borderRadius: workspaceTheme.radius.tab,
+    },
+    tab: { flex: 1, minWidth: 0, height: '100%', alignItems: 'center', justifyContent: 'center', borderRadius: workspaceTheme.radius.round },
+    tabSelected: { backgroundColor: colors.control },
+    tabText: { ...workspaceTheme.typography.status, color: colors.faint },
+    tabTextSelected: { color: colors.ink },
+    sortRow: { flexDirection: 'row', alignItems: 'center', gap: spacing[8] },
+    sortScroll: { flex: 1, minWidth: 0 },
+    sortOptions: { gap: spacing[8], paddingRight: spacing[8] },
+    groupLabel: { ...workspaceTheme.typography.caption, color: colors.muted },
+    titleRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing[8] },
+    titleFlex: { flex: 1, minWidth: 0 },
+    cardFooter: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing[8] },
+    footerTime: { flex: 1, minWidth: 0 },
+    statusScroll: { flex: 1, minWidth: 0 },
     flex: { flex: 1, gap: spacing[4], minWidth: 0 },
     title: { ...workspaceTheme.typography.itemTitle, color: colors.ink },
     body: { ...workspaceTheme.typography.detail, color: colors.muted },
     caption: { ...workspaceTheme.typography.caption, color: colors.faint },
     error: { ...workspaceTheme.typography.detail, color: colors.danger },
     notice: { ...workspaceTheme.typography.detail, color: colors.success },
+    warning: { padding: spacing[12], borderRadius: workspaceTheme.radius.field, backgroundColor: colors.warningSoft },
+    warningText: { ...workspaceTheme.typography.status, color: colors.warning },
+    confirmCard: { padding: spacing[20], borderRadius: workspaceTheme.radius.card, backgroundColor: colors.dangerSoft, gap: spacing[12] },
     card: {
-      padding: spacing[20],
+      padding: spacing[16],
       borderRadius: workspaceTheme.radius.card,
       backgroundColor: colors.surface,
-      gap: spacing[12],
+      gap: spacing[8],
     },
     button: {
       minHeight: workspaceTheme.layout.smallControl,
-      paddingHorizontal: spacing[14],
+      paddingHorizontal: spacing[12],
       paddingVertical: spacing[8],
       justifyContent: 'center',
       borderRadius: workspaceTheme.radius.round,
-      backgroundColor: colors.surface,
+      backgroundColor: colors.control,
       alignSelf: 'flex-start',
     },
     buttonText: { ...workspaceTheme.typography.status, color: colors.ink },
     selected: { backgroundColor: colors.blueSoft },
     primary: { backgroundColor: colors.blue },
     primaryText: { color: colors.onAccent },
+    dangerButton: { backgroundColor: colors.dangerSoft, borderColor: colors.danger, borderWidth: 1 },
+    dangerText: { color: colors.danger },
     disabled: { opacity: workspaceTheme.interaction.disabledOpacity },
     pressed: { opacity: workspaceTheme.interaction.pressedOpacity },
     input: {
@@ -415,6 +452,7 @@ const createStyles = (colors: WorkspaceColors) =>
       minHeight: workspaceTheme.layout.composerMaxHeight,
       textAlignVertical: 'top',
     },
+    fieldLabel: { ...workspaceTheme.typography.status, color: colors.muted },
     milestonesSection: { gap: spacing[8], marginTop: spacing[4] },
     milestoneRow: {
       flexDirection: 'row',
@@ -424,13 +462,5 @@ const createStyles = (colors: WorkspaceColors) =>
     },
     milestoneText: { ...workspaceTheme.typography.detail, color: colors.ink },
     milestoneDoneText: { textDecorationLine: 'line-through', color: colors.faint },
-    statusSection: { gap: spacing[6], marginTop: spacing[4] },
-    categoryBadge: {
-      alignSelf: 'flex-start',
-      paddingHorizontal: spacing[8],
-      paddingVertical: spacing[2],
-      borderRadius: workspaceTheme.radius.round,
-      backgroundColor: colors.control,
-    },
-    categoryText: { ...workspaceTheme.typography.caption, color: colors.muted },
+    statusSection: { flexDirection: 'row', alignItems: 'center', gap: spacing[8], marginTop: spacing[4] },
   });
