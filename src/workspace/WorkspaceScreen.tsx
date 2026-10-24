@@ -44,9 +44,6 @@ const NAV: { id: WorkspacePage; label: string; icon: LucideIcon }[] = [
   { id: 'goals', label: '目标', icon: SquareCheck }, { id: 'apps', label: '应用', icon: Shapes },
 ];
 function useStyles() { const { colors } = useTheme(); return useMemo(() => createStyles(colors), [colors]); }
-function RoundButton({ icon: Icon, label, onPress, testID }: { icon: LucideIcon; label: string; onPress: () => void; testID?: string }) {
-  return <IconControl icon={Icon} label={label} onPress={onPress} testID={testID} />;
-}
 
 /** 新版是唯一入口；连接配置只从应用页打开，不改变会话信息区职责。 */
 export function WorkspaceScreen() {
@@ -232,7 +229,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
       <View style={[styles.drawer, { width: drawerWidth }]} pointerEvents={drawerOpen ? 'auto' : 'none'} aria-hidden={!drawerOpen}
         {...(Platform.OS === 'web' && !drawerOpen ? { inert: true } : {})} accessibilityElementsHidden={!drawerOpen} importantForAccessibility={drawerOpen ? 'yes' : 'no-hide-descendants'}>
         <SafeAreaView style={styles.screen} edges={['top', 'bottom', 'left']}>
-        <View style={styles.drawerHeading}><Text style={styles.drawerTitle}>Pi Muse</Text><RoundButton icon={X} label="关闭空间侧栏" onPress={() => setDrawerOpen(false)} /></View>
+        <View style={styles.drawerHeading}><Text style={styles.drawerTitle}>Pi Muse</Text><IconControl icon={X} label="关闭空间侧栏" onPress={() => setDrawerOpen(false)} /></View>
         <View style={styles.drawerSectionRow}><Text style={styles.drawerSection}>你的空间</Text><Text style={styles.caption}>{spaces.spaces.length}</Text></View>
         {!!spaces.error && <Text style={styles.error}>{spaces.error}</Text>}
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.drawerList}>
@@ -243,16 +240,16 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
             </View>{space.id === spaces.currentSpace && <Check size={sizing[18]} color={colors.muted} />}
           </Pressable>)}
         </ScrollView>
-        <View style={styles.drawerFooter}><View style={styles.drawerSearch}><Search size={sizing[18]} color={colors.faint} /><TextInput accessibilityLabel="搜索空间" placeholder="搜索空间" placeholderTextColor={colors.faint} value={spaceQuery} onChangeText={setSpaceQuery} style={styles.searchInput} /></View><RoundButton icon={SquarePen} label="新建空间" testID="workspace-create-space" onPress={() => { spaces.createSpace(); setSpaceQuery(''); setDrawerOpen(false); setSessionOpen(false); setPage('chat'); setNotice(undefined); }} /></View>
+        <View style={styles.drawerFooter}><View style={styles.drawerSearch}><Search size={sizing[18]} color={colors.faint} /><TextInput accessibilityLabel="搜索空间" placeholder="搜索空间" placeholderTextColor={colors.faint} value={spaceQuery} onChangeText={setSpaceQuery} style={styles.searchInput} /></View><IconControl icon={SquarePen} label="新建空间" testID="workspace-create-space" onPress={() => { spaces.createSpace(); setSpaceQuery(''); setDrawerOpen(false); setSessionOpen(false); setPage('chat'); setNotice(undefined); }} /></View>
         </SafeAreaView>
       </View>
       <Animated.View style={[styles.foreground, drawerOpen && styles.foregroundRounded, { transform: [{ translateX: drawerProgress.interpolate({ inputRange: [0, 1], outputRange: [0, drawerWidth] }) }] }]} accessibilityElementsHidden={drawerOpen} importantForAccessibility={drawerOpen ? 'no-hide-descendants' : 'auto'}>
         <SafeAreaView style={styles.screen} edges={['top', 'bottom', 'left', 'right']} aria-hidden={drawerOpen} {...(Platform.OS === 'web' && drawerOpen ? { inert: true } : {})}>
           <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled={Platform.OS !== 'web'}>
-            {page !== 'chat' && <View style={styles.pageHeader}><RoundButton icon={Menu} label="打开空间侧栏" onPress={openDrawer} /><Text style={styles.pageTitle}>{NAV.find((item) => item.id === page)?.label}</Text><ThemeToggle /></View>}
+            {page !== 'chat' && <View style={styles.pageHeader}><IconControl icon={Menu} label="打开空间侧栏" onPress={openDrawer} /><Text style={styles.pageTitle}>{NAV.find((item) => item.id === page)?.label}</Text><ThemeToggle /></View>}
             {/* 会话信息区独立占位，长历史滚动与键盘收缩时都不能遮住正文。 */}
             {page === 'chat' && <View style={[styles.chatHeader, keyboardVisible && styles.chatHeaderCompact]}>
-              <View style={styles.headerLeft}><RoundButton icon={Menu} label="打开空间侧栏" testID="workspace-open-drawer" onPress={openDrawer} /></View>
+              <View style={styles.headerLeft}><IconControl icon={Menu} label="打开空间侧栏" testID="workspace-open-drawer" onPress={openDrawer} /></View>
               <Pressable accessibilityRole="button" accessibilityLabel="打开当前会话面板" accessibilityHint="全屏显示当前会话的动态、审批、工作区和历史" testID="workspace-open-session" style={[styles.identity, keyboardVisible && styles.identityCompact]}
                 onPress={() => { Keyboard.dismiss(); setDrawerOpen(false); setSessionOpen(true); }}>
                 <MuseAvatar size={keyboardVisible ? l.compactHeaderAvatar : l.headerAvatar} />
@@ -317,5 +314,5 @@ const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   emptyTitle: { ...t.heroName, color: c.ink, textAlign: 'center' }, notice: { position: 'absolute', left: l.sidePadding, right: l.sidePadding, top: l.headerHeight, ...t.caption, color: c.ink, backgroundColor: c.control, padding: spacing[12], borderRadius: r.listItem },
   disconnected: { flex: 1, alignSelf: 'center', width: '100%', maxWidth: l.maxWidth }, disconnectedHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: l.sidePadding }, welcome: { flex: 1, paddingHorizontal: l.sidePadding, gap: spacing[18], alignItems: 'center', justifyContent: 'center' },
   actionButton: { minHeight: l.smallControl, backgroundColor: c.blue, paddingHorizontal: spacing[18], paddingVertical: spacing[12], borderRadius: r.round, alignSelf: 'center' }, actionText: { ...t.status, color: c.onAccent },
-  secondaryButton: { alignSelf: 'center', minHeight: l.smallControl, flexDirection: 'row', alignItems: 'center', gap: spacing[8], paddingHorizontal: spacing[20], backgroundColor: c.control, borderRadius: r.round }, actionLabel: { ...t.status, color: c.ink },
+  secondaryButton: { alignSelf: 'center', minHeight: l.smallControl, flexDirection: 'row', alignItems: 'center', gap: spacing[8], paddingHorizontal: spacing[20], backgroundColor: c.control, borderRadius: r.round },
 });
