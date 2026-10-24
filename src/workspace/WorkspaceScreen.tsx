@@ -22,6 +22,7 @@ import { useJobs } from '../jobs/JobProvider';
 import { useMonitors } from '../monitors/MonitorProvider';
 import { GoalsPanel } from './GoalsPanel';
 import { useGoals } from '../goals/GoalProvider';
+import { FilesProvider } from '../files/FilesProvider';
 import { MemoryPanel } from './MemoryPanel';
 import { ProfilePanel } from './ProfilePanel';
 import { ProfileProvider, useProfile } from '../profile/ProfileProvider';
@@ -225,7 +226,8 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
     onPanResponderRelease: (_event, gesture) => { if (gesture.dx < -l.gestureThreshold) setDrawerOpen(false); if (gesture.dx > l.gestureThreshold) openDrawer(); },
   }), [drawerOpen, openDrawer]);
   const otherPage = page === 'chat' ? null : page === 'apps' ? <AppsPage snapshot={snapshot} openConnection={openConnection} memoryAvailable profileAvailable dreamAvailable currentSpaceId={spaces.currentSpace} /> : page === 'activity' ? !sessionOpen && <TasksPage spaceId={spaces.currentSpace} /> : !sessionOpen && <GoalsPanel />;
-  return <View style={styles.root} testID="workspace-screen"><ThemeStatusBar />
+  // 文件状态留在当前真实连接内；会话面板关闭时只卸载可见 UI，不销毁草稿。
+  return <FilesProvider currentSpaceId={spaces.currentSpace}><View style={styles.root} testID="workspace-screen"><ThemeStatusBar />
     <View style={[styles.viewport, { width: contentWidth }]} {...pan.panHandlers}>
       <View style={[styles.drawer, { width: drawerWidth }]} pointerEvents={drawerOpen ? 'auto' : 'none'} aria-hidden={!drawerOpen}
         {...(Platform.OS === 'web' && !drawerOpen ? { inert: true } : {})} accessibilityElementsHidden={!drawerOpen} importantForAccessibility={drawerOpen ? 'yes' : 'no-hide-descendants'}>
@@ -286,7 +288,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
         <Pressable accessibilityRole="button" accessibilityLabel="取消删除空间" disabled={session.deleting} style={styles.secondaryButton} onPress={() => setDeleteConfirm(false)}><Text style={styles.mutedText}>取消</Text></Pressable>
         {notice?.tone === 'error' && <Text accessibilityRole="alert" style={styles.error}>{notice.text}</Text>}
       </View> : <SpaceSettings spaceId={spaces.currentSpace} onSaved={refresh} />}</>} />}
-  </View>;
+  </View></FilesProvider>;
 }
 function SpaceStatusCaption({ spaceId }: { spaceId: string }) {
   const runtime = useSpaceRuntime(spaceId); const styles = useStyles();

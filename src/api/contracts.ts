@@ -31,6 +31,7 @@ import type { ApprovalClient } from '../approvals/types';
 import type { ActivityClient } from '../activities/types';
 import type { MemoryClient } from '../memories/types';
 import type { DreamClient } from '../dream/types';
+import type { FilesClient } from '../files/types';
 
 /** 增量聊天只提交一条新用户消息；历史与工具消息始终由服务端持有。 */
 export type RunInput = {
@@ -45,7 +46,7 @@ export type RunInput = {
 /**
  * 客户端接口：页面只依赖此抽象，不感知 mock/HTTP 差异。
  */
-export interface ApiClient extends DreamClient, ApprovalClient, ActivityClient, MemoryClient {
+export interface ApiClient extends DreamClient, ApprovalClient, ActivityClient, MemoryClient, FilesClient {
   /** 免鉴权 health 的权威 IANA 时区；不猜测服务端与手机处于相同时区。 */
   getServerTimeZone(signal?: AbortSignal): Promise<string>;
   /** POST /api/session → {token, mode}；客户端不按时间过期，失效以服务端401为准。 */
@@ -132,6 +133,8 @@ export interface ApiClient extends DreamClient, ApprovalClient, ActivityClient, 
   /** SOUL/USER 人设文本（空串=未设置） */
   getProfile(signal?: AbortSignal): Promise<Profile>;
   saveProfile(profile: Profile, signal?: AbortSignal): Promise<Profile>;
+
+  // --- 工作区文件（手动管理；模型写入仍走聊天工具审批） ---
 
   // --- 运行状态（GET /api/agent/status + GET /api/events） ---
 

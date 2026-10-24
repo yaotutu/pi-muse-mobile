@@ -25,17 +25,17 @@ import {
   ShieldCheck,
   RotateCcw,
   X,
-  FolderOpen,
 } from 'lucide-react-native';
 
 import { workspaceTheme, spacing, type WorkspaceColors } from '../ui/tokens';
 import { useTheme } from '../theme/ThemeProvider';
 import { ThemeToggle } from '../theme/ThemeToggle';
 import { CurrentExecution } from './CurrentExecution';
+import { FilesPanel } from './FilesPanel';
 import { ApprovalPanel } from './ApprovalPanel';
 import { ActivityPanel } from './ActivityPanel';
 import { MAIN_SPACE } from '../spaces/space-state';
-import { EmptyState, MuseAvatar, StatusPill } from './primitives';
+import { MuseAvatar, StatusPill } from './primitives';
 
 export type SessionTab = 'activity' | 'approvals' | 'workspace' | 'history';
 
@@ -319,12 +319,13 @@ export function SessionPanel({
             style={styles.scroll}
             contentContainerStyle={styles.content}
             showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
           >
             {tab === 'activity' && <CurrentExecution spaceId={spaceId} onSettled={onSettled} onApprovals={() => onTab('approvals')} onHistory={(id) => { setHistoryActivityId(id); onTab('history'); }} />}
             {tab === 'approvals' && <ApprovalPanel key={spaceId} spaceId={spaceId} />}
             {tab === 'workspace' && <>
               {settings}
-              <WorkspaceFilesPlaceholder text="工作区文件尚未接入" />
+              <FilesPanel currentSpaceId={spaceId} />
               {spaceId !== MAIN_SPACE && onDelete && <Pressable accessibilityRole="button" accessibilityLabel="删除当前空间"
                 disabled={deleting || resetting} onPress={onDelete} style={styles.card}>
                 <Text style={[styles.rowTitle, { color: colors.danger }]}>{deleting ? '正在删除空间…' : '删除当前空间'}</Text>
@@ -337,8 +338,4 @@ export function SessionPanel({
       </SafeAreaView>
     </Modal>
   );
-}
-
-function WorkspaceFilesPlaceholder({ text }: { text: string }) {
-  return <EmptyState icon={FolderOpen} title={text} description="空间规则与技能已可使用；文件浏览将在接入后开放。" compact />;
 }

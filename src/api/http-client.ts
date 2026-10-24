@@ -69,6 +69,22 @@ import { parseJob, parseJobDetail, parseJobRemoval, parseJobs, parseServerTimeZo
 import { parseIdentity, parseProfile, parseWorkspaceSnapshot } from './profile-contracts';
 import { parseDreamOverview, parseDreamSpace } from '../dream/contracts';
 import { DREAM_RUN_TIMEOUT_MS, type DreamPendingDecision, type DreamSpaceSettingsInput } from '../dream/types';
+import {
+  parseWorkspaceDelete,
+  parseWorkspaceFileDetail,
+  parseWorkspaceList,
+  parseWorkspaceTextDetail,
+  workspaceFileQuery,
+  workspaceFileTarget,
+  assertWorkspaceTextForWrite,
+} from '../files/contracts';
+import type {
+  WorkspaceFileDetail,
+  WorkspaceFileSelector,
+  WorkspaceFileTarget,
+  WorkspaceListResult,
+  WorkspaceTextDetail,
+} from '../files/types';
 
 export type TransportState = { kind: 'online' | 'offline'; token?: string; error?: string };
 export type HttpApiOptions = { onTransportState?: (state: TransportState) => void; timeoutMs?: number; headerTimeoutMs?: number };
@@ -620,6 +636,81 @@ export class HttpApiClient implements ApiClient {
     return parseProfile(await this.request<unknown>('/api/profile', {
       method: 'PUT', body: profile, signal,
     }));
+  }
+
+  // --- 工作区文件（/api/workspace/files）；响应归属必须与请求完全一致 ---
+
+  async listWorkspaceFiles(
+    selector: WorkspaceFileSelector & { path?: string },
+    signal?: AbortSignal,
+  ): Promise<WorkspaceListResult> {
+    const target = workspaceFileTarget(selector.scope, selector.spaceId, selector.path ?? '.', 'read');
+    return parseWorkspaceList(
+      await this.request<unknown>(`/api/workspace/files?${workspaceFileQuery(target)}`, { signal }),
+      target,
+    );
+  }
+
+  async readWorkspaceFile(
+    target: WorkspaceFileTarget,
+    signal?: AbortSignal,
+  ): Promise<WorkspaceFileDetail & WorkspaceFileSelector> {
+    const selected = workspaceFileTarget(target.scope, target.spaceId, target.path, 'file');
+    return parseWorkspaceFileDetail(
+      await this.request<unknown>(`/api/workspace/files/content?${workspaceFileQuery(selected)}`, { signal }),
+      selected,
+    );
+  }
+
+  async createWorkspaceTextFile(
+    target: WorkspaceFileTarget,
+    content: string,
+    signal?: AbortSignal,
+  ): Promise<WorkspaceTextDetail & WorkspaceFileSelector> {
+    const selected = workspaceFileTarget(target.scope, target.spaceId, target.path, 'write');
+    assertWorkspaceTextForWrite(content);
+    return parseWorkspaceTextDetail(await this.request<unknown>('/api/workspace/files/text', {
+      method: 'POST',
+      body: {
+        scope: selected.scope,
+        ...(selected.scope === 'space' ? { spaceId: selected.spaceId } : {}),
+        path: selected.path,
+        content,
+        confirmed: true,
+      },
+      signal,
+    }), selected);
+  }
+
+  async updateWorkspaceTextFile(
+    target: WorkspaceFileTarget,
+    content: string,
+    signal?: AbortSignal,
+  ): Promise<WorkspaceTextDetail & WorkspaceFileSelector> {
+    const selected = workspaceFileTarget(target.scope, target.spaceId, target.path, 'write');
+    assertWorkspaceTextForWrite(content);
+    return parseWorkspaceTextDetail(await this.request<unknown>('/api/workspace/files/text', {
+      method: 'PUT',
+      body: {
+        scope: selected.scope,
+        ...(selected.scope === 'space' ? { spaceId: selected.spaceId } : {}),
+        path: selected.path,
+        content,
+        confirmed: true,
+      },
+      signal,
+    }), selected);
+  }
+
+  async deleteWorkspaceFile(
+    target: WorkspaceFileTarget,
+    signal?: AbortSignal,
+  ) {
+    const selected = workspaceFileTarget(target.scope, target.spaceId, target.path, 'write');
+    return parseWorkspaceDelete(await this.request<unknown>(`/api/workspace/files?${workspaceFileQuery(selected)}`, {
+      method: 'DELETE',
+      signal,
+    }), selected);
   }
 
   // --- Dream（/api/agent/dream + /api/spaces/:id/dream） ---
