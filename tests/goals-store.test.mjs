@@ -317,6 +317,6 @@ test('源码与架构挂载：GoalsProvider 在 RuntimeProvider 同层装配，W
   assert.match(panelSource, /testID="goals-uncertain"/);
   assert.match(panelSource, /accessibilityLabel="正在读取目标"/);
   assert.match(panelSource, /accessibilityRole="checkbox"/);
-  assert.match(panelSource, /accessibilityRole="alert"/);
+  assert.match(panelSource, /<FeedbackNotice text=\{state\.error\} tone="danger"/);
   assert.match(panelSource, /store\.open\(\);\s*return \(\) => store\.close\(\)/);
 });

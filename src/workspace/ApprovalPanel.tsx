@@ -1,3 +1,5 @@
+import { FeedbackNotice } from '../ui/Feedback';
+import { Card } from '../ui/Surfaces';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { ChevronRight, FilePenLine, ShieldCheck } from 'lucide-react-native';
@@ -9,17 +11,14 @@ import { spacing, workspaceTheme, type WorkspaceColors } from '../ui/tokens';
 import { useTheme } from '../theme/ThemeProvider';
 import { useRuntimeStore } from '../runtime/RuntimeProvider';
 import { EmptyState, SectionHeading, StatusPill, type StatusTone } from './primitives';
+import { ActionButton } from '../ui/ActionButton';
+import { ChoiceChip } from '../ui/ChoiceChip';
 
 const HISTORY_STATUSES: { value?: SettledApprovalStatus; label: string }[] = [
   { label: '全部状态' }, { value: 'approved', label: '已批准' }, { value: 'denied', label: '已拒绝' },
   { value: 'expired', label: '已过期' }, { value: 'cancelled', label: '已撤销' },
 ];
 function useStyles() { const { colors } = useTheme(); return useMemo(() => createStyles(colors), [colors]); }
-function Action({ label, onPress, disabled, primary, danger }: { label: string; onPress: () => void; disabled?: boolean; primary?: boolean; danger?: boolean }) {
-  const styles = useStyles();
-  return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled: !!disabled }} disabled={disabled} onPress={onPress}
-    style={({ pressed }) => [styles.button, primary && styles.primary, danger && styles.dangerButton, disabled && styles.disabled, pressed && styles.pressed]}><Text style={[styles.buttonText, primary && styles.onAccent, danger && styles.danger]}>{label}</Text></Pressable>;
-}
 
 /** 全屏会话面板内的审批领域；不混入活动历史，也不创建额外导航层或连接。 */
 export function ApprovalPanel({ spaceId }: { spaceId: string }) {
@@ -58,74 +57,70 @@ export function ApprovalPanel({ spaceId }: { spaceId: string }) {
 
   return <View style={styles.root} testID="approval-panel">
     <SectionHeading title="每一次授权，都由你决定" eyebrow="YOUR PERMISSION" description="批准仅授权这一次文件操作；是否写入成功，以执行回执为准。" />
-    {!snapshot.synchronized && <View style={styles.card}>
+    {!snapshot.synchronized && <Card style={styles.card}>
       <Text accessibilityRole="alert" style={styles.body}>审批状态待同步，暂时不能提交决定。</Text>
       <Text style={styles.caption}>以下是最后观测内容，不代表授权仍然有效。</Text>
-      <Action label="重新同步审批" onPress={runtime.retry} />
-    </View>}
+      <ActionButton label="重新同步审批" onPress={runtime.retry} />
+    </Card>}
     {selectedId ? <>
-      <View style={styles.row}><Action label="返回审批列表" onPress={() => setSelectedId(undefined)} /><Action label="刷新审批详情" disabled={loading || submitting} onPress={() => void store.loadDetail(selectedId)} /></View>
+      <View style={styles.row}><ActionButton label="返回审批列表" onPress={() => setSelectedId(undefined)} /><ActionButton label="刷新审批详情" disabled={loading || submitting} onPress={() => void store.loadDetail(selectedId)} /></View>
       {loading && <ActivityIndicator accessibilityLabel="正在读取审批详情" color={colors.muted} />}
       {selected && <ApprovalHeading record={selected} />}
       {hasApprovalPreview(selected) ? <>
-        <View style={styles.card}>
+        <Card style={styles.card}>
           <Text style={styles.title}>{approvalScopeLabel(selected.preview)}</Text>
           <Text selectable style={styles.body}>{selected.preview.path}</Text>
           <Text style={styles.caption}>{selected.kind === 'file_edit' ? '精确编辑文件' : selected.preview.beforeExists ? '覆盖已有文件' : '新建文件'} · 服务端登记时固定的完整预览</Text>
           <Preview title="修改前全文" content={selected.preview.before} empty={selected.preview.beforeExists ? '（空文件）' : '（文件尚不存在）'} />
           <Preview title="计划写入全文" content={selected.preview.after} empty="（计划写入空内容）" />
-        </View>
-        <View style={styles.card}>
+        </Card>
+        <Card style={styles.card}>
           <Text style={styles.title}>执行回执</Text><Text style={styles.body}>{executionLabel(selected.execution)}</Text>
           {selected.execution?.result !== null && selected.execution?.result !== undefined && <Text selectable style={styles.body}>{selected.execution.result}</Text>}
           <Text style={styles.caption}>人的决定与实际提交相互独立；历史预览不代表授权仍然有效。</Text>
-        </View>
-        {selected.status === 'pending' && <View style={styles.card}>
+        </Card>
+        {selected.status === 'pending' && <Card style={styles.card}>
           <Text style={styles.body}>{Date.parse(selected.expiresAt) <= now ? '有效期已到，等待服务器确认状态；不能继续决定。' : '请核对完整原文、计划写入内容及文件归属，再作决定。'}</Text>
           {!snapshot.pendingIds.includes(selectedId) && <Text style={styles.caption}>此项已不在最新待审批集合，正在核对最终状态。</Text>}
           {confirmation ? <>
             <Text style={styles.title}>{confirmation.decision === 'approve' ? '确认授权这一次操作？' : '确认拒绝这一次操作？'}</Text>
             <Text style={styles.caption}>{confirmation.decision === 'approve' ? '提交后工具可能立即写入上述完整内容；不会批准其他操作。' : '本次操作将不执行，不代表整项活动失败。'}</Text>
-            <View style={styles.row}><Action label="暂不提交" onPress={() => setConfirmation(undefined)} /><Action label={confirmation.decision === 'approve' ? '确认批准' : '确认拒绝'} primary disabled={!canDecide} onPress={submit} /></View>
+            <View style={styles.row}><ActionButton label="暂不提交" onPress={() => setConfirmation(undefined)} /><ActionButton label={confirmation.decision === 'approve' ? '确认批准' : '确认拒绝'} tone="primary" disabled={!canDecide} onPress={submit} /></View>
           </> : <View style={styles.row}>
-            <Action label="拒绝本次操作" danger disabled={!canDecide} onPress={() => setConfirmation({ decision: 'deny', revision: selected.revision, id: selectedId, syncVersion: snapshot.syncVersion })} />
-            <Action label={submitting ? '正在提交决定' : '批准本次操作'} primary disabled={!canDecide} onPress={() => setConfirmation({ decision: 'approve', revision: selected.revision, id: selectedId, syncVersion: snapshot.syncVersion })} />
+            <ActionButton label="拒绝本次操作" tone="danger" disabled={!canDecide} onPress={() => setConfirmation({ decision: 'deny', revision: selected.revision, id: selectedId, syncVersion: snapshot.syncVersion })} />
+            <ActionButton label={submitting ? '正在提交决定' : '批准本次操作'} tone="primary" disabled={!canDecide} onPress={() => setConfirmation({ decision: 'approve', revision: selected.revision, id: selectedId, syncVersion: snapshot.syncVersion })} />
           </View>}
-        </View>}
+        </Card>}
       </> : !loading && <Text style={styles.body}>完整预览尚未读取，不能作决定。请刷新审批详情。</Text>}
-      {!!snapshot.errors[selectedId] && <Text accessibilityRole="alert" style={styles.error}>{snapshot.errors[selectedId]}</Text>}
+      {!!snapshot.errors[selectedId] && <FeedbackNotice text={snapshot.errors[selectedId]} tone="danger" />}
     </> : <>
       <View style={styles.row}>
-        <Choice label="全部空间" selected={scope === 'all'} onPress={() => setScope('all')} />
-        <Choice label="当前空间" selected={scope === 'space'} onPress={() => setScope('space')} />
+        <ChoiceChip label="全部空间" selected={scope === 'all'} onPress={() => setScope('all')} />
+        <ChoiceChip label="当前空间" selected={scope === 'space'} onPress={() => setScope('space')} />
       </View>
       <View style={styles.row}>
-        <Choice label={`待审批 (${pending.length})`} selected={mode === 'pending'} onPress={() => setMode('pending')} />
-        <Choice label="审批历史" selected={mode === 'history'} onPress={() => setMode('history')} />
+        <ChoiceChip label={`待审批 (${pending.length})`} selected={mode === 'pending'} onPress={() => setMode('pending')} />
+        <ChoiceChip label="审批历史" selected={mode === 'history'} onPress={() => setMode('history')} />
       </View>
       {mode === 'pending' ? <>
-        <Action label={snapshot.refreshing ? '正在补读待审批' : '补读待审批'} disabled={snapshot.refreshing} onPress={() => void store.refreshPending()} />
-        {!!snapshot.error && <Text accessibilityRole="alert" style={styles.error}>{snapshot.error}</Text>}
+        <ActionButton label={snapshot.refreshing ? '正在补读待审批' : '补读待审批'} disabled={snapshot.refreshing} onPress={() => void store.refreshPending()} />
+        {!!snapshot.error && <FeedbackNotice text={snapshot.error} tone="danger" />}
         {!pending.length && <EmptyState icon={ShieldCheck} title={snapshot.synchronized ? '没有待处理的审批' : '审批状态同步中'} description={snapshot.synchronized ? '当前范围没有待审批项。需要你的授权时，会在这里显示完整的操作预览。' : '正在等待服务端的完整待审批集合，暂时不能作决定。'} />}
         {pending.map((item) => <ApprovalRow key={item.id} record={item} onOpen={() => setSelectedId(item.id)} />)}
       </> : <>
-        <View style={styles.row}>{HISTORY_STATUSES.map((item) => <Choice key={item.value ?? 'all'} label={item.label} selected={status === item.value} onPress={() => setStatus(item.value)} />)}</View>
-        <Action label="刷新审批历史" disabled={snapshot.history.loading} onPress={() => void store.loadHistory(filter)} />
+        <View style={styles.row}>{HISTORY_STATUSES.map((item) => <ChoiceChip key={item.value ?? 'all'} label={item.label} selected={status === item.value} onPress={() => setStatus(item.value)} />)}</View>
+        <ActionButton label="刷新审批历史" disabled={snapshot.history.loading} onPress={() => void store.loadHistory(filter)} />
         {snapshot.history.dirty && <Text style={styles.caption}>历史有更新，刷新可读取最新列表；不把待审批混入历史。</Text>}
         {snapshot.history.loading && <ActivityIndicator accessibilityLabel="正在读取审批历史" color={colors.muted} />}
-        {historyMatches && !!snapshot.history.error && <Text accessibilityRole="alert" style={styles.error}>{snapshot.history.error}</Text>}
+        {historyMatches && !!snapshot.history.error && <FeedbackNotice text={snapshot.history.error} tone="danger" />}
         {historyMatches && snapshot.history.loaded && !history.length && !snapshot.history.error && <EmptyState icon={ShieldCheck} title="当前范围没有审批历史" description="已结束的授权记录与独立执行回执会保留在这里。" />}
         {history.map((item) => <ApprovalRow key={item.id} record={item} onOpen={() => setSelectedId(item.id)} />)}
-        {historyMatches && snapshot.history.hasMore && <Action label="加载更多审批历史" disabled={snapshot.history.loading} onPress={() => void store.loadHistory(filter, true)} />}
+        {historyMatches && snapshot.history.hasMore && <ActionButton label="加载更多审批历史" disabled={snapshot.history.loading} onPress={() => void store.loadHistory(filter, true)} />}
       </>}
     </>}
   </View>;
 }
 
-function Choice({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
-  const styles = useStyles();
-  return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected }} onPress={onPress} style={[styles.button, selected && styles.selected]}><Text style={[styles.buttonText, !selected && styles.choiceText]}>{label}</Text></Pressable>;
-}
 function ApprovalRow({ record, onOpen }: { record: ApprovalRecord; onOpen: () => void }) {
   const styles = useStyles(); const { colors } = useTheme();
   const title = 'title' in record ? record.title : '审批详情待同步';
@@ -141,7 +136,7 @@ function ApprovalRow({ record, onOpen }: { record: ApprovalRecord; onOpen: () =>
 }
 function ApprovalHeading({ record }: { record: ApprovalRecord }) {
   const styles = useStyles();
-  return <View style={styles.card}>
+  return <Card style={styles.card}>
     <Text style={styles.title}>{'title' in record ? record.title : '审批详情'}</Text><View style={styles.pillWrap}><StatusPill label={approvalStatusLabel(record.status)} tone={approvalTone(record.status)} /></View>
     <Text selectable style={styles.caption}>审批：{record.id} · revision {record.revision}</Text>
     <Text selectable style={styles.caption}>来源空间：{record.spaceId ?? '未关联会话'}</Text>
@@ -149,7 +144,7 @@ function ApprovalHeading({ record }: { record: ApprovalRecord }) {
     <Text style={styles.caption}>有效期至：{record.expiresAt}</Text>
     {record.decidedAt !== null && <Text style={styles.caption}>人工决定：{record.decidedAt}</Text>}
     {record.resolvedAt !== null && <Text style={styles.caption}>状态结束：{record.resolvedAt}</Text>}
-  </View>;
+  </Card>;
 }
 function approvalTone(status: ApprovalRecord['status']): StatusTone {
   return status === 'pending' ? 'warning' : status === 'approved' ? 'success' : status === 'denied' ? 'danger' : 'neutral';
@@ -165,18 +160,16 @@ function Preview({ title, content, empty }: { title: string; content: string; em
 }
 const createStyles = (colors: WorkspaceColors) => StyleSheet.create({
   root: { gap: spacing[18], paddingBottom: spacing[24] },
-  heading: { ...workspaceTheme.typography.section, color: colors.ink },
+
   title: { ...workspaceTheme.typography.itemTitle, color: colors.ink },
   body: { ...workspaceTheme.typography.detail, color: colors.muted },
   caption: { ...workspaceTheme.typography.caption, color: colors.faint },
-  error: { ...workspaceTheme.typography.detail, color: colors.danger },
+
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing[8], alignItems: 'center' },
   card: { borderRadius: workspaceTheme.radius.card, backgroundColor: colors.surface, padding: spacing[20], gap: spacing[12] },
-  button: { minHeight: workspaceTheme.layout.smallControl, justifyContent: 'center', alignItems: 'center', paddingHorizontal: spacing[16], paddingVertical: spacing[10], borderRadius: workspaceTheme.radius.round, backgroundColor: colors.surface, alignSelf: 'flex-start' },
-  buttonText: { ...workspaceTheme.typography.status, color: colors.ink },
-  primary: { backgroundColor: colors.blue }, selected: { backgroundColor: colors.selected }, choiceText: { color: colors.muted },
-  dangerButton: { backgroundColor: colors.dangerSoft }, pressed: { opacity: workspaceTheme.interaction.pressedOpacity },
-  onAccent: { color: colors.onAccent }, danger: { color: colors.danger }, disabled: { opacity: workspaceTheme.interaction.disabledOpacity },
+
+   pressed: { opacity: workspaceTheme.interaction.pressedOpacity },
+
   previewBlock: { gap: spacing[8], marginTop: spacing[8] },
   preview: { maxHeight: workspaceTheme.layout.approvalPreviewMaxHeight, backgroundColor: colors.canvas, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line, borderRadius: workspaceTheme.radius.field },
   previewContent: { padding: spacing[16] }, previewText: { ...workspaceTheme.typography.mono, color: colors.ink },

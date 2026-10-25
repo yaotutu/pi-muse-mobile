@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View, type DimensionValue } from 'react-native';
-import { Button } from '../ui/Buttons';
+import { ActionButton } from '../ui/ActionButton';
 import { ErrorNotice } from '../ui/Feedback';
 import { Sheet } from '../ui/Sheet';
 import { Card } from '../ui/Surfaces';
@@ -155,43 +155,27 @@ function Actions({
       return null;
     case 'idle':
       return (
-        <Button onPress={onCheck} primary disabled={lock}>
-          立即检查更新
-        </Button>
+        <ActionButton label="立即检查更新" onPress={onCheck} tone="primary" disabled={lock} />
       );
     case 'checking':
       return (
-        <Button onPress={onCancel}>
-          取消检查
-        </Button>
+        <ActionButton label="取消检查" onPress={onCancel} />
       );
     case 'current':
       return (
-        <Button onPress={onCheck} disabled={lock}>
-          再次检查
-        </Button>
+        <ActionButton label="再次检查" onPress={onCheck} disabled={lock} />
       );
     case 'downloading':
       return (
-        <Button onPress={onCancel}>
-          取消下载
-        </Button>
+        <ActionButton label="取消下载" onPress={onCancel} />
       );
     case 'ready':
       return (
         <View style={{ gap: spacing.sm }}>
-          <Button onPress={onInstall} primary disabled={lock}>
-            继续安装
-          </Button>
-          <Button onPress={onOpenSettings} disabled={lock}>
-            安装授权设置
-          </Button>
-          <Button onPress={onRetryDownload} disabled={lock}>
-            重新下载
-          </Button>
-          <Button onPress={onCheck} disabled={lock}>
-            重新检查
-          </Button>
+          <ActionButton label="继续安装" onPress={onInstall} tone="primary" disabled={lock} />
+          <ActionButton label="安装授权设置" onPress={onOpenSettings} disabled={lock} />
+          <ActionButton label="重新下载" onPress={onRetryDownload} disabled={lock} />
+          <ActionButton label="重新检查" onPress={onCheck} disabled={lock} />
         </View>
       );
     case 'installing':
@@ -201,13 +185,9 @@ function Actions({
       return (
         <View style={{ gap: spacing.sm }}>
           {hasRelease && (
-            <Button onPress={onRetryDownload} primary disabled={lock}>
-              重试下载
-            </Button>
+            <ActionButton label="重试下载" onPress={onRetryDownload} tone="primary" disabled={lock} />
           )}
-          <Button onPress={onCheck} disabled={lock}>
-            重新检查
-          </Button>
+          <ActionButton label="重新检查" onPress={onCheck} disabled={lock} />
         </View>
       );
     case 'error':
@@ -215,44 +195,28 @@ function Actions({
         case 'check':
           // 没有 release 时不该给"重试下载"，否则会无目标地下发。
           return (
-            <Button onPress={onCheck} primary disabled={lock}>
-              重新检查
-            </Button>
+            <ActionButton label="重新检查" onPress={onCheck} tone="primary" disabled={lock} />
           );
         case 'download':
           return (
-            <Button onPress={onRetryDownload} primary disabled={lock}>
-              重试下载
-            </Button>
+            <ActionButton label="重试下载" onPress={onRetryDownload} tone="primary" disabled={lock} />
           );
         case 'install':
           return (
             <View style={{ gap: spacing.sm }}>
-              <Button onPress={onInstall} primary disabled={lock}>
-                继续安装
-              </Button>
-              <Button onPress={onOpenSettings} disabled={lock}>
-                安装授权设置
-              </Button>
-              <Button onPress={onRetryDownload} disabled={lock}>
-                重新下载
-              </Button>
-              <Button onPress={onCheck} disabled={lock}>
-                重新检查
-              </Button>
+              <ActionButton label="继续安装" onPress={onInstall} tone="primary" disabled={lock} />
+              <ActionButton label="安装授权设置" onPress={onOpenSettings} disabled={lock} />
+              <ActionButton label="重新下载" onPress={onRetryDownload} disabled={lock} />
+              <ActionButton label="重新检查" onPress={onCheck} disabled={lock} />
             </View>
           );
         default:
           return (
             <View style={{ gap: spacing.sm }}>
               {hasRelease && (
-                <Button onPress={onRetryDownload} primary disabled={lock}>
-                  重试下载
-                </Button>
+                <ActionButton label="重试下载" onPress={onRetryDownload} tone="primary" disabled={lock} />
               )}
-              <Button onPress={onCheck} disabled={lock}>
-                重新检查
-              </Button>
+              <ActionButton label="重新检查" onPress={onCheck} disabled={lock} />
             </View>
           );
       }

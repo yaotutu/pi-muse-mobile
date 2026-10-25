@@ -12,12 +12,12 @@ test('长期记忆保留直接操作和提交安全提示，紧凑展示真实�
   for (const label of ['返回应用设置', '刷新记忆', '搜索记忆', '全部记忆', '新增记忆', '记忆搜索关键词', '记忆内容', '确认删除记忆', '取消删除记忆']) {
     assert.ok(source.includes(label), label);
   }
-  assert.match(source, /snapshot\.uncertain && <View[^>]+testID="memory-uncertain"/);
-  assert.match(source, /snapshot\.reviewed && <Action label="已核对，解除提交锁定"/);
+  assert.match(source, /snapshot\.uncertain && <Card[^>]+testID="memory-uncertain"/);
+  assert.match(source, /snapshot\.reviewed && <ActionButton label="已核对，解除提交锁定"/);
   assert.match(source, /snapshot\.stale && snapshot\.loaded/);
   assert.match(source, /<Text selectable style=\{styles\.body\}>\{memory\.text\}/);
   assert.match(source, /<Text selectable style=\{styles\.body\}>\{snapshot\.deleteTarget\.text\}/);
-  assert.match(source, /styles\.buttonWide/);
+  assert.match(source, /<ActionButton label="确认删除记忆"[^\n]+tone="danger" wide/);
 });
 
 test('Dream 展开平级分组，保留独立保存、切换确认、开关与待决归属', () => {
@@ -35,5 +35,5 @@ test('Dream 展开平级分组，保留独立保存、切换确认、开关与�
   assert.match(source, /确认应用Dream建议/);
   assert.match(source, /确认忽略Dream建议/);
   assert.match(source, /showDefault && <Text selectable/);
-  assert.match(source, /styles\.buttonWide/);
+  assert.match(source, /<ActionButton label="保存全局Dream提示词"[^>]+wide/);
 });

@@ -25,7 +25,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { IconButton } from './Buttons';
+import { IconControl } from './IconControl';
 import { ErrorBoundary } from './ErrorBoundary';
 import { sizing, spacing, workspaceTheme, type WorkspaceColors } from './tokens';
 import { useTheme } from '../theme/ThemeProvider';
@@ -90,7 +90,7 @@ export function Sheet({
                 <Text style={{ ...workspaceTheme.typography.caption, color: colors.muted }}>{subtitle}</Text>
               )}
             </View>
-            <IconButton icon={X} label="关闭" onPress={onClose} />
+            <IconControl icon={X} label="关闭" onPress={onClose} small />
           </View>
           <ScrollView
             keyboardShouldPersistTaps="handled"

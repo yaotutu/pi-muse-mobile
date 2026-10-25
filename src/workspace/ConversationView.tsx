@@ -20,6 +20,7 @@ import { useTheme } from '../theme/ThemeProvider';
 import { TypingIndicator } from './primitives';
 import { MessageContent } from './MessageContent';
 import { ToolResultCard } from './ToolResultCard';
+import { ActionButton } from '../ui/ActionButton';
 
 const { layout: l, radius: r, typography: t } = workspaceTheme;
 
@@ -217,14 +218,7 @@ export function ConversationView({
               {session.draft.length > 0 || session.draftAttachments.length > 0 ? (
                 <Text style={styles.mutedText}>输入框已有文字或附件：请先保存或清空当前草稿，再恢复此消息</Text>
               ) : (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="恢复到输入框"
-                  style={styles.actionButton}
-                  onPress={() => sessions.restorePendingSubmissionToDraft(spaceId)}
-                >
-                  <Text style={styles.actionText}>恢复到输入框</Text>
-                </Pressable>
+                <ActionButton label="恢复到输入框" onPress={() => sessions.restorePendingSubmissionToDraft(spaceId)} />
               )}
             </View>
           )}
@@ -240,15 +234,10 @@ export function ConversationView({
           {!!conversation.error && <Text accessibilityRole="alert" style={styles.error}>{conversation.error}</Text>}
           {session.resetUncertain && <>
             <Text accessibilityRole="alert" style={styles.error}>重置结果未确认，已暂停发送。请核对空间列表中的当前会话，不会自动重发重置。</Text>
-            <Pressable accessibilityRole="button" accessibilityLabel="核对重置结果" onPress={onSettled} style={styles.actionButton}>
-              <Text style={styles.actionText}>核对重置结果</Text>
-            </Pressable>
+            <ActionButton label="核对重置结果" onPress={onSettled} />
           </>}
           {(conversation.historyFailed || pending?.status === 'unconfirmed' || connection?.snapshot.status === 'authentication-required') && (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="重新同步会话"
-              style={styles.actionButton}
+            <ActionButton label="重新同步会话" text="重新同步"
               onPress={() => {
                 if (connection?.snapshot.status === 'authentication-required') openConnection();
                 else {
@@ -256,9 +245,7 @@ export function ConversationView({
                   connection?.retry();
                 }
               }}
-            >
-              <Text style={styles.actionText}>重新同步</Text>
-            </Pressable>
+            />
           )}
         </ScrollView>
         {showLatest && <Pressable accessibilityRole="button" accessibilityLabel="回到最新消息" onPress={() => { nearBottom.current = true; setShowLatest(false); scroll.current?.scrollToEnd({ animated: true }); }} style={styles.latestButton}><ArrowDown size={sizing[18]} color={colors.ink} /><Text style={styles.caption}>回到最新</Text></Pressable>}
@@ -274,6 +261,7 @@ export function ConversationView({
         </View>}
         <View style={[styles.composer, focused && styles.composerFocused]}>
           <AttachmentAction disabled={busy || !!pending || !sessions.canWrite(spaceId)} selecting={selecting} onPress={() => void selectAttachments()} />
+          {/* 聊天输入与发送/停止共用动态高度胶囊；保留专用 TextInput 以维持光标、键盘和流式操作。 */}
           <TextInput
             accessibilityLabel="消息输入框"
             placeholder="消息"
@@ -432,14 +420,7 @@ const createStyles = (c: WorkspaceColors) =>
     mutedText: { ...t.detail, color: c.muted },
     caption: { ...t.caption, color: c.faint },
     error: { ...t.caption, color: c.danger },
-    actionButton: {
-      backgroundColor: c.blue,
-      paddingHorizontal: spacing[18],
-      paddingVertical: spacing[12],
-      borderRadius: r.round,
-      alignSelf: 'center',
-    },
-    actionText: { ...t.status, color: c.onAccent },
+
     userMessageFailed: { backgroundColor: c.danger },
     userMessageUnconfirmed: { opacity: 0.75 },
     messageSubtext: { ...t.caption, color: c.onAccent, marginTop: spacing[4], alignSelf: 'flex-end' },

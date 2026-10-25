@@ -173,7 +173,7 @@ test('会话文字操作共用点击区与状态，危险操作仍经过原确�
   assert.match(button, /accessibilityState=\{\{ disabled: locked, busy, .*expanded/);
   assert.match(screen, /tone="danger" busy=\{session\.deleting\}/);
   assert.match(screen, /session\.resetUncertain \|\| !connection\?\.enabled \|\| sessions\.hasSettingsWrite/);
-  assert.match(screen, /deleteConfirm \? <View style=\{styles\.exampleCard\}>/);
+  assert.match(screen, /deleteConfirm \? <Card style=\{styles\.exampleCard\} tone="danger">/);
   assert.match(screen, /confirmActions: \{ flexDirection: 'row', flexWrap: 'wrap'/);
   assert.doesNotMatch(execution, /styles\.button|styles\.buttonText/);
   assert.doesNotMatch(screen, /styles\.secondaryButton/);

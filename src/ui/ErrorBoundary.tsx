@@ -6,7 +6,7 @@
 import { AlertTriangle, RefreshCw } from 'lucide-react-native';
 import { Component, useMemo, type ErrorInfo, type ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { Button } from './Buttons';
+import { ActionButton } from './ActionButton';
 import { sizing, spacing, workspaceTheme, type WorkspaceColors } from './tokens';
 import { useTheme } from '../theme/ThemeProvider';
 
@@ -69,9 +69,7 @@ function ErrorFallback({ title, error, reset }: { title: string; error: Error; r
               {error.message || '发生未知错误'}
             </Text>
             <View style={styles.actions}>
-              <Button small icon={RefreshCw} onPress={reset}>
-                重试
-              </Button>
+              <ActionButton label="重试" icon={RefreshCw} onPress={reset} />
             </View>
           </View>
         </View>;

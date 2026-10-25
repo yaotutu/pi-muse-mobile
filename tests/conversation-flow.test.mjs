@@ -618,7 +618,7 @@ test('11) UI 入口契约：unconfirmed 待确认时“重新同步”按钮始�
   // 源码契约：按钮渲染条件必须覆盖 pending 待确认，否则 banner 要求重新同步却没有入口。
   const { readFileSync } = await import('node:fs');
   const source = readFileSync(new URL('../src/workspace/ConversationView.tsx', import.meta.url), 'utf8');
-  const buttonBlock = source.match(/\{([\s\S]{0,220})accessibilityLabel="重新同步会话"/);
+  const buttonBlock = source.match(/\{([\s\S]{0,220})<ActionButton label="重新同步会话"/);
   assert.ok(buttonBlock, '找到“重新同步会话”按钮');
   assert.ok(
     /conversation\.historyFailed \|\| pending\?\.status === 'unconfirmed' \|\| connection\?\.snapshot\.status === 'authentication-required'/.test(buttonBlock[1]),

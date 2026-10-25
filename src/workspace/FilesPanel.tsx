@@ -1,5 +1,6 @@
+import { Card } from '../ui/Surfaces';
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Image as RNImage, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image as RNImage, Keyboard, Pressable, StyleSheet, Text, View } from 'react-native';
 import { ChevronLeft, Download, File, Folder, Plus, RefreshCw } from 'lucide-react-native';
 import { MAX_WORKSPACE_TEXT_BYTES, utf8ByteLength } from '../files/contracts';
 import { useFiles } from '../files/FilesProvider';
@@ -7,6 +8,9 @@ import { saveWorkspaceFileToDevice, type NativeDownloadResult } from '../files/n
 import type { WorkspaceFileDetail } from '../files/types';
 import { useTheme } from '../theme/ThemeProvider';
 import { sizing, spacing, workspaceTheme, type WorkspaceColors } from '../ui/tokens';
+import { ActionButton } from '../ui/ActionButton';
+import { ChoiceChip } from '../ui/ChoiceChip';
+import { FormInput } from '../ui/FormInput';
 
 const { layout: l, radius: r, typography: t } = workspaceTheme;
 const IMAGE_MIME = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
@@ -80,11 +84,11 @@ export function FilesPanel({ currentSpaceId }: { currentSpaceId: string }) {
   return <View style={styles.root} testID="workspace-files-panel">
     <View style={styles.heading}>
       <View style={styles.flexText}><Text accessibilityRole="header" style={styles.title}>工作区文件</Text><Text style={styles.caption}>浏览服务端真实文件；写入前会展示全文供你确认。</Text></View>
-      <Action label="刷新工作区当前目录" text="刷新" icon="refresh" onPress={() => void store.refresh()} disabled={snapshot.loading || snapshot.writing !== false} />
+      <ActionButton label="刷新工作区当前目录" text="刷新" icon={RefreshCw} onPress={() => void store.refresh()} disabled={snapshot.loading || snapshot.writing !== false} />
     </View>
     <View style={styles.scopeChoices}>
-      <Action label="查看当前空间私有文件" text="当前空间" onPress={() => store.selectSpace(currentSpaceId)} selected={snapshot.scope === 'space' && !wrongSpace} disabled={locked} />
-      <Action label="查看全部空间共享文件" text="共享文件" onPress={store.selectShared} selected={snapshot.scope === 'shared'} disabled={locked} />
+      <ChoiceChip label="查看当前空间私有文件" text="当前空间" onPress={() => store.selectSpace(currentSpaceId)} selected={snapshot.scope === 'space' && !wrongSpace} disabled={locked} />
+      <ChoiceChip label="查看全部空间共享文件" text="共享文件" onPress={store.selectShared} selected={snapshot.scope === 'shared'} disabled={locked} />
     </View>
     <Text selectable style={styles.scopeLabel}>当前范围：{scopeLabel}</Text>
     {snapshot.scope === 'shared' && <Text style={styles.warning}>共享文件会影响全部空间，请确认范围后再保存或删除。</Text>}
@@ -93,19 +97,19 @@ export function FilesPanel({ currentSpaceId }: { currentSpaceId: string }) {
     {!!snapshot.notice && <Text accessibilityLiveRegion="polite" style={styles.success}>{snapshot.notice}</Text>}
     {snapshot.stale && snapshot.loaded && <Text style={styles.warning}>目录内容可能已变化；请手动刷新后核对。旧列表仍按上次读取结果显示。</Text>}
 
-    {snapshot.uncertain && <View style={styles.warningCard}>
+    {snapshot.uncertain && <Card style={styles.warningCard} tone="warning">
       <Text style={styles.cardTitle}>上次文件操作结果未明</Text>
       <Text selectable style={styles.body}>归属：{snapshot.uncertainOperation?.scope === 'shared' ? '共享文件 · 全部空间' : `私有文件 · ${snapshot.uncertainOperation?.spaceId ?? snapshot.selectedSpaceId ?? '未知空间'}`}</Text>
       <Text selectable style={styles.path}>路径：{snapshot.uncertainOperation?.path ?? '未记录'}</Text>
       <Text style={styles.body}>不会自动重发。请完整回读并逐字核对，再明确解除锁定；解除后再次提交会发起新请求。</Text>
-      <View style={styles.actions}><Action label="完整回读未明文件操作" text="回读核对" onPress={() => void store.verifyUncertainOperation()} disabled={snapshot.writing !== false} /></View>
+      <View style={styles.actions}><ActionButton label="完整回读未明文件操作" text="回读核对" onPress={() => void store.verifyUncertainOperation()} disabled={snapshot.writing !== false} /></View>
       {snapshot.reviewed && <>
         {snapshot.verificationMissing ? <Text style={styles.warning}>回读结果：目标文件不存在。请与原操作预期核对。</Text>
           : verification ? <>
             <Text style={styles.caption}>回读文件：{formatSize(verification.size)} · {formatTime(verification.updatedAt)} · {verification.mimeType}</Text>
             <FileContent detail={verification} label="回读结果全文" styles={styles} />
             {verification.kind !== 'text' && verificationKey && <>
-              <Action label="下载未明操作回读文件到设备" text={downloading === verificationKey ? '正在保存到设备…' : '下载回读文件'} icon="download" disabled={downloading === verificationKey}
+              <ActionButton label="下载未明操作回读文件到设备" text={downloading === verificationKey ? '正在保存到设备…' : '下载回读文件'} icon={Download} disabled={downloading === verificationKey}
                 onPress={() => void saveToDevice(verification, verificationKey, () => {
                   const current = store.getSnapshot();
                   return current.uncertain && current.uncertainOperation !== undefined &&
@@ -116,11 +120,11 @@ export function FilesPanel({ currentSpaceId }: { currentSpaceId: string }) {
           </>
             : <Text style={styles.warning}>回读未取得文件详情。</Text>}
         {snapshot.uncertainOperation?.content !== undefined && <TextBlock label="上次提交全文" value={snapshot.uncertainOperation.content} styles={styles} />}
-        <Action label="我已核对文件结果并解除锁定" text="我已核对，解除锁定" onPress={store.acknowledgeReviewed} disabled={snapshot.writing !== false} primary />
+        <ActionButton label="我已核对文件结果并解除锁定" text="我已核对，解除锁定" onPress={store.acknowledgeReviewed} disabled={snapshot.writing !== false} tone="primary" />
       </>}
-    </View>}
+    </Card>}
 
-    {snapshot.savePreview ? <View style={styles.card}>
+    {snapshot.savePreview ? <Card style={styles.card}>
       <Text accessibilityRole="header" style={styles.cardTitle}>确认保存 · {snapshot.savePreview.mode === 'create' ? '新建文本' : '修改文本'}</Text>
       <Text selectable style={styles.body}>范围：{snapshot.savePreview.scope === 'shared' ? '共享文件 · 全部空间' : `私有文件 · ${snapshot.savePreview.spaceId}`}</Text>
       <Text selectable style={styles.path}>路径：{snapshot.savePreview.path}</Text>
@@ -128,40 +132,40 @@ export function FilesPanel({ currentSpaceId }: { currentSpaceId: string }) {
       <TextBlock label="保存前 · 全文" value={snapshot.savePreview.before} styles={styles} />
       <TextBlock label="保存后 · 全文" value={snapshot.savePreview.after} styles={styles} />
       <View style={styles.actions}>
-        <Action label="确认保存工作区文件" text={snapshot.writing ? '正在保存…' : '确认保存'} onPress={() => void store.confirmSave()} disabled={!canWrite} primary />
-        <Action label="取消保存预览并保留文件草稿" text="返回草稿" onPress={store.cancelSavePreview} disabled={snapshot.writing !== false} />
+        <ActionButton label="确认保存工作区文件" text={snapshot.writing ? '正在保存…' : '确认保存'} onPress={() => void store.confirmSave()} disabled={!canWrite} tone="primary" />
+        <ActionButton label="取消保存预览并保留文件草稿" text="返回草稿" onPress={store.cancelSavePreview} disabled={snapshot.writing !== false} />
       </View>
-    </View> : snapshot.editor ? <View style={styles.card}>
+    </Card> : snapshot.editor ? <Card style={styles.card}>
       <Text accessibilityRole="header" style={styles.cardTitle}>{snapshot.editor.mode === 'create' ? '新建文本文件' : '编辑文本文件'}</Text>
       <Text selectable style={styles.body}>归属：{scopeLabel}</Text>
       {snapshot.editor.mode === 'create' ? <>
         <Text style={styles.fieldLabel}>相对当前范围根目录的完整路径</Text>
-        <TextInput accessibilityLabel="新建文件相对路径" value={snapshot.editor.path} onChangeText={store.setDraftPath} editable={snapshot.writing === false && !snapshot.uncertain}
+        <FormInput accessibilityLabel="新建文件相对路径" value={snapshot.editor.path} onChangeText={store.setDraftPath} editable={snapshot.writing === false && !snapshot.uncertain}
           autoCapitalize="none" autoCorrect={false} placeholder="例如 notes/today.txt" placeholderTextColor={colors.faint} style={styles.input} />
         <Text style={styles.caption}>路径每段仅可用 ASCII 字母、数字、点、连字符、下划线；可用 / 分隔已有目录。</Text>
       </> : <Text selectable style={styles.path}>路径：{snapshot.editor.path}</Text>}
       <Text style={styles.fieldLabel}>文本全文</Text>
-      <TextInput accessibilityLabel="编辑文件完整文本" multiline textAlignVertical="top" value={snapshot.editor.content} onChangeText={store.setDraftContent}
+      <FormInput variant="code" accessibilityLabel="编辑文件完整文本" multiline textAlignVertical="top" value={snapshot.editor.content} onChangeText={store.setDraftContent}
         editable={snapshot.writing === false && !snapshot.uncertain} autoCapitalize="none" autoCorrect={false} scrollEnabled
         placeholder="输入完整文本" placeholderTextColor={colors.faint} style={styles.editorInput} />
       <Text style={styles.caption}>当前 {utf8ByteLength(snapshot.editor.content).toLocaleString()} / {MAX_WORKSPACE_TEXT_BYTES.toLocaleString()} UTF-8 字节。编辑原文完整保留；超限内容不能保存，请全选替换或删减到上限内。</Text>
       <View style={styles.actions}>
-        <Action label="预览工作区文件保存前后全文" text="预览保存" onPress={() => { Keyboard.dismiss(); store.requestSave(); }} disabled={!canWrite || utf8ByteLength(snapshot.editor.content) > MAX_WORKSPACE_TEXT_BYTES} primary />
-        <Action label="取消编辑并丢弃文件草稿" text="取消编辑 · 丢弃草稿" onPress={() => { Keyboard.dismiss(); store.cancelEditor(); }} disabled={snapshot.writing !== false || snapshot.uncertain} />
+        <ActionButton label="预览工作区文件保存前后全文" text="预览保存" onPress={() => { Keyboard.dismiss(); store.requestSave(); }} disabled={!canWrite || utf8ByteLength(snapshot.editor.content) > MAX_WORKSPACE_TEXT_BYTES} tone="primary" />
+        <ActionButton label="取消编辑并丢弃文件草稿" text="取消编辑 · 丢弃草稿" onPress={() => { Keyboard.dismiss(); store.cancelEditor(); }} disabled={snapshot.writing !== false || snapshot.uncertain} />
       </View>
-    </View> : snapshot.deleteTarget ? <View style={styles.warningCard}>
+    </Card> : snapshot.deleteTarget ? <Card style={styles.warningCard} tone="danger">
       <Text accessibilityRole="header" style={styles.cardTitle}>确认删除普通文件？</Text>
       <Text selectable style={styles.body}>范围：{scopeLabel}</Text>
       <Text selectable style={styles.path}>路径：{snapshot.deleteTarget.path}</Text>
       <Text style={styles.warning}>文件删除后不可恢复；目录不能在这里删除。</Text>
       <View style={styles.actions}>
-        <Action label="确认删除工作区普通文件" text={snapshot.writing ? '正在删除…' : '确认删除文件'} onPress={() => void store.confirmDelete()} disabled={!canWrite} danger />
-        <Action label="取消删除工作区文件" text="取消" onPress={store.cancelDelete} disabled={snapshot.writing !== false} />
+        <ActionButton label="确认删除工作区普通文件" text={snapshot.writing ? '正在删除…' : '确认删除文件'} onPress={() => void store.confirmDelete()} disabled={!canWrite} tone="danger" />
+        <ActionButton label="取消删除工作区文件" text="取消" onPress={store.cancelDelete} disabled={snapshot.writing !== false} />
       </View>
-    </View> : <>
+    </Card> : <>
       <View style={styles.toolbar}>
-        <Action label="返回工作区上级目录" text="上级" icon="back" onPress={store.goUp} disabled={!canNavigate || snapshot.directoryPath === '.'} />
-        <Action label="新建工作区文本文件" text="新建文本" icon="new" onPress={() => { store.beginCreate(); if (snapshot.directoryPath !== '.') store.setDraftPath(`${snapshot.directoryPath}/`); }} disabled={!canWrite} />
+        <ActionButton label="返回工作区上级目录" text="上级" icon={ChevronLeft} onPress={store.goUp} disabled={!canNavigate || snapshot.directoryPath === '.'} />
+        <ActionButton label="新建工作区文本文件" text="新建文本" icon={Plus} onPress={() => { store.beginCreate(); if (snapshot.directoryPath !== '.') store.setDraftPath(`${snapshot.directoryPath}/`); }} disabled={!canWrite} />
       </View>
       <Text selectable style={styles.path}>目录：{snapshot.directoryPath}</Text>
       {snapshot.loading && <View style={styles.loading}><ActivityIndicator accessibilityLabel="正在读取工作区目录" color={colors.blue} /><Text style={styles.caption}>正在读取目录…</Text></View>}
@@ -179,7 +183,7 @@ export function FilesPanel({ currentSpaceId }: { currentSpaceId: string }) {
           </View>
         </Pressable>;
       })}
-      {!!snapshot.selectedPath && <View style={styles.card}>
+      {!!snapshot.selectedPath && <Card style={styles.card}>
         <Text accessibilityRole="header" style={styles.cardTitle}>文件详情</Text>
         <Text selectable style={styles.body}>范围：{scopeLabel}</Text>
         <Text selectable style={styles.path}>路径：{snapshot.selectedPath}</Text>
@@ -190,7 +194,7 @@ export function FilesPanel({ currentSpaceId }: { currentSpaceId: string }) {
           <Text style={styles.caption}>{formatSize(detail.size)} · {formatTime(detail.updatedAt)} · {detail.mimeType}</Text>
           <FileContent detail={detail} label="文件完整内容" styles={styles} />
           <View style={styles.actions}>
-            <Action label={`下载工作区文件 ${detail.path}`} text={busyDownload ? '正在保存到设备…' : '下载到设备'} icon="download" onPress={() => {
+            <ActionButton label={`下载工作区文件 ${detail.path}`} text={busyDownload ? '正在保存到设备…' : '下载到设备'} icon={Download} onPress={() => {
               if (!detailKey) return;
               void saveToDevice(detail, detailKey, () => {
                 const current = store.getSnapshot();
@@ -198,11 +202,11 @@ export function FilesPanel({ currentSpaceId }: { currentSpaceId: string }) {
                   `${current.scope}:${current.selectedSpaceId ?? ''}:${current.selectedPath}` === detailKey;
               });
             }} disabled={busyDownload || !canNavigate} />
-            {detail.kind === 'text' && <Action label={`编辑工作区文本文件 ${detail.path}`} text="编辑文本" onPress={store.beginEdit} disabled={!canWrite} />}
-            <Action label={`准备删除工作区文件 ${detail.path}`} text="删除文件" onPress={() => store.requestDelete(detail.path)} disabled={!canWrite || !snapshot.entries.some((entry) => entry.kind === 'file' && entry.path === detail.path)} danger />
+            {detail.kind === 'text' && <ActionButton label={`编辑工作区文本文件 ${detail.path}`} text="编辑文本" onPress={store.beginEdit} disabled={!canWrite} />}
+            <ActionButton label={`准备删除工作区文件 ${detail.path}`} text="删除文件" onPress={() => store.requestDelete(detail.path)} disabled={!canWrite || !snapshot.entries.some((entry) => entry.kind === 'file' && entry.path === detail.path)} tone="danger" />
           </View>
         </>}
-      </View>}
+      </Card>}
     </>}
   </View>;
 }
@@ -221,19 +225,6 @@ function FileContent({ detail, label, styles }: { detail: WorkspaceFileDetail; l
   return <Text style={styles.caption}>{detail.kind === 'binary' ? '二进制文件不能在应用内预览，请下载到设备查看。' : '图片格式不在安全预览范围内，请下载到设备查看。'}</Text>;
 }
 
-function Action({ label, text, onPress, disabled, primary, danger, selected, icon }: {
-  label: string; text: string; onPress: () => void; disabled?: boolean; primary?: boolean; danger?: boolean; selected?: boolean; icon?: 'back' | 'refresh' | 'new' | 'download';
-}) {
-  const { colors } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
-  const Icon = icon === 'back' ? ChevronLeft : icon === 'refresh' ? RefreshCw : icon === 'new' ? Plus : icon === 'download' ? Download : undefined;
-  return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled: !!disabled, selected: !!selected }} disabled={disabled} onPress={onPress}
-    style={({ pressed }) => [styles.action, selected && styles.selected, primary && styles.primary, danger && styles.dangerAction, disabled && styles.disabled, pressed && styles.pressed]}>
-    {Icon && <Icon size={sizing.iconSmall} color={primary ? colors.onAccent : danger ? colors.danger : colors.ink} />}
-    <Text style={[styles.actionText, primary && styles.primaryText, danger && styles.dangerText]}>{text}</Text>
-  </Pressable>;
-}
-
 const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   root: { gap: spacing.md, minWidth: 0, paddingBottom: spacing.section },
   heading: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm, minWidth: 0 }, flexText: { flex: 1, minWidth: 0 },
@@ -242,9 +233,8 @@ const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   warning: { ...t.detail, color: c.warning }, error: { ...t.detail, color: c.danger }, success: { ...t.detail, color: c.success },
   scopeChoices: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }, scopeLabel: { ...t.status, color: c.ink },
   toolbar: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }, actions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  action: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs, minHeight: l.smallControl, maxWidth: '100%', paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: r.round, backgroundColor: c.control },
-  actionText: { ...t.status, color: c.ink, flexShrink: 1 }, selected: { backgroundColor: c.selected }, primary: { backgroundColor: c.blue }, primaryText: { color: c.onAccent },
-  dangerAction: { backgroundColor: c.dangerSoft }, dangerText: { color: c.danger }, disabled: { opacity: workspaceTheme.interaction.disabledOpacity }, pressed: { opacity: workspaceTheme.interaction.pressedOpacity },
+
+    disabled: { opacity: workspaceTheme.interaction.disabledOpacity }, pressed: { opacity: workspaceTheme.interaction.pressedOpacity },
   loading: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   fileRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md, minWidth: 0, padding: spacing.md, borderRadius: r.field, backgroundColor: c.surface },
   fileName: { ...t.status, color: c.ink, flexShrink: 1 },
@@ -252,7 +242,7 @@ const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   warningCard: { padding: spacing.lg, gap: spacing.md, minWidth: 0, backgroundColor: c.warningSoft, borderRadius: r.card },
   path: { ...t.mono, color: c.ink, flexShrink: 1 }, fieldLabel: { ...t.status, color: c.ink },
   textBlock: { gap: spacing.sm, minWidth: 0 }, fullText: { ...t.mono, color: c.ink, backgroundColor: c.canvas, borderRadius: r.field, padding: spacing.md },
-  input: { ...t.detail, color: c.ink, minHeight: l.inputMinHeight, borderWidth: StyleSheet.hairlineWidth, borderColor: c.line, borderRadius: r.field, backgroundColor: c.canvas, padding: spacing.md },
-  editorInput: { ...t.mono, color: c.ink, minHeight: l.profileTextHeight, borderWidth: StyleSheet.hairlineWidth, borderColor: c.line, borderRadius: r.field, backgroundColor: c.canvas, padding: spacing.md },
+  input: { minHeight: l.inputMinHeight },
+  editorInput: { minHeight: l.profileTextHeight },
   image: { width: '100%', height: l.emptyMinHeight, borderRadius: r.field, backgroundColor: c.canvas },
 });

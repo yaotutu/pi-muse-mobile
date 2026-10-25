@@ -12,19 +12,20 @@ import {
   type ReactNode,
 } from 'react';
 import {
-  ActivityIndicator,
   KeyboardAvoidingView,
   Modal,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemeStatusBar } from '../theme/ThemeStatusBar';
+import { ActionButton } from '../ui/ActionButton';
+import { FormInput } from '../ui/FormInput';
+import { IconControl } from '../ui/IconControl';
+import { Card } from '../ui/Surfaces';
 import {
   Check,
   Eye,
@@ -282,27 +283,8 @@ export function ConnectionPanel({ manager, snapshot, onClose }: ConnectionPanelP
       <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
         <View style={styles.column}>
           <View style={styles.header}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={
-                isLocked ? '保存中，暂时无法关闭' : '关闭服务器连接'
-              }
-              accessibilityState={{ disabled: isLocked }}
-              hitSlop={spacing.md}
-              disabled={isLocked}
-              onPress={handleClose}
-              style={({ pressed }) => [
-                styles.headerSideButton,
-                pressed && !isLocked && styles.pressed,
-              ]}
-              testID="workspace-connection-close"
-            >
-              <X
-                size={workspaceTheme.layout.navigationIconSize}
-                color={colors.ink}
-                strokeWidth={2}
-              />
-            </Pressable>
+            <IconControl icon={X} label={isLocked ? '保存中，暂时无法关闭' : '关闭服务器连接'}
+              disabled={isLocked} onPress={handleClose} testID="workspace-connection-close" />
             <Text accessibilityRole="header" style={styles.headerTitle}>服务器连接</Text>
             <View style={styles.headerSideButtonSpacer} />
           </View>
@@ -327,8 +309,9 @@ export function ConnectionPanel({ manager, snapshot, onClose }: ConnectionPanelP
               />
 
               {!!proof && !error && (
-                <View
+                <Card
                   style={styles.proofBox}
+                  tone="success"
                   accessibilityRole="text"
                   testID="workspace-connection-proof"
                 >
@@ -336,13 +319,13 @@ export function ConnectionPanel({ manager, snapshot, onClose }: ConnectionPanelP
                   <Text style={styles.proofHint}>
                     点击下方按钮以{isDifferentUrl ? '保存新地址' : snapshot.hasToken ? '重新认证' : '连接服务器'}
                   </Text>
-                </View>
+                </Card>
               )}
 
-              <View style={styles.formGroup}>
+              <Card style={styles.formGroup}>
                 <Text accessibilityRole="header" style={styles.formTitle}>连接设置</Text>
                 <Section title="服务器地址" testID="workspace-connection-url-section">
-                  <TextInput
+                  <FormInput
                     accessibilityLabel="服务器地址"
                     accessibilityHint="支持 http 或 https，不含查询参数与账号信息"
                     value={url}
@@ -366,7 +349,7 @@ export function ConnectionPanel({ manager, snapshot, onClose }: ConnectionPanelP
 
                 <Section title="访问密钥" testID="workspace-connection-key-section">
                   <View style={styles.keyWrap}>
-                    <TextInput
+                    <FormInput
                       accessibilityLabel="访问密钥"
                       accessibilityHint="仅保存在当前会话内存中，关闭面板即清空"
                       value={key}
@@ -385,204 +368,61 @@ export function ConnectionPanel({ manager, snapshot, onClose }: ConnectionPanelP
                       testID="workspace-connection-key"
                       style={[styles.input, styles.keyInput]}
                     />
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel={showKey ? '隐藏访问密钥' : '显示访问密钥'}
-                      hitSlop={spacing.sm}
-                      onPress={() => setShowKey((value) => !value)}
-                      disabled={isLocked}
-                      style={({ pressed }) => [
-                        styles.keyToggle,
-                        pressed && !isLocked && styles.pressed,
-                      ]}
-                      testID="workspace-connection-key-toggle"
-                    >
-                      {showKey ? (
-                        <EyeOff
-                          size={workspaceTheme.layout.iconSize}
-                          color={colors.muted}
-                          strokeWidth={1.8}
-                        />
-                      ) : (
-                        <Eye
-                          size={workspaceTheme.layout.iconSize}
-                          color={colors.muted}
-                          strokeWidth={1.8}
-                        />
-                      )}
-                    </Pressable>
+                    <IconControl icon={showKey ? EyeOff : Eye}
+                      label={showKey ? '隐藏访问密钥' : '显示访问密钥'}
+                      onPress={() => setShowKey((value) => !value)} disabled={isLocked}
+                      style={styles.keyToggle} small testID="workspace-connection-key-toggle" />
                   </View>
                   <Text style={styles.helper}>
                     密钥仅保存在本次表单内存中，关闭面板后清空，不写入设备存储
                   </Text>
                 </Section>
-              </View>
+              </Card>
 
-              {normalizedInput && !proof && <Pressable accessibilityRole="button" accessibilityLabel="仅保存服务器地址"
-                disabled={isLocked || showConfirmStep} onPress={() => void onSaveOffline()} style={styles.linkButton}>
-                <Text style={styles.linkButtonText}>仅保存地址，稍后认证</Text>
-              </Pressable>}
+              {normalizedInput && !proof && <ActionButton label="仅保存服务器地址" text="仅保存地址，稍后认证"
+                disabled={isLocked || showConfirmStep} onPress={() => void onSaveOffline()} />}
               {(error || snapshot.error) && (
-                <View style={styles.errorBox} accessibilityRole="alert" testID="workspace-connection-error">
+                <Card style={styles.errorBox} tone="danger" accessibilityRole="alert" testID="workspace-connection-error">
                   <Text style={styles.errorText}>{error ?? snapshot.error}</Text>
-                </View>
+                </Card>
               )}
 
               {showConfirmStep && (
-                <View style={styles.confirmBox} testID="workspace-connection-confirm">
+                <Card style={styles.confirmBox} tone="danger" testID="workspace-connection-confirm">
                   <Text style={styles.confirmTitle}>更换服务器前请确认</Text>
                   <Text style={styles.confirmDetail}>
                     保存新地址将清除本地业务数据与旧凭据，但不会删除远端数据。清除后旧地址的会话、消息与缓存无法恢复。
                   </Text>
                   <View style={styles.confirmActions}>
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="暂不更换服务器"
-                      onPress={handleCancelChange}
-                      disabled={isLocked}
-                      style={({ pressed }) => [
-                        styles.confirmButton,
-                        styles.confirmButtonCancel,
-                        pressed && !isLocked && styles.pressed,
-                      ]}
-                      testID="workspace-connection-confirm-cancel"
-                    >
-                      <Text style={styles.confirmButtonCancelText}>暂不更换</Text>
-                    </Pressable>
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="我已了解，继续保存新服务器"
-                      onPress={() => setConfirmChange(true)}
-                      disabled={isLocked}
-                      style={({ pressed }) => [
-                        styles.confirmButton,
-                        styles.confirmButtonAccept,
-                        pressed && !isLocked && styles.pressed,
-                      ]}
-                      testID="workspace-connection-confirm-accept"
-                    >
-                      <Text style={styles.confirmButtonAcceptText}>继续保存</Text>
-                    </Pressable>
+                    <ActionButton label="暂不更换服务器" text="暂不更换" wide
+                      onPress={handleCancelChange} disabled={isLocked} testID="workspace-connection-confirm-cancel" />
+                    <ActionButton label="我已了解，继续保存新服务器" text="继续保存" tone="danger" wide
+                      onPress={() => setConfirmChange(true)} disabled={isLocked} testID="workspace-connection-confirm-accept" />
                   </View>
-                </View>
+                </Card>
               )}
 
               <View style={styles.actions}>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={testLabel}
-                  accessibilityState={{ disabled: !testEnabled, busy }}
-                  aria-busy={busy}
-                  disabled={!testEnabled}
-                  onPress={onTest}
-                  style={({ pressed }) => [
-                    styles.actionButton,
-                    styles.actionButtonSecondary,
-                    !testEnabled && styles.actionButtonDisabled,
-                    pressed && testEnabled && styles.pressed,
-                  ]}
-                  testID="workspace-connection-test"
-                >
-                  {busy && !proof ? (
-                    <ActivityIndicator color={colors.ink} size="small" />
-                  ) : (
-                    <Check
-                      size={workspaceTheme.layout.iconSize}
-                      color={colors.ink}
-                      strokeWidth={1.8}
-                    />
-                  )}
-                  <Text style={[styles.actionButtonText, { color: colors.ink }]}>
-                    {testLabel}
-                  </Text>
-                </Pressable>
-
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`${saveLabel}${showConfirmStep ? '（请先确认）' : ''}`}
-                  accessibilityState={{ disabled: !saveEnabled, busy }}
-                  aria-busy={busy}
-                  disabled={!saveEnabled}
-                  onPress={onSave}
-                  style={({ pressed }) => [
-                    styles.actionButton,
-                    styles.actionButtonPrimary,
-                    !saveEnabled && styles.actionButtonDisabled,
-                    pressed && saveEnabled && styles.pressed,
-                  ]}
-                  testID="workspace-connection-save"
-                >
-                  {busy && proof ? (
-                    <ActivityIndicator color={colors.onAccent} size="small" />
-                  ) : (
-                    <ShieldCheck
-                      size={workspaceTheme.layout.iconSize}
-                      color={colors.onAccent}
-                      strokeWidth={1.8}
-                    />
-                  )}
-                  <Text
-                    style={[styles.actionButtonText, styles.actionButtonPrimaryText]}
-                  >
-                    {saveLabel}
-                  </Text>
-                </Pressable>
+                <ActionButton label={testLabel} icon={Check} busy={busy && !proof} disabled={!testEnabled}
+                  text={testLabel} onPress={onTest} wide testID="workspace-connection-test" />
+                <ActionButton label={`${saveLabel}${showConfirmStep ? '（请先确认）' : ''}`}
+                  icon={ShieldCheck} busy={busy && !!proof} disabled={!saveEnabled}
+                  text={saveLabel} tone="primary" onPress={onSave} wide testID="workspace-connection-save" />
               </View>
 
               {snapshot.status === 'offline' && (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="重试连接当前服务器"
-                  onPress={onRetry}
-                  disabled={isLocked}
-                  style={({ pressed }) => [styles.linkButton, pressed && !isLocked && styles.pressed]}
-                  testID="workspace-connection-retry"
-                >
-                  <RefreshCw
-                    size={workspaceTheme.layout.iconSize}
-                    color={colors.muted}
-                    strokeWidth={1.6}
-                  />
-                  <Text style={styles.linkButtonText}>重试连接</Text>
-                </Pressable>
+                <ActionButton label="重试连接当前服务器" text="重试连接" icon={RefreshCw}
+                  onPress={onRetry} disabled={isLocked} testID="workspace-connection-retry" />
               )}
 
               {snapshot.status === 'reset-error' && (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="重试清理本地数据"
-                  onPress={onRetryReset}
-                  disabled={isLocked}
-                  style={({ pressed }) => [styles.linkButton, pressed && !isLocked && styles.pressed]}
-                  testID="workspace-connection-retry-reset"
-                >
-                  <ShieldAlert
-                    size={workspaceTheme.layout.iconSize}
-                    color={colors.danger}
-                    strokeWidth={1.6}
-                  />
-                  <Text style={[styles.linkButtonText, { color: colors.danger }]}>
-                    重试清理
-                  </Text>
-                </Pressable>
+                <ActionButton label="重试清理本地数据" text="重试清理" icon={ShieldAlert}
+                  tone="danger" onPress={onRetryReset} disabled={isLocked} testID="workspace-connection-retry-reset" />
               )}
 
               {snapshot.status === 'storage-error' && (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="重新加载本地连接配置"
-                  onPress={onReload}
-                  disabled={isLocked}
-                  style={({ pressed }) => [styles.linkButton, pressed && !isLocked && styles.pressed]}
-                  testID="workspace-connection-reload"
-                >
-                  <RefreshCw
-                    size={workspaceTheme.layout.iconSize}
-                    color={colors.muted}
-                    strokeWidth={1.6}
-                  />
-                  <Text style={styles.linkButtonText}>重新加载</Text>
-                </Pressable>
+                <ActionButton label="重新加载本地连接配置" text="重新加载" icon={RefreshCw}
+                  onPress={onReload} disabled={isLocked} testID="workspace-connection-reload" />
               )}
             </ScrollView>
           </KeyboardAvoidingView>
@@ -618,7 +458,7 @@ function StatusCard({
           ? colors.warning
           : colors.muted;
   return (
-    <View style={styles.statusCard} accessibilityRole="summary">
+    <Card style={styles.statusCard} accessibilityRole="summary">
       <View style={styles.serverIcon}><Server size={workspaceTheme.layout.iconSize} color={accent} strokeWidth={1.5} /></View>
       <View style={styles.statusBody}>
         <Text style={styles.statusSection}>当前连接</Text>
@@ -637,7 +477,7 @@ function StatusCard({
           </Text>
         )}
       </View>
-    </View>
+    </Card>
   );
 }
 
@@ -668,7 +508,6 @@ function useConnectionStyles() {
 
 function createStyles(c: WorkspaceColors) {
   const { layout: l, radius: r, typography: t } = workspaceTheme;
-  const inputRadius = r.field;
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: c.canvas },
     column: {
@@ -686,15 +525,7 @@ function createStyles(c: WorkspaceColors) {
       paddingTop: spacing[14],
       paddingBottom: spacing[14],
     },
-    headerSideButton: {
-      width: l.controlSize,
-      height: l.controlSize,
-      borderRadius: l.controlSize / 2,
-      backgroundColor: c.control,
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginTop: spacing.xs,
-    },
+
     headerSideButtonSpacer: {
       width: l.controlSize,
       height: l.controlSize,
@@ -779,17 +610,7 @@ function createStyles(c: WorkspaceColors) {
       color: c.ink,
     },
 
-    input: {
-      minHeight: l.inputMinHeight,
-      paddingHorizontal: spacing[18],
-      paddingVertical: spacing[12],
-      borderRadius: inputRadius,
-      backgroundColor: c.canvas,
-      color: c.ink,
-      ...t.input,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: c.line,
-    },
+    input: { minHeight: l.inputMinHeight, paddingVertical: spacing[12] },
     keyWrap: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -847,36 +668,6 @@ function createStyles(c: WorkspaceColors) {
       flexWrap: 'wrap',
       gap: spacing.sm,
     },
-    confirmButton: {
-      flexGrow: 1,
-      flexBasis: l.profileActionMinWidth,
-      minWidth: 0,
-      paddingHorizontal: spacing.lg,
-      paddingVertical: spacing.sm,
-      borderRadius: r.round,
-      minHeight: l.smallControl,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    confirmButtonCancel: {
-      backgroundColor: 'transparent',
-      borderWidth: sizing.borderWidth,
-      borderColor: c.line,
-    },
-    confirmButtonCancelText: {
-      color: c.muted,
-      ...t.detail,
-      fontWeight: '500',
-    },
-    confirmButtonAccept: {
-      backgroundColor: c.danger,
-    },
-    // 危险按钮使用 c.canvas 作前景：亮色下深红配白字、暗色下浅红配黑字，两套主题都达到对比度门槛。
-    confirmButtonAcceptText: {
-      color: c.canvas,
-      ...t.detail,
-      fontWeight: '600',
-    },
 
     actions: {
       flexDirection: 'row',
@@ -884,45 +675,6 @@ function createStyles(c: WorkspaceColors) {
       gap: spacing.sm,
       marginTop: spacing.sm,
     },
-    actionButton: {
-      flexGrow: 1,
-      flexBasis: l.profileActionMinWidth,
-      minWidth: 0,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: spacing.sm,
-      minHeight: l.controlSize,
-      paddingHorizontal: spacing.lg,
-      borderRadius: r.round,
-    },
-    actionButtonSecondary: {
-      backgroundColor: c.control,
-    },
-    actionButtonPrimary: {
-      backgroundColor: c.blue,
-    },
-    actionButtonDisabled: { opacity: workspaceTheme.interaction.disabledOpacity },
-    pressed: { opacity: workspaceTheme.interaction.pressedOpacity },
-    actionButtonText: {
-      ...t.detail,
-      fontWeight: '600',
-    },
-    actionButtonPrimaryText: {
-      color: c.onAccent,
-    },
 
-    linkButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: spacing.sm,
-      minHeight: l.smallControl,
-      paddingHorizontal: spacing.lg,
-    },
-    linkButtonText: {
-      ...t.detail,
-      color: c.muted,
-    },
   });
 }

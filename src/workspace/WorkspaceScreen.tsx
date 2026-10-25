@@ -1,8 +1,9 @@
+import { Card } from '../ui/Surfaces';
 import { BookOpen, Check, ChevronRight, Download, Menu, MessageCircle, Moon, PanelsTopLeft, Search, Server, Shapes, Square, SquareCheck, SquarePen, UserRound, X, type LucideIcon } from 'lucide-react-native';
 import { BlurTargetView } from 'expo-blur';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ThemeStatusBar } from '../theme/ThemeStatusBar';
-import { Animated, BackHandler, Easing, Keyboard, KeyboardAvoidingView, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { Animated, BackHandler, Easing, Keyboard, KeyboardAvoidingView, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ApiProvider } from '../api/ApiProvider';
 import { ConnectionProvider, useServiceConnection } from '../connection/ConnectionProvider';
@@ -38,6 +39,7 @@ import { ThemeToggle } from '../theme/ThemeToggle';
 import { IconControl, MuseAvatar, StatusPill, useReducedMotion } from './primitives';
 import { FrostedSurface } from '../ui/FrostedSurface';
 import { ActionButton } from '../ui/ActionButton';
+import { FormInput } from '../ui/FormInput';
 
 type WorkspacePage = 'chat' | 'activity' | 'goals' | 'apps';
 type WorkspaceNotice = { text: string; tone: 'success' | 'error' };
@@ -126,7 +128,7 @@ function DisconnectedWorkspace({ snapshot, openConnection }: WorkspaceConnection
       {page === 'apps' ? <AppsPage snapshot={snapshot} openConnection={openConnection} /> : <View style={styles.welcome}>
         <MuseAvatar size={l.welcomeAvatar} /><Text style={styles.eyebrow}>HELLO, PI MUSE</Text><Text style={styles.emptyTitle}>{connectionLabel(snapshot)}</Text>
         <Text style={styles.mutedText}>{snapshot.error ?? '连接自己的 Pi Muse 服务器后即可恢复会话、聊天与真实执行状态。'}</Text>
-        <Pressable accessibilityRole="button" accessibilityLabel="配置服务器连接" onPress={openConnection} style={styles.actionButton}><Text style={styles.actionText}>服务器连接</Text></Pressable>
+        <ActionButton label="配置服务器连接" text="服务器连接" tone="primary" onPress={openConnection} />
         <Text style={styles.caption}>从一次连接开始。应用更新可独立使用。</Text>
       </View>}
       <Navigation page={page} onPage={setPage} />
@@ -261,7 +263,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
     onPanResponderRelease: (_event, gesture) => { if (sessionMounted) return; if (gesture.dx < -l.gestureThreshold) setDrawerOpen(false); if (gesture.dx > l.gestureThreshold) openDrawer(); },
   }), [drawerOpen, openDrawer, sessionMounted]);
   const otherPage = page === 'chat' ? null : page === 'apps' ? <AppsPage snapshot={snapshot} openConnection={openConnection} memoryAvailable profileAvailable dreamAvailable currentSpaceId={spaces.currentSpace} /> : page === 'activity' ? !sessionOpen && <TasksPage spaceId={spaces.currentSpace} /> : !sessionOpen && <GoalsPanel />;
-  const sessionSettings = <>{resetConfirm ? <View style={styles.exampleCard} accessibilityViewIsModal>
+  const sessionSettings = <>{resetConfirm ? <Card style={styles.exampleCard} tone="warning" accessibilityViewIsModal>
         <Text style={styles.itemTitle}>重置当前会话？</Text>
         <Text style={styles.mutedText}>重置将停止当前运行，清空聊天历史与未完成的审批，开启全新对话。空间规则、技能开关与已保存的工作区文件都会保留。</Text>
         <Pressable accessibilityRole="checkbox" accessibilityLabel="同时清理定时任务与网页监控" accessibilityState={{ checked: clearSchedules, disabled: session.resetting }}
@@ -275,13 +277,13 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
           <ActionButton label="取消重置会话" text="取消" disabled={session.resetting} onPress={() => setResetConfirm(false)} />
         </View>
         {notice?.tone === 'error' && <Text accessibilityRole="alert" style={styles.error}>{notice.text}</Text>}
-      </View> : deleteConfirm ? <View style={styles.exampleCard}><Text style={styles.itemTitle}>确认删除当前空间？</Text><Text style={styles.mutedText}>空间的全部聊天历史、工作区文件、规则、技能和绑定的定时任务、监控将被彻底删除，无法撤销。</Text>
+      </Card> : deleteConfirm ? <Card style={styles.exampleCard} tone="danger"><Text style={styles.itemTitle}>确认删除当前空间？</Text><Text style={styles.mutedText}>空间的全部聊天历史、工作区文件、规则、技能和绑定的定时任务、监控将被彻底删除，无法撤销。</Text>
         <View style={styles.confirmActions}>
           <ActionButton label="确认删除空间" text={session.deleting ? '正在删除…' : '确认删除'} tone="danger" busy={session.deleting} onPress={() => void remove()} />
           <ActionButton label="取消删除空间" text="取消" disabled={session.deleting} onPress={() => setDeleteConfirm(false)} />
         </View>
         {notice?.tone === 'error' && <Text accessibilityRole="alert" style={styles.error}>{notice.text}</Text>}
-      </View> : <SpaceSettings spaceId={spaces.currentSpace} onSaved={refresh} />}</>;
+      </Card> : <SpaceSettings spaceId={spaces.currentSpace} onSaved={refresh} />}</>;
   // 文件状态留在当前真实连接内；会话面板关闭时只卸载可见 UI，不销毁草稿。
   return <FilesProvider currentSpaceId={spaces.currentSpace}><View style={styles.root} testID="workspace-screen"><ThemeStatusBar />
     <View style={[styles.viewport, { width: contentWidth }]} {...pan.panHandlers}>
@@ -299,7 +301,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
             </View>{space.id === spaces.currentSpace && <Check size={sizing[18]} color={colors.muted} />}
           </Pressable>)}
         </ScrollView>
-        <View style={styles.drawerFooter}><View style={styles.drawerSearch}><Search size={sizing[18]} color={colors.faint} /><TextInput accessibilityLabel="搜索空间" placeholder="搜索空间" placeholderTextColor={colors.faint} value={spaceQuery} onChangeText={setSpaceQuery} style={styles.searchInput} /></View><IconControl icon={SquarePen} label="新建空间" testID="workspace-create-space" onPress={() => { spaces.createSpace(); setSpaceQuery(''); setDrawerOpen(false); setSessionOpen(false); setPage('chat'); setNotice(undefined); }} /></View>
+        <View style={styles.drawerFooter}><View style={styles.drawerSearch}><Search size={sizing[18]} color={colors.faint} /><FormInput variant="search" accessibilityLabel="搜索空间" placeholder="搜索空间" placeholderTextColor={colors.faint} value={spaceQuery} onChangeText={setSpaceQuery} style={styles.searchInput} /></View><IconControl icon={SquarePen} label="新建空间" testID="workspace-create-space" onPress={() => { spaces.createSpace(); setSpaceQuery(''); setDrawerOpen(false); setSessionOpen(false); setPage('chat'); setNotice(undefined); }} /></View>
         </SafeAreaView>
       </View>
       <Animated.View style={[styles.foreground, drawerOpen && styles.foregroundRounded, { transform: [{ translateX: drawerProgress.interpolate({ inputRange: [0, 1], outputRange: [0, drawerWidth] }) }] }]} accessibilityElementsHidden={drawerOpen} importantForAccessibility={drawerOpen ? 'no-hide-descendants' : 'auto'}>
@@ -365,7 +367,7 @@ const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   navigationItem: { flex: 1, minHeight: l.controlSize, gap: l.navigationLabelGap, alignItems: 'center', justifyContent: 'center' }, navigationLabel: { ...t.navigation, color: c.faint }, navigationLabelSelected: { color: c.ink },
   drawer: { position: 'absolute', top: 0, bottom: 0, left: 0, paddingHorizontal: l.sidePadding, paddingTop: l.drawerTop, backgroundColor: c.canvas }, drawerHeading: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: l.drawerTop, marginBottom: l.drawerTitleBottom }, drawerTitle: { ...t.drawerTitle, color: c.ink }, drawerSection: { ...t.caption, color: c.faint }, drawerSectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing[4], marginBottom: spacing[14] }, drawerList: { gap: spacing[6] },
   threadRow: { minHeight: l.drawerRowHeight, flexDirection: 'row', alignItems: 'center', gap: spacing[14], paddingHorizontal: spacing[14], paddingVertical: spacing[12], borderRadius: r.listItem }, threadSelected: { backgroundColor: c.surface }, threadText: { flex: 1, gap: spacing[4], minWidth: 0 }, drawerFooter: { height: l.drawerFooterHeight, flexDirection: 'row', alignItems: 'center', gap: spacing[12], borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.line },
-  drawerSearch: { flex: 1, minWidth: 0, height: l.controlSize, borderRadius: r.round, backgroundColor: c.surface, flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing[14], gap: spacing[8] }, searchInput: { ...t.status, color: c.ink, flex: 1, minWidth: 0, height: l.smallControl },
+  drawerSearch: { flex: 1, minWidth: 0, height: l.controlSize, borderRadius: r.round, backgroundColor: c.surface, flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing[14], gap: spacing[8] }, searchInput: { flex: 1, minWidth: 0, height: l.smallControl },
   pageHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: l.sidePadding, paddingTop: spacing[12], paddingBottom: spacing[8] },
   otherPage: { paddingTop: l.pageTop, paddingHorizontal: l.sidePadding, paddingBottom: spacing[24], gap: spacing[18] }, pageTitle: { ...t.heroName, color: c.ink }, itemTitle: { ...t.itemTitle, color: c.ink }, mutedText: { ...t.detail, color: c.muted }, caption: { ...t.caption, color: c.faint }, error: { ...t.caption, color: c.danger },
   exampleCard: { padding: spacing[20], borderRadius: r.card, backgroundColor: c.surface, gap: spacing[16], marginBottom: spacing[16] }, settingsRow: { flexDirection: 'row', alignItems: 'center', gap: spacing[14], paddingVertical: spacing[16], paddingHorizontal: spacing[16] },
@@ -380,5 +382,5 @@ const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   settingsDisabled: { opacity: workspaceTheme.interaction.disabledOpacity }, eyebrow: { ...t.eyebrow, color: c.faint },
   emptyTitle: { ...t.heroName, color: c.ink, textAlign: 'center' }, notice: { position: 'absolute', left: l.sidePadding, right: l.sidePadding, top: l.headerHeight, ...t.caption, color: c.ink, backgroundColor: c.control, padding: spacing[12], borderRadius: r.listItem },
   disconnected: { flex: 1, alignSelf: 'center', width: '100%', maxWidth: l.maxWidth }, disconnectedHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: l.sidePadding }, welcome: { flex: 1, paddingHorizontal: l.sidePadding, gap: spacing[18], alignItems: 'center', justifyContent: 'center' },
-  actionButton: { minHeight: l.smallControl, backgroundColor: c.blue, paddingHorizontal: spacing[18], paddingVertical: spacing[12], borderRadius: r.round, alignSelf: 'center' }, actionText: { ...t.status, color: c.onAccent },
+
 });

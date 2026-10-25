@@ -1,11 +1,15 @@
+import { FeedbackNotice } from '../ui/Feedback';
+import { Card } from '../ui/Surfaces';
 import { useEffect, useMemo } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Check, FileText, Sparkles } from 'lucide-react-native';
 import { useSpaceState, useSpaceStore } from '../spaces/SpaceProvider';
 import { INSTRUCTIONS_LIMIT, equalSwitches } from '../spaces/space-store';
 import { workspaceTheme, spacing } from '../ui/tokens';
 import { useTheme } from '../theme/ThemeProvider';
 import { SectionHeading } from './primitives';
+import { ActionButton } from '../ui/ActionButton';
+import { FormInput } from '../ui/FormInput';
 
 export function SpaceSettings({ spaceId, onSaved }: { spaceId: string; onSaved: () => void }) {
   const store = useSpaceStore();
@@ -16,11 +20,9 @@ export function SpaceSettings({ spaceId, onSaved }: { spaceId: string; onSaved: 
     card: { padding: spacing[20], gap: spacing[16], marginTop: spacing[18], marginBottom: spacing[16], backgroundColor: colors.surface, borderRadius: workspaceTheme.radius.card },
     text: { ...workspaceTheme.typography.detail, color: colors.ink },
     caption: { ...workspaceTheme.typography.caption, color: colors.muted },
-    error: { ...workspaceTheme.typography.caption, color: colors.danger },
-    input: { minHeight: workspaceTheme.layout.composerMaxHeight, padding: spacing[16], color: colors.ink, backgroundColor: colors.canvas, borderRadius: workspaceTheme.radius.field, ...workspaceTheme.typography.detail, textAlignVertical: 'top', borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
-    button: { flexDirection: 'row', gap: spacing[6], alignItems: 'center', justifyContent: 'center', minHeight: workspaceTheme.layout.smallControl, alignSelf: 'flex-start', paddingHorizontal: spacing[16], paddingVertical: spacing[10], backgroundColor: colors.blue, borderRadius: workspaceTheme.radius.round },
-    secondary: { backgroundColor: colors.control }, secondaryText: { color: colors.ink },
-    buttonText: { ...workspaceTheme.typography.status, color: colors.onAccent },
+
+    input: { minHeight: workspaceTheme.layout.composerMaxHeight },
+
     row: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing[12], justifyContent: 'space-between' },
     skillRow: { flexDirection: 'row', alignItems: 'center', minHeight: workspaceTheme.layout.controlSize, paddingVertical: spacing[14], gap: spacing[14], borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
     iconHeading: { flexDirection: 'row', alignItems: 'center', gap: spacing[10] },
@@ -35,19 +37,20 @@ export function SpaceSettings({ spaceId, onSaved }: { spaceId: string; onSaved: 
   const saveSkills = async (defaults = false) => { if (await store.saveSkills(spaceId, defaults)) onSaved(); };
   return <View>
     <SectionHeading title="让这个空间，更懂你" eyebrow="MAKE IT YOURS" description="规则与技能只作用于当前空间，其他空间不受影响。" />
-    <View style={styles.card}>
+    <Card style={styles.card}>
       <View style={styles.iconHeading}><FileText size={workspaceTheme.layout.iconSize - spacing[4]} strokeWidth={1.6} color={colors.muted} /><Text style={styles.section}>空间规则</Text></View>
       <Text style={styles.caption}>保存后在下一轮生效；关闭面板会保留本次连接内的草稿。</Text>
-      <TextInput accessibilityLabel="空间规则" multiline value={session.instructions.draft}
+      <FormInput accessibilityLabel="空间规则" multiline value={session.instructions.draft}
         editable={!locked && session.instructions.loaded} onChangeText={(text) => store.setInstructions(spaceId, text)}
         placeholder={session.instructions.loaded ? '你希望 Pi Muse 如何在这个空间里工作？' : '正在读取空间规则…'} placeholderTextColor={colors.faint}
         style={styles.input} maxLength={INSTRUCTIONS_LIMIT + 1} />
       <Text style={styles.caption}>{session.instructions.draft.length.toLocaleString()} / {INSTRUCTIONS_LIMIT.toLocaleString()}</Text>
-      {!!session.instructions.error && <Text accessibilityRole="alert" style={styles.error}>{session.instructions.error}</Text>}
-      <Pressable accessibilityRole="button" accessibilityLabel="保存空间规则" style={[styles.button, (locked || !session.instructions.loaded) && styles.disabled]}
-        disabled={locked || !session.instructions.loaded} onPress={() => void saveInstructions()}><Check size={workspaceTheme.layout.iconSize - spacing[8]} color={colors.onAccent} /><Text style={styles.buttonText}>{session.instructions.saving ? '正在保存…' : '保存规则'}</Text></Pressable>
-    </View>
-    <View style={styles.card}>
+      {!!session.instructions.error && <FeedbackNotice text={session.instructions.error} tone="danger" />}
+      <ActionButton label="保存空间规则" text={session.instructions.saving ? '正在保存…' : '保存规则'}
+        icon={Check} tone="primary" busy={session.instructions.saving} disabled={locked || !session.instructions.loaded}
+        onPress={() => void saveInstructions()} />
+    </Card>
+    <Card style={styles.card}>
       <View style={styles.iconHeading}><Sparkles size={workspaceTheme.layout.iconSize - spacing[4]} strokeWidth={1.6} color={colors.muted} /><Text style={styles.section}>空间技能</Text></View>
       <Text style={styles.caption}>开关按当前空间生效，不影响其他空间。</Text>
       {session.skills.catalog.map((skill) => <Pressable key={skill.name} accessibilityRole="switch" accessibilityLabel={`技能 ${skill.name}`}
@@ -56,15 +59,13 @@ export function SpaceSettings({ spaceId, onSaved }: { spaceId: string; onSaved: 
         <View style={styles.body}><Text style={styles.text}>{skill.name}</Text><Text style={styles.caption}>{skill.description}</Text></View>
         <View pointerEvents="none" style={[styles.switch, !!session.skills.draft[skill.name] && styles.switchOn]}><View style={[styles.thumb, !!session.skills.draft[skill.name] && styles.thumbOn]} /></View>
       </Pressable>)}
-      {!!session.skills.error && <Text accessibilityRole="alert" style={styles.error}>{session.skills.error}</Text>}
+      {!!session.skills.error && <FeedbackNotice text={session.skills.error} tone="danger" />}
       {!!session.skills.notice && <Text style={styles.caption}>{session.skills.notice}</Text>}
       {session.skills.diagnostics.map((diagnostic) => <Text key={`${diagnostic.path}:${diagnostic.message}`} style={styles.caption}>{diagnostic.path}：{diagnostic.message}</Text>)}
       <View style={styles.row}>
-        <Pressable accessibilityRole="button" accessibilityLabel="保存空间技能" style={[styles.button, (locked || !session.skills.loaded || equalSwitches(session.skills.saved, session.skills.draft)) && styles.disabled]}
-          disabled={locked || !session.skills.loaded || equalSwitches(session.skills.saved, session.skills.draft)} onPress={() => void saveSkills()}><Text style={styles.buttonText}>保存技能</Text></Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel="恢复默认技能" style={[styles.button, styles.secondary, (locked || !session.skills.loaded) && styles.disabled]}
-          disabled={locked || !session.skills.loaded} onPress={() => void saveSkills(true)}><Text style={[styles.buttonText, styles.secondaryText]}>恢复默认</Text></Pressable>
+        <ActionButton label="保存空间技能" tone="primary" disabled={locked || !session.skills.loaded || equalSwitches(session.skills.saved, session.skills.draft)} onPress={() => void saveSkills()} />
+        <ActionButton label="恢复默认技能" disabled={locked || !session.skills.loaded} onPress={() => void saveSkills(true)} />
       </View>
-    </View>
+    </Card>
   </View>;
 }

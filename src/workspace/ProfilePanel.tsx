@@ -1,9 +1,13 @@
+import { FeedbackNotice } from '../ui/Feedback';
+import { Card } from '../ui/Surfaces';
 import { useEffect, useMemo } from 'react';
-import { ActivityIndicator, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Keyboard, Pressable, StyleSheet, Text, View } from 'react-native';
 import { ArrowLeft, Check, RefreshCw, RotateCcw } from 'lucide-react-native';
 import { useProfile } from '../profile/ProfileProvider';
 import { useTheme } from '../theme/ThemeProvider';
 import { spacing, workspaceTheme, type WorkspaceColors } from '../ui/tokens';
+import { ActionButton } from '../ui/ActionButton';
+import { FormInput } from '../ui/FormInput';
 
 const NAME_LIMIT = 80;
 const TEXT_LIMIT = 20000;
@@ -35,8 +39,8 @@ export function ProfilePanel({ onBack }: { onBack: () => void }) {
 
   return <View style={styles.root} testID="profile-panel">
     <View style={styles.topRow}>
-      <Action label="返回应用设置" text="返回应用" onPress={onBack} icon="back" />
-      <Action label="刷新助手与用户资料" text="刷新" onPress={() => void store.refresh()} disabled={snapshot.loading || !!snapshot.writing} icon="refresh" />
+      <ActionButton label="返回应用设置" text="返回应用" onPress={onBack} icon={ArrowLeft} />
+      <ActionButton label="刷新助手与用户资料" text="刷新" onPress={() => void store.refresh()} disabled={snapshot.loading || !!snapshot.writing} icon={RefreshCw} />
     </View>
     <View style={styles.heading}>
       <Text accessibilityRole="header" style={styles.title}>助手与用户资料</Text>
@@ -44,15 +48,15 @@ export function ProfilePanel({ onBack }: { onBack: () => void }) {
     </View>
 
     {snapshot.loading && <View style={styles.statusRow}><ActivityIndicator accessibilityLabel="正在读取助手与用户资料" color={colors.muted} /><Text style={styles.caption}>正在读取服务端资料…</Text></View>}
-    {!!snapshot.error && <Text accessibilityRole="alert" style={styles.error}>{snapshot.error}</Text>}
-    {!!snapshot.notice && <Text accessibilityLiveRegion="polite" style={styles.notice}>{snapshot.notice}</Text>}
+    {!!snapshot.error && <FeedbackNotice text={snapshot.error} tone="danger" />}
+    {!!snapshot.notice && <FeedbackNotice text={snapshot.notice} tone="success" />}
     {snapshot.stale && snapshot.loaded && <Text accessibilityRole="alert" style={styles.warning}>当前显示最后一次读取的资料，最新服务端值尚未确认。请刷新核对后再保存或取消修改。</Text>}
     {!snapshot.loaded && !snapshot.loading && !snapshot.error && <Text style={styles.warning}>尚未读取服务端资料，请刷新后编辑。</Text>}
 
-    <View style={styles.card}>
+    <Card style={styles.card}>
       <View style={styles.cardHeading}><Text accessibilityRole="header" style={styles.cardTitle}>助手设置</Text><Text style={styles.caption}>名字与语气 · 独立保存</Text></View>
       <Text style={styles.fieldLabel}>助手名字</Text>
-      <TextInput accessibilityLabel="助手名字" value={name} onChangeText={(value) => store.setIdentity('name', value)} editable={snapshot.loaded && !snapshot.loading && !snapshot.writing}
+      <FormInput accessibilityLabel="助手名字" value={name} onChangeText={(value) => store.setIdentity('name', value)} editable={snapshot.loaded && !snapshot.loading && !snapshot.writing}
         maxLength={NAME_LIMIT} placeholder="给助手起个名字" placeholderTextColor={colors.faint} autoCapitalize="words" returnKeyType="done" style={styles.nameInput} />
       <Text style={[styles.caption, snapshot.loaded && !nameValid && styles.error]}>去除首尾空格后 {nameLength} / {NAME_LIMIT} 字，需填写 1–80 字</Text>
       <Text style={styles.fieldLabel}>说话语气</Text>
@@ -65,38 +69,28 @@ export function ProfilePanel({ onBack }: { onBack: () => void }) {
       {snapshot.loaded && unsupportedServerTone && <Text accessibilityRole="alert" style={styles.warning}>服务端当前语气值为「{unsupportedServerTone}」，不在当前可选项中。请选择温暖、简洁或周到并保存。</Text>}
       {snapshot.loaded && !toneKnown && !unsupportedServerTone && <Text accessibilityRole="alert" style={styles.warning}>当前语气草稿为「{tone || '空值'}」，请选择温暖、简洁或周到后再保存。</Text>}
       <View style={styles.actions}>
-        <Action label="保存助手设置" text={snapshot.writing === 'identity' ? '正在保存助手设置…' : '保存助手设置'} onPress={() => { Keyboard.dismiss(); void store.saveIdentity(); }} disabled={!canSaveIdentity} primary wide icon="save" />
-        <Action label="取消助手设置修改并采用最新服务端值" text="取消助手设置修改" onPress={() => store.discardIdentity()} disabled={!canDiscard || !snapshot.dirtyIdentity} wide icon="discard" />
+        <ActionButton label="保存助手设置" text={snapshot.writing === 'identity' ? '正在保存助手设置…' : '保存助手设置'} onPress={() => { Keyboard.dismiss(); void store.saveIdentity(); }} disabled={!canSaveIdentity} tone="primary" wide icon={Check} />
+        <ActionButton label="取消助手设置修改并采用最新服务端值" text="取消助手设置修改" onPress={() => store.discardIdentity()} disabled={!canDiscard || !snapshot.dirtyIdentity} wide icon={RotateCcw} />
       </View>
-    </View>
+    </Card>
 
-    <View style={styles.card}>
+    <Card style={styles.card}>
       <View style={styles.cardHeading}><Text accessibilityRole="header" style={styles.cardTitle}>人设与资料</Text><Text style={styles.caption}>两段文本 · 同一次资料保存</Text></View>
       <Text style={styles.caption}>可留空清空对应内容。填写的内容会作为全局资料供下一轮对话使用。</Text>
       <Text style={styles.fieldLabel}>SOUL · 助手人设</Text>
-      <TextInput accessibilityLabel="SOUL 助手人设" multiline value={snapshot.draftProfile.soul} onChangeText={(value) => store.setProfile('soul', value)} editable={snapshot.loaded && !snapshot.loading && !snapshot.writing}
+      <FormInput accessibilityLabel="SOUL 助手人设" multiline value={snapshot.draftProfile.soul} onChangeText={(value) => store.setProfile('soul', value)} editable={snapshot.loaded && !snapshot.loading && !snapshot.writing}
         maxLength={TEXT_LIMIT} placeholder="希望助手具备怎样的性格与工作方式？" placeholderTextColor={colors.faint} style={styles.longInput} textAlignVertical="top" />
       <Text style={styles.count}>{snapshot.draftProfile.soul.length.toLocaleString()} / {TEXT_LIMIT.toLocaleString()} 字</Text>
       <Text style={styles.fieldLabel}>USER · 用户资料</Text>
-      <TextInput accessibilityLabel="USER 用户资料" multiline value={snapshot.draftProfile.user} onChangeText={(value) => store.setProfile('user', value)} editable={snapshot.loaded && !snapshot.loading && !snapshot.writing}
+      <FormInput accessibilityLabel="USER 用户资料" multiline value={snapshot.draftProfile.user} onChangeText={(value) => store.setProfile('user', value)} editable={snapshot.loaded && !snapshot.loading && !snapshot.writing}
         maxLength={TEXT_LIMIT} placeholder="希望助手了解你的哪些背景与偏好？" placeholderTextColor={colors.faint} style={styles.longInput} textAlignVertical="top" />
       <Text style={styles.count}>{snapshot.draftProfile.user.length.toLocaleString()} / {TEXT_LIMIT.toLocaleString()} 字</Text>
       <View style={styles.actions}>
-        <Action label="保存人设与资料" text={snapshot.writing === 'profile' ? '正在保存人设与资料…' : '保存人设与资料'} onPress={() => { Keyboard.dismiss(); void store.saveProfile(); }} disabled={!canSaveProfile} primary wide icon="save" />
-        <Action label="取消人设与资料修改并采用最新服务端值" text="取消人设与资料修改" onPress={() => store.discardProfile()} disabled={!canDiscard || !snapshot.dirtyProfile} wide icon="discard" />
+        <ActionButton label="保存人设与资料" text={snapshot.writing === 'profile' ? '正在保存人设与资料…' : '保存人设与资料'} onPress={() => { Keyboard.dismiss(); void store.saveProfile(); }} disabled={!canSaveProfile} tone="primary" wide icon={Check} />
+        <ActionButton label="取消人设与资料修改并采用最新服务端值" text="取消人设与资料修改" onPress={() => store.discardProfile()} disabled={!canDiscard || !snapshot.dirtyProfile} wide icon={RotateCcw} />
       </View>
-    </View>
+    </Card>
   </View>;
-}
-
-function Action({ label, text, onPress, disabled, primary, wide, icon }: { label: string; text: string; onPress: () => void; disabled?: boolean; primary?: boolean; wide?: boolean; icon: 'back' | 'refresh' | 'save' | 'discard' }) {
-  const { colors } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
-  const Icon = icon === 'back' ? ArrowLeft : icon === 'refresh' ? RefreshCw : icon === 'save' ? Check : RotateCcw;
-  return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled: !!disabled }} disabled={disabled} onPress={onPress}
-    style={({ pressed }) => [styles.button, wide && styles.buttonWide, primary && styles.buttonPrimary, disabled && styles.disabled, pressed && styles.pressed]}>
-    <Icon size={workspaceTheme.layout.iconSize - spacing[8]} color={primary ? colors.onAccent : colors.ink} /><Text style={[styles.buttonText, primary && styles.buttonPrimaryText]}>{text}</Text>
-  </Pressable>;
 }
 
 const createStyles = (colors: WorkspaceColors) => StyleSheet.create({
@@ -109,16 +103,14 @@ const createStyles = (colors: WorkspaceColors) => StyleSheet.create({
   cardHeading: { gap: spacing[2], marginBottom: spacing[4] },
   cardTitle: { ...workspaceTheme.typography.itemTitle, color: colors.ink },
   fieldLabel: { ...workspaceTheme.typography.status, color: colors.ink, marginTop: spacing[8] },
-  nameInput: { minHeight: workspaceTheme.layout.inputMinHeight, paddingHorizontal: spacing[16], borderRadius: workspaceTheme.radius.field, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line, backgroundColor: colors.canvas, color: colors.ink, ...workspaceTheme.typography.input },
-  longInput: { height: workspaceTheme.layout.profileTextHeight, padding: spacing[16], borderRadius: workspaceTheme.radius.field, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line, backgroundColor: colors.canvas, color: colors.ink, ...workspaceTheme.typography.detail },
+  nameInput: { minHeight: workspaceTheme.layout.inputMinHeight },
+  longInput: { height: workspaceTheme.layout.profileTextHeight },
   tones: { flexDirection: 'row', gap: spacing[8] },
   tone: { flex: 1, minWidth: 0, minHeight: workspaceTheme.layout.controlSize, paddingHorizontal: spacing[8], paddingVertical: spacing[10], gap: spacing[2], borderRadius: workspaceTheme.radius.field, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line, backgroundColor: colors.canvas },
   toneSelected: { borderColor: colors.blue, backgroundColor: colors.blueSoft }, toneTitle: { ...workspaceTheme.typography.status, color: colors.ink }, toneTitleSelected: { color: colors.accentText },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing[8], marginTop: spacing[10] },
-  button: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing[6], minHeight: workspaceTheme.layout.smallControl, paddingHorizontal: spacing[12], paddingVertical: spacing[8], borderRadius: workspaceTheme.radius.round, backgroundColor: colors.control },
-  buttonWide: { flexGrow: 1, flexBasis: workspaceTheme.layout.profileActionMinWidth, minWidth: 0 },
-  buttonPrimary: { backgroundColor: colors.blue }, buttonText: { ...workspaceTheme.typography.status, color: colors.ink, flexShrink: 1, textAlign: 'center' }, buttonPrimaryText: { color: colors.onAccent },
+
   caption: { ...workspaceTheme.typography.caption, color: colors.faint }, count: { ...workspaceTheme.typography.caption, color: colors.faint, alignSelf: 'flex-end' },
-  warning: { ...workspaceTheme.typography.detail, color: colors.warning }, error: { ...workspaceTheme.typography.detail, color: colors.danger }, notice: { ...workspaceTheme.typography.detail, color: colors.success },
-  disabled: { opacity: workspaceTheme.interaction.disabledOpacity }, pressed: { opacity: workspaceTheme.interaction.pressedOpacity },
+  warning: { ...workspaceTheme.typography.detail, color: colors.warning }, error: { ...workspaceTheme.typography.detail, color: colors.danger },
+   pressed: { opacity: workspaceTheme.interaction.pressedOpacity },
 });

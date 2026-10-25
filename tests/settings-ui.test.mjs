@@ -57,8 +57,8 @@ test('更新 Sheet 的全部状态、原动作与取消例外可见', () => {
   }
   assert.match(actions, /case 'unsupported':[\s\S]*?return null;/);
   assert.match(source, /snapshot\.status !== 'unsupported' && \(/);
-  assert.match(actions, /case 'checking':[\s\S]*?<Button onPress=\{onCancel\}>/);
-  assert.match(actions, /case 'downloading':[\s\S]*?<Button onPress=\{onCancel\}>/);
+  assert.match(actions, /case 'checking':[\s\S]*?<ActionButton label="取消检查" onPress=\{onCancel\}/);
+  assert.match(actions, /case 'downloading':[\s\S]*?<ActionButton label="取消下载" onPress=\{onCancel\}/);
   assert.match(actions, /case 'ready':[\s\S]*?onPress=\{onInstall\}[\s\S]*?onPress=\{onOpenSettings\}[\s\S]*?onPress=\{onRetryDownload\}[\s\S]*?onPress=\{onCheck\}/);
   assert.match(actions, /const lock = snapshot\.busy/);
   assert.match(actions, /case 'error':[\s\S]*?case 'check':[\s\S]*?onPress=\{onCheck\}[\s\S]*?case 'download':[\s\S]*?onPress=\{onRetryDownload\}[\s\S]*?case 'install':[\s\S]*?onPress=\{onInstall\}/);

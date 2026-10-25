@@ -1,3 +1,5 @@
+import { FeedbackNotice } from '../ui/Feedback';
+import { Card } from '../ui/Surfaces';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { ArrowLeft, ArrowUpRight, Check, ChevronRight, CirclePause, Clock3, RefreshCw, Workflow, X } from 'lucide-react-native';
@@ -8,15 +10,10 @@ import { activityStatuses, type ActivityFilter, type ActivityOverview, type Acti
 import { spacing, workspaceTheme, type WorkspaceColors } from '../ui/tokens';
 import { useTheme } from '../theme/ThemeProvider';
 import { EmptyState, StatusPill, type StatusTone } from './primitives';
+import { ActionButton } from '../ui/ActionButton';
+import { ChoiceChip } from '../ui/ChoiceChip';
 
 function useStyles() { const { colors } = useTheme(); return useMemo(() => createStyles(colors), [colors]); }
-function Button({ label, shortLabel, onPress, selected, disabled }: { label: string; shortLabel?: string; onPress: () => void; selected?: boolean; disabled?: boolean }) {
-  const styles = useStyles(); const { colors } = useTheme();
-  const Icon = label.includes('刷新') ? RefreshCw : label.startsWith('返回') ? ArrowLeft : undefined;
-  return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected, disabled: !!disabled }} disabled={disabled} onPress={onPress}
-    style={({ pressed }) => [styles.button, selected && styles.selected, disabled && styles.disabled, pressed && styles.pressed]}>{Icon && <Icon size={workspaceTheme.layout.iconSize - spacing[8]} color={colors.muted} />}<Text style={[styles.buttonText, selected && styles.selectedText]}>{shortLabel ?? label}</Text></Pressable>;
-}
-
 /** 主任务页与会话面板历史共用只读视图；仅由宿主决定是否需要入口标题。 */
 export function ActivityPanel({ spaceId, defaultScope = 'space', initialActivityId, showHeading = false }: { spaceId: string; defaultScope?: 'space' | 'all'; initialActivityId?: string; showHeading?: boolean }) {
   const { store, snapshot } = useActivities(); const styles = useStyles(); const { colors } = useTheme();
@@ -33,10 +30,10 @@ export function ActivityPanel({ spaceId, defaultScope = 'space', initialActivity
   return <View style={styles.root} testID="activity-panel">
     {showHeading && <Text accessibilityRole="header" style={styles.heading}>活动历史</Text>}
     {matches && snapshot.selectedId ? <>
-      <View style={styles.row}><Button label="返回活动列表" onPress={() => store.select()} /><Button label="刷新活动详情" disabled={snapshot.detailLoading} onPress={store.refreshDetail} /></View>
+      <View style={styles.row}><ActionButton label="返回活动列表" icon={ArrowLeft} onPress={() => store.select()} /><ActionButton label="刷新活动详情" icon={RefreshCw} disabled={snapshot.detailLoading} onPress={store.refreshDetail} /></View>
       {snapshot.detailLoading && <ActivityIndicator accessibilityLabel="正在读取活动详情" color={colors.muted} />}
       {snapshot.detailStale && detail && <View style={styles.warning}><Text style={styles.warningText}>详情为最后观测内容，可刷新核对最新进展。</Text></View>}
-      {!!snapshot.detailError && <Text accessibilityRole="alert" style={styles.error}>{snapshot.detailError}</Text>}
+      {!!snapshot.detailError && <FeedbackNotice text={snapshot.detailError} tone="danger" />}
       {detail && <>
         <Overview activity={detail.activity} />
         <Text style={styles.title}>执行步骤 · {detail.steps.length}</Text>
@@ -54,14 +51,14 @@ export function ActivityPanel({ spaceId, defaultScope = 'space', initialActivity
         </View>; })}
       </>}
     </> : <>
-      <View style={styles.row}><Button label="当前空间活动" shortLabel="当前空间" selected={scope === 'space'} onPress={() => setScope('space')} /><Button label="全部空间活动" shortLabel="全部空间" selected={scope === 'all'} onPress={() => setScope('all')} /><Button label="刷新活动列表" shortLabel="刷新" disabled={snapshot.loading} onPress={store.refresh} /></View>
+      <View style={styles.row}><ChoiceChip label="当前空间活动" text="当前空间" selected={scope === 'space'} onPress={() => setScope('space')} /><ChoiceChip label="全部空间活动" text="全部空间" selected={scope === 'all'} onPress={() => setScope('all')} /><ActionButton label="刷新活动列表" text="刷新" icon={RefreshCw} disabled={snapshot.loading} onPress={store.refresh} /></View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters} accessibilityLabel="活动状态筛选">
-        <Button label="全部活动状态" shortLabel="全部" selected={!status} onPress={() => setStatus(undefined)} />
-        {activityStatuses.map((value) => <Button key={value} label={activityStatusLabel(value)} selected={status === value} onPress={() => setStatus(value)} />)}
+        <ChoiceChip label="全部活动状态" text="全部" selected={!status} onPress={() => setStatus(undefined)} />
+        {activityStatuses.map((value) => <ChoiceChip key={value} label={activityStatusLabel(value)} selected={status === value} onPress={() => setStatus(value)} />)}
       </ScrollView>
       <Text style={styles.caption}>仅含模型登记的工作，不代表每轮聊天；步骤按需回读，不保证逐步实时。刷新从第一页读取。</Text>
       {snapshot.loading && <ActivityIndicator accessibilityLabel="正在读取活动列表" color={colors.muted} />}
-      {matches && !!snapshot.error && <Text accessibilityRole="alert" style={styles.error}>{snapshot.error}</Text>}
+      {matches && !!snapshot.error && <FeedbackNotice text={snapshot.error} tone="danger" />}
       {matches && snapshot.stale && snapshot.loaded && <View style={styles.warning}><Text style={styles.warningText}>以下为最后观测列表，最新状态待核对。</Text></View>}
       {matches && snapshot.loaded && !snapshot.activities.length && !snapshot.error && !snapshot.loading && <EmptyState compact icon={Clock3} title="还没有已登记的活动" description="当前范围没有已登记的活动；普通聊天可能不会创建活动。" />}
       {matches && snapshot.activities.map((activity) => <Pressable key={activity.id} accessibilityRole="button" accessibilityLabel={`查看活动 ${activity.title}`} testID={`activity-open-${activity.id}`} onPress={() => store.select(activity.id)} style={({ pressed }) => [styles.activityRow, pressed && styles.pressed]}>
@@ -70,13 +67,13 @@ export function ActivityPanel({ spaceId, defaultScope = 'space', initialActivity
         {!!activity.progress && <Text style={styles.body}>{activity.progress}</Text>}
         <Text style={styles.caption}>来源空间：{activity.spaceId} · {activity.runIds.length} 次执行</Text></View>
       </Pressable>)}
-      {matches && snapshot.hasMore && <Button label="加载更多活动" disabled={snapshot.loading || snapshot.stale} onPress={store.loadMore} />}
+      {matches && snapshot.hasMore && <ActionButton label="加载更多活动" disabled={snapshot.loading || snapshot.stale} onPress={store.loadMore} />}
     </>}
   </View>;
 }
 function Overview({ activity }: { activity: ActivityOverview }) {
   const styles = useStyles(); const { colors } = useTheme();
-  return <View style={styles.card} testID="activity-detail">
+  return <Card style={styles.card} testID="activity-detail">
     <View style={styles.titleRow}><Text selectable style={[styles.title, styles.flex]}>{activity.title}</Text><ArrowUpRight size={workspaceTheme.layout.iconSize - spacing[4]} color={colors.faint} /></View><View style={styles.statusRow}><StatusPill label={activityStatusLabel(activity.status)} tone={activityTone(activity.status)} /></View>
     <Text selectable style={styles.body}>目标：{activity.goal}</Text><Text selectable style={styles.body}>交付：{activity.deliverable}</Text>
     <Text selectable style={styles.body}>进展：{activity.progress}</Text>
@@ -87,7 +84,7 @@ function Overview({ activity }: { activity: ActivityOverview }) {
     <Text selectable style={styles.caption}>关联执行（{activity.runIds.length}）：{activity.runIds.join(' → ') || '尚未绑定'}</Text>
     {activity.currentRunId !== null && <Text selectable style={styles.caption}>当前执行：{activity.currentRunId}</Text>}
     {activity.status === 'awaiting_continuation' && <Text style={styles.body}>本轮已结束，但工作未完成；如需继续，请回聊天页明确提出。</Text>}
-  </View>;
+  </Card>;
 }
 function activityTone(status: ActivityStatus): StatusTone {
   if (status === 'completed') return 'success';
@@ -101,12 +98,12 @@ const createStyles = (colors: WorkspaceColors) => StyleSheet.create({
   title: { ...workspaceTheme.typography.itemTitle, color: colors.ink },
   body: { ...workspaceTheme.typography.detail, color: colors.muted },
   caption: { ...workspaceTheme.typography.caption, color: colors.faint },
-  error: { ...workspaceTheme.typography.detail, color: colors.danger },
+
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing[8], alignItems: 'center' }, filters: { gap: spacing[8] },
   card: { borderRadius: workspaceTheme.radius.card, backgroundColor: colors.surface, padding: spacing[16], gap: spacing[10] },
   warning: { padding: spacing[12], borderRadius: workspaceTheme.radius.field, backgroundColor: colors.warningSoft }, warningText: { ...workspaceTheme.typography.status, color: colors.warning },
-  button: { flexDirection: 'row', gap: spacing[6], minHeight: workspaceTheme.layout.smallControl, justifyContent: 'center', alignItems: 'center', paddingHorizontal: spacing[12], paddingVertical: spacing[8], borderRadius: workspaceTheme.radius.round, backgroundColor: colors.control, alignSelf: 'flex-start' },
-  buttonText: { ...workspaceTheme.typography.status, color: colors.muted }, selected: { backgroundColor: colors.blueSoft }, selectedText: { color: colors.ink }, disabled: { opacity: workspaceTheme.interaction.disabledOpacity }, pressed: { opacity: workspaceTheme.interaction.pressedOpacity },
+
+      pressed: { opacity: workspaceTheme.interaction.pressedOpacity },
   activityRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing[12], paddingVertical: spacing[14], minHeight: workspaceTheme.layout.smallControl, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   activityIcon: { width: workspaceTheme.layout.rowIcon, height: workspaceTheme.layout.rowIcon, backgroundColor: colors.surface, borderRadius: workspaceTheme.radius.round, alignItems: 'center', justifyContent: 'center' },
   activityBody: { flex: 1, gap: spacing[6], minWidth: 0 }, titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing[8] }, flex: { flex: 1 }, statusRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing[8] },
