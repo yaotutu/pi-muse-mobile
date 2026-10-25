@@ -48,8 +48,9 @@ test('旧工作区、旧演示与旁路预览源码已移除，不保留可回�
 test('新版侧栏职责不变，真实连接与更新从应用页进入', () => {
   const source = read('src/workspace/WorkspaceScreen.tsx');
   assert.doesNotMatch(source, /onExit|退出预览|新 UI 预览|退出 UI|onPreview|sampleReducer|createSampleState/);
-  assert.match(source, /accessibilityLabel="应用更新"\s+onPress=\{update.open\}/);
-  assert.match(source, /accessibilityLabel="服务器连接"\s+onPress=\{openConnection\}/);
+  assert.match(source, /<AppSettingRow title="应用更新"[^\n]*onPress=\{update.open\}/);
+  assert.match(source, /<AppSettingRow title="服务器连接"[^\n]*onPress=\{openConnection\}/);
+  assert.match(source, /accessibilityLabel=\{label\} accessibilityState=\{\{ disabled \}\} disabled=\{disabled\} onPress=\{onPress\}/);
   assert.match(source, /<RuntimeProvider>/);
   assert.match(source, /<SpaceProvider>/);
   assert.match(source, /<ApiProvider client=\{connection.client\}/);

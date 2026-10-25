@@ -1,4 +1,4 @@
-import { BookOpen, Check, ChevronRight, Download, Menu, MessageCircle, Moon, PanelsTopLeft, Search, Server, Shapes, ShieldCheck, Square, SquareCheck, SquarePen, UserRound, X, type LucideIcon } from 'lucide-react-native';
+import { BookOpen, Check, ChevronRight, Download, Menu, MessageCircle, Moon, PanelsTopLeft, Search, Server, Shapes, Square, SquareCheck, SquarePen, UserRound, X, type LucideIcon } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ThemeStatusBar } from '../theme/ThemeStatusBar';
 import { Animated, BackHandler, Easing, Keyboard, KeyboardAvoidingView, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
@@ -72,42 +72,46 @@ type WorkspaceConnectionProps = { manager: ConnectionManager; snapshot: Connecti
 function connectionLabel(snapshot: ConnectionSnapshot) {
   return { loading: '正在读取连接配置', unconfigured: '未连接服务器', connecting: '正在连接服务器', online: '已连接', offline: '服务器暂时不可用', 'authentication-required': '需要重新认证', resetting: '正在清理本地数据', 'reset-error': '本地数据清理未完成', 'storage-error': '连接配置读取失败' }[snapshot.status];
 }
+/** 应用页入口共用命中区和禁用态；只显示调用方提供的真实状态，不参与业务判断。 */
+function AppSettingRow({ title, label, description, address, icon: Icon, onPress, disabled = false }: {
+  title: string; label: string; description: string; address?: string; icon: LucideIcon; onPress: () => void; disabled?: boolean;
+}) {
+  const styles = useStyles(); const { colors } = useTheme();
+  return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled }} disabled={disabled} onPress={onPress}
+    style={({ pressed }) => [styles.appSettingsRow, disabled && styles.settingsDisabled, pressed && styles.pressed]}>
+    <View style={styles.appRowIcon}><Icon size={l.appSettingsIcon} strokeWidth={spacing[2]} color={colors.ink} /></View>
+    <View style={styles.appRowText}><Text style={styles.itemTitle}>{title}</Text><Text style={styles.caption}>{description}</Text>
+      {!!address && <Text numberOfLines={1} ellipsizeMode="middle" style={styles.appAddress}>{address}</Text>}
+    </View>
+    <ChevronRight size={sizing[18]} color={colors.faint} />
+  </Pressable>;
+}
 function AppsPage({ snapshot, openConnection, memoryAvailable = false, profileAvailable = false, dreamAvailable = false, currentSpaceId }: Pick<WorkspaceConnectionProps, 'snapshot' | 'openConnection'> & { memoryAvailable?: boolean; profileAvailable?: boolean; dreamAvailable?: boolean; currentSpaceId?: string }) {
-  const styles = useStyles(); const { colors } = useTheme(); const update = useAppUpdate();
+  const styles = useStyles(); const update = useAppUpdate();
   const [memoryOpen, setMemoryOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [dreamOpen, setDreamOpen] = useState(false);
   if (memoryOpen && memoryAvailable) return <ScrollView key="memory" keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}><MemoryPanel onBack={() => setMemoryOpen(false)} /></ScrollView>;
   if (profileOpen && profileAvailable) return <ScrollView key="profile" keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}><ProfilePanel onBack={() => setProfileOpen(false)} /></ScrollView>;
   if (dreamOpen && dreamAvailable && currentSpaceId) return <ScrollView key="dream" keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}><DreamPanel currentSpaceId={currentSpaceId} onBack={() => setDreamOpen(false)} /></ScrollView>;
-  return <ScrollView key="apps" contentContainerStyle={styles.otherPage}>
-    <View style={styles.appIntro}><MuseAvatar size={l.sessionAvatar} /><View style={styles.threadText}><Text style={styles.pageTitle}>Pi Muse</Text><Text style={styles.mutedText}>你的灵感，一起实现。</Text></View></View>
-    <Text style={styles.sectionLabel}>连接与设备</Text>
-    <View style={styles.settingsGroup}>
-    <Pressable accessibilityRole="button" accessibilityLabel="服务器连接" onPress={openConnection} style={styles.settingsRow}>
-      <View style={styles.rowIcon}><Server size={l.iconSize} strokeWidth={1.6} color={colors.ink} /></View><View style={styles.threadText}>
-        <Text style={styles.itemTitle}>服务器连接</Text><Text style={styles.caption}>{connectionLabel(snapshot)}</Text>
-        {!!snapshot.serverUrl && <Text numberOfLines={1} style={styles.caption}>{snapshot.serverUrl}</Text>}
-      </View><ChevronRight size={sizing[18]} color={colors.faint} />
-    </Pressable>
-    {update && <Pressable accessibilityRole="button" accessibilityLabel="应用更新" onPress={update.open} style={styles.settingsRow}>
-      <View style={styles.rowIcon}><Download size={l.iconSize} strokeWidth={1.6} color={colors.ink} /></View><View style={styles.threadText}><Text style={styles.itemTitle}>应用更新</Text>
-        <Text style={styles.caption}>{update.snapshot.status === 'unsupported' ? '当前环境不支持自动安装' : '检查版本、下载与安装进度'}</Text></View><ChevronRight size={sizing[18]} color={colors.faint} />
-    </Pressable>}
+  return <ScrollView key="apps" contentContainerStyle={[styles.otherPage, styles.appsPage]}>
+    <View style={styles.appSection}><Text accessibilityRole="header" style={styles.appSectionTitle}>连接与设备</Text>
+      <View style={styles.appSettingsGroup}>
+        <AppSettingRow title="服务器连接" label="服务器连接" description={connectionLabel(snapshot)} address={snapshot.serverUrl ?? undefined} icon={Server} onPress={openConnection} />
+        {update && <AppSettingRow title="应用更新" label="应用更新" description={update.snapshot.status === 'unsupported' ? '当前环境不支持自动安装' : '检查版本、下载与安装进度'} icon={Download} onPress={update.open} />}
+      </View>
     </View>
-    <Text style={styles.sectionLabel}>助手与个人资料</Text>
-    <Pressable accessibilityRole="button" accessibilityLabel="打开助手与用户资料" accessibilityState={{ disabled: !profileAvailable }} disabled={!profileAvailable} onPress={() => setProfileOpen(true)} style={[styles.settingsRow, !profileAvailable && styles.settingsDisabled]}>
-      <View style={styles.rowIcon}><UserRound size={l.iconSize} strokeWidth={1.6} color={colors.ink} /></View><View style={styles.threadText}><Text style={styles.itemTitle}>助手与用户资料</Text><Text style={styles.caption}>{profileAvailable ? '设置全空间共用的名字、语气、人设与用户资料' : '连接真实服务后可用'}</Text></View><ChevronRight size={sizing[18]} color={colors.faint} />
-    </Pressable>
-    <Text style={styles.sectionLabel}>助手记忆</Text>
-    <Pressable accessibilityRole="button" accessibilityLabel="打开长期记忆" accessibilityState={{ disabled: !memoryAvailable }} disabled={!memoryAvailable} onPress={() => setMemoryOpen(true)} style={styles.settingsRow}>
-      <View style={styles.rowIcon}><BookOpen size={l.iconSize} strokeWidth={1.6} color={colors.ink} /></View><View style={styles.threadText}><Text style={styles.itemTitle}>长期记忆</Text><Text style={styles.caption}>{memoryAvailable ? '查询、搜索与管理所有空间共用的记忆' : '连接真实服务后管理全局记忆'}</Text></View><ChevronRight size={sizing[18]} color={colors.faint} />
-    </Pressable>
-    <Pressable accessibilityRole="button" accessibilityLabel="打开Dream记忆整理" accessibilityState={{ disabled: !dreamAvailable }} disabled={!dreamAvailable} onPress={() => setDreamOpen(true)} style={[styles.settingsRow, !dreamAvailable && styles.settingsDisabled]}>
-      <View style={styles.rowIcon}><Moon size={l.iconSize} strokeWidth={1.6} color={colors.ink} /></View><View style={styles.threadText}><Text style={styles.itemTitle}>Dream 记忆整理</Text><Text style={styles.caption}>{dreamAvailable ? '查看整理状态、编辑提示词与处理待决建议' : '连接真实服务后可用'}</Text></View><ChevronRight size={sizing[18]} color={colors.faint} />
-    </Pressable>
+    <View style={styles.appSection}><Text accessibilityRole="header" style={styles.appSectionTitle}>助手与个人资料</Text>
+      <View style={styles.appSettingsGroup}><AppSettingRow title="助手与用户资料" label="打开助手与用户资料" description={profileAvailable ? '名字、语气、人设与用户资料' : '连接真实服务后可用'} icon={UserRound} onPress={() => setProfileOpen(true)} disabled={!profileAvailable} /></View>
+    </View>
+    <View style={styles.appSection}><Text accessibilityRole="header" style={styles.appSectionTitle}>助手记忆</Text>
+      <View style={styles.appSettingsGroup}>
+        <AppSettingRow title="长期记忆" label="打开长期记忆" description={memoryAvailable ? '查询、搜索与管理全局记忆' : '连接真实服务后管理全局记忆'} icon={BookOpen} onPress={() => setMemoryOpen(true)} disabled={!memoryAvailable} />
+        <AppSettingRow title="Dream 记忆整理" label="打开Dream记忆整理" description={dreamAvailable ? '整理状态、提示词与待决建议' : '连接真实服务后可用'} icon={Moon} onPress={() => setDreamOpen(true)} disabled={!dreamAvailable} />
+      </View>
+    </View>
     <ThemePicker />
-    <View style={styles.privacyNote}><ShieldCheck size={sizing[18]} color={colors.faint} /><Text style={[styles.caption, styles.threadText]}>连接你自己的服务，数据归你所有。助手资料、长期记忆与 Dream 已接入；其他应用能力尚未接入。</Text></View>
+    <Text style={styles.appFootnote}>其他应用能力尚未接入。</Text>
   </ScrollView>;
 }
 function DisconnectedWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
@@ -308,9 +312,14 @@ const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   pageHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: l.sidePadding, paddingTop: spacing[12], paddingBottom: spacing[8] },
   otherPage: { paddingTop: l.pageTop, paddingHorizontal: l.sidePadding, paddingBottom: spacing[24], gap: spacing[18] }, pageTitle: { ...t.heroName, color: c.ink }, itemTitle: { ...t.itemTitle, color: c.ink }, mutedText: { ...t.detail, color: c.muted }, caption: { ...t.caption, color: c.faint }, error: { ...t.caption, color: c.danger },
   exampleCard: { padding: spacing[20], borderRadius: r.card, backgroundColor: c.surface, gap: spacing[16], marginBottom: spacing[16] }, settingsRow: { flexDirection: 'row', alignItems: 'center', gap: spacing[14], paddingVertical: spacing[16], paddingHorizontal: spacing[16] },
-  settingsGroup: { borderRadius: r.card, backgroundColor: c.surface, overflow: 'hidden' }, settingsDisabled: { opacity: workspaceTheme.interaction.disabledOpacity }, rowIcon: { width: l.rowIcon, height: l.rowIcon, borderRadius: r.round, backgroundColor: c.control, alignItems: 'center', justifyContent: 'center' },
-  sectionLabel: { ...t.caption, color: c.faint, marginTop: spacing[12], marginLeft: spacing[6] }, appIntro: { flexDirection: 'row', alignItems: 'center', gap: spacing[18], paddingVertical: spacing[12] },
-  privacyNote: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing[8], marginHorizontal: spacing[6], marginTop: spacing[16] }, eyebrow: { ...t.eyebrow, color: c.faint },
+  appsPage: { gap: spacing[24] }, appSection: { gap: spacing[10] },
+  appSectionTitle: { ...t.status, color: c.muted, marginLeft: spacing[6] },
+  appSettingsGroup: { borderRadius: r.card, backgroundColor: c.surface, overflow: 'hidden' },
+  appSettingsRow: { minHeight: l.appSettingsRowHeight, flexDirection: 'row', alignItems: 'center', gap: spacing[10], paddingHorizontal: spacing[14], paddingVertical: spacing[12] },
+  appRowIcon: { width: l.appSettingsIconBox, height: l.appSettingsIconBox, borderRadius: r.round, backgroundColor: c.control, alignItems: 'center', justifyContent: 'center' },
+  appRowText: { flex: 1, minWidth: 0, gap: spacing[2] }, appAddress: { ...t.caption, color: c.faint, minWidth: 0 },
+  appFootnote: { ...t.caption, color: c.faint, marginHorizontal: spacing[6] },
+  settingsDisabled: { opacity: workspaceTheme.interaction.disabledOpacity }, eyebrow: { ...t.eyebrow, color: c.faint },
   emptyTitle: { ...t.heroName, color: c.ink, textAlign: 'center' }, notice: { position: 'absolute', left: l.sidePadding, right: l.sidePadding, top: l.headerHeight, ...t.caption, color: c.ink, backgroundColor: c.control, padding: spacing[12], borderRadius: r.listItem },
   disconnected: { flex: 1, alignSelf: 'center', width: '100%', maxWidth: l.maxWidth }, disconnectedHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: l.sidePadding }, welcome: { flex: 1, paddingHorizontal: l.sidePadding, gap: spacing[18], alignItems: 'center', justifyContent: 'center' },
   actionButton: { minHeight: l.smallControl, backgroundColor: c.blue, paddingHorizontal: spacing[18], paddingVertical: spacing[12], borderRadius: r.round, alignSelf: 'center' }, actionText: { ...t.status, color: c.onAccent },

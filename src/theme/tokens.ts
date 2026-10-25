@@ -159,14 +159,18 @@ export const themeTokens = {
     pageTop: 28,
     sectionGap: 28,
     rowIcon: 44,
+    /** 应用首页入口使用紧凑的统一图标盒与可点行高。 */
+    appSettingsIconBox: 38,
+    appSettingsIcon: 20,
+    appSettingsRowHeight: 72,
     tabLabelGap: 4,
     navigationLabelGap: 5,
     statusMaxWidth: 200,
     inputMinHeight: 54,
     /** 资料页文本输入固定可读高度，长文本在输入框内滚动。 */
     profileTextHeight: 176,
-    /** 窄屏语气选项可自动折行，避免单选项压缩文字。 */
-    profileToneMinWidth: 92,
+    /** 资料页保存与取消在窄屏各占一行，避免按钮文字被裁切。 */
+    profileActionMinWidth: 150,
     switchWidth: 44,
     switchHeight: 26,
     switchThumb: 20,

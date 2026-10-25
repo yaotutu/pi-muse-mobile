@@ -1,10 +1,9 @@
 import { useEffect, useMemo } from 'react';
 import { ActivityIndicator, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { ArrowLeft, Check, RefreshCw, RotateCcw, Sparkles, UserRound } from 'lucide-react-native';
+import { ArrowLeft, Check, RefreshCw, RotateCcw } from 'lucide-react-native';
 import { useProfile } from '../profile/ProfileProvider';
 import { useTheme } from '../theme/ThemeProvider';
 import { spacing, workspaceTheme, type WorkspaceColors } from '../ui/tokens';
-import { SectionHeading } from './primitives';
 
 const NAME_LIMIT = 80;
 const TEXT_LIMIT = 20000;
@@ -39,10 +38,9 @@ export function ProfilePanel({ onBack }: { onBack: () => void }) {
       <Action label="返回应用设置" text="返回应用" onPress={onBack} icon="back" />
       <Action label="刷新助手与用户资料" text="刷新" onPress={() => void store.refresh()} disabled={snapshot.loading || !!snapshot.writing} icon="refresh" />
     </View>
-    <SectionHeading title="助手与用户资料" eyebrow="MAKE IT PERSONAL" description="设置助手如何称呼自己、如何说话，以及下一轮对话需要了解的你。全部空间共用。" />
-    <View style={styles.info}>
-      <Sparkles size={workspaceTheme.layout.iconSize - spacing[6]} color={colors.blue} />
-      <Text style={styles.infoText}>保存后从下一轮对话生效；本页草稿仅保留在当前连接内。助手设置和人设资料分别提交。</Text>
+    <View style={styles.heading}>
+      <Text accessibilityRole="header" style={styles.title}>助手与用户资料</Text>
+      <Text style={styles.intro}>全部空间共用，保存后从下一轮对话生效。草稿仅保留在当前连接内；助手设置和人设资料分别提交。</Text>
     </View>
 
     {snapshot.loading && <View style={styles.statusRow}><ActivityIndicator accessibilityLabel="正在读取助手与用户资料" color={colors.muted} /><Text style={styles.caption}>正在读取服务端资料…</Text></View>}
@@ -52,7 +50,7 @@ export function ProfilePanel({ onBack }: { onBack: () => void }) {
     {!snapshot.loaded && !snapshot.loading && !snapshot.error && <Text style={styles.warning}>尚未读取服务端资料，请刷新后编辑。</Text>}
 
     <View style={styles.card}>
-      <View style={styles.cardHeading}><View style={styles.cardIcon}><UserRound size={workspaceTheme.layout.iconSize - spacing[4]} color={colors.blue} /></View><View style={styles.cardHeadingText}><Text style={styles.cardTitle}>助手设置</Text><Text style={styles.caption}>名字与语气 · 独立保存</Text></View></View>
+      <View style={styles.cardHeading}><Text accessibilityRole="header" style={styles.cardTitle}>助手设置</Text><Text style={styles.caption}>名字与语气 · 独立保存</Text></View>
       <Text style={styles.fieldLabel}>助手名字</Text>
       <TextInput accessibilityLabel="助手名字" value={name} onChangeText={(value) => store.setIdentity('name', value)} editable={snapshot.loaded && !snapshot.loading && !snapshot.writing}
         maxLength={NAME_LIMIT} placeholder="给助手起个名字" placeholderTextColor={colors.faint} autoCapitalize="words" returnKeyType="done" style={styles.nameInput} />
@@ -67,13 +65,13 @@ export function ProfilePanel({ onBack }: { onBack: () => void }) {
       {snapshot.loaded && unsupportedServerTone && <Text accessibilityRole="alert" style={styles.warning}>服务端当前语气值为「{unsupportedServerTone}」，不在当前可选项中。请选择温暖、简洁或周到并保存。</Text>}
       {snapshot.loaded && !toneKnown && !unsupportedServerTone && <Text accessibilityRole="alert" style={styles.warning}>当前语气草稿为「{tone || '空值'}」，请选择温暖、简洁或周到后再保存。</Text>}
       <View style={styles.actions}>
-        <Action label="保存助手设置" text={snapshot.writing === 'identity' ? '正在保存助手设置…' : '保存助手设置'} onPress={() => { Keyboard.dismiss(); void store.saveIdentity(); }} disabled={!canSaveIdentity} primary icon="save" />
-        <Action label="取消助手设置修改并采用最新服务端值" text="取消助手设置修改" onPress={() => store.discardIdentity()} disabled={!canDiscard || !snapshot.dirtyIdentity} icon="discard" />
+        <Action label="保存助手设置" text={snapshot.writing === 'identity' ? '正在保存助手设置…' : '保存助手设置'} onPress={() => { Keyboard.dismiss(); void store.saveIdentity(); }} disabled={!canSaveIdentity} primary wide icon="save" />
+        <Action label="取消助手设置修改并采用最新服务端值" text="取消助手设置修改" onPress={() => store.discardIdentity()} disabled={!canDiscard || !snapshot.dirtyIdentity} wide icon="discard" />
       </View>
     </View>
 
     <View style={styles.card}>
-      <View style={styles.cardHeading}><View style={styles.cardIcon}><Sparkles size={workspaceTheme.layout.iconSize - spacing[4]} color={colors.blue} /></View><View style={styles.cardHeadingText}><Text style={styles.cardTitle}>人设与资料</Text><Text style={styles.caption}>两段文本 · 同一次资料保存</Text></View></View>
+      <View style={styles.cardHeading}><Text accessibilityRole="header" style={styles.cardTitle}>人设与资料</Text><Text style={styles.caption}>两段文本 · 同一次资料保存</Text></View>
       <Text style={styles.caption}>可留空清空对应内容。填写的内容会作为全局资料供下一轮对话使用。</Text>
       <Text style={styles.fieldLabel}>SOUL · 助手人设</Text>
       <TextInput accessibilityLabel="SOUL 助手人设" multiline value={snapshot.draftProfile.soul} onChangeText={(value) => store.setProfile('soul', value)} editable={snapshot.loaded && !snapshot.loading && !snapshot.writing}
@@ -84,43 +82,42 @@ export function ProfilePanel({ onBack }: { onBack: () => void }) {
         maxLength={TEXT_LIMIT} placeholder="希望助手了解你的哪些背景与偏好？" placeholderTextColor={colors.faint} style={styles.longInput} textAlignVertical="top" />
       <Text style={styles.count}>{snapshot.draftProfile.user.length.toLocaleString()} / {TEXT_LIMIT.toLocaleString()} 字</Text>
       <View style={styles.actions}>
-        <Action label="保存人设与资料" text={snapshot.writing === 'profile' ? '正在保存人设与资料…' : '保存人设与资料'} onPress={() => { Keyboard.dismiss(); void store.saveProfile(); }} disabled={!canSaveProfile} primary icon="save" />
-        <Action label="取消人设与资料修改并采用最新服务端值" text="取消人设与资料修改" onPress={() => store.discardProfile()} disabled={!canDiscard || !snapshot.dirtyProfile} icon="discard" />
+        <Action label="保存人设与资料" text={snapshot.writing === 'profile' ? '正在保存人设与资料…' : '保存人设与资料'} onPress={() => { Keyboard.dismiss(); void store.saveProfile(); }} disabled={!canSaveProfile} primary wide icon="save" />
+        <Action label="取消人设与资料修改并采用最新服务端值" text="取消人设与资料修改" onPress={() => store.discardProfile()} disabled={!canDiscard || !snapshot.dirtyProfile} wide icon="discard" />
       </View>
     </View>
   </View>;
 }
 
-function Action({ label, text, onPress, disabled, primary, icon }: { label: string; text: string; onPress: () => void; disabled?: boolean; primary?: boolean; icon: 'back' | 'refresh' | 'save' | 'discard' }) {
+function Action({ label, text, onPress, disabled, primary, wide, icon }: { label: string; text: string; onPress: () => void; disabled?: boolean; primary?: boolean; wide?: boolean; icon: 'back' | 'refresh' | 'save' | 'discard' }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const Icon = icon === 'back' ? ArrowLeft : icon === 'refresh' ? RefreshCw : icon === 'save' ? Check : RotateCcw;
   return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled: !!disabled }} disabled={disabled} onPress={onPress}
-    style={({ pressed }) => [styles.button, primary && styles.buttonPrimary, disabled && styles.disabled, pressed && styles.pressed]}>
+    style={({ pressed }) => [styles.button, wide && styles.buttonWide, primary && styles.buttonPrimary, disabled && styles.disabled, pressed && styles.pressed]}>
     <Icon size={workspaceTheme.layout.iconSize - spacing[8]} color={primary ? colors.onAccent : colors.ink} /><Text style={[styles.buttonText, primary && styles.buttonPrimaryText]}>{text}</Text>
   </Pressable>;
 }
 
 const createStyles = (colors: WorkspaceColors) => StyleSheet.create({
-  root: { gap: spacing[18], paddingBottom: spacing[24] },
+  root: { gap: spacing[16], paddingBottom: spacing[24] },
   topRow: { flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap', gap: spacing[8] },
-  info: { flexDirection: 'row', gap: spacing[12], padding: spacing[16], borderRadius: workspaceTheme.radius.field, backgroundColor: colors.blueSoft },
-  infoText: { ...workspaceTheme.typography.detail, color: colors.ink, flex: 1, minWidth: 0 },
+  heading: { gap: spacing[6] }, title: { ...workspaceTheme.typography.section, color: colors.ink },
+  intro: { ...workspaceTheme.typography.status, color: colors.muted },
   statusRow: { flexDirection: 'row', gap: spacing[10], alignItems: 'center' },
-  card: { padding: spacing[20], gap: spacing[12], borderRadius: workspaceTheme.radius.card, backgroundColor: colors.surface },
-  cardHeading: { flexDirection: 'row', alignItems: 'center', gap: spacing[12], marginBottom: spacing[4] },
-  cardHeadingText: { flex: 1, minWidth: 0, gap: spacing[2] },
-  cardIcon: { width: workspaceTheme.layout.rowIcon, height: workspaceTheme.layout.rowIcon, borderRadius: workspaceTheme.radius.round, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.blueSoft },
-  cardTitle: { ...workspaceTheme.typography.section, color: colors.ink },
+  card: { padding: spacing[16], gap: spacing[12], borderRadius: workspaceTheme.radius.card, backgroundColor: colors.surface },
+  cardHeading: { gap: spacing[2], marginBottom: spacing[4] },
+  cardTitle: { ...workspaceTheme.typography.itemTitle, color: colors.ink },
   fieldLabel: { ...workspaceTheme.typography.status, color: colors.ink, marginTop: spacing[8] },
   nameInput: { minHeight: workspaceTheme.layout.inputMinHeight, paddingHorizontal: spacing[16], borderRadius: workspaceTheme.radius.field, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line, backgroundColor: colors.canvas, color: colors.ink, ...workspaceTheme.typography.input },
   longInput: { height: workspaceTheme.layout.profileTextHeight, padding: spacing[16], borderRadius: workspaceTheme.radius.field, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line, backgroundColor: colors.canvas, color: colors.ink, ...workspaceTheme.typography.detail },
-  tones: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing[8] },
-  tone: { flexGrow: 1, flexBasis: workspaceTheme.layout.profileToneMinWidth, minWidth: 0, minHeight: workspaceTheme.layout.controlSize, paddingHorizontal: spacing[14], paddingVertical: spacing[10], gap: spacing[2], borderRadius: workspaceTheme.radius.field, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line, backgroundColor: colors.canvas },
+  tones: { flexDirection: 'row', gap: spacing[8] },
+  tone: { flex: 1, minWidth: 0, minHeight: workspaceTheme.layout.controlSize, paddingHorizontal: spacing[8], paddingVertical: spacing[10], gap: spacing[2], borderRadius: workspaceTheme.radius.field, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line, backgroundColor: colors.canvas },
   toneSelected: { borderColor: colors.blue, backgroundColor: colors.blueSoft }, toneTitle: { ...workspaceTheme.typography.status, color: colors.ink }, toneTitleSelected: { color: colors.accentText },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing[8], marginTop: spacing[10] },
-  button: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing[6], minHeight: workspaceTheme.layout.smallControl, paddingHorizontal: spacing[14], paddingVertical: spacing[8], borderRadius: workspaceTheme.radius.round, backgroundColor: colors.control },
-  buttonPrimary: { backgroundColor: colors.blue }, buttonText: { ...workspaceTheme.typography.status, color: colors.ink, flexShrink: 1 }, buttonPrimaryText: { color: colors.onAccent },
+  button: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing[6], minHeight: workspaceTheme.layout.smallControl, paddingHorizontal: spacing[12], paddingVertical: spacing[8], borderRadius: workspaceTheme.radius.round, backgroundColor: colors.control },
+  buttonWide: { flexGrow: 1, flexBasis: workspaceTheme.layout.profileActionMinWidth, minWidth: 0 },
+  buttonPrimary: { backgroundColor: colors.blue }, buttonText: { ...workspaceTheme.typography.status, color: colors.ink, flexShrink: 1, textAlign: 'center' }, buttonPrimaryText: { color: colors.onAccent },
   caption: { ...workspaceTheme.typography.caption, color: colors.faint }, count: { ...workspaceTheme.typography.caption, color: colors.faint, alignSelf: 'flex-end' },
   warning: { ...workspaceTheme.typography.detail, color: colors.warning }, error: { ...workspaceTheme.typography.detail, color: colors.danger }, notice: { ...workspaceTheme.typography.detail, color: colors.success },
   disabled: { opacity: workspaceTheme.interaction.disabledOpacity }, pressed: { opacity: workspaceTheme.interaction.pressedOpacity },
