@@ -5,7 +5,6 @@ import { useDream } from '../dream/DreamProvider';
 import { DREAM_PROMPT_LIMIT, MAIN_DREAM_SPACE, type DreamPending, type DreamTarget } from '../dream/types';
 import { useTheme } from '../theme/ThemeProvider';
 import { spacing, workspaceTheme, type WorkspaceColors } from '../ui/tokens';
-import { SectionHeading } from './primitives';
 
 const targets: DreamTarget[] = ['user', 'soul', 'instructions', 'memory'];
 const reasonText = {
@@ -18,6 +17,10 @@ const { layout: l, radius: r, typography: t } = workspaceTheme;
 
 function targetText(target: DreamTarget, spaceId: string) {
   return { user: 'USER · 全局用户资料', soul: 'SOUL · 全局人设', instructions: `${spaceId} · 空间规则`, memory: 'MEMORY · 全局长期记忆' }[target];
+}
+
+function targetShortText(target: DreamTarget) {
+  return { user: 'USER', soul: 'SOUL', instructions: '规则', memory: '记忆' }[target];
 }
 
 function when(value?: string) {
@@ -74,9 +77,11 @@ export function DreamPanel({ currentSpaceId, onBack }: { currentSpaceId: string;
   };
 
   return <View style={styles.root} testID="dream-panel">
-    <Button label="返回应用设置" onPress={onBack} icon="back" />
-    <SectionHeading title="Dream 记忆整理" eyebrow="DREAM" description="查看后台整理、调整提示词，并亲自决定待决内容的归属。" />
-    <View style={styles.actions}><Button label="刷新Dream概览" text="刷新概览" onPress={() => void store.refresh()} disabled={snapshot.loading || !!snapshot.writing} icon="refresh" /></View>
+    <View style={styles.topRow}>
+      <Button label="返回应用设置" text="返回应用" onPress={onBack} icon="back" />
+      <Button label="刷新Dream概览" text="刷新" onPress={() => void store.refresh()} disabled={snapshot.loading || !!snapshot.writing} icon="refresh" />
+    </View>
+    <Text accessibilityRole="header" style={styles.pageTitle}>Dream 记忆整理</Text>
     {snapshot.loading && <ActivityIndicator accessibilityLabel="正在读取Dream概览" color={colors.muted} />}
     {!!snapshot.error && <Text accessibilityRole="alert" style={styles.error}>{snapshot.error}</Text>}
     {!!snapshot.notice && <Text accessibilityLiveRegion="polite" style={styles.success}>{snapshot.notice}</Text>}
@@ -86,37 +91,37 @@ export function DreamPanel({ currentSpaceId, onBack }: { currentSpaceId: string;
     {!!snapshot.overview && <>
       <View style={styles.card}>
         <Text accessibilityRole="header" style={styles.title}>全局概览</Text>
-        <Text style={styles.body}>服务端固定周期：每 {snapshot.overview.intervalHours} 小时检查一次</Text>
+        <View style={styles.overviewRow}><Text style={styles.overviewLabel}>固定周期</Text><Text style={styles.body}>每 {snapshot.overview.intervalHours} 小时检查</Text></View>
         <Text style={snapshot.writing === 'run' || snapshot.overview.running ? styles.warning : styles.caption}>{snapshot.writing === 'run' ? '正在等待服务端整理结果；离开页面不会停止远端执行。' : snapshot.overview.running ? '上次读取时有 Dream 正在运行，可能属于其他空间。' : '上次读取时没有正在运行的 Dream。'}</Text>
-        <Text style={styles.caption}>各空间是否参加周期整理由下方设置决定；关闭周期仍可手动立即整理。</Text>
+        <Text style={styles.caption}>各空间单独决定是否参加周期整理；关闭后仍可手动整理。</Text>
       </View>
 
       <View style={styles.card}>
         <Text accessibilityRole="header" style={styles.title}>全局整理提示词</Text>
-        <Text style={styles.caption}>适用于全部空间。留空并保存后使用内置默认提示词；全局与空间设置需要分别保存。</Text>
+        <Text style={styles.caption}>适用于全部空间；留空并保存后使用内置默认提示词。</Text>
         <TextInput accessibilityLabel="编辑全局Dream提示词" multiline textAlignVertical="top" value={snapshot.globalDraft} onChangeText={store.setGlobalPrompt}
           editable={snapshot.loaded && !snapshot.writing} maxLength={DREAM_PROMPT_LIMIT} placeholder="留空则使用内置默认提示词" placeholderTextColor={colors.faint} style={styles.input} />
         <Text style={styles.count}>{snapshot.globalDraft.length} / {DREAM_PROMPT_LIMIT} 字符</Text>
-        <View style={styles.actions}>
-          <Button label="保存全局Dream提示词" text={snapshot.writing === 'global' ? '正在保存…' : '保存全局提示词'} primary onPress={() => { Keyboard.dismiss(); void store.saveGlobalPrompt(); }} disabled={!canWrite || !snapshot.globalDirty} />
-          <Button label="取消全局Dream提示词修改" text="取消修改" onPress={store.discardGlobal} disabled={!canWrite || !snapshot.globalDirty} />
-          <Button label="清空全局Dream提示词草稿" text="清空草稿" onPress={() => store.setGlobalPrompt('')} disabled={!snapshot.loaded || !!snapshot.writing || !snapshot.globalDraft} />
+        <View style={styles.formActions}>
+          <Button label="保存全局Dream提示词" text={snapshot.writing === 'global' ? '正在保存…' : '保存全局提示词'} primary wide onPress={() => { Keyboard.dismiss(); void store.saveGlobalPrompt(); }} disabled={!canWrite || !snapshot.globalDirty} />
+          <Button label="取消全局Dream提示词修改" text="取消修改" wide onPress={store.discardGlobal} disabled={!canWrite || !snapshot.globalDirty} />
         </View>
-        <Text style={styles.caption}>清空只是草稿；保存空内容后才恢复内置默认提示词。保存失败时草稿保留，请刷新核对后自行决定是否再保存。</Text>
+        <Button label="清空全局Dream提示词草稿" text="清空草稿" onPress={() => store.setGlobalPrompt('')} disabled={!snapshot.loaded || !!snapshot.writing || !snapshot.globalDraft} />
+        <Text style={styles.caption}>清空仅修改草稿；保存失败会保留草稿，请刷新核对后再决定是否保存。</Text>
         <Button label={showDefault ? '收起内置默认Dream提示词' : '展开内置默认Dream提示词'} text={showDefault ? '收起内置默认提示词' : '查看内置默认提示词'} onPress={() => setShowDefault(!showDefault)} icon={showDefault ? 'up' : 'down'} />
         {showDefault && <Text selectable style={styles.fullText}>{snapshot.overview.defaultPrompt}</Text>}
       </View>
 
       <View style={styles.card}>
         <Text accessibilityRole="header" style={styles.title}>选择整理空间</Text>
-        <Text style={styles.caption}>只可选择服务端概览中的已有空间。切换会放弃当前空间未保存的设置草稿；全局提示词草稿保留。</Text>
+        <Text style={styles.caption}>仅选择已有空间。切换时若有空间草稿会先确认；全局草稿保留。</Text>
         <View style={styles.spaceChoices}>{snapshot.overview.spaces.map((space) => <Pressable key={space.spaceId} accessibilityRole="button" accessibilityLabel={`选择Dream空间 ${space.spaceId === MAIN_DREAM_SPACE ? '主空间' : space.spaceId}`} accessibilityState={{ selected: space.spaceId === snapshot.selectedSpaceId, disabled: !!snapshot.writing }} disabled={!!snapshot.writing}
           onPress={() => requestSpace(space.spaceId)} style={[styles.spaceChoice, space.spaceId === snapshot.selectedSpaceId && styles.selected]}>
           <Text style={styles.choiceText}>{space.spaceId === MAIN_DREAM_SPACE ? '主空间 · local-main' : space.spaceId}</Text>
         </Pressable>)}</View>
         {!!nextSpaceId && <View style={styles.confirmBox}>
           <Text style={styles.warning}>切换到 {nextSpaceId === MAIN_DREAM_SPACE ? '主空间' : nextSpaceId} 会丢弃当前空间未保存的周期与补充提示词草稿。全局草稿不会丢失。</Text>
-          <View style={styles.actions}><Button label="确认放弃当前空间草稿并切换" text="放弃空间草稿并切换" onPress={confirmSpace} disabled={!!snapshot.writing} primary /><Button label="取消切换Dream空间" text="继续编辑" onPress={() => setNextSpaceId(undefined)} /></View>
+          <View style={styles.formActions}><Button label="确认放弃当前空间草稿并切换" text="放弃空间草稿并切换" onPress={confirmSpace} disabled={!!snapshot.writing} primary wide /><Button label="取消切换Dream空间" text="继续编辑" onPress={() => setNextSpaceId(undefined)} wide /></View>
         </View>}
       </View>
 
@@ -133,8 +138,8 @@ export function DreamPanel({ currentSpaceId, onBack }: { currentSpaceId: string;
           <TextInput accessibilityLabel="编辑当前空间Dream补充提示词" multiline textAlignVertical="top" value={snapshot.spaceDraft.prompt} onChangeText={(prompt) => store.setSpaceDraft({ prompt })}
             editable={snapshot.loaded && !snapshot.writing} maxLength={DREAM_PROMPT_LIMIT} placeholder="仅作为当前空间的补充说明" placeholderTextColor={colors.faint} style={styles.input} />
           <Text style={styles.count}>{snapshot.spaceDraft.prompt.length} / {DREAM_PROMPT_LIMIT} 字符</Text>
-          <View style={styles.actions}><Button label="保存当前空间Dream设置" text={snapshot.writing === 'space' ? '正在保存…' : '保存空间设置'} onPress={() => { Keyboard.dismiss(); void store.saveSpaceSettings(); }} disabled={!canWrite || !snapshot.spaceDirty} primary />
-            <Button label="取消当前空间Dream设置修改" text="取消修改" onPress={store.discardSpace} disabled={!canWrite || !snapshot.spaceDirty} /></View>
+          <View style={styles.formActions}><Button label="保存当前空间Dream设置" text={snapshot.writing === 'space' ? '正在保存…' : '保存空间设置'} onPress={() => { Keyboard.dismiss(); void store.saveSpaceSettings(); }} disabled={!canWrite || !snapshot.spaceDirty} primary wide />
+            <Button label="取消当前空间Dream设置修改" text="取消修改" onPress={store.discardSpace} disabled={!canWrite || !snapshot.spaceDirty} wide /></View>
         </View>
 
         <View style={styles.card}>
@@ -166,15 +171,16 @@ export function DreamPanel({ currentSpaceId, onBack }: { currentSpaceId: string;
               <Text style={styles.caption}>建议归属：{targetText(item.suggestedTarget, current.spaceId)}</Text>
               <Text style={styles.fieldLabel}>实际应用到</Text>
               <View style={styles.targetChoices}>{targets.map((target) => <Pressable key={target} accessibilityRole="button" accessibilityLabel={`选择建议归属 ${targetText(target, current.spaceId)}`} accessibilityState={{ selected: chosen === target, disabled: !canWrite }} disabled={!canWrite}
-                onPress={() => { setChosenTargets((previous) => ({ ...previous, [item.id]: target })); setDecision(undefined); }} style={[styles.targetChoice, chosen === target && styles.selected]}><Text style={styles.choiceText}>{targetText(target, current.spaceId)}</Text></Pressable>)}</View>
-              {(chosen === 'user' || chosen === 'soul') && <Text style={styles.warning}>此目标是全局资料，应用后影响全部空间。</Text>}
+                onPress={() => { setChosenTargets((previous) => ({ ...previous, [item.id]: target })); setDecision(undefined); }} style={[styles.targetChoice, chosen === target && styles.selected]}><Text style={[styles.choiceText, chosen === target && styles.choiceSelected]}>{targetShortText(target)}</Text></Pressable>)}</View>
+              <Text selectable style={styles.targetDescription}>当前目标：{targetText(chosen, current.spaceId)}</Text>
+              {(chosen === 'user' || chosen === 'soul' || chosen === 'memory') && <Text style={styles.warning}>此目标为全局内容，应用后影响全部空间。</Text>}
               <View style={styles.actions}><Button label={`准备应用Dream建议 ${item.id}`} text="应用到所选目标" onPress={() => setDecision({ id: item.id, action: 'apply' })} disabled={!canWrite} primary />
                 <Button label={`准备忽略Dream建议 ${item.id}`} text="忽略建议" onPress={() => setDecision({ id: item.id, action: 'dismiss' })} disabled={!canWrite} /></View>
               {!!confirming && <View style={styles.confirmBox}>
                 <Text style={styles.body}>{confirming === 'apply' ? `确认把以上完整正文应用到 ${targetText(chosen, current.spaceId)}？` : '确认忽略以上完整建议？'}</Text>
-                {confirming === 'apply' && (chosen === 'user' || chosen === 'soul') && <Text style={styles.warning}>USER / SOUL 是跨空间全局资料，此操作会影响全部空间。</Text>}
-                <View style={styles.actions}><Button label={confirming === 'apply' ? `确认应用Dream建议 ${item.id}` : `确认忽略Dream建议 ${item.id}`} text={confirming === 'apply' ? '确认应用' : '确认忽略'} onPress={() => resolve(item)} disabled={!canWrite} primary />
-                  <Button label="取消处理Dream建议" text="取消" onPress={() => setDecision(undefined)} /></View>
+                {confirming === 'apply' && (chosen === 'user' || chosen === 'soul' || chosen === 'memory') && <Text style={styles.warning}>此目标为全局内容，应用后影响全部空间。</Text>}
+                <View style={styles.formActions}><Button label={confirming === 'apply' ? `确认应用Dream建议 ${item.id}` : `确认忽略Dream建议 ${item.id}`} text={confirming === 'apply' ? '确认应用' : '确认忽略'} onPress={() => resolve(item)} disabled={!canWrite} primary wide />
+                  <Button label="取消处理Dream建议" text="取消" onPress={() => setDecision(undefined)} wide /></View>
               </View>}
             </View>;
           })}
@@ -184,12 +190,12 @@ export function DreamPanel({ currentSpaceId, onBack }: { currentSpaceId: string;
   </View>;
 }
 
-function Button({ label, text, onPress, disabled, primary, icon }: { label: string; text?: string; onPress: () => void; disabled?: boolean; primary?: boolean; icon?: 'back' | 'refresh' | 'down' | 'up' }) {
+function Button({ label, text, onPress, disabled, primary, wide, icon }: { label: string; text?: string; onPress: () => void; disabled?: boolean; primary?: boolean; wide?: boolean; icon?: 'back' | 'refresh' | 'down' | 'up' }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const Icon = icon === 'back' ? ArrowLeft : icon === 'refresh' ? RefreshCw : icon === 'down' ? ChevronDown : icon === 'up' ? ChevronUp : undefined;
   return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled: !!disabled }} disabled={disabled} onPress={onPress}
-    style={({ pressed }) => [styles.button, primary && styles.primary, disabled && styles.disabled, pressed && styles.pressed]}>
+    style={({ pressed }) => [styles.button, wide && styles.buttonWide, primary && styles.primary, disabled && styles.disabled, pressed && styles.pressed]}>
     {Icon && <Icon size={l.iconSize - spacing[6]} color={primary ? colors.onAccent : colors.ink} />}
     <Text style={[styles.buttonText, primary && styles.primaryText]}>{text ?? label}</Text>
   </Pressable>;
@@ -206,18 +212,24 @@ function Choice({ label, title, detail, selected, onPress, disabled }: { label: 
 }
 
 const createStyles = (c: WorkspaceColors) => StyleSheet.create({
-  root: { gap: spacing[18], paddingBottom: spacing[24], minWidth: 0 },
-  card: { padding: spacing[18], gap: spacing[12], minWidth: 0, borderRadius: r.card, backgroundColor: c.surface },
-  title: { ...t.section, color: c.ink }, body: { ...t.detail, color: c.ink }, caption: { ...t.caption, color: c.faint },
+  root: { gap: spacing[16], paddingBottom: spacing[24], minWidth: 0 },
+  topRow: { flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap', gap: spacing[8] },
+  pageTitle: { ...t.section, color: c.ink },
+  card: { padding: spacing[16], gap: spacing[12], minWidth: 0, borderRadius: r.card, backgroundColor: c.surface },
+  title: { ...t.itemTitle, color: c.ink }, body: { ...t.detail, color: c.ink }, caption: { ...t.caption, color: c.faint },
+  overviewRow: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', gap: spacing[8] }, overviewLabel: { ...t.caption, color: c.muted },
   fieldLabel: { ...t.status, color: c.ink }, spaceName: { ...t.itemTitle, color: c.ink },
   warning: { ...t.detail, color: c.warning }, error: { ...t.detail, color: c.danger }, success: { ...t.detail, color: c.success },
-  input: { minHeight: l.profileTextHeight, padding: spacing[16], borderRadius: r.field, borderWidth: StyleSheet.hairlineWidth, borderColor: c.line, backgroundColor: c.canvas, color: c.ink, ...t.detail },
-  count: { ...t.caption, color: c.faint, alignSelf: 'flex-end' }, fullText: { ...t.detail, color: c.ink, backgroundColor: c.canvas, borderRadius: r.field, padding: spacing[16] },
-  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing[8] }, button: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing[6], minHeight: l.smallControl, maxWidth: '100%', paddingHorizontal: spacing[14], paddingVertical: spacing[8], borderRadius: r.round, backgroundColor: c.control },
-  buttonText: { ...t.status, color: c.ink, flexShrink: 1 }, primary: { backgroundColor: c.blue }, primaryText: { color: c.onAccent },
-  spaceChoices: { gap: spacing[8] }, spaceChoice: { minWidth: 0, padding: spacing[12], borderRadius: r.field, borderWidth: StyleSheet.hairlineWidth, borderColor: c.line, backgroundColor: c.canvas },
-  targetChoices: { gap: spacing[8] }, targetChoice: { minWidth: 0, padding: spacing[12], borderRadius: r.field, borderWidth: StyleSheet.hairlineWidth, borderColor: c.line, backgroundColor: c.canvas },
-  selected: { borderColor: c.blue, backgroundColor: c.blueSoft }, choiceText: { ...t.status, color: c.ink, flexShrink: 1 },
+  input: { height: l.profileTextHeight, padding: spacing[16], borderRadius: r.field, borderWidth: StyleSheet.hairlineWidth, borderColor: c.line, backgroundColor: c.canvas, color: c.ink, ...t.detail },
+  count: { ...t.caption, color: c.faint, alignSelf: 'flex-end' }, fullText: { ...t.detail, color: c.ink, backgroundColor: c.canvas, borderRadius: r.field, padding: spacing[16], minWidth: 0 },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing[8] }, formActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing[8], marginTop: spacing[8] },
+  button: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing[6], minHeight: l.smallControl, maxWidth: '100%', paddingHorizontal: spacing[14], paddingVertical: spacing[8], borderRadius: r.round, backgroundColor: c.control },
+  buttonWide: { flexGrow: 1, flexBasis: l.profileActionMinWidth, minWidth: 0 },
+  buttonText: { ...t.status, color: c.ink, flexShrink: 1, textAlign: 'center' }, primary: { backgroundColor: c.blue }, primaryText: { color: c.onAccent },
+  spaceChoices: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing[8] }, spaceChoice: { minWidth: 0, maxWidth: '100%', paddingHorizontal: spacing[14], paddingVertical: spacing[10], borderRadius: r.round, borderWidth: StyleSheet.hairlineWidth, borderColor: c.line, backgroundColor: c.canvas },
+  targetChoices: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing[8] }, targetChoice: { minWidth: 0, paddingHorizontal: spacing[14], paddingVertical: spacing[10], borderRadius: r.round, borderWidth: StyleSheet.hairlineWidth, borderColor: c.line, backgroundColor: c.canvas },
+  selected: { borderColor: c.blue, backgroundColor: c.blueSoft }, choiceText: { ...t.status, color: c.ink, flexShrink: 1 }, choiceSelected: { color: c.accentText },
+  targetDescription: { ...t.status, color: c.muted },
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: spacing[12], minHeight: l.controlSize }, flexText: { flex: 1, minWidth: 0, gap: spacing[2] },
   switchTrack: { width: l.switchWidth, height: l.switchHeight, borderRadius: r.round, justifyContent: 'center', padding: spacing[3], backgroundColor: c.control },
   switchTrackOn: { backgroundColor: c.blue }, switchThumb: { width: l.switchThumb, height: l.switchThumb, borderRadius: r.round, backgroundColor: c.canvas }, switchThumbOn: { alignSelf: 'flex-end' },
