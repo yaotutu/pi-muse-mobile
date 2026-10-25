@@ -54,7 +54,7 @@ import {
   tryNormalize,
   type StatusTone,
 } from './connection-panel-helpers';
-import { SectionHeading, useReducedMotion } from './primitives';
+import { useReducedMotion } from './primitives';
 
 // 内部归一化包装，不抛异常的便捷方法。
 function normalizeSafe(input: string): string | undefined {
@@ -235,8 +235,6 @@ export function ConnectionPanel({ manager, snapshot, onClose }: ConnectionPanelP
     onClose();
   }, [isLocked, manager, onClose]);
 
-
-
   const testLabel = proof ? '重新测试' : '测试连接';
   const saveLabel =
     isDifferentUrl
@@ -260,6 +258,15 @@ export function ConnectionPanel({ manager, snapshot, onClose }: ConnectionPanelP
     });
   }, [manager, url, normalizedInput, isLocked, showConfirmStep, runWithDraft, onClose]);
 
+  // 暂不更换是撤销草稿，而不是确认步骤内的一次空状态切换。
+  const handleCancelChange = useCallback(() => {
+    manager.cancelTest();
+    setUrl(snapshot.serverUrl ?? '');
+    setKey('');
+    setProof(undefined);
+    setError(undefined);
+    setConfirmChange(false);
+  }, [manager, snapshot.serverUrl]);
 
   return (
     <Modal
@@ -296,12 +303,7 @@ export function ConnectionPanel({ manager, snapshot, onClose }: ConnectionPanelP
                 strokeWidth={2}
               />
             </Pressable>
-            <View style={styles.headerCenter}>
-              <Text style={styles.headerTitle}>服务器连接</Text>
-              <Text style={styles.headerStatus} numberOfLines={1}>
-                {statusView.label}
-              </Text>
-            </View>
+            <Text accessibilityRole="header" style={styles.headerTitle}>服务器连接</Text>
             <View style={styles.headerSideButtonSpacer} />
           </View>
 
@@ -316,7 +318,6 @@ export function ConnectionPanel({ manager, snapshot, onClose }: ConnectionPanelP
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
             >
-              <SectionHeading title="连接你的 Pi Muse" eyebrow="YOUR OWN SPACE" description="填入服务器地址，在自己的空间里继续对话。访问密钥只在本次表单中使用。" />
               <StatusCard
                 statusLabel={statusView.label}
                 statusDetail={statusView.detail}
@@ -338,85 +339,88 @@ export function ConnectionPanel({ manager, snapshot, onClose }: ConnectionPanelP
                 </View>
               )}
 
-              <Section title="服务器地址" testID="workspace-connection-url-section">
-                <TextInput
-                  accessibilityLabel="服务器地址"
-                  accessibilityHint="支持 http 或 https，不含查询参数与账号信息"
-                  value={url}
-                  onChangeText={setUrl}
-                  placeholder="https://example.com"
-                  placeholderTextColor={colors.faint}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  autoComplete="off"
-                  keyboardType="url"
-                  editable={!isLocked}
-                  testID="workspace-connection-url"
-                  style={styles.input}
-                />
-                {httpWarning && (
-                  <Text style={styles.helper}>
-                    当前使用 http 明文传输，访问密钥与业务数据可被网络中间设备读取，请仅在可信网络使用
-                  </Text>
-                )}
-              </Section>
-
-              <Section title="访问密钥" testID="workspace-connection-key-section">
-                <View style={styles.keyWrap}>
+              <View style={styles.formGroup}>
+                <Text accessibilityRole="header" style={styles.formTitle}>连接设置</Text>
+                <Section title="服务器地址" testID="workspace-connection-url-section">
                   <TextInput
-                    accessibilityLabel="访问密钥"
-                    accessibilityHint="仅保存在当前会话内存中，关闭面板即清空"
-                    value={key}
-                    onChangeText={setKey}
-                    placeholder={
-                      snapshot.hasToken && normalizedStored === normalizedInput
-                        ? '留空沿用当前 Token'
-                        : '请输入访问密钥'
-                    }
+                    accessibilityLabel="服务器地址"
+                    accessibilityHint="支持 http 或 https，不含查询参数与账号信息"
+                    value={url}
+                    onChangeText={setUrl}
+                    placeholder="https://example.com"
                     placeholderTextColor={colors.faint}
-                    secureTextEntry={!showKey}
                     autoCapitalize="none"
                     autoCorrect={false}
                     autoComplete="off"
+                    keyboardType="url"
                     editable={!isLocked}
-                    testID="workspace-connection-key"
-                    style={[styles.input, styles.keyInput]}
+                    testID="workspace-connection-url"
+                    style={styles.input}
                   />
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={showKey ? '隐藏访问密钥' : '显示访问密钥'}
-                    hitSlop={spacing.sm}
-                    onPress={() => setShowKey((value) => !value)}
-                    disabled={isLocked}
-                    style={({ pressed }) => [
-                      styles.keyToggle,
-                      pressed && !isLocked && styles.pressed,
-                    ]}
-                    testID="workspace-connection-key-toggle"
-                  >
-                    {showKey ? (
-                      <EyeOff
-                        size={workspaceTheme.layout.iconSize}
-                        color={colors.muted}
-                        strokeWidth={1.8}
-                      />
-                    ) : (
-                      <Eye
-                        size={workspaceTheme.layout.iconSize}
-                        color={colors.muted}
-                        strokeWidth={1.8}
-                      />
-                    )}
-                  </Pressable>
-                </View>
-                <Text style={styles.helper}>
-                  密钥仅保存在当前会话的内存中，关闭此面板后即被清空，不会写入设备存储
-                </Text>
-              </Section>
+                  {httpWarning && (
+                    <Text style={styles.helper}>
+                      当前使用 http 明文传输，访问密钥与业务数据可被网络中间设备读取，请仅在可信网络使用
+                    </Text>
+                  )}
+                </Section>
+
+                <Section title="访问密钥" testID="workspace-connection-key-section">
+                  <View style={styles.keyWrap}>
+                    <TextInput
+                      accessibilityLabel="访问密钥"
+                      accessibilityHint="仅保存在当前会话内存中，关闭面板即清空"
+                      value={key}
+                      onChangeText={setKey}
+                      placeholder={
+                        snapshot.hasToken && normalizedStored === normalizedInput
+                          ? '留空沿用当前 Token'
+                          : '请输入访问密钥'
+                      }
+                      placeholderTextColor={colors.faint}
+                      secureTextEntry={!showKey}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      autoComplete="off"
+                      editable={!isLocked}
+                      testID="workspace-connection-key"
+                      style={[styles.input, styles.keyInput]}
+                    />
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={showKey ? '隐藏访问密钥' : '显示访问密钥'}
+                      hitSlop={spacing.sm}
+                      onPress={() => setShowKey((value) => !value)}
+                      disabled={isLocked}
+                      style={({ pressed }) => [
+                        styles.keyToggle,
+                        pressed && !isLocked && styles.pressed,
+                      ]}
+                      testID="workspace-connection-key-toggle"
+                    >
+                      {showKey ? (
+                        <EyeOff
+                          size={workspaceTheme.layout.iconSize}
+                          color={colors.muted}
+                          strokeWidth={1.8}
+                        />
+                      ) : (
+                        <Eye
+                          size={workspaceTheme.layout.iconSize}
+                          color={colors.muted}
+                          strokeWidth={1.8}
+                        />
+                      )}
+                    </Pressable>
+                  </View>
+                  <Text style={styles.helper}>
+                    密钥仅保存在本次表单内存中，关闭面板后清空，不写入设备存储
+                  </Text>
+                </Section>
+              </View>
 
               {normalizedInput && !proof && <Pressable accessibilityRole="button" accessibilityLabel="仅保存服务器地址"
                 disabled={isLocked || showConfirmStep} onPress={() => void onSaveOffline()} style={styles.linkButton}>
-                <Text style={styles.helper}>暂时无法连接？仅保存地址，稍后认证</Text>
+                <Text style={styles.linkButtonText}>仅保存地址，稍后认证</Text>
               </Pressable>}
               {(error || snapshot.error) && (
                 <View style={styles.errorBox} accessibilityRole="alert" testID="workspace-connection-error">
@@ -434,7 +438,7 @@ export function ConnectionPanel({ manager, snapshot, onClose }: ConnectionPanelP
                     <Pressable
                       accessibilityRole="button"
                       accessibilityLabel="暂不更换服务器"
-                      onPress={() => setConfirmChange(false)}
+                      onPress={handleCancelChange}
                       disabled={isLocked}
                       style={({ pressed }) => [
                         styles.confirmButton,
@@ -580,12 +584,6 @@ export function ConnectionPanel({ manager, snapshot, onClose }: ConnectionPanelP
                   <Text style={styles.linkButtonText}>重新加载</Text>
                 </Pressable>
               )}
-
-              <View style={styles.footer}>
-                <Text style={styles.footerText}>
-                  所有连接信息由设备本地存储保护，更换服务器不会删除远端会话或文件
-                </Text>
-              </View>
             </ScrollView>
           </KeyboardAvoidingView>
         </View>
@@ -617,24 +615,24 @@ function StatusCard({
       : tone === 'danger'
         ? colors.danger
         : tone === 'warning'
-          ? colors.muted
+          ? colors.warning
           : colors.muted;
   return (
     <View style={styles.statusCard} accessibilityRole="summary">
       <View style={styles.serverIcon}><Server size={workspaceTheme.layout.iconSize} color={accent} strokeWidth={1.5} /></View>
       <View style={styles.statusBody}>
-        <Text style={styles.statusSection}>已保存连接</Text>
+        <Text style={styles.statusSection}>当前连接</Text>
         <Text style={styles.statusLabel}>{statusLabel}</Text>
         <Text style={styles.statusDetail} numberOfLines={2}>
           {statusDetail}
         </Text>
         {!!normalizedUrl && (
-          <Text style={styles.statusUrl} numberOfLines={1}>
+          <Text style={styles.statusUrl}>
             {normalizedUrl}
           </Text>
         )}
         {!!caption && (
-          <Text style={styles.statusCaption} numberOfLines={1}>
+          <Text style={styles.statusCaption}>
             {caption}
           </Text>
         )}
@@ -683,9 +681,10 @@ function createStyles(c: WorkspaceColors) {
     header: {
       flexDirection: 'row',
       alignItems: 'center',
+      justifyContent: 'space-between',
       paddingHorizontal: l.sidePadding,
-      paddingTop: l.sessionTop,
-      paddingBottom: l.sessionHeaderBottom,
+      paddingTop: spacing[14],
+      paddingBottom: spacing[14],
     },
     headerSideButton: {
       width: l.controlSize,
@@ -701,20 +700,10 @@ function createStyles(c: WorkspaceColors) {
       height: l.controlSize,
       marginTop: spacing.xs,
     },
-    headerCenter: {
-      flex: 1,
-      alignItems: 'center',
-      justifyContent: 'flex-start',
-    },
     headerTitle: {
       ...t.section,
       color: c.ink,
-      fontWeight: '500',
-    },
-    headerStatus: {
-      marginTop: spacing.xs,
-      ...t.status,
-      color: c.muted,
+      fontWeight: '600',
     },
 
     bodyWrap: { flex: 1 },
@@ -722,32 +711,23 @@ function createStyles(c: WorkspaceColors) {
     content: {
       paddingHorizontal: l.sidePadding,
       paddingBottom: spacing[24],
-      gap: l.sectionGap,
-      paddingTop: spacing[12],
+      gap: spacing[16],
+      paddingTop: spacing[6],
     },
 
     statusCard: {
       flexDirection: 'row',
       alignItems: 'flex-start',
-      padding: l.messagePadding,
+      padding: spacing[16],
       borderRadius: r.card,
       backgroundColor: c.surface,
       gap: spacing.md,
     },
-    statusDot: {
-      width: l.stateDotSize,
-      height: l.stateDotSize,
-      borderRadius: l.stateDotSize / 2,
-      marginTop: spacing.sm,
-    },
     serverIcon: { width: l.rowIcon, height: l.rowIcon, alignItems: 'center', justifyContent: 'center', borderRadius: r.round, backgroundColor: c.control },
-    statusBody: { flex: 1, gap: spacing.xxs },
+    statusBody: { flex: 1, minWidth: 0, gap: spacing.xxs },
     statusSection: {
       ...t.caption,
       color: c.faint,
-      textTransform: 'uppercase',
-      letterSpacing: 1.4,
-      fontWeight: '600',
     },
     statusLabel: {
       ...t.itemTitle,
@@ -759,9 +739,10 @@ function createStyles(c: WorkspaceColors) {
       color: c.muted,
     },
     statusUrl: {
-      ...t.caption,
-      color: c.faint,
+      ...t.status,
+      color: c.muted,
       marginTop: spacing.xs,
+      flexShrink: 1,
     },
     statusCaption: {
       ...t.caption,
@@ -785,13 +766,17 @@ function createStyles(c: WorkspaceColors) {
       color: c.muted,
     },
 
+    formGroup: {
+      backgroundColor: c.surface,
+      borderRadius: r.card,
+      padding: spacing[16],
+      gap: spacing[16],
+    },
+    formTitle: { ...t.itemTitle, color: c.ink, fontWeight: '600' },
     section: { gap: spacing.sm },
     sectionLabel: {
-      ...t.caption,
-      color: c.muted,
-      textTransform: 'uppercase',
-      letterSpacing: 1.4,
-      fontWeight: '600',
+      ...t.status,
+      color: c.ink,
     },
 
     input: {
@@ -799,7 +784,7 @@ function createStyles(c: WorkspaceColors) {
       paddingHorizontal: spacing[18],
       paddingVertical: spacing[12],
       borderRadius: inputRadius,
-      backgroundColor: c.surface,
+      backgroundColor: c.canvas,
       color: c.ink,
       ...t.input,
       borderWidth: StyleSheet.hairlineWidth,
@@ -824,14 +809,9 @@ function createStyles(c: WorkspaceColors) {
       justifyContent: 'center',
     },
 
-    httpWarning: {
-      ...t.caption,
-      color: c.muted,
-      marginTop: spacing.xs,
-    },
     helper: {
       ...t.caption,
-      color: c.faint,
+      color: c.muted,
       marginTop: spacing.xs,
     },
 
@@ -864,10 +844,13 @@ function createStyles(c: WorkspaceColors) {
     },
     confirmActions: {
       flexDirection: 'row',
-      justifyContent: 'flex-end',
+      flexWrap: 'wrap',
       gap: spacing.sm,
     },
     confirmButton: {
+      flexGrow: 1,
+      flexBasis: l.profileActionMinWidth,
+      minWidth: 0,
       paddingHorizontal: spacing.lg,
       paddingVertical: spacing.sm,
       borderRadius: r.round,
@@ -897,11 +880,14 @@ function createStyles(c: WorkspaceColors) {
 
     actions: {
       flexDirection: 'row',
+      flexWrap: 'wrap',
       gap: spacing.sm,
       marginTop: spacing.sm,
     },
     actionButton: {
-      flex: 1,
+      flexGrow: 1,
+      flexBasis: l.profileActionMinWidth,
+      minWidth: 0,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
@@ -937,16 +923,6 @@ function createStyles(c: WorkspaceColors) {
     linkButtonText: {
       ...t.detail,
       color: c.muted,
-    },
-
-    footer: {
-      paddingTop: spacing.lg,
-      paddingBottom: spacing.xl,
-    },
-    footerText: {
-      ...t.caption,
-      color: c.faint,
-      textAlign: 'center',
     },
   });
 }

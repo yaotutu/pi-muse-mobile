@@ -13,18 +13,20 @@ export function ThemePicker() {
   return <View style={styles.section}>
     <Text accessibilityRole="header" style={styles.heading}>外观</Text>
     <View accessibilityRole="radiogroup" accessibilityLabel="外观主题" style={styles.choices}>
-      {availableThemes.map((theme) => {
+      {availableThemes.map((theme, index) => {
         const checked = themeId === theme.id;
         const Icon = checked ? Check : Circle;
         return <Pressable key={theme.id} accessibilityRole="radio" accessibilityLabel={`选择${theme.name}主题`}
           accessibilityHint={theme.description} accessibilityState={{ checked }} testID={`theme-choice-${theme.id}`}
-          onPress={() => selectTheme(theme.id)} style={({ pressed }) => [styles.choice, checked && styles.checked, pressed && styles.pressed]}>
+          onPress={() => selectTheme(theme.id)} style={({ pressed }) => [styles.choice, index < availableThemes.length - 1 && styles.choiceDivider, pressed && styles.pressed]}>
           <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[styles.preview, { backgroundColor: theme.colors.canvas, borderColor: theme.colors.line }]}>
             <View style={[styles.previewLine, { backgroundColor: theme.colors.surface }]} />
             <View style={[styles.previewBubble, { backgroundColor: theme.colors.blue }]} />
           </View>
           <View style={styles.copy}><Text style={styles.name}>{theme.name}</Text><Text style={styles.description}>{theme.description}</Text></View>
-          <Icon size={sizing[20]} color={checked ? colors.accentText : colors.faint} />
+          <View style={[styles.radio, checked && styles.radioChecked]}>
+            <Icon size={sizing[18]} color={checked ? colors.onAccent : colors.faint} />
+          </View>
         </Pressable>;
       })}
     </View>
@@ -37,10 +39,12 @@ export function ThemePicker() {
 const createStyles = (c: ThemeColors) => StyleSheet.create({
   section: { gap: spacing[10] },
   heading: { ...themeTokens.typography.caption, color: c.faint, marginTop: spacing[12], marginLeft: spacing[6] },
-  choices: { gap: spacing[8] },
-  choice: { flexDirection: 'row', alignItems: 'center', gap: spacing[14], minHeight: sizing[76], padding: spacing[14], borderRadius: themeTokens.radius.card, backgroundColor: c.surface, borderWidth: sizing.borderWidth, borderColor: c.line },
-  checked: { borderColor: c.accentText },
+  choices: { borderRadius: themeTokens.radius.card, backgroundColor: c.surface, paddingHorizontal: spacing[14] },
+  choice: { flexDirection: 'row', alignItems: 'center', gap: spacing[14], minHeight: sizing[76], paddingVertical: spacing[12] },
+  choiceDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.line },
   pressed: { opacity: themeTokens.interaction.pressedOpacity },
+  radio: { width: sizing[24], height: sizing[24], borderRadius: themeTokens.radius.round, backgroundColor: c.surface, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
+  radioChecked: { borderRadius: themeTokens.radius.round, backgroundColor: c.blue },
   preview: { width: sizing[58], height: sizing[44], padding: spacing[8], borderWidth: sizing.borderWidth, borderRadius: themeTokens.radius.field, gap: spacing[4] },
   previewLine: { width: sizing[23], height: spacing[8], borderRadius: themeTokens.radius.round },
   previewBubble: { width: sizing[23], height: spacing[8], alignSelf: 'flex-end', borderRadius: themeTokens.radius.round },

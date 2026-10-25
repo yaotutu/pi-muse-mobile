@@ -33,6 +33,7 @@
 ## 切换与保存
 
 - 应用页直接挂载 `ThemePicker`，顶栏和会话面板使用 `ThemeToggle`，原生页面与 Modal 使用 `ThemeStatusBar`。它们都在主题模块内维护。
+- `ThemePicker` 将注册表选项放在同一个圆角分组中，使用色板和单选标记表达当前主题；本机恢复、保存和错误提示始终可见。连接页与应用更新 Sheet 也只使用当前主题的语义颜色和共享几何值。
 - `useTheme()` 提供当前 `themeId`、完整 `theme`、`appearance`、`colors`、`selectTheme()` 与 `toggleAppearance()`。按主题 ID 判断选中态，不按 `appearance` 判断。
 - 亮暗快捷键记住上次选择的浅色方案，因此经典蓝白切暗后切回仍是经典蓝白，不会被晨光白覆盖。
 - 本机独立键 `pi-muse-mobile-theme-v1` 只保存版本、主题 ID 及上次浅色主题 ID。原生复用现有 `expo-secure-store`，浏览器调试用独立 localStorage 键；不新增依赖，不复用连接存储，不保存或上报地址、Token、正文。

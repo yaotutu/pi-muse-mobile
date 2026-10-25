@@ -23,26 +23,26 @@ export function UpdateSheet({
   const subtitle = buildSubtitle(snapshot);
   return (
     <Sheet title="应用更新" subtitle={subtitle} onClose={onClose}>
-      <View style={{ gap: spacing.lg }}>
-        <StatusBlock snapshot={snapshot} />
-        {snapshot.status === 'downloading' && <View accessibilityRole="progressbar" accessibilityLabel="安装包下载进度" accessibilityValue={snapshot.totalBytes ? { min: 0, max: 100, now: Math.round(Math.min(1, snapshot.bytesWritten / snapshot.totalBytes) * 100) } : undefined}>
-          {snapshot.totalBytes ? <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${Math.min(100, snapshot.bytesWritten / snapshot.totalBytes * 100)}%` as DimensionValue }]} /></View> : <ActivityIndicator color={colors.blue} />}
-        </View>}
+      <View style={styles.content}>
+        <Card style={styles.statusCard}>
+          <StatusBlock snapshot={snapshot} />
+          {snapshot.status === 'downloading' && <View accessibilityRole="progressbar" accessibilityLabel="安装包下载进度" accessibilityValue={snapshot.totalBytes ? { min: 0, max: 100, now: Math.round(Math.min(1, snapshot.bytesWritten / snapshot.totalBytes) * 100) } : undefined}>
+            {snapshot.totalBytes ? <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${Math.min(100, snapshot.bytesWritten / snapshot.totalBytes * 100)}%` as DimensionValue }]} /></View> : <ActivityIndicator color={colors.blue} />}
+          </View>}
+        </Card>
 
         <ErrorNotice error={snapshot.error} />
 
         {/* 后台/返回场景下由父级注入的提示语（snapshot.message），例如"下载已在后台完成"。 */}
         {!!snapshot.message && (
-          <Card>
-            <Text style={styles.notice}>{snapshot.message}</Text>
-          </Card>
+          <Text style={styles.message}>{snapshot.message}</Text>
         )}
 
-        <Card>
+        {snapshot.status !== 'unsupported' && (
           <Text style={styles.notice}>
             自动下载会使用当前网络，可能消耗移动流量。系统安装可能重启应用，请先保存未完成的编辑。
           </Text>
-        </Card>
+        )}
 
         <Actions
           snapshot={snapshot}
@@ -58,74 +58,74 @@ function StatusBlock({ snapshot }: { snapshot: UpdateSnapshot }) {
   switch (snapshot.status) {
     case 'unsupported':
       return (
-        <Card>
-          <Text style={styles.heading}>当前环境不支持自动更新</Text>
-          <Text style={styles.detail}>{snapshot.unsupportedReason ?? '请关闭页面后手动安装更新。'}</Text>
-        </Card>
+        <View style={styles.statusContent}>
+          <Text style={styles.heading}>当前环境不支持 APK 更新</Text>
+          <Text style={styles.detail}>{snapshot.unsupportedReason ?? '请使用 Android 独立安装包检查与安装更新。'}</Text>
+        </View>
       );
     case 'idle':
       return (
-        <Card>
+        <View style={styles.statusContent}>
           <Text style={styles.heading}>尚未检查更新</Text>
           <Text style={styles.detail}>轻点下方按钮立即检查。</Text>
-        </Card>
+        </View>
       );
     case 'checking':
       return (
-        <Card>
+        <View style={styles.statusContent}>
           <Text style={styles.heading}>正在检查更新…</Text>
           <Text style={styles.detail}>请稍候。</Text>
-        </Card>
+        </View>
       );
     case 'current':
       return (
-        <Card>
+        <View style={styles.statusContent}>
           <Text style={styles.heading}>已是最新版本</Text>
           <Text style={styles.detail}>{versionLine(snapshot)}</Text>
-        </Card>
+        </View>
       );
     case 'downloading': {
       const { mbText, percentText } = progressText(snapshot.bytesWritten, snapshot.totalBytes);
       return (
-        <Card>
+        <View style={styles.statusContent}>
           <Text style={styles.heading}>正在下载更新</Text>
           <Text style={styles.detail}>
             已下载 {mbText}
             {percentText} · 安装包大小约 {totalSizeText(snapshot)}
           </Text>
           <Text style={styles.hint}>下载过程中可继续使用应用。</Text>
-        </Card>
+        </View>
       );
     }
     case 'ready':
       return (
-        <Card>
+        <View style={styles.statusContent}>
           <Text style={styles.heading}>安装包已下载</Text>
           <Text style={styles.detail}>
             {snapshot.installAttempted ? '安装尚未确认完成，可继续安装。' : '返回应用前台后将打开系统安装界面。'}
           </Text>
-        </Card>
+        </View>
       );
     case 'installing':
       return (
-        <Card>
+        <View style={styles.statusContent}>
           <Text style={styles.heading}>正在请求系统安装</Text>
           <Text style={styles.detail}>请等待系统安装器返回结果。</Text>
-        </Card>
+        </View>
       );
     case 'cancelled':
       return (
-        <Card>
+        <View style={styles.statusContent}>
           <Text style={styles.heading}>已取消本次下载</Text>
           <Text style={styles.detail}>如需重试可重新检查或直接重试下载。</Text>
-        </Card>
+        </View>
       );
     case 'error':
       return (
-        <Card>
+        <View style={styles.statusContent}>
           <Text style={styles.heading}>更新出错</Text>
           <Text style={styles.detail}>{stageHint(snapshot.errorStage)}</Text>
-        </Card>
+        </View>
       );
   }
 }
@@ -308,9 +308,14 @@ function stageHint(stage: UpdateSnapshot['errorStage']): string {
 
 function useStyles() { const { colors } = useTheme(); return useMemo(() => createStyles(colors), [colors]); }
 const createStyles = (colors: WorkspaceColors) => StyleSheet.create({
-  heading: { ...workspaceTheme.typography.itemTitle, color: colors.ink },
-  detail: { ...workspaceTheme.typography.detail, color: colors.muted, marginTop: spacing.sm },
-  hint: { ...workspaceTheme.typography.caption, color: colors.faint, marginTop: spacing.sm },
-  notice: { ...workspaceTheme.typography.caption, color: colors.muted },
-  progressTrack: { height: spacing[6], borderRadius: workspaceTheme.radius.round, backgroundColor: colors.surface, overflow: 'hidden' }, progressFill: { height: '100%', backgroundColor: colors.blue, borderRadius: workspaceTheme.radius.round },
+  content: { gap: spacing[12] },
+  statusCard: { padding: spacing[16], gap: spacing[14] },
+  statusContent: { gap: spacing[4] },
+  heading: { ...workspaceTheme.typography.itemTitle, color: colors.ink, fontWeight: '600' },
+  detail: { ...workspaceTheme.typography.detail, color: colors.muted },
+  hint: { ...workspaceTheme.typography.caption, color: colors.faint },
+  message: { ...workspaceTheme.typography.status, color: colors.muted, paddingHorizontal: spacing[6] },
+  notice: { ...workspaceTheme.typography.caption, color: colors.faint, paddingHorizontal: spacing[6] },
+  progressTrack: { height: spacing[6], borderRadius: workspaceTheme.radius.round, backgroundColor: colors.control, overflow: 'hidden' },
+  progressFill: { height: '100%', backgroundColor: colors.blue, borderRadius: workspaceTheme.radius.round },
 });
