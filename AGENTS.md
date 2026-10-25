@@ -40,11 +40,11 @@ pi-muse 的官方移动客户端（iOS / Android / 平板，Expo + React Native 
 
 ## 技术决策（定稿，勿偏离）
 
-- **无导航库**：4 个主 tab 状态机；左侧会话栏揭示并推动聊天前景右移；点击会话信息区打开根层全屏会话面板，内部胶囊 Tab 平级切换。旧工作区及旁路预览入口已删除，以用户确认截图和 `src/workspace/` 为准。
+- **无导航库**：4 个主 tab 状态机；左侧会话栏揭示并推动聊天前景右移；点击会话信息区打开同根层全屏内容，头像、名称与真实状态持续挂载，内部胶囊 Tab 平级切换。根层覆盖期间屏蔽聊天触控和读屏，系统 Back 先关闭面板或键盘。旧工作区及旁路预览入口已删除，以用户确认截图和 `src/workspace/` 为准。
 - **SSE 消费**：`expo/fetch`（原生流式支持）+ 自研 AG-UI 事件解析/聚合，翻译 pi-muse 的 `web/src/lib/api.ts`（分帧）与 `web/src/chat/chat-state.ts`（StreamAggregator）。
 - **工具卡与 Markdown**：assistant 消息由 Marked 分词并使用 React Native 原生组件绘制，用户消息保持原文；HTML 仅作字面文字，Markdown 图片不加载，代码块支持复制。分类工具卡只消费服务端实际投影，不推断隐藏详情、审批或保存成功；未知工具可展开。消息链接与搜索来源仅允许无凭据 HTTP(S)，不引 CopilotKit SDK。
 - **状态管理**：useState/Context + 连接内存store；新版挂载真实连接、会话恢复、聊天、运行状态（`src/runtime/`）、审批（`src/approvals/`）、只读活动历史（`src/activities/`）及全局长期记忆（`src/memories/`）。运行／审批／活动共用唯一通知流；活动消费完整 `ready.activities` 与 `activity_updated`，没有活动revision，不用时间排序，过程进展／步骤按需回读。记忆没有SSE，按打开／前台／成功写入／手动刷新回读；写入结果未明保留草稿并锁定重提，必须完整读取及用户明确核对，不自动重试。不恢复旧 `getSnapshot`／五秒轮询。活动只覆盖模型登记的工作，不冒充全部聊天run的持久历史；其余未接领域明确标“尚未接入”，不得混入示例数据冒充服务端数据。
-- **视觉与主题**：主题功能独立在 `src/theme/`；三套 preset（经典蓝白／晨光白／深夜黑）及注册表是配色唯一来源，组件通过 `useTheme()` 消费语义颜色，不固定引用某套配色。圆角／字号／布局／间距的实现集中 `src/theme/tokens.ts`，既有组件统一从 `src/ui/tokens.ts` 兼容入口取；禁止组件里散写魔法值。使用共享 `ThemePicker`／`ThemeToggle`／`ThemeStatusBar`，不在业务页复制主题分支。默认经典蓝白，独立本机偏好键保存选择；不得携带服务地址或凭据，不以主题为 key 重建业务。维护说明见 `docs/themes.md`。
+- **视觉与主题**：主题功能独立在 `src/theme/`；三套 preset（经典蓝白／晨光白／深夜黑）及注册表是配色唯一来源，组件通过 `useTheme()` 消费语义颜色，不固定引用某套配色。圆角／字号／布局／间距的实现集中 `src/theme/tokens.ts`，既有组件统一从 `src/ui/tokens.ts` 兼容入口取；禁止组件里散写魔法值。会话面板的 `FrostedSurface` 采样持续挂载的聊天层；Android 31 以下降级为着色表面，不把普通半透明控件称为真模糊。使用共享 `ThemePicker`／`ThemeToggle`／`ThemeStatusBar`，不在业务页复制主题分支。默认经典蓝白，独立本机偏好键保存选择；不得携带服务地址或凭据，不以主题为 key 重建业务。维护说明见 `docs/themes.md`。
 - **定时任务**：`src/jobs/` 通过独立 `/api/jobs` 管理资源，任务页同层切换活动历史／定时任务／网页监控；创建仍走聊天调度工具。每日 `at=HH:mm` 按匿名 health 的权威 `timeZone` 原样发送，不转 UTC；一次性发送含偏移的完整 ISO，`nextRunAt` 按手机本地时间展示。没有专属 Jobs SSE，复用运行事件作失效提示并按需回读，不轮询；写入未明锁定重提，完整回读及用户明确核对才解锁。运行中／排队中不把调度控制冒充精确 Stop。
 - **网页监控**：`src/monitors/` 通过独立 `/api/monitors` 读取列表、控制及确认删除，创建走聊天 `monitor` 工具，不提供创建或编辑表单。按打开／前台／成功写入／手动刷新回读，无专属 SSE 或轮询；读取失败保留旧列表，写入未明须完整回读及用户明确核对后解锁，不自动重发。停止是不可恢复终态；只展示累计检查与最近检查／通知，不虚构逐次检查历史。
 - Expo Web dev 端口固定 **8082**（避开 openmuse 的 8081）。
@@ -150,7 +150,7 @@ npx expo install --fix      # fix incompatible package versions
 
 ## Navigation & Routing
 
-- **本项目不使用 Expo Router / react-navigation**：4 个主 tab 用状态机切换（`chat | activity | goals | apps`）；左侧会话入口只负责切换/新建，以揭示式侧栏推动聊天前景右移。点击会话信息区打开全屏当前会话面板，内部动态/审批/工作区/历史 Tab 同层切换，不用底部 Sheet 或树形导航。
+- **本项目不使用 Expo Router / react-navigation**：4 个主 tab 用状态机切换（`chat | activity | goals | apps`）；左侧会话入口只负责切换/新建，以揭示式侧栏推动聊天前景右移。点击会话信息区在同一根层展开全屏面板，头像、名称、状态原位持续挂载，聊天保持挂载但屏蔽触控和读屏；内部动态/审批/工作区/历史 Tab 同层切换，不用独立 Modal、底部 Sheet 或树形导航。
 - `src/app/` 只组装 Provider 与唯一 `WorkspaceScreen`；新版页面、主题和示例数据在 `src/workspace/`。旧 `AppShell`、旧 Screen/Sheet 与产品演示分支已删除，禁止再恢复双界面入口。`ui/Sheet` 当前仅供独立应用更新使用。
 
 ## Building with EAS

@@ -6,6 +6,9 @@ export type ThemeColors = Readonly<{
   canvas: string;
   surface: string;
   control: string;
+  floatingSurface: string;
+  floatingLine: string;
+  panelVeil: string;
   selected: string;
   ink: string;
   muted: string;

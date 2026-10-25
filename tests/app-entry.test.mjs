@@ -67,7 +67,7 @@ test('会话面板当前执行与文件入口消费真实连接，不消费示�
   assert.doesNotMatch(source, /工作区文件尚未接入/);
   const screen = read('src/workspace/WorkspaceScreen.tsx');
   assert.match(screen, /<FilesProvider currentSpaceId=\{spaces\.currentSpace\}>/);
-  assert.ok(screen.indexOf('<FilesProvider currentSpaceId=') < screen.indexOf('{sessionOpen && <SessionPanel'));
+  assert.ok(screen.indexOf('<FilesProvider currentSpaceId=') < screen.indexOf('<SessionPanel spaceId='));
   const files = read('src/workspace/FilesPanel.tsx');
   assert.match(files, /store\.open\(\); return \(\) => store\.close\(\)/);
   assert.match(files, /saveWorkspaceFileToDevice\(file\)/);

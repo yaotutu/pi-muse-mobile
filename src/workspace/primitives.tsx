@@ -4,11 +4,12 @@
  */
 import { type LucideIcon } from 'lucide-react-native';
 import { useEffect, useMemo, useState } from 'react';
-import { Animated, Image, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Animated, Image, StyleSheet, Text, View } from 'react-native';
 import { spacing, workspaceTheme, type WorkspaceColors } from '../ui/tokens';
 import { useTheme } from '../theme/ThemeProvider';
 import { useReducedMotion } from '../ui/use-reduced-motion';
 export { useReducedMotion } from '../ui/use-reduced-motion';
+export { IconControl } from '../ui/IconControl';
 
 const { layout: l, radius: r, typography: t } = workspaceTheme;
 export type StatusTone = 'neutral' | 'success' | 'warning' | 'danger' | 'accent';
@@ -18,18 +19,6 @@ function useStyles() {
   return useMemo(() => createStyles(colors), [colors]);
 }
 
-export function IconControl({ icon: Icon, label, onPress, testID, disabled, small, style }: {
-  icon: LucideIcon; label: string; onPress: () => void; testID?: string;
-  disabled?: boolean; small?: boolean; style?: StyleProp<ViewStyle>;
-}) {
-  const { colors } = useTheme(); const styles = useStyles();
-  return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled: !!disabled }}
-    disabled={disabled} onPress={onPress} testID={testID}
-    style={({ pressed }) => [styles.control, small && styles.smallControl, pressed && styles.pressed, disabled && styles.disabled, style]}>
-    <Icon size={small ? l.iconSize - spacing[4] : l.iconSize} strokeWidth={1.7} color={colors.ink} />
-  </Pressable>;
-}
-
 /** 头像为打包进应用的原创位图；会话信息区和面板共用同一离线资源。 */
 export function MuseAvatar({ size = l.headerAvatar }: { size?: number }) {
   return <Image accessible accessibilityRole="image" accessibilityLabel="Pi Muse 头像"
@@ -37,13 +26,13 @@ export function MuseAvatar({ size = l.headerAvatar }: { size?: number }) {
     style={{ width: size, height: size, borderRadius: size / 2 }} />;
 }
 
-export function StatusPill({ label, tone = 'neutral', dot = true }: { label: string; tone?: StatusTone; dot?: boolean }) {
+export function StatusPill({ label, tone = 'neutral', dot = true, testID }: { label: string; tone?: StatusTone; dot?: boolean; testID?: string }) {
   const { colors: c } = useTheme(); const styles = useStyles();
   const foreground = { neutral: c.muted, success: c.success, warning: c.warning, danger: c.danger, accent: c.accentText }[tone];
   const background = { neutral: c.surface, success: c.successSoft, warning: c.warningSoft, danger: c.dangerSoft, accent: c.blueSoft }[tone];
   return <View style={[styles.status, { backgroundColor: background }]}>
     {dot && <View style={[styles.dot, { backgroundColor: foreground }]} />}
-    <Text numberOfLines={1} style={[styles.statusText, { color: foreground }]}>{label}</Text>
+    <Text testID={testID} numberOfLines={1} style={[styles.statusText, { color: foreground }]}>{label}</Text>
   </View>;
 }
 
@@ -83,9 +72,6 @@ export function TypingIndicator() {
 }
 
 const createStyles = (c: WorkspaceColors) => StyleSheet.create({
-  control: { width: l.controlSize, height: l.controlSize, borderRadius: r.round, backgroundColor: c.control, alignItems: 'center', justifyContent: 'center' },
-  smallControl: { width: l.smallControl, height: l.smallControl },
-  pressed: { opacity: workspaceTheme.interaction.pressedOpacity }, disabled: { opacity: workspaceTheme.interaction.disabledOpacity },
   status: { alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: spacing[6], paddingHorizontal: spacing[10], paddingVertical: spacing[4], borderRadius: r.round, maxWidth: l.statusMaxWidth },
   dot: { width: l.stateDotSize - spacing[2], height: l.stateDotSize - spacing[2], borderRadius: r.round },
   statusText: { ...t.caption, flexShrink: 1 }, heading: { gap: spacing[8] },

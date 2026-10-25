@@ -28,7 +28,8 @@ def sh(*args):
 def refresh():
     global tree
     for _ in range(5):
-        result = sh('shell', 'uiautomator', 'dump', '/sdcard/themes-e2e.xml')
+        # 压缩树排除无障碍服务不重要的节点，与实际读屏可访问性语义一致。
+        result = sh('shell', 'uiautomator', 'dump', '--compressed', '/sdcard/themes-e2e.xml')
         if b'dumped to' in result:
             tree = ET.fromstring(sh('exec-out', 'cat', '/sdcard/themes-e2e.xml'))
             return
@@ -49,6 +50,17 @@ def find(label):
     nodes = [n for n in tree.iter('node') if visible(n) and label in (n.get('text'), n.get('content-desc'), n.get('resource-id'))]
     return next((n for n in nodes if n.get('class') == 'android.widget.EditText'),
                 next((n for n in nodes if n.get('clickable') == 'true'), nodes[0] if nodes else None))
+
+
+def header_bounds(space_name):
+    # 三项分别核对；状态文案可随真实运行变化，但其占位必须固定。
+    refresh()
+    avatar = find('Pi Muse 头像')
+    names = [n for n in tree.iter('node') if visible(n) and n.get('text') == space_name]
+    status = find('workspace-session-status')
+    assert avatar is not None and names and status is not None and status.get('text'), 'Missing native session avatar, name or real status'
+    name = min(names, key=lambda n: bounds(n)[1])
+    return bounds(avatar), bounds(name), bounds(status)
 
 
 def scroll(down=False):
@@ -284,23 +296,57 @@ try:
         assert wait('消息输入框').get('text') == context['draft'], 'Theme switch lost unsent draft'
         wait(context['spaceId'])
         capture(theme+'-chat')
+        chat_header = header_bounds(context['spaceId'])
         tap('打开当前会话面板')
+        assert header_bounds(context['spaceId']) == chat_header, 'Session avatar, name or status moved after opening panel'
+        refresh()
+        assert find('消息输入框') is None and find('应用') is None, 'Panel exposes background chat or main navigation'
+        if theme == 'classic':
+            # 系统返回先关闭面板，不能离开应用；再次打开后侧栏边缘手势不得拉出抽屉。
+            sh('shell', 'input', 'keyevent', 'KEYCODE_BACK')
+            assert wait('消息输入框').get('text') == context['draft'], 'System Back left chat or lost draft'
+            tap('打开当前会话面板')
+            y = str(int(height*.45))
+            sh('shell', 'input', 'touchscreen', 'swipe', str(int(width*.02)), y, str(int(width*.36)), y, '220')
+            refresh()
+            assert find('你的空间') is None, 'Drawer opened through session panel gesture'
+            if find('关闭会话面板') is None:
+                tap('打开当前会话面板')  # Android 系统边缘返回可能先关闭面板。
+            # 原生连续触控在关闭动画未结束时再次点击同一位置，核对转场反向可用。
+            close = wait('关闭会话面板')
+            x1, y1, x2, y2 = bounds(close)
+            x, y = str((x1+x2)//2), str((y1+y2)//2)
+            # 同一次设备 shell 内连续发两次真实触控；用设备 uptime 对整段输入计时，
+            # 整段小于 260ms 才能证明第二次触控确实落在关闭动画期间。
+            timing = sh('shell',
+                        f'read start rest </proc/uptime; input tap {x} {y}; sleep 0.02; '
+                        f'input tap {x} {y}; read end rest </proc/uptime; echo "$start $end"')
+            start, end = map(float, timing.decode().strip().split()[-2:])
+            assert end - start < .26, 'Native tap driver exceeded the 260ms transition window'
+            time.sleep(.35)
+            refresh()
+            assert find('关闭会话面板') is not None, 'Rapid close and reopen did not reverse panel transition'
+            assert header_bounds(context['spaceId']) == chat_header, 'Rapid transition moved session header'
+            passed('native Back, drawer gesture isolation and rapid panel reversal')
         tap('历史')
         tap('当前空间活动')
         wait('还没有已登记的活动')
         capture(theme+'-history')
-        # 往返明暗不关闭 Modal、不重置 Tab 或筛选，且返回当前选中的浅色方案。
+        # 往返明暗不关闭面板、不重置 Tab 或筛选，且返回当前选中的浅色方案。
         first = '切换到亮色主题' if theme == 'dark' else '切换到暗色主题'
         second = '切换到暗色主题' if theme == 'dark' else '切换到亮色主题'
         tap(first)
         assert wait('历史').get('selected') == 'true'
         assert wait('当前空间活动').get('selected') == 'true'
+        assert header_bounds(context['spaceId']) == chat_header, 'Theme switch moved session avatar, name or status'
         tap(second)
         assert wait('历史').get('selected') == 'true'
         wait('还没有已登记的活动')
+        assert header_bounds(context['spaceId']) == chat_header, 'Theme roundtrip moved session header'
         tap('关闭会话面板')
         assert wait('消息输入框').get('text') == context['draft']
-        passed(theme+' selection, real connection modal, preserved space/draft/panel/filter and quick-toggle roundtrip')
+        assert header_bounds(context['spaceId']) == chat_header, 'Session avatar, name or status moved after closing panel'
+        passed(theme+' selection, real connection modal, stable header, isolated panel, preserved space/draft/filter and quick-toggle roundtrip')
     tap('应用')
     choose_theme('classic')
     tap('聊天')

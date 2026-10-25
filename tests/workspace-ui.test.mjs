@@ -43,10 +43,19 @@ test('主题定义、选择器、快捷键与状态栏集中管理，不再散�
   assert.match(picker, /themeId === theme\.id/);
   assert.match(picker, /accessibilityRole="radio"/);
   assert.match(read('src/theme/ThemeToggle.tsx'), /onPress=\{toggleAppearance\}/);
-  for (const path of ['src/ui/Sheet.tsx', 'src/workspace/ConnectionPanel.tsx', 'src/workspace/SessionPanel.tsx']) {
+  for (const path of ['src/ui/Sheet.tsx', 'src/workspace/ConnectionPanel.tsx']) {
     assert.match(read(path), /<ThemeStatusBar\s*\/>/);
     assert.doesNotMatch(read(path), /from 'expo-status-bar'|mode === 'dark'/);
   }
+  const screen = read('src/workspace/WorkspaceScreen.tsx');
+  const panel = read('src/workspace/SessionPanel.tsx');
+  assert.match(screen, /<ThemeStatusBar\s*\/>/);
+  assert.match(screen, /<MuseAvatar size=/);
+  assert.match(screen, /<StatusPill label=\{statusLabel\}/);
+  assert.doesNotMatch(panel, /<MuseAvatar|<StatusPill|<Modal/);
+  assert.match(screen, /accessibilityElementsHidden=\{sessionMounted\}/);
+  assert.match(screen, /pointerEvents=\{sessionMounted \? 'none' : 'auto'\}/);
+  assert.match(screen, /sessionProgress\.interpolate/);
   assert.doesNotMatch(read('src/ui/tokens.ts'), /#[0-9a-f]|workspacePalettes|colors:/i);
 });
 
@@ -81,6 +90,24 @@ test('会话信息区在聊天正文之前独立占位，长历史不滚入顶�
   assert.match(source, /chatHeader: \{ height: l\.headerHeight, flexShrink: 0/);
   assert.match(read('src/workspace/ConversationView.tsx'), /paddingTop: l\.chatContentTop/);
   assert.match(read('src/workspace/SessionPanel.tsx'), /<ScrollView\s+key=\{tab\}/);
+});
+
+test('会话面板采样持续挂载的聊天层，关闭期间继续隔离底层交互', () => {
+  const screen = read('src/workspace/WorkspaceScreen.tsx');
+  const surface = read('src/ui/FrostedSurface.tsx');
+  const panel = read('src/workspace/SessionPanel.tsx');
+  assert.ok(screen.indexOf('<BlurTargetView ref={chatBlurTarget}') < screen.indexOf('<FrostedSurface blurTarget={chatBlurTarget}>'));
+  const targetTag = screen.slice(screen.indexOf('<BlurTargetView ref={chatBlurTarget}'), screen.indexOf('>', screen.indexOf('<BlurTargetView ref={chatBlurTarget}')) + 1);
+  assert.doesNotMatch(targetTag, /pointerEvents|aria-hidden|accessibilityElementsHidden|importantForAccessibility/);
+  assert.match(screen, /<BlurTargetView ref=\{chatBlurTarget\} style=\{styles\.bodyStage\}>[\s\S]*?<View style=\{styles\.bodyStage\} testID="workspace-chat-accessibility-layer"[\s\S]*?pointerEvents=\{sessionMounted \? 'none' : 'auto'\}[\s\S]*?accessibilityElementsHidden=\{sessionMounted\} importantForAccessibility=\{sessionMounted \? 'no-hide-descendants' : 'auto'\}/);
+  assert.match(surface, /<BlurView[\s\S]*blurTarget=\{blurTarget\}/);
+  assert.match(surface, /dimezisBlurViewSdk31Plus/);
+  assert.match(surface, /colors\.panelVeil/);
+  assert.doesNotMatch(surface, /backgroundColor:\s*colors\.canvas/);
+  assert.doesNotMatch(panel, /backgroundColor:\s*colors\.canvas|<Modal/);
+  assert.match(screen, /if \(finished && !sessionOpen\) setSessionMounted\(false\)/);
+  assert.match(screen, /setResetConfirm\(false\); setDeleteConfirm\(false\); setClearSchedules\(false\)/);
+  assert.match(screen, /testID="workspace-session-status"/);
 });
 
 test('会话动态先展示真实状态，说明按需展开，关键警告和入口保持可见', () => {

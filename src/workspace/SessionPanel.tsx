@@ -1,13 +1,12 @@
 /**
  * 全屏当前会话面板；同层 Tab 切换不重建会话。
  *
- * 边界：不持服务端/存储；仅消费 props；切 Tab 不重建 Modal/Header；
+ * 边界：不持服务端/存储；仅消费 props；会话信息区由 WorkspaceScreen 持续挂载；
  * 颜色来自主题 context（三套配色），布局/字号/圆角仍取 src/ui/tokens.ts 的 workspaceTheme 静态值。
  */
 
 import { useMemo, useState, type ReactNode } from 'react';
 import {
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -15,8 +14,6 @@ import {
   Text,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { ThemeStatusBar } from '../theme/ThemeStatusBar';
 import type { LucideIcon } from 'lucide-react-native';
 import {
   Clock,
@@ -24,18 +21,16 @@ import {
   Monitor,
   ShieldCheck,
   RotateCcw,
-  X,
 } from 'lucide-react-native';
 
 import { workspaceTheme, spacing, type WorkspaceColors } from '../ui/tokens';
 import { useTheme } from '../theme/ThemeProvider';
-import { ThemeToggle } from '../theme/ThemeToggle';
 import { CurrentExecution } from './CurrentExecution';
 import { FilesPanel } from './FilesPanel';
 import { ApprovalPanel } from './ApprovalPanel';
 import { ActivityPanel } from './ActivityPanel';
 import { MAIN_SPACE } from '../spaces/space-state';
-import { MuseAvatar, StatusPill, type StatusTone } from './primitives';
+import { IconControl } from '../ui/IconControl';
 
 export type SessionTab = 'activity' | 'approvals' | 'workspace' | 'history';
 
@@ -57,19 +52,14 @@ const TAB_LABELS: Record<SessionTab, string> = {
 
 export interface SessionPanelProps {
   spaceId: string;
-  spaceName: string;
-  status: string;
-  statusTone: StatusTone;
   tab: SessionTab;
   onTab: (tab: SessionTab) => void;
-  onClose: () => void;
   onDelete?: () => void;
   onReset?: () => void;
   onSettled?: () => void;
   settings?: ReactNode;
   deleting?: boolean;
   resetting?: boolean;
-  reducedMotion: boolean;
 }
 
 // 子组件共用：读 context -> useMemo 出当前主题下的 StyleSheet。颜色覆盖来自主题 context，布局/字号仍走 workspaceTheme 静态值。
@@ -84,7 +74,6 @@ function createStyles(colors: WorkspaceColors) {
   return StyleSheet.create({
     root: {
       flex: 1,
-      backgroundColor: colors.canvas,
     },
     column: {
       flex: 1,
@@ -93,48 +82,17 @@ function createStyles(colors: WorkspaceColors) {
       alignSelf: 'center',
     },
 
-    header: {
-      flexDirection: 'row',
-      alignItems: 'flex-start',
-      paddingHorizontal: workspaceTheme.layout.sidePadding,
-      paddingTop: workspaceTheme.layout.sessionTop,
-      paddingBottom: workspaceTheme.layout.sessionPanelHeaderBottom,
-    },
-    headerSideButton: {
-      width: workspaceTheme.layout.smallControl,
-      height: workspaceTheme.layout.smallControl,
-      borderRadius: workspaceTheme.radius.round,
-      backgroundColor: colors.control,
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginTop: spacing.xs,
-    },
-    // 操作区独立定位，新增重置按钮也不能把头像和空间名称推离面板中线。
-    headerClose: { position: 'absolute', top: workspaceTheme.layout.sessionTop, left: workspaceTheme.layout.sidePadding },
-    headerActions: { position: 'absolute', top: workspaceTheme.layout.sessionTop, right: workspaceTheme.layout.sidePadding, flexDirection: 'row', gap: spacing.xs },
-    headerCenter: {
-      flex: 1,
-      alignItems: 'center',
-      justifyContent: 'flex-start',
-    },
-    name: {
-      marginTop: workspaceTheme.layout.sessionPanelNameTop,
-      ...workspaceTheme.typography.heroName,
-      color: colors.ink,
-      maxWidth: workspaceTheme.layout.sessionNameMaxWidth,
-    },
-    status: {
-      marginTop: spacing.sm,
-    },
-
     tablistWrap: {
       paddingHorizontal: workspaceTheme.layout.sidePadding,
       marginBottom: workspaceTheme.layout.sessionPanelTabsBottom,
     },
+    actionRow: { minHeight: workspaceTheme.layout.smallControl, alignItems: 'flex-end', paddingHorizontal: workspaceTheme.layout.sidePadding, marginBottom: spacing[8] },
     tablist: {
       height: workspaceTheme.layout.sessionTabsHeight,
       flexDirection: 'row',
-      backgroundColor: colors.surface,
+      backgroundColor: colors.floatingSurface,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.floatingLine,
       borderRadius: workspaceTheme.radius.tab,
       padding: workspaceTheme.layout.sessionTabInset,
       alignItems: 'center',
@@ -178,32 +136,19 @@ function createStyles(colors: WorkspaceColors) {
       padding: workspaceTheme.layout.sidePadding,
       marginBottom: workspaceTheme.layout.listItemGap,
     },
-    emptyBox: {
-      paddingVertical: spacing.xl,
-      alignItems: 'center',
-    },
-    emptyText: {
-      color: colors.faint,
-      ...workspaceTheme.typography.detail,
-    },
   });
 }
 
 export function SessionPanel({
   spaceId,
-  spaceName,
-  status,
-  statusTone,
   tab,
   onTab,
-  onClose,
   onDelete,
   onReset,
   onSettled,
   settings,
   deleting,
   resetting,
-  reducedMotion,
 }: SessionPanelProps) {
   const styles = usePanelStyles();
   const { colors } = useTheme();
@@ -238,51 +183,10 @@ export function SessionPanel({
 
 
   return (
-    <Modal
-      visible
-      presentationStyle="fullScreen"
-      animationType={reducedMotion ? 'none' : 'fade'}
-      onRequestClose={onClose}
-      statusBarTranslucent
-      navigationBarTranslucent
-      testID="workspace-session-modal"
-    >
-      <ThemeStatusBar />
-      <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
+    <View style={styles.root} testID="workspace-session-panel">
         <View style={styles.column}>
-          <View style={styles.header}>
-            <Pressable
-              onPress={onClose}
-              accessibilityRole="button"
-              accessibilityLabel="关闭会话面板"
-              hitSlop={spacing.md}
-              style={[styles.headerSideButton, styles.headerClose]}
-              testID="workspace-session-close"
-            >
-              <X
-                size={workspaceTheme.layout.navigationIconSize}
-                color={colors.ink}
-                strokeWidth={2}
-              />
-            </Pressable>
-
-            <View style={styles.headerCenter} pointerEvents="none">
-              <MuseAvatar size={workspaceTheme.layout.sessionAvatar} />
-              <Text style={styles.name} numberOfLines={1}>
-                {spaceName}
-              </Text>
-              <View style={styles.status}><StatusPill label={status} tone={statusTone} /></View>
-            </View>
-
-            <View style={styles.headerActions}>
-            {onReset && <Pressable accessibilityRole="button" accessibilityLabel="重置当前会话"
-              disabled={deleting || resetting} onPress={onReset} style={styles.headerSideButton} testID="workspace-reset-conversation">
-              <RotateCcw size={workspaceTheme.layout.navigationIconSize} color={colors.ink} />
-            </Pressable>}
-            <ThemeToggle style={styles.headerSideButton} testID="workspace-session-theme-toggle" />
-            </View>
-          </View>
-
+          <View style={styles.actionRow}>{onReset && <IconControl icon={RotateCcw} label="重置当前会话" testID="workspace-reset-conversation"
+            onPress={onReset} disabled={deleting} busy={resetting} small />}</View>
           <View
             accessibilityRole="tablist"
             {...((webKeyProps ?? {}) as object)}
@@ -295,10 +199,11 @@ export function SessionPanel({
                 return (
                   <Pressable
                     key={t}
+                    disabled={deleting || resetting}
                     onPress={() => { if (t === 'history') setHistoryActivityId(undefined); onTab(t); }}
                     accessibilityRole="tab"
                     accessibilityLabel={TAB_LABELS[t]}
-                    accessibilityState={{ selected }}
+                    accessibilityState={{ selected, disabled: !!(deleting || resetting), busy: !!(deleting || resetting) }}
                     aria-selected={selected}
                     style={[styles.tab, selected && styles.tabSelected]}
                     testID={`workspace-session-tab-${t}`}
@@ -329,6 +234,7 @@ export function SessionPanel({
               {settings}
               <FilesPanel currentSpaceId={spaceId} />
               {spaceId !== MAIN_SPACE && onDelete && <Pressable accessibilityRole="button" accessibilityLabel="删除当前空间"
+                accessibilityState={{ disabled: !!(deleting || resetting), busy: !!deleting }}
                 disabled={deleting || resetting} onPress={onDelete} style={styles.card}>
                 <Text style={[styles.rowTitle, { color: colors.danger }]}>{deleting ? '正在删除空间…' : '删除当前空间'}</Text>
                 <Text style={styles.rowDetail}>彻底删除空间的历史、工作区文件、规则、技能及绑定任务，不可恢复；仅翻篇请使用重置会话。</Text>
@@ -337,7 +243,6 @@ export function SessionPanel({
             {tab === 'history' && <ActivityPanel key={spaceId} spaceId={spaceId} initialActivityId={historyActivityId} showHeading />}
           </ScrollView>
         </View>
-      </SafeAreaView>
-    </Modal>
+    </View>
   );
 }

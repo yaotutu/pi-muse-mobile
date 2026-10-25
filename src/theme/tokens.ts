@@ -113,13 +113,12 @@ export const themeTokens = {
     headerTop: 12,
     headerAvatar: 82,
     compactHeaderAvatar: 36,
-    sessionAvatar: 80,
-    sessionTop: 14,
+    welcomeAvatar: 80,
     sessionHeaderBottom: 28,
-    /** 会话面板专用间距，连接页继续使用原有 sessionHeaderBottom。 */
-    sessionPanelNameTop: 14,
-    sessionPanelHeaderBottom: 20,
+    /** 面板内容在持续挂载的会话信息区下方展开。 */
     sessionPanelTabsBottom: 16,
+    /** 全屏内容从会话信息区下方进入，头像、名称、状态保持原位。 */
+    sessionTravel: 22,
     controlSize: 48,
     smallControl: 44,
     iconSize: 25,
@@ -181,7 +180,6 @@ export const themeTokens = {
     sheetWideMaxWidth: 720,
     sheetMaxHeight: '92%',
     identityMaxWidth: '56%',
-    sessionNameMaxWidth: '90%',
     assistantMessageWidth: '92%',
   },
   radius: {
@@ -217,7 +215,8 @@ export const themeTokens = {
     heading3: { fontSize: 18, lineHeight: 26 },
     tableCellMinWidth: 128,
   },
-  motion: { drawerDuration: 280, feedbackDuration: 1800, pulseDuration: 750 },
+  material: { panelBlurIntensity: 54 },
+  motion: { drawerDuration: 280, sessionDuration: 260, feedbackDuration: 1800, pulseDuration: 750 },
   interaction: { disabledOpacity: 0.4, pressedOpacity: 0.65 },
 } as const;
 

@@ -6,6 +6,7 @@
     "entities": "^8.1.0",
     "expo": "~57.0.29",
     "expo-application": "~57.0.3",
+    "expo-blur": "~57.0.3",
     "expo-build-properties": "~57.0.22",
     "expo-clipboard": "~57.0.2",
     "expo-document-picker": "~57.0.3",
