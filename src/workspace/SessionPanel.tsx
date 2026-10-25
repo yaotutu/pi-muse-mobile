@@ -6,14 +6,7 @@
  */
 
 import { useMemo, useState, type ReactNode } from 'react';
-import {
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { LucideIcon } from 'lucide-react-native';
 import {
   Clock,
@@ -31,24 +24,16 @@ import { ApprovalPanel } from './ApprovalPanel';
 import { ActivityPanel } from './ActivityPanel';
 import { MAIN_SPACE } from '../spaces/space-state';
 import { IconControl } from '../ui/IconControl';
+import { SegmentedControl } from '../ui/SegmentedControl';
 
 export type SessionTab = 'activity' | 'approvals' | 'workspace' | 'history';
 
-const TAB_ORDER: readonly SessionTab[] = ['activity', 'approvals', 'workspace', 'history'] as const;
-
-const TAB_ICONS: Record<SessionTab, LucideIcon> = {
-  activity: List,
-  approvals: ShieldCheck,
-  workspace: Monitor,
-  history: Clock,
-};
-
-const TAB_LABELS: Record<SessionTab, string> = {
-  activity: '动态',
-  approvals: '审批',
-  workspace: '工作区',
-  history: '历史',
-};
+const TABS: readonly { value: SessionTab; label: string; icon: LucideIcon; testID: string }[] = [
+  { value: 'activity', label: '动态', icon: List, testID: 'workspace-session-tab-activity' },
+  { value: 'approvals', label: '审批', icon: ShieldCheck, testID: 'workspace-session-tab-approvals' },
+  { value: 'workspace', label: '工作区', icon: Monitor, testID: 'workspace-session-tab-workspace' },
+  { value: 'history', label: '历史', icon: Clock, testID: 'workspace-session-tab-history' },
+];
 
 export interface SessionPanelProps {
   spaceId: string;
@@ -69,8 +54,6 @@ function usePanelStyles() {
 }
 
 function createStyles(colors: WorkspaceColors) {
-  const tabInnerHeight =
-    workspaceTheme.layout.sessionTabsHeight - workspaceTheme.layout.sessionTabInset * 2;
   return StyleSheet.create({
     root: {
       flex: 1,
@@ -87,31 +70,6 @@ function createStyles(colors: WorkspaceColors) {
       marginBottom: workspaceTheme.layout.sessionPanelTabsBottom,
     },
     actionRow: { minHeight: workspaceTheme.layout.smallControl, alignItems: 'flex-end', paddingHorizontal: workspaceTheme.layout.sidePadding, marginBottom: spacing[8] },
-    tablist: {
-      height: workspaceTheme.layout.sessionTabsHeight,
-      flexDirection: 'row',
-      backgroundColor: colors.floatingSurface,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: colors.floatingLine,
-      borderRadius: workspaceTheme.radius.tab,
-      padding: workspaceTheme.layout.sessionTabInset,
-      alignItems: 'center',
-      justifyContent: 'space-between',
-    },
-    tab: {
-      flex: 1,
-      height: tabInnerHeight,
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderRadius: tabInnerHeight / 2,
-      gap: workspaceTheme.layout.tabLabelGap,
-    },
-    tabSelected: {
-      backgroundColor: colors.selected,
-    },
-    tabLabel: { ...workspaceTheme.typography.navigation, color: colors.faint },
-    tabLabelSelected: { color: colors.ink },
-
     scroll: {
       flex: 1,
     },
@@ -154,70 +112,14 @@ export function SessionPanel({
   const { colors } = useTheme();
   const [historyActivityId, setHistoryActivityId] = useState<string>();
 
-  // Web 类型约束：RN View 类型不包含 onKeyDown，必须以断言方式注入；原生端忽略。
-  const webKeyProps = useMemo(() => {
-    if (Platform.OS !== 'web') return null;
-    return {
-      onKeyDown: (event: { key?: string; preventDefault?: () => void }) => {
-        const key = (event?.key ?? '').toString();
-        if (
-          key !== 'ArrowLeft' &&
-          key !== 'ArrowRight' &&
-          key !== 'Home' &&
-          key !== 'End'
-        ) {
-          return;
-        }
-        event.preventDefault?.();
-        const idx = TAB_ORDER.indexOf(tab);
-        if (idx < 0) return;
-        let next = idx;
-        if (key === 'ArrowLeft') next = (idx - 1 + TAB_ORDER.length) % TAB_ORDER.length;
-        else if (key === 'ArrowRight') next = (idx + 1) % TAB_ORDER.length;
-        else if (key === 'Home') next = 0;
-        else next = TAB_ORDER.length - 1;
-        onTab(TAB_ORDER[next]);
-      },
-    };
-  }, [tab, onTab]);
-
-
   return (
     <View style={styles.root} testID="workspace-session-panel">
         <View style={styles.column}>
           <View style={styles.actionRow}>{onReset && <IconControl icon={RotateCcw} label="重置当前会话" testID="workspace-reset-conversation"
             onPress={onReset} disabled={deleting} busy={resetting} small />}</View>
-          <View
-            accessibilityRole="tablist"
-            {...((webKeyProps ?? {}) as object)}
-            style={styles.tablistWrap}
-          >
-            <View style={styles.tablist}>
-              {TAB_ORDER.map((t) => {
-                const Icon = TAB_ICONS[t];
-                const selected = t === tab;
-                return (
-                  <Pressable
-                    key={t}
-                    disabled={deleting || resetting}
-                    onPress={() => { if (t === 'history') setHistoryActivityId(undefined); onTab(t); }}
-                    accessibilityRole="tab"
-                    accessibilityLabel={TAB_LABELS[t]}
-                    accessibilityState={{ selected, disabled: !!(deleting || resetting), busy: !!(deleting || resetting) }}
-                    aria-selected={selected}
-                    style={[styles.tab, selected && styles.tabSelected]}
-                    testID={`workspace-session-tab-${t}`}
-                  >
-                    <Icon
-                      size={workspaceTheme.layout.iconSize}
-                      color={selected ? colors.ink : colors.faint}
-                      strokeWidth={selected ? 2 : 1.6}
-                    />
-                    <Text style={[styles.tabLabel, selected && styles.tabLabelSelected]}>{TAB_LABELS[t]}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
+          <View style={styles.tablistWrap}>
+            <SegmentedControl value={tab} options={TABS} label="会话内容" busy={!!(deleting || resetting)}
+              onChange={(next) => { if (next === 'history') setHistoryActivityId(undefined); onTab(next); }} />
           </View>
 
           {/* 内容长度随 Tab 改变；从顶部阅读新内容，不继承其他 Tab 的滚动偏移。领域草稿仍由 store 保留。 */}

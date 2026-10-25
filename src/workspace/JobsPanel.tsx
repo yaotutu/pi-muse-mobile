@@ -9,6 +9,7 @@ import { spacing, workspaceTheme, type WorkspaceColors } from '../ui/tokens';
 import { EmptyState, StatusPill, type StatusTone } from './primitives';
 import { ActivityPanel } from './ActivityPanel';
 import { MonitorsPanel } from './MonitorsPanel';
+import { SegmentedControl } from '../ui/SegmentedControl';
 
 function useStyles() { const { colors } = useTheme(); return useMemo(() => createStyles(colors), [colors]); }
 function Button({ label, shortLabel, onPress, selected, disabled }: { label: string; shortLabel?: string; onPress: () => void; selected?: boolean; disabled?: boolean }) {
@@ -19,20 +20,14 @@ function Button({ label, shortLabel, onPress, selected, disabled }: { label: str
 
 /** 任务主页面与会话面板使用同一组胶囊语言；切换仍只挂载当前领域视图。 */
 export function TasksPage({ spaceId }: { spaceId: string }) {
-  const [tab, setTab] = useState<'activity' | 'jobs' | 'monitors'>('activity'); const styles = useStyles(); const { colors } = useTheme();
+  const [tab, setTab] = useState<'activity' | 'jobs' | 'monitors'>('activity'); const styles = useStyles();
   const tabs = [
-    { id: 'activity', label: '活动历史', Icon: Clock3 },
-    { id: 'jobs', label: '定时任务', Icon: CalendarClock },
-    { id: 'monitors', label: '网页监控', Icon: Globe2 },
+    { value: 'activity', label: '活动历史', icon: Clock3, testID: 'tasks-tab-activity' },
+    { value: 'jobs', label: '定时任务', icon: CalendarClock, testID: 'tasks-tab-jobs' },
+    { value: 'monitors', label: '网页监控', icon: Globe2, testID: 'tasks-tab-monitors' },
   ] as const;
   return <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.page}>
-    <View accessibilityRole="tablist" accessibilityLabel="任务内容" style={styles.tablist}>
-      {tabs.map(({ id, label, Icon }) => <Pressable key={id} accessibilityRole="tab" accessibilityLabel={label} accessibilityState={{ selected: tab === id }}
-        testID={`tasks-tab-${id}`} onPress={() => setTab(id)} style={({ pressed }) => [styles.tab, tab === id && styles.tabSelected, pressed && styles.pressed]}>
-        <Icon size={workspaceTheme.layout.iconSize - spacing[4]} color={tab === id ? colors.ink : colors.faint} strokeWidth={tab === id ? 2 : 1.6} />
-        <Text numberOfLines={1} style={[styles.tabLabel, tab === id && styles.tabLabelSelected]}>{label}</Text>
-      </Pressable>)}
-    </View>
+    <SegmentedControl value={tab} options={tabs} onChange={setTab} label="任务内容" />
     {tab === 'activity' ? <ActivityPanel key={spaceId} spaceId={spaceId} defaultScope="all" /> : tab === 'jobs' ? <JobsPanel spaceId={spaceId} /> : <MonitorsPanel spaceId={spaceId} />}
   </ScrollView>;
 }
@@ -107,9 +102,6 @@ export function JobsPanel({ spaceId }: { spaceId: string }) {
 }
 const createStyles = (colors: WorkspaceColors) => StyleSheet.create({
   page: { paddingHorizontal: workspaceTheme.layout.sidePadding, paddingTop: spacing[12], paddingBottom: spacing[24], gap: spacing[16] },
-  tablist: { height: workspaceTheme.layout.sessionTabsHeight, flexDirection: 'row', alignItems: 'center', padding: workspaceTheme.layout.sessionTabInset, backgroundColor: colors.surface, borderRadius: workspaceTheme.radius.tab },
-  tab: { flex: 1, minWidth: 0, height: workspaceTheme.layout.sessionTabsHeight - workspaceTheme.layout.sessionTabInset * 2, borderRadius: workspaceTheme.radius.round, alignItems: 'center', justifyContent: 'center', gap: workspaceTheme.layout.tabLabelGap },
-  tabSelected: { backgroundColor: colors.selected }, tabLabel: { ...workspaceTheme.typography.navigation, color: colors.faint }, tabLabelSelected: { color: colors.ink },
   root: { gap: spacing[12], paddingBottom: spacing[24] }, row: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing[8] },
   toolbar: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: spacing[8] }, sortRow: { flexDirection: 'row', alignItems: 'center', gap: spacing[8] }, sortScroll: { flex: 1, minWidth: 0 }, sortOptions: { gap: spacing[8], paddingRight: spacing[8] },
   flex: { flex: 1, gap: spacing[8], minWidth: 0 }, title: { ...workspaceTheme.typography.itemTitle, color: colors.ink }, body: { ...workspaceTheme.typography.detail, color: colors.muted }, caption: { ...workspaceTheme.typography.caption, color: colors.faint }, error: { ...workspaceTheme.typography.detail, color: colors.danger },

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { ArrowUpRight, Check, CirclePause, Radio, Workflow, Wrench, X } from 'lucide-react-native';
 import { workspaceTheme, spacing } from '../ui/tokens';
 import { useTheme } from '../theme/ThemeProvider';
@@ -7,6 +7,7 @@ import { useSpaceRuntime } from '../runtime/RuntimeProvider';
 import type { AgentStatus } from '../runtime/types';
 import { useServiceConnection } from '../connection/ConnectionProvider';
 import { StatusPill } from './primitives';
+import { ActionButton } from '../ui/ActionButton';
 
 export function CurrentExecution({ spaceId, onSettled, onApprovals, onHistory }: { spaceId: string; onSettled?: () => void; onApprovals?: () => void; onHistory?: (activityId?: string) => void }) {
   const runtime = useSpaceRuntime(spaceId);
@@ -24,8 +25,6 @@ export function CurrentExecution({ spaceId, onSettled, onApprovals, onHistory }:
     node: { width: workspaceTheme.layout.timelineIconWidth, height: workspaceTheme.layout.timelineIconWidth, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface, borderRadius: workspaceTheme.radius.round },
     inset: { marginLeft: workspaceTheme.layout.timelineIconWidth + spacing[14], gap: spacing[12] },
     body: { flex: 1, gap: spacing[4] },
-    button: { minHeight: workspaceTheme.layout.smallControl, flexDirection: 'row', gap: spacing[8], alignItems: 'center', alignSelf: 'flex-start', paddingVertical: spacing[8], paddingHorizontal: spacing[14], borderRadius: workspaceTheme.radius.round, backgroundColor: colors.surface },
-    buttonText: { ...workspaceTheme.typography.status, color: colors.ink },
     sublist: { gap: spacing[12], paddingTop: spacing[12], borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
     footer: { gap: spacing[10], paddingTop: spacing[16] },
     footerActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing[8] },
@@ -38,9 +37,7 @@ export function CurrentExecution({ spaceId, onSettled, onApprovals, onHistory }:
     {!runtime.synchronized && <View style={styles.syncCard}>
       <Text accessibilityRole="alert" style={styles.title}>{runtime.label}</Text>
       <Text style={styles.caption}>以下为最后观测状态，不表示运行已停止。</Text>
-      <Pressable accessibilityRole="button" accessibilityLabel="重新同步运行状态" style={styles.button} onPress={() => { runtime.retry(); connection?.retry(); }}>
-        <Text style={styles.buttonText}>重新同步</Text>
-      </Pressable>
+      <ActionButton label="重新同步运行状态" text="重新同步" tone="primary" onPress={() => { runtime.retry(); connection?.retry(); }} />
     </View>}
     {runtime.synchronized && runtime.runs.length === 0 && <View style={[styles.row, styles.run]}>
       <View style={styles.node}><Radio size={workspaceTheme.layout.iconSize} color={colors.muted} /></View>
@@ -76,14 +73,14 @@ export function CurrentExecution({ spaceId, onSettled, onApprovals, onHistory }:
         </View></View>)}
       </View>}
       {!!run.pendingApprovalIds.length && <View style={styles.body}><StatusPill label={`等待 ${run.pendingApprovalIds.length} 项审批`} tone="warning" />
-        {onApprovals && <Pressable accessibilityRole="button" accessibilityLabel="查看待审批" onPress={onApprovals} style={styles.button}><Text style={styles.buttonText}>查看待审批</Text></Pressable>}
+        {onApprovals && <ActionButton label="查看待审批" text="查看待审批" onPress={onApprovals} />}
       </View>}
-      {run.activityId !== null && onHistory && <Pressable accessibilityRole="button" accessibilityLabel="查看关联活动" onPress={() => onHistory(run.activityId!)} style={styles.button}><Text style={styles.buttonText}>查看关联活动</Text></Pressable>}
+      {run.activityId !== null && onHistory && <ActionButton label="查看关联活动" text="查看关联活动" onPress={() => onHistory(run.activityId!)} />}
       </View>
     </View>; })}
     <View style={styles.footer}><View style={styles.footerActions}>
-      {onHistory && <Pressable accessibilityRole="button" accessibilityLabel="查看活动历史" onPress={() => onHistory()} style={styles.button}><Text style={styles.buttonText}>查看活动历史</Text><ArrowUpRight size={workspaceTheme.layout.iconSize - spacing[8]} color={colors.muted} /></Pressable>}
-      <Pressable accessibilityRole="button" accessibilityLabel="状态说明" accessibilityState={{ expanded: showStatusHelp }} onPress={() => setShowStatusHelp((value) => !value)} style={styles.button}><Text style={styles.buttonText}>状态说明</Text></Pressable>
+      {onHistory && <ActionButton label="查看活动历史" text="查看活动历史" icon={ArrowUpRight} onPress={() => onHistory()} />}
+      <ActionButton label="状态说明" text="状态说明" expanded={showStatusHelp} onPress={() => setShowStatusHelp((value) => !value)} />
     </View>
       {/* 解释按需展开；失败、失同步和待审批仍在上方直接显示，不能藏进说明。 */}
       {showStatusHelp && <Text style={[styles.caption, styles.help]}>本轮正常结束不等于整项工作完成；未登记活动的聊天不会出现在历史中。</Text>}

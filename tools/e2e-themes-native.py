@@ -19,6 +19,7 @@ original_size = None
 size_changed = False
 themes = {'classic': '经典蓝白', 'light': '晨光白', 'dark': '深夜黑'}
 saved_note = '主题保存在本机；亮暗快捷键会返回上次选择的浅色主题。'
+status_help_evidence = []
 
 
 def sh(*args):
@@ -63,15 +64,16 @@ def header_bounds(space_name):
     return bounds(avatar), bounds(name), bounds(status)
 
 
-def scroll(down=False):
+def scroll(down=False, fast=False):
     areas = [bounds(n) for n in tree.iter('node') if visible(n) and n.get('class') == 'android.widget.ScrollView' and bounds(n)[3]-bounds(n)[1] > height*.25]
     left, top, right, bottom = areas[0] if areas else (0, height*.25, width, height*.89)
     high, low = top+(bottom-top)*.2, bottom-(bottom-top)*.12
     start, end = (high, low) if down else (low, high)
     # 不在系统返回手势热区滚动，否则 Android 会先离开应用页而非滚动设置。
-    x = int(right-(right-left)*.25)
-    # 使用完整触屏拖动，给冷启动后的模拟器足够时间交接 Pressable 与原生滚动手势。
-    sh('shell', 'input', 'touchscreen', 'swipe', str(x), str(int(start)), str(x), str(int(end)), '1000')
+    # 窄屏沿卡片左内边距拖动，避开输入框、右侧开关与 Expo 开发悬浮入口。
+    x = int(left+(right-left)*(.1 if fast else .75))
+    # 窄视口采用已实测的短滑动；慢拖在该模拟器中位移过小，长列表保留原有手势。
+    sh('shell', 'input', 'touchscreen', 'swipe', str(x), str(int(start)), str(x), str(int(end)), '200' if fast else '1000')
     time.sleep(.5)
 
 
@@ -100,6 +102,20 @@ def tap(label, scrolling=False, down=False):
     x1, y1, x2, y2 = bounds(node)
     sh('shell', 'input', 'tap', str((x1+x2)//2), str((y1+y2)//2))
     time.sleep(.35)
+
+
+def tap_node(node):
+    # 新增分段检查在动作前已持有新鲜树；直接使用节点边界，避免 tap 内再次 dump。
+    assert node is not None and node.get('enabled') != 'false', 'Missing or disabled native node'
+    x1, y1, x2, y2 = bounds(node)
+    sh('shell', 'input', 'tap', str((x1+x2)//2), str((y1+y2)//2))
+    time.sleep(.35)
+
+
+def capture_current(name):
+    # 供已核对的新鲜树留证：截图不再触发第二次 uiautomator dump。
+    (root/(name+'.xml')).write_bytes(ET.tostring(tree, encoding='utf-8'))
+    (root/(name+'.png')).write_bytes(sh('exec-out', 'screencap', '-p'))
 
 
 def enter(label, value):
@@ -277,6 +293,262 @@ def theme_checked(theme):
     assert node.get('checked') == 'true', 'Restored wrong theme: '+theme
 
 
+def reveal_label(label, down=False, scrolls=2, fast_scroll=False):
+    # 动作后先检查当前新鲜树；仅目标未出现时才做有限等待/滚动。
+    node = find(label)
+    if node is not None:
+        return node
+    time.sleep(.2)
+    refresh()
+    node = find(label)
+    if node is not None:
+        return node
+    for _ in range(scrolls):
+        node = find(label)
+        if node is not None:
+            return node
+        scroll(down, fast=fast_scroll or width == 840)
+        refresh()
+    refresh()
+    node = find(label)
+    if node is not None:
+        return node
+    raise AssertionError('Missing native UI: '+label)
+
+
+def reveal_labels_together(labels, down=False, scrolls=3):
+    # 仅用于确认/取消这类短按钮组；长文与入口仍逐项定位。
+    nodes = [find(label) for label in labels]
+    if all(node is not None for node in nodes):
+        return nodes
+    for _ in range(scrolls):
+        scroll(down, fast=width == 840)
+        refresh()
+        nodes = [find(label) for label in labels]
+        if all(node is not None for node in nodes):
+            return nodes
+    missing = [label for label, node in zip(labels, nodes) if node is None]
+    raise AssertionError('Missing native UI together: '+', '.join(missing))
+
+
+def has_resource(node, resource):
+    # RN testID 在部分 Android 版本会带包名前缀；契约仍以完整后缀为准。
+    value = node.get('resource-id', '')
+    return value == resource or value.endswith(':'+resource)
+
+
+def assert_absent_current(labels):
+    present = [label for label in labels if find(label) is not None]
+    assert not present, 'Native nodes unexpectedly remain: '+', '.join(present)
+
+
+def assert_selected_tab(labels, expected):
+    selected = []
+    for label in labels:
+        nodes = [n for n in tree.iter('node') if visible(n) and n.get('content-desc') == label]
+        assert nodes, 'Missing native tab: '+label
+        node = next((n for n in nodes if n.get('clickable') == 'true'), nodes[0])
+        if node.get('selected') == 'true':
+            selected.append(label)
+        if label == expected:
+            assert node.get('selected') == 'true', 'Native tab was not selected: '+label
+    assert selected == [expected], 'Native tab selection is not unique: '+str(selected)
+
+
+def assert_segment_tab(tab, panels, hidden_resources, down=False):
+    resource, marker = panels[tab]
+    marker_node = reveal_label(marker, down=down)
+    if resource is not None:
+        resource_node = reveal_label(resource, down=down)
+        assert resource_node is not None, 'Missing segment panel: '+resource
+    assert_selected_tab(panels, tab)
+    assert marker_node is not None, 'Missing segment marker: '+marker
+    # 选中态、当前内容与旧 panel 卸载共用动作后的同一棵新鲜树。
+    for other_resource in hidden_resources:
+        if other_resource != resource:
+            assert not any(visible(n) and has_resource(n, other_resource) for n in tree.iter('node')), 'Segment tab kept another panel mounted: '+other_resource
+
+
+def select_segment_tab(tab, panels, hidden_resources, down=False):
+    tap_node(find(tab))
+    refresh()
+    assert_segment_tab(tab, panels, hidden_resources, down=down)
+
+
+session_tab_panels = {
+    # 动态是 CurrentExecution 底板，没有独立 testID；状态说明入口在空态与最近结果下都存在。
+    '动态': (None, '状态说明'),
+    '审批': ('approval-panel', '每一次授权，都由你决定'),
+    # 工作区顶部是真实 SpaceSettings；FilesPanel 在长技能列表后，不作分段到达条件。
+    '工作区': (None, '空间规则'),
+    '历史': ('activity-panel', '活动历史'),
+}
+session_tab_evidence = {'动态': 'activity', '审批': 'approvals', '工作区': 'workspace', '历史': 'history'}
+
+
+def select_session_tab(tab):
+    hidden = {'activity-panel', 'approval-panel', 'workspace-files-panel'}
+    if tab == '工作区':
+        hidden.remove('workspace-files-panel')
+    select_segment_tab(tab, session_tab_panels, hidden, down=False)
+
+
+def record_status_help(theme, phase, expected_expanded):
+    button = find('状态说明')
+    assert button is not None, 'Missing status help button: '+phase
+    expanded = button.get('expanded')
+    expected = 'true' if expected_expanded else 'false'
+    record = {
+        'theme': theme,
+        'phase': phase,
+        'expanded': expanded,
+        'expected_expanded': expected,
+        'exported': expanded is not None,
+        'result': 'unsupported_by_compressed_uiautomator' if expanded is None else ('match' if expanded == expected else 'mismatch'),
+    }
+    status_help_evidence.append(record)
+    (root/'status-help-evidence.json').write_text(json.dumps(status_help_evidence, ensure_ascii=False, indent=2), encoding='utf-8')
+    assert record['result'] != 'mismatch', 'Exported expanded state contradicts status help body: '+phase
+    return record
+
+
+def assert_status_help(theme, evidence_prefix=''):
+    help_text = '本轮正常结束不等于整项工作完成；未登记活动的聊天不会出现在历史中。'
+    # stock compressed XML 可能不导出 expanded；属性缺席只记录 unsupported，语义由正文严格判定。
+    record_status_help(evidence_prefix+theme, 'initial', False)
+    assert find(help_text) is None, 'Collapsed status help exposed its body'
+    tap_node(find('状态说明'))
+    refresh()
+    body = reveal_label(help_text, down=False)
+    assert body is not None, 'Native tap did not expose status help body'
+    button = reveal_label('状态说明', down=True)
+    record_status_help(evidence_prefix+theme, 'expanded', True)
+    tap_node(button)
+    refresh()
+    record_status_help(evidence_prefix+theme, 'collapsed', False)
+    assert find(help_text) is None, 'Native tap did not remove status help body'
+
+
+def check_reset_confirmation(theme, evidence_prefix):
+    risk = '重置将停止当前运行，清空聊天历史与未完成的审批，开启全新对话。空间规则、技能开关与已保存的工作区文件都会保留。'
+    checkbox_label = '同时清理定时任务与网页监控'
+    tap_node(find('重置当前会话'))
+    refresh()
+    # 窄屏下标题、长风险、复选框与按钮可能互相离屏；逐项寻找，不要求同视口。
+    title = reveal_label('重置当前会话？', down=True)
+    risk_node = reveal_label(risk, down=False)
+    assert title is not None and risk_node is not None
+    capture_current(evidence_prefix+theme+'-reset-confirmation')
+    checkbox = reveal_label(checkbox_label, down=False)
+    assert checkbox.get('checked') != 'true', 'Reset confirmation did not default to preserving schedules'
+    unchecked = reveal_label('未选择：同时清理此空间下的定时任务与网页监控', down=False)
+    assert unchecked is not None
+    confirm, cancel = reveal_labels_together(['确认重置会话', '取消重置会话'], down=False)
+    assert confirm.get('enabled') != 'false' and cancel.get('enabled') != 'false'
+    if theme != 'classic':
+        capture_current(evidence_prefix+theme+'-reset-actions')
+        tap_node(cancel)
+        refresh()
+        assert_absent_current(['重置当前会话？', '确认重置会话', '取消重置会话'])
+        return
+    # 按钮定位可能已经滚动；勾选前重新取得当前视口中的复选框边界。
+    checkbox = reveal_label(checkbox_label, down=True)
+    tap_node(checkbox)
+    refresh()
+    checkbox = reveal_label(checkbox_label, down=False)
+    assert checkbox.get('checked') == 'true', 'Clear-schedules checkbox did not toggle'
+    checked = reveal_label('已选择：同时清理此空间下的定时任务与网页监控', down=False)
+    assert checked is not None
+    confirm, cancel = reveal_labels_together(['确认重置会话', '取消重置会话'], down=False)
+    assert confirm.get('enabled') != 'false' and cancel.get('enabled') != 'false'
+    capture_current(evidence_prefix+theme+'-reset-actions')
+    tap_node(cancel)
+    refresh()
+    assert_absent_current(['重置当前会话？', '确认重置会话', '取消重置会话'])
+    # 重新打开必须回到默认安全态；这里只取消，绝不提交真实重置。
+    reset_entry = reveal_label('重置当前会话', down=True)
+    tap_node(reset_entry)
+    refresh()
+    title = reveal_label('重置当前会话？', down=True)
+    assert title is not None
+    checkbox = reveal_label(checkbox_label, down=False)
+    assert checkbox.get('checked') != 'true', 'Reopened reset confirmation retained checked state'
+    unchecked = reveal_label('未选择：同时清理此空间下的定时任务与网页监控', down=False)
+    assert unchecked is not None
+    confirm, cancel = reveal_labels_together(['确认重置会话', '取消重置会话'], down=False)
+    assert confirm.get('enabled') != 'false' and cancel.get('enabled') != 'false'
+    tap_node(cancel)
+    refresh()
+    assert_absent_current(['确认重置会话', '取消重置会话'])
+
+
+def check_delete_confirmation(theme, space_id, evidence_prefix):
+    risk = '空间的全部聊天历史、工作区文件、规则、技能和绑定的定时任务、监控将被彻底删除，无法撤销。'
+    if width == 840:
+        # 通过现有重置确认页下方的同一删除入口验收，避免重复遍历无关的长技能列表。
+        # 只打开确认页，不提交重置；删除入口的原回调会关闭重置确认。
+        tap_node(find('重置当前会话'))
+        refresh()
+    delete_entry = reveal_label('删除当前空间', down=False, scrolls=15, fast_scroll=width == 840)
+    tap_node(delete_entry)
+    refresh()
+    title = reveal_label('确认删除当前空间？', down=True, scrolls=6)
+    risk_node = reveal_label(risk, down=False)
+    assert title is not None and risk_node is not None
+    capture_current(evidence_prefix+theme+'-delete-confirmation')
+    identity = reveal_label(space_id, down=True)
+    assert identity is not None
+    confirm, cancel = reveal_labels_together(['确认删除空间', '取消删除空间'], down=False)
+    assert confirm.get('enabled') != 'false' and cancel.get('enabled') != 'false'
+    capture_current(evidence_prefix+theme+'-delete-actions')
+    tap_node(cancel)
+    refresh()
+    assert_absent_current(['确认删除当前空间？', '确认删除空间', '取消删除空间'])
+
+
+def check_session_controls(theme, space_id, chat_header, evidence_prefix=''):
+    # 每主题都实际切换四项；完整状态/复选框矩阵只在 classic 深度执行一次。
+    for tab in session_tab_panels:
+        select_session_tab(tab)
+        capture_current(f'{evidence_prefix}{theme}-session-tab-{session_tab_evidence[tab]}')
+    if theme == 'classic':
+        select_session_tab('动态')
+        assert_status_help(theme, evidence_prefix)
+        tap_node(find('查看活动历史'))
+        refresh()
+        assert_segment_tab('历史', session_tab_panels, {'activity-panel', 'approval-panel', 'workspace-files-panel'}, down=False)
+    check_reset_confirmation(theme, evidence_prefix)
+    check_delete_confirmation(theme, space_id, evidence_prefix)
+    assert header_bounds(space_id) == chat_header, 'Session controls moved session header'
+    capture_current(evidence_prefix+theme+'-session-controls')
+    passed(evidence_prefix+theme+' session segmented navigation, help and confirmation controls')
+
+
+task_tab_panels = {
+    '活动历史': ('activity-panel', '当前空间活动'),
+    '定时任务': ('jobs-panel', '刷新定时任务'),
+    '网页监控': ('monitors-panel', '刷新网页监控'),
+}
+
+
+def select_task_tab(tab):
+    select_segment_tab(tab, task_tab_panels, {'activity-panel', 'jobs-panel', 'monitors-panel'}, down=False)
+
+
+def check_task_controls(theme, space_id, evidence_prefix='', check_draft=False):
+    tap_node(find('任务'))
+    refresh()
+    for tab in task_tab_panels:
+        select_task_tab(tab)
+    capture_current(evidence_prefix+theme+'-tasks-controls')
+    tap_node(find('聊天'))
+    refresh()
+    assert find(space_id) is not None, 'Tasks navigation lost current space'
+    if check_draft:
+        assert find('消息输入框').get('text') == context['draft'], 'Tasks navigation lost unsent draft'
+    passed(evidence_prefix+theme+' tasks segmented navigation')
+
+
 try:
     original_size = sh('shell', 'wm', 'size').decode()
     width, height = map(int, re.findall(r'(\d+)x(\d+)', original_size)[-1])
@@ -316,13 +588,24 @@ try:
             close = wait('关闭会话面板')
             x1, y1, x2, y2 = bounds(close)
             x, y = str((x1+x2)//2), str((y1+y2)//2)
-            # 同一次设备 shell 内连续发两次真实触控；用设备 uptime 对整段输入计时，
-            # 整段小于 260ms 才能证明第二次触控确实落在关闭动画期间。
+            # 同一次设备 shell 内先关闭再重开，直接调用 cmd input 避免两次 input 包装脚本。
+            # uptime 采样分别是首触控前、首触控返回后、次触控返回后；整段只测量驱动
+            # 实际注入区间，不把前置 UI 定位、ADB 建连或后续动画等待计入 260ms 阈值。
             timing = sh('shell',
-                        f'read start rest </proc/uptime; input tap {x} {y}; sleep 0.02; '
-                        f'input tap {x} {y}; read end rest </proc/uptime; echo "$start $end"')
-            start, end = map(float, timing.decode().strip().split()[-2:])
-            assert end - start < .26, 'Native tap driver exceeded the 260ms transition window'
+                        f'read start rest </proc/uptime; cmd input tap {x} {y}; '
+                        f'read first_tap_end rest </proc/uptime; cmd input tap {x} {y}; '
+                        f'read end rest </proc/uptime; printf \'%s\\n%s\\n%s\\n\' '
+                        f'"$start" "$first_tap_end" "$end"')
+            start, first_tap_end, end = map(float, timing.decode().strip().splitlines())
+            overall_elapsed = end-start
+            (root/'rapid-panel-timing.json').write_text(json.dumps({
+                'start_uptime_seconds': start,
+                'first_tap_end_uptime_seconds': first_tap_end,
+                'second_tap_end_uptime_seconds': end,
+                'overall_elapsed_seconds': overall_elapsed,
+                'threshold_seconds': .26,
+            }, ensure_ascii=False, indent=2), encoding='utf-8')
+            assert overall_elapsed < .26, 'Native tap driver exceeded the 260ms transition window'
             time.sleep(.35)
             refresh()
             assert find('关闭会话面板') is not None, 'Rapid close and reopen did not reverse panel transition'

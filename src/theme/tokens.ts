@@ -216,7 +216,7 @@ export const themeTokens = {
     tableCellMinWidth: 128,
   },
   material: { panelBlurIntensity: 54 },
-  motion: { drawerDuration: 280, sessionDuration: 260, feedbackDuration: 1800, pulseDuration: 750 },
+  motion: { drawerDuration: 280, sessionDuration: 260, segmentDuration: 200, feedbackDuration: 1800, pulseDuration: 750 },
   interaction: { disabledOpacity: 0.4, pressedOpacity: 0.65 },
 } as const;
 

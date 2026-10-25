@@ -37,6 +37,7 @@ import { ThemePicker } from '../theme/ThemePicker';
 import { ThemeToggle } from '../theme/ThemeToggle';
 import { IconControl, MuseAvatar, StatusPill, useReducedMotion } from './primitives';
 import { FrostedSurface } from '../ui/FrostedSurface';
+import { ActionButton } from '../ui/ActionButton';
 
 type WorkspacePage = 'chat' | 'activity' | 'goals' | 'apps';
 type WorkspaceNotice = { text: string; tone: 'success' | 'error' };
@@ -269,12 +270,16 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
         </Pressable>
         <Text style={styles.caption}>默认保留定时任务与监控，并由服务端绑定到新会话。清空的聊天历史无法恢复。</Text>
         {session.resetUncertain && <Text accessibilityRole="alert" style={styles.error}>重置结果未确认，请关闭面板并刷新空间列表核对；不会自动重试。</Text>}
-        <Pressable accessibilityRole="button" accessibilityLabel="确认重置会话" disabled={session.resetting || session.resetUncertain || !connection?.enabled || sessions.hasSettingsWrite(spaces.currentSpace)} style={styles.actionButton} onPress={() => void reset()}><Text style={styles.actionText}>{session.resetting ? '正在重置…' : '确认重置'}</Text></Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel="取消重置会话" disabled={session.resetting} style={styles.secondaryButton} onPress={() => setResetConfirm(false)}><Text style={styles.mutedText}>取消</Text></Pressable>
+        <View style={styles.confirmActions}>
+          <ActionButton label="确认重置会话" text={session.resetting ? '正在重置…' : '确认重置'} tone="primary" busy={session.resetting} disabled={session.resetUncertain || !connection?.enabled || sessions.hasSettingsWrite(spaces.currentSpace)} onPress={() => void reset()} />
+          <ActionButton label="取消重置会话" text="取消" disabled={session.resetting} onPress={() => setResetConfirm(false)} />
+        </View>
         {notice?.tone === 'error' && <Text accessibilityRole="alert" style={styles.error}>{notice.text}</Text>}
       </View> : deleteConfirm ? <View style={styles.exampleCard}><Text style={styles.itemTitle}>确认删除当前空间？</Text><Text style={styles.mutedText}>空间的全部聊天历史、工作区文件、规则、技能和绑定的定时任务、监控将被彻底删除，无法撤销。</Text>
-        <Pressable accessibilityRole="button" accessibilityLabel="确认删除空间" disabled={session.deleting} style={styles.actionButton} onPress={() => void remove()}><Text style={styles.actionText}>确认删除</Text></Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel="取消删除空间" disabled={session.deleting} style={styles.secondaryButton} onPress={() => setDeleteConfirm(false)}><Text style={styles.mutedText}>取消</Text></Pressable>
+        <View style={styles.confirmActions}>
+          <ActionButton label="确认删除空间" text={session.deleting ? '正在删除…' : '确认删除'} tone="danger" busy={session.deleting} onPress={() => void remove()} />
+          <ActionButton label="取消删除空间" text="取消" disabled={session.deleting} onPress={() => setDeleteConfirm(false)} />
+        </View>
         {notice?.tone === 'error' && <Text accessibilityRole="alert" style={styles.error}>{notice.text}</Text>}
       </View> : <SpaceSettings spaceId={spaces.currentSpace} onSaved={refresh} />}</>;
   // 文件状态留在当前真实连接内；会话面板关闭时只卸载可见 UI，不销毁草稿。
@@ -364,6 +369,7 @@ const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   pageHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: l.sidePadding, paddingTop: spacing[12], paddingBottom: spacing[8] },
   otherPage: { paddingTop: l.pageTop, paddingHorizontal: l.sidePadding, paddingBottom: spacing[24], gap: spacing[18] }, pageTitle: { ...t.heroName, color: c.ink }, itemTitle: { ...t.itemTitle, color: c.ink }, mutedText: { ...t.detail, color: c.muted }, caption: { ...t.caption, color: c.faint }, error: { ...t.caption, color: c.danger },
   exampleCard: { padding: spacing[20], borderRadius: r.card, backgroundColor: c.surface, gap: spacing[16], marginBottom: spacing[16] }, settingsRow: { flexDirection: 'row', alignItems: 'center', gap: spacing[14], paddingVertical: spacing[16], paddingHorizontal: spacing[16] },
+  confirmActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing[8] },
   appsPage: { gap: spacing[24] }, appSection: { gap: spacing[10] },
   appSectionTitle: { ...t.status, color: c.muted, marginLeft: spacing[6] },
   appSettingsGroup: { borderRadius: r.card, backgroundColor: c.surface, overflow: 'hidden' },
@@ -375,5 +381,4 @@ const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   emptyTitle: { ...t.heroName, color: c.ink, textAlign: 'center' }, notice: { position: 'absolute', left: l.sidePadding, right: l.sidePadding, top: l.headerHeight, ...t.caption, color: c.ink, backgroundColor: c.control, padding: spacing[12], borderRadius: r.listItem },
   disconnected: { flex: 1, alignSelf: 'center', width: '100%', maxWidth: l.maxWidth }, disconnectedHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: l.sidePadding }, welcome: { flex: 1, paddingHorizontal: l.sidePadding, gap: spacing[18], alignItems: 'center', justifyContent: 'center' },
   actionButton: { minHeight: l.smallControl, backgroundColor: c.blue, paddingHorizontal: spacing[18], paddingVertical: spacing[12], borderRadius: r.round, alignSelf: 'center' }, actionText: { ...t.status, color: c.onAccent },
-  secondaryButton: { alignSelf: 'center', minHeight: l.smallControl, flexDirection: 'row', alignItems: 'center', gap: spacing[8], paddingHorizontal: spacing[20], backgroundColor: c.control, borderRadius: r.round },
 });
