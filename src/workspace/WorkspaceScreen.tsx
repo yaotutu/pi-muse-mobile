@@ -33,6 +33,7 @@ import { DreamPanel } from './DreamPanel';
 import { ConversationView } from './ConversationView';
 import { SessionPanel, type SessionTab } from './SessionPanel';
 import { ResetSessionDialog } from './ResetSessionDialog';
+import { AvatarBloomTransition } from './AvatarBloomTransition';
 import { SpaceSettings } from './SpaceSettings';
 import { useTheme } from '../theme/ThemeProvider';
 import { ThemePicker } from '../theme/ThemePicker';
@@ -165,7 +166,6 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [sessionOpen, setSessionOpen] = useState(false);
   const [sessionMounted, setSessionMounted] = useState(false);
-  const [sessionProgress] = useState(() => new Animated.Value(0));
   const chatBlurTarget = useRef<View | null>(null);
   const pendingSessionOpen = useRef(false);
   const [sessionTab, setSessionTab] = useState<SessionTab>('activity');
@@ -208,15 +208,9 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
     const animation = Animated.timing(drawerProgress, { toValue: drawerOpen ? 1 : 0, duration: reducedMotion ? 0 : workspaceTheme.motion.drawerDuration, easing: Easing.out(Easing.cubic), useNativeDriver: true });
     animation.start(); return () => animation.stop();
   }, [drawerOpen, drawerProgress, reducedMotion]);
-  useEffect(() => {
-    if (!sessionMounted) return;
-    // 中途反向时从当前值继续；遮罩直到关闭动画结束都占据触控与读屏层。
-    const animation = Animated.timing(sessionProgress, { toValue: sessionOpen ? 1 : 0,
-      duration: reducedMotion ? 0 : (sessionOpen ? 340 : 260),
-      easing: Easing.out(Easing.cubic), useNativeDriver: true });
-    animation.start(({ finished }) => { if (finished && !sessionOpen) setSessionMounted(false); });
-    return () => animation.stop();
-  }, [sessionMounted, sessionOpen, sessionProgress, reducedMotion]);
+  const onSessionCloseFinished = useCallback((finished = true) => {
+    if (finished && !sessionOpen) setSessionMounted(false);
+  }, [sessionOpen]);
   const closeSession = useCallback(() => {
     if (session.deleting || session.resetting) return;
     pendingSessionOpen.current = false;
@@ -324,56 +318,57 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
                 </View>
               </BlurTargetView>
             </View>
-            {sessionMounted && <Animated.View style={[styles.sessionLayer, {
-            }]} testID="workspace-session-modal">
-              {/* 从虚拟形象向外扩散的波纹光环 */}
-              <Animated.View
-                pointerEvents="none"
-                style={[
-                  styles.bloomCircle,
-                  styles.bloomRing,
-                  {
-                    left: Math.round(contentWidth / 2 - bloomRadius),
-                    top: Math.round(avatarCenterY - bloomRadius),
-                    borderColor: colors.blue,
-                    opacity: sessionProgress.interpolate({ inputRange: [0, 0.2, 0.8, 1], outputRange: [0, 0.6, 0.2, 0] }),
-                    transform: [{ scale: sessionProgress.interpolate({ inputRange: [0, 1], outputRange: [0.8, targetScale * 1.05] }) }],
-                  },
-                ]}
-              />
-              {/* 从虚拟形象向外扩散的页面背景底色圆盘 */}
-              <Animated.View
-                pointerEvents="none"
-                style={[
-                  styles.bloomCircle,
-                  {
-                    left: Math.round(contentWidth / 2 - bloomRadius),
-                    top: Math.round(avatarCenterY - bloomRadius),
-                    backgroundColor: colors.panelVeil,
-                    transform: [{ scale: sessionProgress.interpolate({ inputRange: [0, 1], outputRange: [0.8, targetScale] }) }],
-                  },
-                ]}
-              />
-              <Animated.View style={[styles.frostedWrap, { opacity: sessionProgress }]}>
-              <FrostedSurface blurTarget={chatBlurTarget}>
-                <View style={styles.sessionHeader}>
-                  <Animated.View style={[styles.headerLeft, { opacity: sessionProgress.interpolate({ inputRange: [0, 0.3, 1], outputRange: [0, 0.4, 1] }), transform: [{ translateX: sessionProgress.interpolate({ inputRange: [0, 1], outputRange: [-28, 0] }) }] }]}>
-                    <IconControl icon={X} label={sessionOpen ? '关闭会话面板' : '重新打开会话面板'} testID="workspace-session-close" onPress={sessionOpen ? closeSession : openSession} disabled={session.deleting || session.resetting} />
-                  </Animated.View>
+            {sessionMounted && (
+              <AvatarBloomTransition
+                open={sessionOpen}
+                reducedMotion={reducedMotion}
+                avatarCenterX={contentWidth / 2}
+                avatarCenterY={avatarCenterY}
+                bloomRadius={bloomRadius}
+                targetScale={targetScale}
+                canvasColor={colors.panelVeil}
+                accentColor={colors.blue}
+                headerHeight={l.headerHeight}
+                headerTop={l.headerTop}
+                sidePadding={l.sidePadding}
+                onCloseComplete={onSessionCloseFinished}
+                headerLeft={
+                  <IconControl
+                    icon={X}
+                    label={sessionOpen ? '关闭会话面板' : '重新打开会话面板'}
+                    testID="workspace-session-close"
+                    onPress={sessionOpen ? closeSession : openSession}
+                    disabled={session.deleting || session.resetting}
+                  />
+                }
+                headerCenter={
                   <View style={styles.identity}>
                     <MuseAvatar size={l.headerAvatar} />
                     <View style={[styles.identityLabel, styles.sessionIdentityLabel]}><Text numberOfLines={1} style={styles.identityName}>{name}</Text><StatusPill label={statusLabel} testID="workspace-session-status" tone={!runtime.synchronized ? 'warning' : runtime.running ? 'accent' : 'neutral'} /></View>
                   </View>
-                  <Animated.View style={[styles.headerRight, { opacity: sessionProgress.interpolate({ inputRange: [0, 0.3, 1], outputRange: [0, 0.4, 1] }), transform: [{ translateX: sessionProgress.interpolate({ inputRange: [0, 1], outputRange: [28, 0] }) }] }]}>
-                    <ThemeToggle testID="workspace-session-theme-toggle" />
-                  </Animated.View>
-                </View>
-                <Animated.View style={[styles.sessionContentWrap, { opacity: sessionProgress.interpolate({ inputRange: [0, 0.3, 1], outputRange: [0, 0.5, 1] }), transform: [{ translateY: sessionProgress.interpolate({ inputRange: [0, 1], outputRange: [-42, 0] }) }, { scale: sessionProgress.interpolate({ inputRange: [0, 1], outputRange: [0.93, 1] }) }] }]}>
-                <SessionPanel spaceId={spaces.currentSpace} tab={sessionTab} onTab={(next) => { if (session.resetting || session.deleting) return; setSessionTab(next); setDeleteConfirm(false); }}
-                  onDelete={() => setDeleteConfirm(true)} deleting={session.deleting} resetting={session.resetting} onSettled={refresh}
-                  settings={sessionSettings} /></Animated.View></FrostedSurface>
-              </Animated.View>
-            </Animated.View>}
+                }
+                headerRight={<ThemeToggle testID="workspace-session-theme-toggle" />}
+                renderSurface={(content) => (
+                  <FrostedSurface blurTarget={chatBlurTarget}>
+                    {content}
+                  </FrostedSurface>
+                )}
+              >
+                <SessionPanel spaceId={spaces.currentSpace}
+                  tab={sessionTab}
+                  onTab={(next) => {
+                    if (session.resetting || session.deleting) return;
+                    setSessionTab(next);
+                    setDeleteConfirm(false);
+                  }}
+                  onDelete={() => setDeleteConfirm(true)}
+                  deleting={session.deleting}
+                  resetting={session.resetting}
+                  onSettled={refresh}
+                  settings={sessionSettings}
+                />
+              </AvatarBloomTransition>
+            )}
           </KeyboardAvoidingView>
         </SafeAreaView>
         {drawerOpen && <Pressable accessibilityRole="button" accessibilityLabel="收起空间侧栏" onPress={() => setDrawerOpen(false)} style={styles.foregroundCover} />}

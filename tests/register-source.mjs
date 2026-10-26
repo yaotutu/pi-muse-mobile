@@ -17,6 +17,23 @@ registerHooks({
         shortCircuit: true,
       };
     }
+    if (specifier === 'react-native-reanimated') {
+      return {
+        url: `data:text/javascript,${encodeURIComponent(`
+          export const useSharedValue = (init) => ({ value: init });
+          export const useAnimatedStyle = (fn) => fn();
+          export const withTiming = (toValue, _config, cb) => { if (cb) cb(true); return toValue; };
+          export const withSpring = (toValue, _config, cb) => { if (cb) cb(true); return toValue; };
+          export const interpolate = (_val, _input, output) => output[output.length - 1];
+          export const Extrapolation = { CLAMP: 'clamp', EXTEND: 'extend', IDENTITY: 'identity' };
+          export const runOnJS = (fn) => fn;
+          export const Easing = { bezier: () => (t) => t, out: (fn) => fn, cubic: (t) => t };
+          const Animated = { View: 'View', createAnimatedComponent: (c) => c };
+          export default Animated;
+        `)}`,
+        shortCircuit: true,
+      };
+    }
     if (specifier.startsWith('.') && context.parentURL && sourceRoots.some((root) => context.parentURL.startsWith(root))) {
       const url = new URL(specifier, context.parentURL);
       for (const extension of ['.ts', '.tsx']) {

@@ -55,7 +55,8 @@ test('主题定义、选择器、快捷键与状态栏集中管理，不再散�
   assert.doesNotMatch(panel, /<MuseAvatar|<StatusPill|<Modal/);
   assert.match(screen, /accessibilityElementsHidden=\{sessionMounted\}/);
   assert.match(screen, /pointerEvents=\{sessionMounted \? 'none' : 'auto'\}/);
-  assert.match(screen, /sessionProgress\.interpolate/);
+  assert.match(screen, /<AvatarBloomTransition/);
+  assert.match(read('src/workspace/AvatarBloomTransition.tsx'), /useAnimatedStyle/);
   assert.doesNotMatch(read('src/ui/tokens.ts'), /#[0-9a-f]|workspacePalettes|colors:/i);
 });
 
