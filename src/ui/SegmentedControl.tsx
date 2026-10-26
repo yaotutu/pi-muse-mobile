@@ -8,7 +8,8 @@ import { useReducedMotion } from './use-reduced-motion';
 type Segment<T extends string> = { value: T; label: string; icon: LucideIcon; testID: string };
 
 /** 同层页面选择只接收受控值；业务状态与切页后的清理仍由调用方负责。 */
-export function SegmentedControl<T extends string>({ value, options, onChange, label, disabled = false, busy = false }: {
+export function SegmentedControl<T extends string>({ value, options, onChange, label, disabled = false, busy = false, iconOnly = false }: {
+  iconOnly?: boolean;
   value: T;
   options: readonly Segment<T>[];
   onChange: (value: T) => void;
@@ -46,16 +47,16 @@ export function SegmentedControl<T extends string>({ value, options, onChange, l
   }, [itemWidth, reducedMotion, selectedIndex, translateX]);
 
   const styles = useMemo(() => StyleSheet.create({
-    group: { flexDirection: 'row', alignItems: 'stretch', padding: themeTokens.layout.sessionTabInset, minHeight: themeTokens.layout.sessionTabsHeight,
-      borderRadius: themeTokens.radius.tab, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.floatingLine, backgroundColor: colors.floatingSurface },
+    group: { flexDirection: 'row', alignItems: 'stretch', padding: themeTokens.layout.sessionTabInset, minHeight: iconOnly ? 50 : themeTokens.layout.sessionTabsHeight,
+      borderRadius: themeTokens.radius.round, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.floatingLine, backgroundColor: colors.floatingSurface },
     indicator: { position: 'absolute', left: inset, top: inset, bottom: inset, borderRadius: themeTokens.radius.round, backgroundColor: colors.selected },
-    item: { flex: 1, minWidth: 0, minHeight: themeTokens.layout.smallControl, paddingVertical: themeTokens.layout.tabLabelGap,
+    item: { flex: 1, minWidth: 0, minHeight: themeTokens.layout.smallControl, paddingVertical: iconOnly ? 0 : themeTokens.layout.tabLabelGap,
       alignItems: 'center', justifyContent: 'center', borderRadius: themeTokens.radius.round, gap: themeTokens.layout.tabLabelGap },
     text: { ...themeTokens.typography.navigation, color: colors.faint, textAlign: 'center' },
     selectedText: { color: colors.ink },
     pressed: { opacity: themeTokens.interaction.pressedOpacity },
     disabled: { opacity: themeTokens.interaction.disabledOpacity },
-  }), [colors, inset]);
+  }), [colors, inset, iconOnly]);
 
   // RN View 没有 Web 键盘事件类型；仅 Web 注入，组内按顺序循环，锁定时完全不切换。
   const webKeyProps = Platform.OS === 'web' ? { onKeyDown: (event: { key?: string; preventDefault?: () => void }) => {
@@ -91,8 +92,8 @@ export function SegmentedControl<T extends string>({ value, options, onChange, l
         accessibilityState={{ selected, disabled: locked, busy }} aria-selected={selected}
         disabled={locked} onPress={() => onChange(optionValue)} testID={testID}
         style={({ pressed }) => [styles.item, pressed && styles.pressed, locked && styles.disabled]}>
-        <Icon size={themeTokens.layout.iconSize - themeTokens.layout.tabLabelGap} color={selected ? colors.ink : colors.faint} strokeWidth={selected ? 2 : 1.6} />
-        <Text style={[styles.text, selected && styles.selectedText]}>{optionLabel}</Text>
+        <Icon size={iconOnly ? 21 : themeTokens.layout.iconSize - themeTokens.layout.tabLabelGap} color={selected ? colors.ink : colors.faint} strokeWidth={selected ? 2 : 1.6} />
+        {!iconOnly && <Text style={[styles.text, selected && styles.selectedText]}>{optionLabel}</Text>}
       </Pressable>;
     })}
   </View>;

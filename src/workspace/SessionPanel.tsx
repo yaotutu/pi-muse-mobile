@@ -111,7 +111,7 @@ export function SessionPanel({
     <View style={styles.root} testID="workspace-session-panel">
         <View style={styles.column}>
           <View style={styles.tablistWrap}>
-            <SegmentedControl value={tab} options={TABS} label="会话内容" busy={!!(deleting || resetting)}
+            <SegmentedControl value={tab} options={TABS} label="会话内容" iconOnly busy={!!(deleting || resetting)}
               onChange={(next) => { if (next === 'history') setHistoryActivityId(undefined); onTab(next); }} />
           </View>
 

@@ -89,7 +89,7 @@ export function FilesPanel({ currentSpaceId }: { currentSpaceId: string }) {
       <ChoiceChip label="查看当前空间私有文件" text="当前空间" onPress={() => store.selectSpace(currentSpaceId)} selected={snapshot.scope === 'space' && !wrongSpace} disabled={locked} />
       <ChoiceChip label="查看全部空间共享文件" text="共享文件" onPress={store.selectShared} selected={snapshot.scope === 'shared'} disabled={locked} />
     </View>
-    <Text selectable style={styles.scopeLabel}>当前范围：{scopeLabel}</Text>
+    
     {snapshot.scope === 'shared' && <Text style={styles.warning}>共享文件会影响全部空间，请确认范围后再保存或删除。</Text>}
     {wrongSpace && <Text accessibilityRole="alert" style={styles.warning}>当前全局空间是 {currentSpaceId}；文件草稿仍属于 {snapshot.selectedSpaceId ?? '未选择空间'}。请先保存、取消或完成未明操作核对，文件范围才会切换。</Text>}
     {!!snapshot.error && <Text selectable accessibilityRole="alert" style={styles.error}>{snapshot.error}</Text>}
@@ -163,10 +163,10 @@ export function FilesPanel({ currentSpaceId }: { currentSpaceId: string }) {
       </View>
     </Card> : <>
       <View style={styles.toolbar}>
-        <ActionButton label="返回工作区上级目录" text="上级" icon={ChevronLeft} onPress={store.goUp} disabled={!canNavigate || snapshot.directoryPath === '.'} />
+        {snapshot.directoryPath !== '.' && <ActionButton label="返回工作区上级目录" text="上级" icon={ChevronLeft} onPress={store.goUp} disabled={!canNavigate} />}
         <ActionButton label="新建工作区文本文件" text="新建文本" icon={Plus} onPress={() => { store.beginCreate(); if (snapshot.directoryPath !== '.') store.setDraftPath(`${snapshot.directoryPath}/`); }} disabled={!canWrite} />
       </View>
-      <Text selectable style={styles.path}>目录：{snapshot.directoryPath}</Text>
+      {snapshot.directoryPath !== '.' && <Text selectable style={styles.path}>目录：{snapshot.directoryPath}</Text>}
       {snapshot.loading && <View style={styles.loading}><ActivityIndicator accessibilityLabel="正在读取工作区目录" color={colors.blue} /><Text style={styles.caption}>正在读取目录…</Text></View>}
       {!snapshot.loaded && !snapshot.loading && <Text style={styles.caption}>尚未读取目录。请刷新后重试。</Text>}
       {snapshot.loaded && !snapshot.stale && snapshot.entries.length === 0 && !snapshot.loading && <Text style={styles.caption}>当前目录没有文件或子目录。</Text>}

@@ -60,10 +60,9 @@ export function SpaceSettings({ spaceId, onSaved }: { spaceId: string; onSaved: 
       {!!session.skills.error && <FeedbackNotice text={session.skills.error} tone="danger" />}
       {!!session.skills.notice && <Text style={styles.caption}>{session.skills.notice}</Text>}
       {session.skills.diagnostics.map((diagnostic) => <Text key={`${diagnostic.path}:${diagnostic.message}`} style={styles.caption}>{diagnostic.path}：{diagnostic.message}</Text>)}
-      <View style={styles.row}>
-        <ActionButton label="保存空间技能" tone="primary" disabled={locked || !session.skills.loaded || equalSwitches(session.skills.saved, session.skills.draft)} onPress={() => void saveSkills()} />
-        <ActionButton label="恢复默认技能" disabled={locked || !session.skills.loaded} onPress={() => void saveSkills(true)} />
-      </View>
+      {!equalSwitches(session.skills.saved, session.skills.draft) && <View style={styles.row}>
+        <ActionButton label="保存空间技能" text="保存技能" tone="primary" disabled={locked || !session.skills.loaded} onPress={() => void saveSkills()} />
+      </View>}
     </Card>
   </View>;
 }
