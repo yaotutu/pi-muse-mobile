@@ -1,4 +1,5 @@
 import { normalizeServerAddress } from './server-address';
+import { normalizeBrowserAddress } from './browser-address';
 import type { ConnectionRecord } from './types';
 
 export const CONNECTION_KEY = 'pi-muse-connection';
@@ -14,8 +15,10 @@ function recordFrom(value: unknown): ConnectionRecord {
   const record = value as Record<string, unknown>;
   if (record.token !== undefined && (typeof record.token !== 'string' || !record.token.trim())) throw new Error('连接凭证已损坏，请重新认证');
   if (record.resetPending !== undefined && typeof record.resetPending !== 'boolean') throw new Error('连接清理状态已损坏，请重新配置服务器');
+  if (record.browserUrl !== undefined && typeof record.browserUrl !== 'string') throw new Error('浏览器地址已损坏，请重新配置');
   return {
     serverUrl: normalizeServerAddress(value.serverUrl),
+    ...(record.browserUrl !== undefined ? { browserUrl: normalizeBrowserAddress(record.browserUrl) } : {}),
     ...(record.token !== undefined ? { token: record.token as string } : {}),
     ...(record.resetPending ? { resetPending: true } : {}),
   };

@@ -1,9 +1,9 @@
 import { Card } from '../ui/Surfaces';
-import { BookOpen, Check, ChevronRight, Download, Menu, MessageCircle, Moon, PanelsTopLeft, RotateCcw, Search, Server, Settings, SquareCheck, SquarePen, UserRound, X, type LucideIcon } from 'lucide-react-native';
+import { BookOpen, Check, ChevronRight, Download, ExternalLink, Menu, MessageCircle, Moon, PanelsTopLeft, RotateCcw, Search, Server, Settings, SquareCheck, SquarePen, UserRound, X, type LucideIcon } from 'lucide-react-native';
 import { BlurTargetView } from 'expo-blur';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ThemeStatusBar } from '../theme/ThemeStatusBar';
-import { Animated, BackHandler, Easing, Keyboard, KeyboardAvoidingView, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Animated, BackHandler, Easing, Keyboard, KeyboardAvoidingView, Linking, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ApiProvider } from '../api/ApiProvider';
 import { ConnectionProvider, useServiceConnection } from '../connection/ConnectionProvider';
@@ -97,6 +97,12 @@ function SettingsPage({ snapshot, openConnection, memoryAvailable = false, profi
   const [memoryOpen, setMemoryOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [dreamOpen, setDreamOpen] = useState(false);
+  const [browserOpenError, setBrowserOpenError] = useState<string | undefined>();
+  const openBrowser = useCallback(() => {
+    if (!snapshot.browserUrl) return;
+    setBrowserOpenError(undefined);
+    void Linking.openURL(snapshot.browserUrl).catch(() => setBrowserOpenError('无法打开真实浏览器，请检查地址和系统浏览器。'));
+  }, [snapshot.browserUrl]);
   if (memoryOpen && memoryAvailable) return <ScrollView key="memory" keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}><MemoryPanel onBack={() => setMemoryOpen(false)} /></ScrollView>;
   if (profileOpen && profileAvailable) return <ScrollView key="profile" keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}><ProfilePanel onBack={() => setProfileOpen(false)} /></ScrollView>;
   if (dreamOpen && dreamAvailable && currentSpaceId) return <ScrollView key="dream" keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}><DreamPanel currentSpaceId={currentSpaceId} onBack={() => setDreamOpen(false)} /></ScrollView>;
@@ -104,8 +110,11 @@ function SettingsPage({ snapshot, openConnection, memoryAvailable = false, profi
     <View style={styles.appSection}><Text accessibilityRole="header" style={styles.appSectionTitle}>连接与设备</Text>
       <View style={styles.appSettingsGroup}>
         <SettingRow title="服务器连接" label="服务器连接" description={connectionLabel(snapshot)} address={snapshot.serverUrl ?? undefined} icon={Server} onPress={openConnection} />
+        <SettingRow title="真实浏览器" label="打开真实浏览器" description={snapshot.browserUrl ? '通过系统浏览器打开 noVNC' : '未配置，请在服务器连接中填写地址'}
+          address={snapshot.browserUrl} icon={ExternalLink} onPress={openBrowser} disabled={!snapshot.browserUrl} testID="workspace-open-browser" />
         {update && <SettingRow title="应用更新" label="应用更新" description={update.snapshot.status === 'unsupported' ? '当前环境不支持自动安装' : '检查版本、下载与安装进度'} icon={Download} onPress={update.open} />}
       </View>
+      {!!browserOpenError && <Text accessibilityRole="alert" style={styles.error}>{browserOpenError}</Text>}
     </View>
     <View style={styles.appSection}><Text accessibilityRole="header" style={styles.appSectionTitle}>助手与个人资料</Text>
       <View style={styles.appSettingsGroup}><SettingRow title="助手与用户资料" label="打开助手与用户资料" description={profileAvailable ? '名字、语气、人设与用户资料' : '连接真实服务后可用'} icon={UserRound} onPress={() => setProfileOpen(true)} disabled={!profileAvailable} /></View>
