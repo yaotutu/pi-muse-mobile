@@ -12,7 +12,7 @@ export const darkTheme = {
     control: '#2D3031',
     floatingSurface: 'rgba(39,42,43,0.94)',
     floatingLine: 'rgba(210,220,217,0.13)',
-    panelVeil: 'rgba(8,9,9,0.82)',
+    panelVeil: '#080909',
     selected: '#383C3D',
     ink: '#F4F5F3',
     muted: '#AAAEAE',

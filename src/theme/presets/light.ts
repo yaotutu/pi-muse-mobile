@@ -12,7 +12,7 @@ export const lightTheme = {
     control: '#E1E4DF',
     floatingSurface: 'rgba(241,243,238,0.94)',
     floatingLine: 'rgba(79,103,84,0.17)',
-    panelVeil: 'rgba(250,250,247,0.83)',
+    panelVeil: '#FAFAF7',
     selected: '#D1D7D0',
     ink: '#1E2824',
     muted: '#58665E',

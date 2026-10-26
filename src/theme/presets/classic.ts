@@ -12,7 +12,7 @@ export const classicTheme = {
     control: '#E9EBEF',
     floatingSurface: 'rgba(247,248,250,0.94)',
     floatingLine: 'rgba(90,105,120,0.16)',
-    panelVeil: 'rgba(255,255,255,0.83)',
+    panelVeil: '#FFFFFF',
     selected: '#DDE1E7',
     ink: '#172027',
     muted: '#606A74',

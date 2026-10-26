@@ -180,7 +180,8 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
   const { colors } = useTheme(); const styles = useStyles();
   const { width, height } = useWindowDimensions(); const contentWidth = Math.min(width, l.maxWidth);
   const avatarCenterY = l.headerTop + l.headerAvatar / 2;
-  const initialTranslateY = Math.round(0.85 * (avatarCenterY - height / 2));
+  const bloomRadius = 50;
+  const targetScale = Math.max(25, Math.ceil((Math.hypot(contentWidth / 2, height - avatarCenterY) / bloomRadius) * 1.08));
   const drawerWidth = Math.min(contentWidth * l.drawerRatio, l.drawerMaxWidth);
   const [drawerProgress] = useState(() => new Animated.Value(0));
   const statusLabel = snapshot.status === 'authentication-required' || snapshot.status === 'reset-error' || snapshot.status === 'storage-error'
@@ -211,7 +212,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
     if (!sessionMounted) return;
     // 中途反向时从当前值继续；遮罩直到关闭动画结束都占据触控与读屏层。
     const animation = Animated.timing(sessionProgress, { toValue: sessionOpen ? 1 : 0,
-      duration: reducedMotion ? 0 : workspaceTheme.motion.sessionDuration,
+      duration: reducedMotion ? 0 : (sessionOpen ? 340 : 260),
       easing: Easing.out(Easing.cubic), useNativeDriver: true });
     animation.start(({ finished }) => { if (finished && !sessionOpen) setSessionMounted(false); });
     return () => animation.stop();
@@ -324,24 +325,54 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
               </BlurTargetView>
             </View>
             {sessionMounted && <Animated.View style={[styles.sessionLayer, {
-              opacity: sessionProgress,
-              transform: [
-                { translateY: sessionProgress.interpolate({ inputRange: [0, 1], outputRange: [initialTranslateY, 0] }) },
-                { scale: sessionProgress.interpolate({ inputRange: [0, 1], outputRange: [0.15, 1] }) },
-              ],
             }]} testID="workspace-session-modal">
+              {/* 从虚拟形象向外扩散的波纹光环 */}
+              <Animated.View
+                pointerEvents="none"
+                style={[
+                  styles.bloomCircle,
+                  styles.bloomRing,
+                  {
+                    left: Math.round(contentWidth / 2 - bloomRadius),
+                    top: Math.round(avatarCenterY - bloomRadius),
+                    borderColor: colors.blue,
+                    opacity: sessionProgress.interpolate({ inputRange: [0, 0.2, 0.8, 1], outputRange: [0, 0.6, 0.2, 0] }),
+                    transform: [{ scale: sessionProgress.interpolate({ inputRange: [0, 1], outputRange: [0.8, targetScale * 1.05] }) }],
+                  },
+                ]}
+              />
+              {/* 从虚拟形象向外扩散的页面背景底色圆盘 */}
+              <Animated.View
+                pointerEvents="none"
+                style={[
+                  styles.bloomCircle,
+                  {
+                    left: Math.round(contentWidth / 2 - bloomRadius),
+                    top: Math.round(avatarCenterY - bloomRadius),
+                    backgroundColor: colors.panelVeil,
+                    transform: [{ scale: sessionProgress.interpolate({ inputRange: [0, 1], outputRange: [0.8, targetScale] }) }],
+                  },
+                ]}
+              />
+              <Animated.View style={[styles.frostedWrap, { opacity: sessionProgress }]}>
               <FrostedSurface blurTarget={chatBlurTarget}>
                 <View style={styles.sessionHeader}>
-                  <View style={styles.headerLeft}><IconControl icon={X} label={sessionOpen ? '关闭会话面板' : '重新打开会话面板'} testID="workspace-session-close" onPress={sessionOpen ? closeSession : openSession} disabled={session.deleting || session.resetting} /></View>
+                  <Animated.View style={[styles.headerLeft, { opacity: sessionProgress.interpolate({ inputRange: [0, 0.3, 1], outputRange: [0, 0.4, 1] }), transform: [{ translateX: sessionProgress.interpolate({ inputRange: [0, 1], outputRange: [-28, 0] }) }] }]}>
+                    <IconControl icon={X} label={sessionOpen ? '关闭会话面板' : '重新打开会话面板'} testID="workspace-session-close" onPress={sessionOpen ? closeSession : openSession} disabled={session.deleting || session.resetting} />
+                  </Animated.View>
                   <View style={styles.identity}>
                     <MuseAvatar size={l.headerAvatar} />
                     <View style={[styles.identityLabel, styles.sessionIdentityLabel]}><Text numberOfLines={1} style={styles.identityName}>{name}</Text><StatusPill label={statusLabel} testID="workspace-session-status" tone={!runtime.synchronized ? 'warning' : runtime.running ? 'accent' : 'neutral'} /></View>
                   </View>
-                  <View style={styles.headerRight}><ThemeToggle testID="workspace-session-theme-toggle" /></View>
+                  <Animated.View style={[styles.headerRight, { opacity: sessionProgress.interpolate({ inputRange: [0, 0.3, 1], outputRange: [0, 0.4, 1] }), transform: [{ translateX: sessionProgress.interpolate({ inputRange: [0, 1], outputRange: [28, 0] }) }] }]}>
+                    <ThemeToggle testID="workspace-session-theme-toggle" />
+                  </Animated.View>
                 </View>
+                <Animated.View style={[styles.sessionContentWrap, { opacity: sessionProgress.interpolate({ inputRange: [0, 0.3, 1], outputRange: [0, 0.5, 1] }), transform: [{ translateY: sessionProgress.interpolate({ inputRange: [0, 1], outputRange: [-42, 0] }) }, { scale: sessionProgress.interpolate({ inputRange: [0, 1], outputRange: [0.93, 1] }) }] }]}>
                 <SessionPanel spaceId={spaces.currentSpace} tab={sessionTab} onTab={(next) => { if (session.resetting || session.deleting) return; setSessionTab(next); setDeleteConfirm(false); }}
                   onDelete={() => setDeleteConfirm(true)} deleting={session.deleting} resetting={session.resetting} onSettled={refresh}
-                  settings={sessionSettings} /></FrostedSurface>
+                  settings={sessionSettings} /></Animated.View></FrostedSurface>
+              </Animated.View>
             </Animated.View>}
           </KeyboardAvoidingView>
         </SafeAreaView>
@@ -361,7 +392,12 @@ const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: c.canvas }, viewport: { flex: 1, alignSelf: 'center', overflow: 'hidden', backgroundColor: c.canvas }, screen: { flex: 1 },
   foreground: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: c.canvas, overflow: 'hidden' }, foregroundRounded: { borderRadius: r.drawerForeground }, foregroundCover: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: c.overlay },
   chatHeader: { height: l.headerHeight, flexShrink: 0, marginTop: l.headerTop, marginHorizontal: l.sidePadding }, chatHeaderCompact: { height: l.controlSize }, headerLeft: { position: 'absolute', top: 0, left: 0 }, headerRight: { position: 'absolute', top: 0, right: 0, flexDirection: 'row', gap: spacing[4] },
-  bodyStage: { flex: 1 }, sessionLayer: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
+  bodyStage: { flex: 1 },
+  sessionLayer: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden' },
+  frostedWrap: { flex: 1 },
+  sessionContentWrap: { flex: 1 },
+  bloomCircle: { position: 'absolute', width: 100, height: 100, borderRadius: 50 },
+  bloomRing: { borderWidth: 3, backgroundColor: 'transparent' },
   sessionHeader: { height: l.headerHeight, flexShrink: 0, marginTop: l.headerTop, marginHorizontal: l.sidePadding },
   sessionIdentityLabel: { maxWidth: l.identityMaxWidth },
   pressed: { opacity: workspaceTheme.interaction.pressedOpacity },
