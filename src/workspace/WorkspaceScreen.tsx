@@ -327,7 +327,6 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
                 bloomRadius={bloomRadius}
                 targetScale={targetScale}
                 canvasColor={colors.panelVeil}
-                accentColor={colors.blue}
                 headerHeight={l.headerHeight}
                 headerTop={l.headerTop}
                 sidePadding={l.sidePadding}
