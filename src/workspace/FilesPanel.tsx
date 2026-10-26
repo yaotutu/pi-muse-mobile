@@ -1,7 +1,7 @@
 import { Card } from '../ui/Surfaces';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Image as RNImage, Keyboard, Pressable, StyleSheet, Text, View } from 'react-native';
-import { ChevronLeft, Download, File, Folder, Plus, RefreshCw } from 'lucide-react-native';
+import { ChevronLeft, Download, File, Folder, Plus } from 'lucide-react-native';
 import { MAX_WORKSPACE_TEXT_BYTES, utf8ByteLength } from '../files/contracts';
 import { useFiles } from '../files/FilesProvider';
 import { saveWorkspaceFileToDevice, type NativeDownloadResult } from '../files/native-download';
@@ -83,8 +83,7 @@ export function FilesPanel({ currentSpaceId }: { currentSpaceId: string }) {
 
   return <View style={styles.root} testID="workspace-files-panel">
     <View style={styles.heading}>
-      <View style={styles.flexText}><Text accessibilityRole="header" style={styles.title}>工作区文件</Text><Text style={styles.caption}>浏览服务端真实文件；写入前会展示全文供你确认。</Text></View>
-      <ActionButton label="刷新工作区当前目录" text="刷新" icon={RefreshCw} onPress={() => void store.refresh()} disabled={snapshot.loading || snapshot.writing !== false} />
+      <Text accessibilityRole="header" style={styles.title}>工作区文件</Text>
     </View>
     <View style={styles.scopeChoices}>
       <ChoiceChip label="查看当前空间私有文件" text="当前空间" onPress={() => store.selectSpace(currentSpaceId)} selected={snapshot.scope === 'space' && !wrongSpace} disabled={locked} />

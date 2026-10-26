@@ -7,7 +7,6 @@ import { useSpaceState, useSpaceStore } from '../spaces/SpaceProvider';
 import { INSTRUCTIONS_LIMIT, equalSwitches } from '../spaces/space-store';
 import { workspaceTheme, spacing } from '../ui/tokens';
 import { useTheme } from '../theme/ThemeProvider';
-import { SectionHeading } from './primitives';
 import { ActionButton } from '../ui/ActionButton';
 import { FormInput } from '../ui/FormInput';
 
@@ -36,7 +35,6 @@ export function SpaceSettings({ spaceId, onSaved }: { spaceId: string; onSaved: 
   const saveInstructions = async () => { if (await store.saveInstructions(spaceId)) onSaved(); };
   const saveSkills = async (defaults = false) => { if (await store.saveSkills(spaceId, defaults)) onSaved(); };
   return <View>
-    <SectionHeading title="让这个空间，更懂你" eyebrow="MAKE IT YOURS" description="规则与技能只作用于当前空间，其他空间不受影响。" />
     <Card style={styles.card}>
       <View style={styles.iconHeading}><FileText size={workspaceTheme.layout.iconSize - spacing[4]} strokeWidth={1.6} color={colors.muted} /><Text style={styles.section}>空间规则</Text></View>
       <Text style={styles.caption}>保存后在下一轮生效；关闭面板会保留本次连接内的草稿。</Text>

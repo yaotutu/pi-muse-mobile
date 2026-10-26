@@ -10,7 +10,7 @@ import type { ApprovalDecision, ApprovalFilter, ApprovalRecord, SettledApprovalS
 import { spacing, workspaceTheme, type WorkspaceColors } from '../ui/tokens';
 import { useTheme } from '../theme/ThemeProvider';
 import { useRuntimeStore } from '../runtime/RuntimeProvider';
-import { EmptyState, SectionHeading, StatusPill, type StatusTone } from './primitives';
+import { EmptyState, StatusPill, type StatusTone } from './primitives';
 import { ActionButton } from '../ui/ActionButton';
 import { ChoiceChip } from '../ui/ChoiceChip';
 
@@ -56,7 +56,6 @@ export function ApprovalPanel({ spaceId, defaultScope = 'space' }: { spaceId: st
   };
 
   return <View style={styles.root} testID="approval-panel">
-    <SectionHeading title="每一次授权，都由你决定" eyebrow="YOUR PERMISSION" description="批准仅授权这一次文件操作；是否写入成功，以执行回执为准。" />
     {!snapshot.synchronized && <Card style={styles.card}>
       <Text accessibilityRole="alert" style={styles.body}>审批状态待同步，暂时不能提交决定。</Text>
       <Text style={styles.caption}>以下是最后观测内容，不代表授权仍然有效。</Text>
@@ -100,24 +99,51 @@ export function ApprovalPanel({ spaceId, defaultScope = 'space' }: { spaceId: st
           <ChoiceChip label="当前空间" selected={scope === 'space'} onPress={() => setScope('space')} />
         </View>
       )}
-      <View style={styles.row}>
-        <ChoiceChip label={`待审批 (${pending.length})`} selected={mode === 'pending'} onPress={() => setMode('pending')} />
-        <ChoiceChip label="审批历史" selected={mode === 'history'} onPress={() => setMode('history')} />
-      </View>
       {mode === 'pending' ? <>
-        
         {!!snapshot.error && <FeedbackNotice text={snapshot.error} tone="danger" />}
-        {!pending.length && <EmptyState icon={ShieldCheck} title={snapshot.synchronized ? '没有待处理的审批' : '审批状态同步中'} description={snapshot.synchronized ? '当前范围没有待审批项。需要你的授权时，会在这里显示完整的操作预览。' : '正在等待服务端的完整待审批集合，暂时不能作决定。'} />}
+        {!pending.length && (
+          <View style={styles.emptyWrap}>
+            <EmptyState
+              compact
+              icon={ShieldCheck}
+              title={snapshot.synchronized ? '没有待处理的审批' : '审批状态同步中'}
+              description={snapshot.synchronized ? '当前范围没有待审批项；模型发起文件修改时会在此显示预览。' : '正在同步待审批集合，暂时不能作决定。'}
+            />
+            <View style={styles.centerAction}>
+              <ActionButton label="查看审批历史" text="查看审批历史" onPress={() => setMode('history')} />
+            </View>
+          </View>
+        )}
         {pending.map((item) => <ApprovalRow key={item.id} record={item} onOpen={() => setSelectedId(item.id)} />)}
+        {!!pending.length && <ActionButton label="查看审批历史" text="查看审批历史" onPress={() => setMode('history')} />}
       </> : <>
-        <View style={styles.row}>{HISTORY_STATUSES.map((item) => <ChoiceChip key={item.value ?? 'all'} label={item.label} selected={status === item.value} onPress={() => setStatus(item.value)} />)}</View>
-        
-        {snapshot.history.dirty && <Text style={styles.caption}>历史有更新，刷新可读取最新列表；不把待审批混入历史。</Text>}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="返回待审批"
+          onPress={() => setMode('pending')}
+          style={({ pressed }) => [styles.backRow, pressed && styles.pressed]}
+        >
+          <ArrowLeft size={18} color={colors.ink} />
+          <Text style={styles.backText}>返回待审批</Text>
+        </Pressable>
+
+        {history.length > 0 && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
+            {HISTORY_STATUSES.map((item) => (
+              <ChoiceChip key={item.value ?? 'all'} label={item.label} selected={status === item.value} onPress={() => setStatus(item.value)} />
+            ))}
+          </ScrollView>
+        )}
+
         {snapshot.history.loading && <ActivityIndicator accessibilityLabel="正在读取审批历史" color={colors.muted} />}
         {historyMatches && !!snapshot.history.error && <FeedbackNotice text={snapshot.history.error} tone="danger" />}
-        {historyMatches && snapshot.history.loaded && !history.length && !snapshot.history.error && <EmptyState icon={ShieldCheck} title="当前范围没有审批历史" description="已结束的授权记录与独立执行回执会保留在这里。" />}
+        {historyMatches && snapshot.history.loaded && !history.length && !snapshot.history.error && (
+          <EmptyState compact icon={ShieldCheck} title="当前范围没有审批历史" description="已结束的授权记录与独立执行回执会保留在这里。" />
+        )}
         {history.map((item) => <ApprovalRow key={item.id} record={item} onOpen={() => setSelectedId(item.id)} />)}
-        {historyMatches && snapshot.history.hasMore && <ActionButton label="加载更多审批历史" disabled={snapshot.history.loading} onPress={() => void store.loadHistory(filter, true)} />}
+        {historyMatches && snapshot.history.hasMore && (
+          <ActionButton label="加载更多审批历史" text="加载更多" disabled={snapshot.history.loading} onPress={() => void store.loadHistory(filter, true)} />
+        )}
       </>}
     </>}
   </View>;
@@ -168,6 +194,8 @@ const createStyles = (colors: WorkspaceColors) => StyleSheet.create({
   caption: { ...workspaceTheme.typography.caption, color: colors.faint },
   backRow: { flexDirection: "row", alignItems: "center", gap: spacing[8], paddingVertical: spacing[6] },
   backText: { fontSize: 15, fontWeight: "500", color: colors.ink },
+  emptyWrap: { gap: spacing[16], alignItems: "center" },
+  centerAction: { alignSelf: "center" },
 
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing[8], alignItems: 'center' },
   card: { borderRadius: workspaceTheme.radius.card, backgroundColor: colors.surface, padding: spacing[20], gap: spacing[12] },
