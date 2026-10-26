@@ -112,7 +112,7 @@ iOS 构建、OTA 自动更新、Play Store 自动上架。后期接 OTA 时再�
 更新模块 `src/update/` 由 `src/app/AppRoot.tsx` 根级持有，独立于服务端鉴权与 `EXPO_PUBLIC_API_BASE_URL`，不读、不缓存、不上报用户服务地址。
 
 - 检测源：公开 GitHub `yaotutu/pi-muse-mobile` 的 `releases/latest`，仅识别稳定正式 `app-release.apk`；预发布 / draft / 其它 asset 不纳入。
-- 触发时机：冷启动及 Android 前台按一小时间隔检查，回到前台超过间隔也检查。手动入口：新版应用页「应用更新」；旧连接页已删除，不再作为入口。
+- 触发时机：冷启动及 Android 前台按一小时间隔检查，回到前台超过间隔也检查。手动入口：新版设置页「应用更新」；旧连接页已删除，不再作为入口。
 - 下载 / 安装：发现新版自动下载，进度可收起继续使用应用，完成后自动唤起系统安装器；不提供额外下载确认 / 应用层 checksum / 校验页；系统签名校验、未知来源授权、最终安装确认必须保留（不静默安装）；本次会话取消安装后留包可继续安装，系统清理缓存后需重下；下载可取消、失败可重试。
 - 进程与流量：OS 杀后台后下载不保证继续，仅前台唤起安装；下载消耗用户网络流量。
 - 平台边界：仅 Android 独立包生效，Expo Go / Web / iOS 不支持 APK 安装，**不等同于 Expo OTA**。
@@ -150,7 +150,7 @@ npx expo install --fix      # fix incompatible package versions
 
 ## Navigation & Routing
 
-- **本项目不使用 Expo Router / react-navigation**：4 个主 tab 用状态机切换（`chat | activity | goals | apps`）；左侧会话入口只负责切换/新建，以揭示式侧栏推动聊天前景右移。点击会话信息区在同一根层展开全屏面板，头像、名称、状态原位持续挂载，聊天保持挂载但屏蔽触控和读屏；内部动态/审批/工作区/历史 Tab 同层切换，不用独立 Modal、底部 Sheet 或树形导航。
+- **本项目不使用 Expo Router / react-navigation**：4 个主 tab 用状态机切换（`chat | activity | goals | settings`）；左侧会话入口只负责切换/新建，以揭示式侧栏推动聊天前景右移。点击会话信息区在同一根层展开全屏面板，头像、名称、状态原位持续挂载，聊天保持挂载但屏蔽触控和读屏；内部动态/审批/工作区/历史 Tab 同层切换，不用独立 Modal、底部 Sheet 或树形导航。
 - `src/app/` 只组装 Provider 与唯一 `WorkspaceScreen`；新版页面、主题和示例数据在 `src/workspace/`。旧 `AppShell`、旧 Screen/Sheet 与产品演示分支已删除，禁止再恢复双界面入口。`ui/Sheet` 当前仅供独立应用更新使用。
 
 ## Building with EAS

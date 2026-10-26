@@ -212,7 +212,7 @@ def restore():
         sh('shell', 'wm', 'density', saved_density.group(1) if saved_density else 'reset')
     time.sleep(1)
     launch()
-    tap_top('应用')
+    tap_top('设置')
     choose_theme('classic')
     tap_top('聊天')
     select_space('主空间', 'main')
@@ -340,7 +340,7 @@ try:
 
     begin('three themes section captures')
     for theme in ('classic', 'light', 'dark'):
-        tap_top('应用')
+        tap_top('设置')
         choose_theme(theme)
         capture_sections(theme)
     passed('three themes captured activity/job/monitor sections from top')

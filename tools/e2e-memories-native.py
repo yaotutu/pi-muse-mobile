@@ -170,7 +170,7 @@ try:
         sh('shell', 'input', 'swipe', str((x1+x2)//2), str((y1+y2)//2), str(int(width*.96)), str(int(height*.65)), '1000')
     if find('切换到亮色主题') is not None:
         tap('切换到亮色主题')
-    tap('应用')
+    tap('设置')
     seek(context['base'])
     tap('打开长期记忆', scroll=True)
     seek('所有空间共用')
@@ -216,7 +216,7 @@ try:
     tap('新增记忆', scroll=True, down=True)
     draft = context['marker']+' unsent-draft'
     enter('记忆内容', draft)
-    tap('返回应用设置', scroll=True, down=True)
+    tap('返回设置', scroll=True, down=True)
     tap('打开长期记忆', scroll=True)
     seek(draft, scroll=True)
     passed('leaving and reopening retains an unsent draft without creating a record')
@@ -250,7 +250,7 @@ try:
     screenshot('deleted-light')
     signal('deleted')
     phase('done')
-    tap('返回应用设置', scroll=True, down=True)
+    tap('返回设置', scroll=True, down=True)
     tap('聊天')
     pid = sh('shell', 'pidof', 'host.exp.exponent').decode().strip().split()[0]
     logs = sh('logcat', '-d', '--pid='+pid, 'ReactNativeJS:E', 'AndroidRuntime:E', '*:S').decode()

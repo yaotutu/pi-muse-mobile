@@ -24,7 +24,7 @@ def sh(*args):
 def refresh():
     global tree
     for _ in range(4):
-        result = sh('shell', 'uiautomator', 'dump', '/sdcard/spaces-e2e.xml')
+        result = sh('shell', 'uiautomator', 'dump', '--compressed', '/sdcard/spaces-e2e.xml')
         # 冷启动可能返回 null root 且退出码为 0；拒绝读取上一次残留的界面树。
         if b'dumped to' in result:
             tree = ET.fromstring(sh('exec-out', 'cat', '/sdcard/spaces-e2e.xml'))
@@ -74,7 +74,7 @@ def tap(label, scroll=False):
             time.sleep(.4)
             return
         if scroll:
-            sh('shell', 'input', 'swipe', str(int(width*.9)), str(int(height*.85)), str(int(width*.9)), str(int(height*.38)), '350')
+            sh('shell', 'input', 'swipe', str(int(width*.5)), str(int(height*.75)), str(int(width*.5)), str(int(height*.35)), '800')
         else:
             time.sleep(.5)
     raise AssertionError('Missing enabled native control: ' + label)
@@ -111,6 +111,7 @@ def select_space():
 
     tap('打开空间侧栏')
     tap(context['spaceId'], scroll=True)
+    time.sleep(.4)
     refresh()
     # 目标空间已处于选中态时，点击行本身不会关闭侧栏；显式关闭再核对身份。
     if find('关闭空间侧栏') is not None:
@@ -121,9 +122,11 @@ def select_space():
 
 
 def reset_dialog():
-    tap('打开当前会话面板')
-    tap('重置当前会话')
+    tap('设置')
+    tap('重置当前会话', scroll=True)
     wait(lambda: '重置当前会话？' in text(), 'confirmation text')
+    assert find('聊天') is None, 'reset confirmation did not isolate the underlying settings navigation'
+    assert context['spaceId'] in text(), 'reset confirmation did not identify its target space'
     assert '空间规则、技能开关与已保存的工作区文件都会保留' in text()
     assert find('同时清理定时任务与网页监控').get('checked') == 'false'
 
@@ -161,7 +164,7 @@ try:
         tap('workspace-connection-save', scroll=True)
         # 保存成功会自动关闭连接面板，不能再按其旧关闭按钮。
         wait(lambda: find('打开空间侧栏') is not None, 'connection saved and panel closed')
-    tap('应用')
+    tap('设置')
     wait(lambda: context['base'] in text(), 'the exact confirmed real server')
     tap('聊天')
     select_space()
@@ -184,10 +187,12 @@ try:
 
     reset_dialog()
     screenshot('reset-confirm-default')
+    sh('shell', 'input', 'keyevent', 'KEYCODE_BACK')
+    wait(lambda: find('设置') is not None and find('确认重置会话') is None, 'system Back cancels reset confirmation')
+    reset_dialog()
     tap('取消重置会话')
     flag('native-cancelled')
     wait(lambda: (root / 'api-cancel-verified').exists(), 'cancel has no server side effect')
-    tap('关闭会话面板')
     reset_dialog()
     tap('确认重置会话')
     wait(lambda: find('打开空间侧栏') is not None and find('conversation-empty') is not None, 'reset returns to a genuinely empty chat')

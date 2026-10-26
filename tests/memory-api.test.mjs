@@ -82,7 +82,7 @@ test('取消记忆读取和写入只中断本地消费，迟到响应不触发 S
     assert.equal(requests.length, 1); assert.ok(requests[0].startsWith('https://real.example/api/memories'));
   }
 });
-test('应用页真实挂载记忆入口，不用工作区快照、模拟数据或新通知流', () => {
+test('设置页真实挂载记忆入口，不用工作区快照、模拟数据或新通知流', () => {
   const panel = readFileSync(new URL('../src/workspace/MemoryPanel.tsx', import.meta.url), 'utf8');
   const screen = readFileSync(new URL('../src/workspace/WorkspaceScreen.tsx', import.meta.url), 'utf8');
   const store = readFileSync(new URL('../src/memories/memory-store.ts', import.meta.url), 'utf8');

@@ -39,7 +39,7 @@ export function ProfilePanel({ onBack }: { onBack: () => void }) {
 
   return <View style={styles.root} testID="profile-panel">
     <View style={styles.topRow}>
-      <ActionButton label="返回应用设置" text="返回应用" onPress={onBack} icon={ArrowLeft} />
+      <ActionButton label="返回设置" text="返回设置" onPress={onBack} icon={ArrowLeft} />
       <ActionButton label="刷新助手与用户资料" text="刷新" onPress={() => void store.refresh()} disabled={snapshot.loading || !!snapshot.writing} icon={RefreshCw} />
     </View>
     <View style={styles.heading}>

@@ -13,7 +13,6 @@ import {
   List,
   Monitor,
   ShieldCheck,
-  RotateCcw,
 } from 'lucide-react-native';
 
 import { workspaceTheme, spacing, type WorkspaceColors } from '../ui/tokens';
@@ -23,7 +22,6 @@ import { FilesPanel } from './FilesPanel';
 import { ApprovalPanel } from './ApprovalPanel';
 import { ActivityPanel } from './ActivityPanel';
 import { MAIN_SPACE } from '../spaces/space-state';
-import { IconControl } from '../ui/IconControl';
 import { SegmentedControl } from '../ui/SegmentedControl';
 
 export type SessionTab = 'activity' | 'approvals' | 'workspace' | 'history';
@@ -40,7 +38,6 @@ export interface SessionPanelProps {
   tab: SessionTab;
   onTab: (tab: SessionTab) => void;
   onDelete?: () => void;
-  onReset?: () => void;
   onSettled?: () => void;
   settings?: ReactNode;
   deleting?: boolean;
@@ -69,7 +66,6 @@ function createStyles(colors: WorkspaceColors) {
       paddingHorizontal: workspaceTheme.layout.sidePadding,
       marginBottom: workspaceTheme.layout.sessionPanelTabsBottom,
     },
-    actionRow: { minHeight: workspaceTheme.layout.smallControl, alignItems: 'flex-end', paddingHorizontal: workspaceTheme.layout.sidePadding, marginBottom: spacing[8] },
     scroll: {
       flex: 1,
     },
@@ -102,7 +98,6 @@ export function SessionPanel({
   tab,
   onTab,
   onDelete,
-  onReset,
   onSettled,
   settings,
   deleting,
@@ -115,8 +110,6 @@ export function SessionPanel({
   return (
     <View style={styles.root} testID="workspace-session-panel">
         <View style={styles.column}>
-          <View style={styles.actionRow}>{onReset && <IconControl icon={RotateCcw} label="重置当前会话" testID="workspace-reset-conversation"
-            onPress={onReset} disabled={deleting} busy={resetting} small />}</View>
           <View style={styles.tablistWrap}>
             <SegmentedControl value={tab} options={TABS} label="会话内容" busy={!!(deleting || resetting)}
               onChange={(next) => { if (next === 'history') setHistoryActivityId(undefined); onTab(next); }} />
@@ -139,7 +132,7 @@ export function SessionPanel({
                 accessibilityState={{ disabled: !!(deleting || resetting), busy: !!deleting }}
                 disabled={deleting || resetting} onPress={onDelete} style={styles.card}>
                 <Text style={[styles.rowTitle, { color: colors.danger }]}>{deleting ? '正在删除空间…' : '删除当前空间'}</Text>
-                <Text style={styles.rowDetail}>彻底删除空间的历史、工作区文件、规则、技能及绑定任务，不可恢复；仅翻篇请使用重置会话。</Text>
+                <Text style={styles.rowDetail}>彻底删除空间的历史、工作区文件、规则、技能及绑定任务，不可恢复；仅需开启新对话时请到设置页重置会话。</Text>
               </Pressable>}
             </>}
             {tab === 'history' && <ActivityPanel key={spaceId} spaceId={spaceId} initialActivityId={historyActivityId} showHeading />}

@@ -197,7 +197,7 @@ try:
         tap('关闭空间侧栏')
     if find('切换到亮色主题') is not None:
         tap('切换到亮色主题')
-    tap('应用')
+    tap('设置')
     seek(context['base'])
     passed('native application is configured for the exact confirmed real service')
     tap('聊天')

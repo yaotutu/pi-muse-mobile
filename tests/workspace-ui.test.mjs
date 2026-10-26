@@ -106,7 +106,7 @@ test('会话面板采样持续挂载的聊天层，关闭期间继续隔离底�
   assert.doesNotMatch(surface, /backgroundColor:\s*colors\.canvas/);
   assert.doesNotMatch(panel, /backgroundColor:\s*colors\.canvas|<Modal/);
   assert.match(screen, /if \(finished && !sessionOpen\) setSessionMounted\(false\)/);
-  assert.match(screen, /setResetConfirm\(false\); setDeleteConfirm\(false\); setClearSchedules\(false\)/);
+  assert.match(screen, /setSessionOpen\(false\); setDeleteConfirm\(false\)/);
   assert.match(screen, /testID="workspace-session-status"/);
 });
 
@@ -157,22 +157,22 @@ test('共享分段仅用一块底板位移，初次和尺寸变化直定位，�
   assert.match(tokens, /segmentDuration: 200/);
 });
 
-test('会话文字操作共用点击区与状态，危险操作仍经过原确认', () => {
+test('会话文字操作共用点击区与状态，重置由独立确认承载', () => {
   const button = read('src/ui/ActionButton.tsx');
   const execution = read('src/workspace/CurrentExecution.tsx');
   const screen = read('src/workspace/WorkspaceScreen.tsx');
+  const dialog = read('src/workspace/ResetSessionDialog.tsx');
   for (const label of ['重新同步运行状态', '查看待审批', '查看关联活动', '查看活动历史', '状态说明']) {
     assert.match(execution, new RegExp(`<ActionButton label="${label}"`));
   }
-  for (const label of ['确认重置会话', '取消重置会话', '确认删除空间', '取消删除空间']) {
-    assert.match(screen, new RegExp(`<ActionButton label="${label}"`));
-  }
+  for (const label of ['确认重置会话', '取消重置会话']) assert.match(dialog, new RegExp(`<ActionButton label="${label}"`));
+  for (const label of ['确认删除空间', '取消删除空间']) assert.match(screen, new RegExp(`<ActionButton label="${label}"`));
   assert.match(button, /minHeight: themeTokens\.layout\.smallControl/);
   assert.match(button, /maxWidth: '100%'/);
   assert.match(button, /minWidth: 0, flexShrink: 1/);
   assert.match(button, /accessibilityState=\{\{ disabled: locked, busy, .*expanded/);
   assert.match(screen, /tone="danger" busy=\{session\.deleting\}/);
-  assert.match(screen, /session\.resetUncertain \|\| !connection\?\.enabled \|\| sessions\.hasSettingsWrite/);
+  assert.match(dialog, /!available \|\| session\.resetUncertain \|\| !sessions\.canWrite\(spaceId\) \|\| sessions\.hasSettingsWrite\(spaceId\)/);
   assert.match(screen, /deleteConfirm \? <Card style=\{styles\.exampleCard\} tone="danger">/);
   assert.match(screen, /confirmActions: \{ flexDirection: 'row', flexWrap: 'wrap'/);
   assert.doesNotMatch(execution, /styles\.button|styles\.buttonText/);
@@ -202,7 +202,7 @@ test('侧栏只切换或创建空间，不复制参考产品的功能导航；�
   assert.match(source, /accessibilityLabel="搜索空间"/);
   assert.match(source, /no-hide-descendants/);
   assert.doesNotMatch(source, /label: '点子'|label: '资源库'|label: '旁聊'/);
-  for (const page of ['chat', 'activity', 'goals', 'apps']) assert.match(source, new RegExp(`id: '${page}'`));
+  for (const page of ['chat', 'activity', 'goals', 'settings']) assert.match(source, new RegExp(`id: '${page}'`));
 });
 
 test('四个主页面始终显示图标与标题，并使用同一导航高度', () => {
@@ -214,5 +214,41 @@ test('四个主页面始终显示图标与标题，并使用同一导航高度',
   assert.match(navigation, /accessibilityState=\{\{ selected: page === id \}\}/);
   assert.doesNotMatch(navigation, /page\s*[!=]==?\s*'chat'\s*&&\s*<Text|chatNavigation/);
   assert.doesNotMatch(source, /chatNavigation/);
-  for (const label of ['聊天', '任务', '目标', '应用']) assert.match(source, new RegExp(`label: '${label}'`));
+  for (const label of ['聊天', '任务', '目标', '设置']) assert.match(source, new RegExp(`label: '${label}'`));
+});
+
+test('重置入口只在可用连接的设置页末组，会话面板从 Tab 开始且不再持有重置回调', () => {
+  const screen = read('src/workspace/WorkspaceScreen.tsx');
+  const panel = read('src/workspace/SessionPanel.tsx');
+  assert.match(screen, /\{ id: 'settings', label: '设置', icon: Settings \}/);
+  assert.match(screen, /page === 'settings' \? <SettingsPage/);
+  assert.ok(screen.indexOf('<ThemePicker />') < screen.indexOf('testID="workspace-reset-conversation"'));
+  assert.match(screen, /currentSpaceId && onReset && <View style=\{styles\.appSection\}>/);
+  assert.match(screen, /description=\{`目标：\$\{currentSpaceId === MAIN_SPACE \? '主空间' : currentSpaceId\}`\}/);
+  assert.match(screen, /onReset=\{connection\?\.enabled \? \(\) =>/);
+  assert.doesNotMatch(screen, /page === 'apps'|<AppsPage|其他应用能力尚未接入/);
+  assert.doesNotMatch(panel, /onReset|RotateCcw|actionRow|workspace-reset-conversation|重置当前会话/);
+  assert.match(panel, /<View style=\{styles\.column\}>\s*<View style=\{styles\.tablistWrap\}>/);
+});
+
+test('独立原生重置对话框固定目标，取消无提交，断线和未明结果锁定重提', () => {
+  const screen = read('src/workspace/WorkspaceScreen.tsx');
+  const dialog = read('src/workspace/ResetSessionDialog.tsx');
+  assert.match(screen, /setResetTarget\(spaces\.currentSpace\)/);
+  assert.match(screen, /resetTarget && <ResetSessionDialog key=\{resetTarget\} spaceId=\{resetTarget\} available=\{!!connection\?\.enabled\}/);
+  assert.match(screen, /const reset = async \(id: string, clearSchedules: boolean\) => \{\s*if \(!connection\?\.enabled\)/);
+  assert.match(screen, /sessions\.resetSpace\(id, clearSchedules\)/);
+  assert.match(screen, /setResetTarget\(undefined\); setResetError\(undefined\); setSessionOpen\(false\); setPage\('chat'\)/);
+  assert.match(dialog, /const \[clearSchedules, setClearSchedules\] = useState\(false\)/);
+  assert.match(dialog, /<Modal visible transparent animationType=\{reducedMotion \? 'none' : 'fade'\} onRequestClose=\{cancel\}/);
+  assert.match(dialog, /<Card style=\{styles\.dialog\} tone="warning" accessibilityViewIsModal>/);
+  assert.match(dialog, /目标空间：\{spaceId === MAIN_SPACE \? '主空间' : spaceId\}/);
+  assert.match(dialog, /const cancel = \(\) => \{ if \(!busy\) onCancel\(\); \}/);
+  assert.match(dialog, /if \(disabled\) return;\s*setSubmitting\(true\);\s*try \{ await onConfirm\(spaceId, clearSchedules\)/);
+  assert.match(dialog, /const busy = submitting \|\| session\.resetting/);
+  assert.match(dialog, /busy \|\| !available \|\| session\.resetUncertain \|\| !sessions\.canWrite\(spaceId\) \|\| sessions\.hasSettingsWrite\(spaceId\)/);
+  assert.match(dialog, /accessibilityState=\{\{ checked: clearSchedules, disabled: busy \}\}/);
+  assert.match(dialog, /session\.resetUncertain && <Text accessibilityRole="alert"/);
+  assert.match(dialog, /!!error && <Text accessibilityRole="alert"/);
+  assert.match(dialog, /<ActionButton label="取消重置会话"[^\n]*disabled=\{busy\} onPress=\{cancel\}/);
 });

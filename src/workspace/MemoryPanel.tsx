@@ -11,7 +11,7 @@ import { ActionButton } from '../ui/ActionButton';
 import { ChoiceChip } from '../ui/ChoiceChip';
 import { FormInput } from '../ui/FormInput';
 
-/** 应用页内平级内容；四主 Tab 和会话面板结构不变，记忆属于服务全局而非当前空间。 */
+/** 设置页内平级内容；四主 Tab 和会话面板结构不变，记忆属于服务全局而非当前空间。 */
 export function MemoryPanel({ onBack }: { onBack: () => void }) {
   const { store, snapshot } = useMemories(); const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -21,7 +21,7 @@ export function MemoryPanel({ onBack }: { onBack: () => void }) {
   const locked = !store.canWrite();
   return <View style={styles.root} testID="memory-panel">
     <View style={styles.topRow}>
-      <ActionButton label="返回应用设置" text="返回应用" onPress={onBack} icon={ArrowLeft} />
+      <ActionButton label="返回设置" text="返回设置" onPress={onBack} icon={ArrowLeft} />
       <ActionButton label="刷新记忆" text="刷新" onPress={() => void store.refresh()} disabled={snapshot.loading || snapshot.writing} icon={RefreshCw} />
     </View>
     <View style={styles.heading}><Text accessibilityRole="header" style={styles.pageTitle}>长期记忆</Text>

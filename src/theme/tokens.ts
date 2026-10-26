@@ -107,6 +107,7 @@ export const sizing = {
 export const themeTokens = {
   layout: {
     maxWidth: 720,
+    resetDialogMaxWidth: 420,
     sidePadding: 20,
     /** 会话信息区为头像、名称与状态完整占位，不影响其他页面的首屏。 */
     headerHeight: 150,

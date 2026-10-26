@@ -69,7 +69,7 @@ def scroll(down=False, fast=False):
     left, top, right, bottom = areas[0] if areas else (0, height*.25, width, height*.89)
     high, low = top+(bottom-top)*.2, bottom-(bottom-top)*.12
     start, end = (high, low) if down else (low, high)
-    # 不在系统返回手势热区滚动，否则 Android 会先离开应用页而非滚动设置。
+    # 不在系统返回手势热区滚动，否则 Android 会先离开设置页而非滚动内容。
     # 窄屏沿卡片左内边距拖动，避开输入框、右侧开关与 Expo 开发悬浮入口。
     x = int(left+(right-left)*(.1 if fast else .75))
     # 窄视口采用已实测的短滑动；慢拖在该模拟器中位移过小，长列表保留原有手势。
@@ -432,7 +432,10 @@ def assert_status_help(theme, evidence_prefix=''):
 def check_reset_confirmation(theme, evidence_prefix):
     risk = '重置将停止当前运行，清空聊天历史与未完成的审批，开启全新对话。空间规则、技能开关与已保存的工作区文件都会保留。'
     checkbox_label = '同时清理定时任务与网页监控'
-    tap_node(find('重置当前会话'))
+    assert find('重置当前会话') is None, 'Session panel still exposes reset'
+    tap('关闭会话面板')
+    tap('设置')
+    tap_node(reveal_label('重置当前会话', down=False, scrolls=6))
     refresh()
     # 窄屏下标题、长风险、复选框与按钮可能互相离屏；逐项寻找，不要求同视口。
     title = reveal_label('重置当前会话？', down=True)
@@ -466,7 +469,7 @@ def check_reset_confirmation(theme, evidence_prefix):
     refresh()
     assert_absent_current(['重置当前会话？', '确认重置会话', '取消重置会话'])
     # 重新打开必须回到默认安全态；这里只取消，绝不提交真实重置。
-    reset_entry = reveal_label('重置当前会话', down=True)
+    reset_entry = reveal_label('重置当前会话', down=False, scrolls=6)
     tap_node(reset_entry)
     refresh()
     title = reveal_label('重置当前会话？', down=True)
@@ -484,11 +487,6 @@ def check_reset_confirmation(theme, evidence_prefix):
 
 def check_delete_confirmation(theme, space_id, evidence_prefix):
     risk = '空间的全部聊天历史、工作区文件、规则、技能和绑定的定时任务、监控将被彻底删除，无法撤销。'
-    if width == 840:
-        # 通过现有重置确认页下方的同一删除入口验收，避免重复遍历无关的长技能列表。
-        # 只打开确认页，不提交重置；删除入口的原回调会关闭重置确认。
-        tap_node(find('重置当前会话'))
-        refresh()
     delete_entry = reveal_label('删除当前空间', down=False, scrolls=15, fast_scroll=width == 840)
     tap_node(delete_entry)
     refresh()
@@ -518,6 +516,9 @@ def check_session_controls(theme, space_id, chat_header, evidence_prefix=''):
         refresh()
         assert_segment_tab('历史', session_tab_panels, {'activity-panel', 'approval-panel', 'workspace-files-panel'}, down=False)
     check_reset_confirmation(theme, evidence_prefix)
+    tap('聊天')
+    tap('打开当前会话面板')
+    select_session_tab('工作区')
     check_delete_confirmation(theme, space_id, evidence_prefix)
     assert header_bounds(space_id) == chat_header, 'Session controls moved session header'
     capture_current(evidence_prefix+theme+'-session-controls')
@@ -557,7 +558,7 @@ try:
     select_space(context['spaceId'], context['spaceId'], context['spaceId'])
     enter('消息输入框', context['draft'])
     for theme in themes:
-        tap('应用')
+        tap('设置')
         choose_theme(theme)
         capture(theme+'-picker')
         tap('服务器连接', scrolling=True, down=True)
@@ -572,7 +573,7 @@ try:
         tap('打开当前会话面板')
         assert header_bounds(context['spaceId']) == chat_header, 'Session avatar, name or status moved after opening panel'
         refresh()
-        assert find('消息输入框') is None and find('应用') is None, 'Panel exposes background chat or main navigation'
+        assert find('消息输入框') is None and find('设置') is None, 'Panel exposes background chat or main navigation'
         if theme == 'classic':
             # 系统返回先关闭面板，不能离开应用；再次打开后侧栏边缘手势不得拉出抽屉。
             sh('shell', 'input', 'keyevent', 'KEYCODE_BACK')
@@ -630,7 +631,7 @@ try:
         assert wait('消息输入框').get('text') == context['draft']
         assert header_bounds(context['spaceId']) == chat_header, 'Session avatar, name or status moved after closing panel'
         passed(theme+' selection, real connection modal, stable header, isolated panel, preserved space/draft/filter and quick-toggle roundtrip')
-    tap('应用')
+    tap('设置')
     choose_theme('classic')
     tap('聊天')
     enter('消息输入框', context['prompt'])
@@ -641,12 +642,12 @@ try:
     passed('real UI sends one dedicated message and renders actual streamed assistant reply')
     # 三套主题逐一跨进程恢复；同时恢复连接并回读专用空间历史，不能只核对设置页。
     for theme in ['light', 'dark', 'classic']:
-        tap('应用')
+        tap('设置')
         choose_theme(theme)
         launch()
         select_space(context['spaceId'], context['spaceId'], context['spaceId'])
         wait(context['response'], seconds=80)
-        tap('应用')
+        tap('设置')
         theme_checked(theme)
         capture(theme+'-cold-restored')
         tap('聊天')
@@ -656,7 +657,7 @@ try:
     size_changed = True
     width, height = 840, 1491
     time.sleep(1)
-    tap('应用')
+    tap('设置')
     for theme in ['light', 'dark', 'classic']:
         choose_theme(theme)
     capture('narrow-classic-picker')

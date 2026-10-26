@@ -83,7 +83,7 @@ export function DreamPanel({ currentSpaceId, onBack }: { currentSpaceId: string;
 
   return <View style={styles.root} testID="dream-panel">
     <View style={styles.topRow}>
-      <ActionButton label="返回应用设置" text="返回应用" onPress={onBack} icon={ArrowLeft} />
+      <ActionButton label="返回设置" text="返回设置" onPress={onBack} icon={ArrowLeft} />
       <ActionButton label="刷新Dream概览" text="刷新" onPress={() => void store.refresh()} disabled={snapshot.loading || !!snapshot.writing} icon={RefreshCw} />
     </View>
     <Text accessibilityRole="header" style={styles.pageTitle}>Dream 记忆整理</Text>

@@ -4,12 +4,20 @@ import test from 'node:test';
 
 const read = (name) => readFileSync(new URL(`../src/workspace/${name}`, import.meta.url), 'utf8');
 
+test('设置子页使用一致的返回入口文案', () => {
+  for (const name of ['ProfilePanel.tsx', 'MemoryPanel.tsx', 'DreamPanel.tsx']) {
+    const source = read(name);
+    assert.match(source, /<ActionButton label="返回设置" text="返回设置" onPress=\{onBack\}/);
+    assert.doesNotMatch(source, /返回应用设置|返回应用/);
+  }
+});
+
 test('长期记忆保留直接操作和提交安全提示，紧凑展示真实结果', () => {
   const source = read('MemoryPanel.tsx');
   assert.doesNotMatch(source, /SectionHeading|KEEP WHAT MATTERS|<EmptyState/);
   assert.match(source, /styles\.topRow/);
   assert.match(source, /snapshot\.memories\.length/);
-  for (const label of ['返回应用设置', '刷新记忆', '搜索记忆', '全部记忆', '新增记忆', '记忆搜索关键词', '记忆内容', '确认删除记忆', '取消删除记忆']) {
+  for (const label of ['返回设置', '刷新记忆', '搜索记忆', '全部记忆', '新增记忆', '记忆搜索关键词', '记忆内容', '确认删除记忆', '取消删除记忆']) {
     assert.ok(source.includes(label), label);
   }
   assert.match(source, /snapshot\.uncertain && <Card[^>]+testID="memory-uncertain"/);
