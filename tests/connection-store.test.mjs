@@ -46,7 +46,7 @@ test('浏览器地址与旧连接记录均可往返，查询参数和路径保�
 });
 
 test('损坏或含凭据的浏览器地址拒绝读写且保留原记录', async () => {
-  for (const browserUrl of [null, 123, '', 'https://user@example.com', 'https://gui.example/vnc.html#x']) {
+  for (const browserUrl of [null, 123, '', 'https://user@example.com']) {
     const raw = JSON.stringify({ serverUrl: 'https://api.example', browserUrl });
     const { store, values } = memoryStore([[CONNECTION_KEY, raw]]);
     await assert.rejects(store.load());

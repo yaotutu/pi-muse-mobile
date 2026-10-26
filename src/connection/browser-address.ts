@@ -4,7 +4,7 @@ export function normalizeBrowserAddress(input: string): string {
   if (!text) throw new Error('请输入完整的真实浏览器 noVNC 地址');
   // URL 构造器会容忍部分控制字符和反斜杠，这里先拒绝以免保存与用户输入不同的目标。
   if (/[\u0000-\u001f\u007f\\]/.test(text)) throw new Error('浏览器地址包含无效字符');
-  if (text.includes('#')) throw new Error('浏览器地址不能包含 # 片段');
+  // noVNC 可把连接参数放在 # 片段中，浏览器不会把该部分发送给静态服务器。
   let url: URL;
   try { url = new URL(text); } catch { throw new Error('请输入完整的 http 或 https 浏览器地址'); }
   if (!['http:', 'https:'].includes(url.protocol) || !url.hostname) throw new Error('浏览器地址只支持 http:// 或 https://');
