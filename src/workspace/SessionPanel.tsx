@@ -135,7 +135,7 @@ export function SessionPanel({
                 <Text style={styles.rowDetail}>彻底删除空间的历史、工作区文件、规则、技能及绑定任务，不可恢复；仅需开启新对话时请到设置页重置会话。</Text>
               </Pressable>}
             </>}
-            {tab === 'history' && <ActivityPanel key={spaceId} spaceId={spaceId} initialActivityId={historyActivityId} showHeading />}
+            {tab === 'history' && <ActivityPanel key={spaceId} spaceId={spaceId} initialActivityId={historyActivityId} showHeading={false} />}
           </ScrollView>
         </View>
     </View>

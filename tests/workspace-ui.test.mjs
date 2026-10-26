@@ -111,15 +111,14 @@ test('会话面板采样持续挂载的聊天层，关闭期间继续隔离底�
   assert.match(screen, /testID="workspace-session-status"/);
 });
 
-test('会话动态先展示真实状态，说明按需展开，关键警告和入口保持可见', () => {
+test('会话动态按 OpenMuse 极简时间线展示真实状态，去除冗余割裂按钮，关键警告与审批入口保持可见', () => {
   const execution = read('src/workspace/CurrentExecution.tsx');
   assert.doesNotMatch(execution, /IN THE MOMENT|<SectionHeading/);
   assert.match(execution, /!runtime\.synchronized && <View style=\{styles\.syncCard\}>/);
   assert.match(execution, /run\.status === 'failed' && styles\.danger/);
   assert.match(execution, /run\.pendingApprovalIds\.length/);
-  assert.match(execution, /run\.activityId !== null && onHistory/);
-  assert.match(execution, /<ActionButton label="状态说明" text="状态说明" expanded=\{showStatusHelp\}/);
-  assert.match(execution, /<ActionButton label="查看活动历史"/);
+  assert.match(execution, /run\.activityId !== null/);
+  assert.doesNotMatch(execution, /查看活动历史|状态说明/);
 });
 
 test('会话和任务顶层导航复用受控分段，旧标签和切换语义保留', () => {
@@ -163,9 +162,10 @@ test('会话文字操作共用点击区与状态，重置由独立确认承载',
   const execution = read('src/workspace/CurrentExecution.tsx');
   const screen = read('src/workspace/WorkspaceScreen.tsx');
   const dialog = read('src/workspace/ResetSessionDialog.tsx');
-  for (const label of ['重新同步运行状态', '查看待审批', '查看关联活动', '查看活动历史', '状态说明']) {
+  for (const label of ['重新同步运行状态']) {
     assert.match(execution, new RegExp(`<ActionButton label="${label}"`));
   }
+  assert.doesNotMatch(execution, /查看活动历史|状态说明|查看关联活动/);
   for (const label of ['确认重置会话', '取消重置会话']) assert.match(dialog, new RegExp(`<ActionButton label="${label}"`));
   for (const label of ['确认删除空间', '取消删除空间']) assert.match(screen, new RegExp(`<ActionButton label="${label}"`));
   assert.match(button, /minHeight: themeTokens\.layout\.smallControl/);
