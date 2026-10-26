@@ -178,7 +178,9 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
   const [historyRefresh, setHistoryRefresh] = useState(0);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const { colors } = useTheme(); const styles = useStyles();
-  const { width } = useWindowDimensions(); const contentWidth = Math.min(width, l.maxWidth);
+  const { width, height } = useWindowDimensions(); const contentWidth = Math.min(width, l.maxWidth);
+  const avatarCenterY = l.headerTop + l.headerAvatar / 2;
+  const initialTranslateY = Math.round(0.85 * (avatarCenterY - height / 2));
   const drawerWidth = Math.min(contentWidth * l.drawerRatio, l.drawerMaxWidth);
   const [drawerProgress] = useState(() => new Animated.Value(0));
   const statusLabel = snapshot.status === 'authentication-required' || snapshot.status === 'reset-error' || snapshot.status === 'storage-error'
@@ -300,15 +302,13 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
             {page !== 'chat' && <View style={styles.pageHeader}><IconControl icon={Menu} label="打开空间侧栏" onPress={openDrawer} /><Text style={styles.pageTitle}>{NAV.find((item) => item.id === page)?.label}</Text><ThemeToggle /></View>}
             {/* 会话信息区独立占位，长历史滚动与键盘收缩时都不能遮住正文。 */}
             {page === 'chat' && <View style={[styles.chatHeader, keyboardVisible && styles.chatHeaderCompact]}>
-              <View style={styles.headerLeft}>{sessionMounted
-                ? <IconControl icon={X} label={sessionOpen ? '关闭会话面板' : '重新打开会话面板'} testID="workspace-session-close" onPress={sessionOpen ? closeSession : openSession} disabled={session.deleting || session.resetting} />
-                : <IconControl icon={Menu} label="打开空间侧栏" testID="workspace-open-drawer" onPress={openDrawer} />}</View>
+              <View style={styles.headerLeft}><IconControl icon={Menu} label="打开空间侧栏" testID="workspace-open-drawer" onPress={openDrawer} /></View>
               <Pressable accessibilityRole="button" accessibilityLabel="打开当前会话面板" accessibilityHint="全屏显示当前会话的动态、审批、工作区和历史" accessibilityState={{ disabled: sessionMounted }} disabled={sessionMounted} testID="workspace-open-session" style={[styles.identity, keyboardVisible && styles.identityCompact]}
                 onPress={openSession}>
                 <MuseAvatar size={keyboardVisible ? l.compactHeaderAvatar : l.headerAvatar} />
                 <View style={[styles.identityLabel, keyboardVisible && styles.identityLabelCompact]}><Text numberOfLines={1} style={styles.identityName}>{name}</Text><StatusPill label={statusLabel} testID="workspace-session-status" tone={!runtime.synchronized ? 'warning' : runtime.running ? 'accent' : 'neutral'} /></View>
               </Pressable>
-              <View style={styles.headerRight}><ThemeToggle testID={sessionMounted ? 'workspace-session-theme-toggle' : 'workspace-theme-toggle'} /></View>
+              <View style={styles.headerRight}><ThemeToggle testID="workspace-theme-toggle" /></View>
             </View>}
             <View style={styles.bodyStage}>
               <BlurTargetView ref={chatBlurTarget} style={styles.bodyStage}>
@@ -322,15 +322,27 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
                   {!(page === 'chat' && keyboardVisible) && <Navigation page={page} onPage={(next) => { setPage(next); setSessionOpen(false); }} />}
                 </View>
               </BlurTargetView>
-              {sessionMounted && <Animated.View style={[styles.sessionLayer, {
-                opacity: sessionProgress,
-                transform: [{ translateY: sessionProgress.interpolate({ inputRange: [0, 1], outputRange: [l.sessionTravel, 0] }) }],
-              }]} testID="workspace-session-modal">
-                <FrostedSurface blurTarget={chatBlurTarget}><SessionPanel spaceId={spaces.currentSpace} tab={sessionTab} onTab={(next) => { if (session.resetting || session.deleting) return; setSessionTab(next); setDeleteConfirm(false); }}
+            </View>
+            {sessionMounted && <Animated.View style={[styles.sessionLayer, {
+              opacity: sessionProgress,
+              transform: [
+                { translateY: sessionProgress.interpolate({ inputRange: [0, 1], outputRange: [initialTranslateY, 0] }) },
+                { scale: sessionProgress.interpolate({ inputRange: [0, 1], outputRange: [0.15, 1] }) },
+              ],
+            }]} testID="workspace-session-modal">
+              <FrostedSurface blurTarget={chatBlurTarget}>
+                <View style={styles.sessionHeader}>
+                  <View style={styles.headerLeft}><IconControl icon={X} label={sessionOpen ? '关闭会话面板' : '重新打开会话面板'} testID="workspace-session-close" onPress={sessionOpen ? closeSession : openSession} disabled={session.deleting || session.resetting} /></View>
+                  <View style={styles.identity}>
+                    <MuseAvatar size={l.headerAvatar} />
+                    <View style={[styles.identityLabel, styles.sessionIdentityLabel]}><Text numberOfLines={1} style={styles.identityName}>{name}</Text><StatusPill label={statusLabel} testID="workspace-session-status" tone={!runtime.synchronized ? 'warning' : runtime.running ? 'accent' : 'neutral'} /></View>
+                  </View>
+                  <View style={styles.headerRight}><ThemeToggle testID="workspace-session-theme-toggle" /></View>
+                </View>
+                <SessionPanel spaceId={spaces.currentSpace} tab={sessionTab} onTab={(next) => { if (session.resetting || session.deleting) return; setSessionTab(next); setDeleteConfirm(false); }}
                   onDelete={() => setDeleteConfirm(true)} deleting={session.deleting} resetting={session.resetting} onSettled={refresh}
                   settings={sessionSettings} /></FrostedSurface>
-              </Animated.View>}
-            </View>
+            </Animated.View>}
           </KeyboardAvoidingView>
         </SafeAreaView>
         {drawerOpen && <Pressable accessibilityRole="button" accessibilityLabel="收起空间侧栏" onPress={() => setDrawerOpen(false)} style={styles.foregroundCover} />}
@@ -350,6 +362,8 @@ const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   foreground: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: c.canvas, overflow: 'hidden' }, foregroundRounded: { borderRadius: r.drawerForeground }, foregroundCover: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: c.overlay },
   chatHeader: { height: l.headerHeight, flexShrink: 0, marginTop: l.headerTop, marginHorizontal: l.sidePadding }, chatHeaderCompact: { height: l.controlSize }, headerLeft: { position: 'absolute', top: 0, left: 0 }, headerRight: { position: 'absolute', top: 0, right: 0, flexDirection: 'row', gap: spacing[4] },
   bodyStage: { flex: 1 }, sessionLayer: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
+  sessionHeader: { height: l.headerHeight, flexShrink: 0, marginTop: l.headerTop, marginHorizontal: l.sidePadding },
+  sessionIdentityLabel: { maxWidth: l.identityMaxWidth },
   pressed: { opacity: workspaceTheme.interaction.pressedOpacity },
   identity: { alignSelf: 'center', alignItems: 'center', maxWidth: l.identityMaxWidth },
   identityCompact: { height: l.controlSize, flexDirection: 'row', gap: spacing[8] },
