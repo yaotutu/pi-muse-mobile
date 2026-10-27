@@ -38,7 +38,9 @@ export function MessageContent({ text }: { text: string }) {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const tokens = useMemo(() => {
     try {
-      return marked.lexer(text, { gfm: true, breaks: true }) as MarkdownToken[];
+      // 部分模型（如 MiniMax）会在输出中夹带 <think> 标签，需过滤掉。
+      const cleaned = text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+      return marked.lexer(cleaned, { gfm: true, breaks: true }) as MarkdownToken[];
     } catch {
       // 即使流中出现暂时不完整的标记，也仍展示原文，不丢失 assistant 回复。
       return [{ type: 'text', text }];
