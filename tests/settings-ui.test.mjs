@@ -31,6 +31,18 @@ test('连接页保留测试与保存分离、换址确认及迟到响应守卫',
   assert.match(source, /<Text style=\{styles\.statusUrl\}>/);
 });
 
+test('浏览器配置由独立按钮保存，设置入口仅以已存 URL 交给系统浏览器', () => {
+  const panel = read('src/workspace/ConnectionPanel.tsx');
+  const screen = read('src/workspace/WorkspaceScreen.tsx');
+  assert.match(panel, /await manager\.saveBrowserUrl\(browserUrl\)/);
+  assert.match(panel, /workspace-browser-address-save/);
+  assert.match(panel, /browserError/);
+  assert.match(screen, /title="真实浏览器"[\s\S]*?address=\{snapshot\.browserUrl\}[\s\S]*?disabled=\{!snapshot\.browserUrl\}/);
+  assert.match(screen, /Linking\.openURL\(snapshot\.browserUrl\)\.catch/);
+  assert.match(screen, /browserOpenError/);
+  assert.doesNotMatch(screen, /browserUrl\s*=.*serverUrl/);
+});
+
 test('主题由注册表生成单组单选项并保留本机状态提示', () => {
   const source = read('src/theme/ThemePicker.tsx');
   assert.match(source, /availableThemes\.map\(/);

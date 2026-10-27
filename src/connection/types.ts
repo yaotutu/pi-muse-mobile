@@ -1,5 +1,6 @@
 export type ConnectionRecord = {
   serverUrl: string;
+  browserUrl?: string;
   token?: string;
   resetPending?: boolean;
 };
@@ -9,6 +10,7 @@ export type ConnectionStatus = 'loading' | 'unconfigured' | 'connecting' | 'onli
 export type ConnectionSnapshot = {
   status: ConnectionStatus;
   serverUrl?: string;
+  browserUrl?: string;
   hasToken: boolean;
   workspaceReady: boolean;
   workspaceKey: number;

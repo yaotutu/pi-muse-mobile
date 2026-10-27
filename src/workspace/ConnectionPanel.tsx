@@ -84,6 +84,10 @@ export function ConnectionPanel({ manager, snapshot, onClose }: ConnectionPanelP
   const [error, setError] = useState<string | undefined>(undefined);
   const [confirmChange, setConfirmChange] = useState<boolean>(false);
   const [busy, setBusy] = useState<boolean>(false);
+  const [browserUrl, setBrowserUrl] = useState<string>(snapshot.browserUrl ?? '');
+  const [browserBusy, setBrowserBusy] = useState(false);
+  const [browserError, setBrowserError] = useState<string | undefined>();
+  const [browserSaved, setBrowserSaved] = useState(false);
 
   // 草稿守卫：异步 resolve 时检查 unmounted + draftId 再写入本地 state。
   const operationRef = useRef(false);
@@ -121,7 +125,7 @@ export function ConnectionPanel({ manager, snapshot, onClose }: ConnectionPanelP
     };
   }, [manager]);
 
-  const isLocked = busy || snapshot.busy || manager.isCritical();
+  const isLocked = busy || browserBusy || snapshot.busy || manager.isCritical();
 
   const statusView = useMemo(() => describeStatus(snapshot.status), [snapshot.status]);
   const httpWarning = useMemo(() => isPlainHttp(url), [url]);
@@ -226,6 +230,23 @@ export function ConnectionPanel({ manager, snapshot, onClose }: ConnectionPanelP
       }
     });
   }, [manager, runWithDraft]);
+
+  const onSaveBrowserUrl = useCallback(async () => {
+    setBrowserError(undefined);
+    setBrowserSaved(false);
+    setBrowserBusy(true);
+    try {
+      await manager.saveBrowserUrl(browserUrl);
+      if (!unmountedRef.current) {
+        setBrowserUrl(manager.getSnapshot().browserUrl ?? '');
+        setBrowserSaved(true);
+      }
+    } catch (e) {
+      if (!unmountedRef.current) setBrowserError(e instanceof Error ? e.message : String(e));
+    } finally {
+      if (!unmountedRef.current) setBrowserBusy(false);
+    }
+  }, [manager, browserUrl]);
 
   // 关闭：busy/critical 时禁止；否则取消探测并清 Key/proof。
   const handleClose = useCallback(() => {
@@ -377,6 +398,34 @@ export function ConnectionPanel({ manager, snapshot, onClose }: ConnectionPanelP
                     密钥仅保存在本次表单内存中，关闭面板后清空，不写入设备存储
                   </Text>
                 </Section>
+              </Card>
+
+              <Card style={styles.formGroup} testID="workspace-browser-address-section">
+                <Text accessibilityRole="header" style={styles.formTitle}>真实浏览器</Text>
+                <Section title="真实浏览器 noVNC 地址">
+                  <FormInput
+                    accessibilityLabel="真实浏览器 noVNC 地址"
+                    accessibilityHint="填写完整的 http 或 https noVNC 页面地址；留空保存可清除配置"
+                    value={browserUrl}
+                    onChangeText={(value) => { setBrowserUrl(value); setBrowserError(undefined); setBrowserSaved(false); }}
+                    placeholder="https://browser.example.com/vnc.html"
+                    placeholderTextColor={colors.faint}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    autoComplete="off"
+                    keyboardType="url"
+                    editable={!browserBusy}
+                    testID="workspace-browser-address"
+                    style={styles.input}
+                  />
+                  <Text style={styles.helper}>保存完整 noVNC 页面链接；在设置中由系统浏览器打开。地址不随服务器状态变化。</Text>
+                </Section>
+                <ActionButton label="保存真实浏览器地址" text="保存浏览器地址" icon={Check}
+                  onPress={() => void onSaveBrowserUrl()} busy={browserBusy} disabled={isLocked || !snapshot.serverUrl}
+                  testID="workspace-browser-address-save" />
+                {!snapshot.serverUrl && <Text style={styles.helper}>请先保存服务器地址</Text>}
+                {!!browserError && <Text accessibilityRole="alert" style={styles.errorText}>{browserError}</Text>}
+                {browserSaved && <Text accessibilityLiveRegion="polite" style={styles.helper}>{snapshot.browserUrl ? '浏览器地址已保存' : '浏览器地址已清除'}</Text>}
               </Card>
 
               {normalizedInput && !proof && <ActionButton label="仅保存服务器地址" text="仅保存地址，稍后认证"
