@@ -3,7 +3,7 @@
 import './helpers/register-conversation-tests.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
 const {
   MAX_TOTAL_ATTACHMENT_BYTES,
@@ -84,7 +84,12 @@ test('附件校验保留原始 Base64、识别图片/文本并执行字节上限
 test('Base64 分块、canonical 检查、严格 UTF-8 与系统 MIME 投影回归', () => {
   // 回归记录：早期 32768 字节分块不是 3 的倍数，曾把连续组拆成独立 padding；
   // 单个大正则也曾在 Hermes/Node 上栈溢出。这里只比较结果，不打印大字符串。
-  const realPng = readFileSync(new URL('../../integration-audit/attachments/vision-probe.png', import.meta.url));
+  const candidateUrls = [
+    new URL('../../audit-archives/integration-audit/attachments/vision-probe.png', import.meta.url),
+    new URL('../../integration-audit/attachments/vision-probe.png', import.meta.url),
+  ];
+  const pngUrl = candidateUrls.find((url) => existsSync(url)) ?? new URL('../assets/favicon.png', import.meta.url);
+  const realPng = readFileSync(pngUrl);
   assert.equal(bytesToBase64(realPng), realPng.toString('base64'));
   for (const size of [32_767, 32_768, 32_769, 60_000, 100_001]) {
     const bytes = Buffer.alloc(size, (index) => (index * 31 + size) & 0xff);

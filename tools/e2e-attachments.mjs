@@ -39,11 +39,11 @@ const resolveInputPath = (value, fallback) => {
 };
 const visionPath = resolveInputPath(
   process.env.E2E_VISION_PROBE_PATH,
-  new URL('../../integration-audit/attachments/vision-probe.png', import.meta.url),
+  new URL('../../audit-archives/integration-audit/attachments/vision-probe.png', import.meta.url),
 );
 const expectedPath = resolveInputPath(
   process.env.E2E_VISION_PROBE_EXPECTED_PATH,
-  new URL('../../integration-audit/attachments/vision-probe-expected.json', import.meta.url),
+  new URL('../../audit-archives/integration-audit/attachments/vision-probe-expected.json', import.meta.url),
 );
 
 const visionBytes = readFileSync(visionPath);
