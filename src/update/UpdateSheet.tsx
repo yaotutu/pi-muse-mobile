@@ -1,14 +1,18 @@
 // 收起弹层不取消后台持有的下载任务。
 
 import { useMemo } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View, type DimensionValue } from 'react-native';
+import { ActivityIndicator, Alert, Linking, StyleSheet, Text, View, type DimensionValue } from 'react-native';
 import { ActionButton } from '../ui/ActionButton';
 import { ErrorNotice } from '../ui/Feedback';
 import { Sheet } from '../ui/Sheet';
 import { Card } from '../ui/Surfaces';
 import { spacing, workspaceTheme, type WorkspaceColors } from '../ui/tokens';
 import { useTheme } from '../theme/ThemeProvider';
+import { RELEASE_REPOSITORY } from './releases';
 import type { UpdateSheetProps, UpdateSnapshot } from './types';
+
+// 手动入口只指向固定官方仓库，不从业务连接或失败响应中拼接可执行安装包地址。
+const MANUAL_APK_URL = `https://github.com/${RELEASE_REPOSITORY}/releases/latest/download/app-release.apk`;
 
 export function UpdateSheet({
   snapshot,
@@ -21,6 +25,13 @@ export function UpdateSheet({
 }: UpdateSheetProps) {
   const styles = useStyles(); const { colors } = useTheme();
   const subtitle = buildSubtitle(snapshot);
+  const checkFailed = snapshot.status === 'error' && snapshot.errorStage === 'check';
+  const openManualDownload = () => {
+    // 仅把地址交给系统浏览器/下载器；此处不代表 APK 已下载或安装成功。
+    void Linking.openURL(MANUAL_APK_URL).catch(() => {
+      Alert.alert('无法打开下载地址', '请复制下方官方地址，在浏览器中手动打开。');
+    });
+  };
   return (
     <Sheet title="应用更新" subtitle={subtitle} onClose={onClose}>
       <View style={styles.content}>
@@ -32,6 +43,13 @@ export function UpdateSheet({
         </Card>
 
         <ErrorNotice error={snapshot.error} />
+
+        {checkFailed && (
+          <View style={styles.manualDownload}>
+            <Text style={styles.detail}>检查失败时，可从官方地址手动下载 APK，并按系统提示安装：</Text>
+            <Text selectable style={styles.manualUrl}>{MANUAL_APK_URL}</Text>
+          </View>
+        )}
 
         {/* 后台/返回场景下由父级注入的提示语（snapshot.message），例如"下载已在后台完成"。 */}
         {!!snapshot.message && (
@@ -46,6 +64,7 @@ export function UpdateSheet({
 
         <Actions
           snapshot={snapshot}
+          onManualDownload={openManualDownload}
           {...{ onCheck, onCancel, onInstall, onRetryDownload, onOpenSettings }}
         />
       </View>
@@ -138,6 +157,7 @@ function Actions({
   onInstall,
   onRetryDownload,
   onOpenSettings,
+  onManualDownload,
 }: {
   snapshot: UpdateSnapshot;
   onCheck: () => void;
@@ -145,6 +165,7 @@ function Actions({
   onInstall: () => void;
   onRetryDownload: () => void;
   onOpenSettings: () => void;
+  onManualDownload: () => void;
 }) {
   const lock = snapshot.busy;
   const hasRelease = !!snapshot.release;
@@ -195,7 +216,10 @@ function Actions({
         case 'check':
           // 没有 release 时不该给"重试下载"，否则会无目标地下发。
           return (
-            <ActionButton label="重新检查" onPress={onCheck} tone="primary" disabled={lock} />
+            <View style={{ gap: spacing.sm }}>
+              <ActionButton label="手动下载 APK" onPress={onManualDownload} tone="primary" disabled={lock} />
+              <ActionButton label="重新检查" onPress={onCheck} disabled={lock} />
+            </View>
           );
         case 'download':
           return (
@@ -280,6 +304,8 @@ const createStyles = (colors: WorkspaceColors) => StyleSheet.create({
   hint: { ...workspaceTheme.typography.caption, color: colors.faint },
   message: { ...workspaceTheme.typography.status, color: colors.muted, paddingHorizontal: spacing[6] },
   notice: { ...workspaceTheme.typography.caption, color: colors.faint, paddingHorizontal: spacing[6] },
+  manualDownload: { gap: spacing[4], paddingHorizontal: spacing[6] },
+  manualUrl: { ...workspaceTheme.typography.caption, color: colors.blue },
   progressTrack: { height: spacing[6], borderRadius: workspaceTheme.radius.round, backgroundColor: colors.control, overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: colors.blue, borderRadius: workspaceTheme.radius.round },
 });

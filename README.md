@@ -87,7 +87,7 @@ Prebuilt downloads are currently available for Android. iOS is a source-developm
 - **Global long-term memory.** Search, create, edit, and delete memories shared across spaces. Refreshes happen when the page opens or returns to the foreground, after successful writes, or manually.
 - **Dream memory maintenance.** Inspect Dream's global and per-space status, review pending suggestions, adjust prompts and cycles, trigger maintenance, and explicitly apply or dismiss suggestions.
 - **Three complete themes.** Choose Classic Blue, Morning Light, or Midnight Black. The selection is local, survives restarts, and never encodes server credentials.
-- **Android app updates.** The packaged Android app checks public GitHub releases, downloads stable APK assets, and hands installation to the Android system installer. Updates are not Expo OTA and are unavailable in Expo Go, web, or iOS builds.
+- **Android app updates.** The packaged Android app checks public GitHub releases, downloads stable APK assets, and hands installation to the Android system installer. If a check fails, including GitHub rate limiting, the update panel provides the official APK URL and a manual download button. Updates are not Expo OTA and are unavailable in Expo Go, web, or iOS builds.
 - **Current boundaries.** Voice input/transcription and lock-screen push notifications are not implemented. The client uses foreground SSE reconnection rather than claiming always-on background delivery.
 
 ## Quick start

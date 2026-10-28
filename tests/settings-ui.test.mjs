@@ -78,3 +78,20 @@ test('更新 Sheet 的全部状态、原动作与取消例外可见', () => {
   assert.match(source, /snapshot\.message/);
   assert.match(source, /自动下载会使用当前网络/);
 });
+
+test('检查更新失败时保留原错误和重新检查，并提供官方 APK 手动下载入口', () => {
+  const source = read('src/update/UpdateSheet.tsx');
+  const actions = source.slice(source.indexOf('function Actions('), source.indexOf('function buildSubtitle('));
+  const checkActions = actions.slice(actions.indexOf("case 'check':"), actions.indexOf("case 'download':"));
+  const releases = read('src/update/releases.ts');
+
+  assert.match(releases, /export const RELEASE_REPOSITORY = 'yaotutu\/pi-muse-mobile'/);
+  assert.match(source, /import \{ RELEASE_REPOSITORY \} from '\.\/releases'/);
+  assert.match(source, /https:\/\/github\.com\/\$\{RELEASE_REPOSITORY\}\/releases\/latest\/download\/app-release\.apk/);
+  assert.match(source, /snapshot\.status === 'error' && snapshot\.errorStage === 'check'/);
+  assert.match(source, /<ErrorNotice error=\{snapshot\.error\} \/>/);
+  assert.match(source, /\{checkFailed && \([\s\S]*?<Text selectable style=\{styles\.manualUrl\}>\{MANUAL_APK_URL\}<\/Text>/);
+  assert.match(checkActions, /label="手动下载 APK" onPress=\{onManualDownload\}[\s\S]*?label="重新检查" onPress=\{onCheck\}/);
+  assert.doesNotMatch(checkActions, /onRetryDownload/);
+  assert.match(source, /Linking\.openURL\(MANUAL_APK_URL\)\.catch\(\(\) => \{\s*Alert\.alert\('无法打开下载地址'/);
+});
