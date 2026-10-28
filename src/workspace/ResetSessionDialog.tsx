@@ -43,14 +43,14 @@ export function ResetSessionDialog({ spaceId, available, error, onCancel, onConf
         <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <Text accessibilityRole="header" style={styles.title}>重置当前会话？</Text>
           <Text selectable style={styles.target}>目标空间：{spaceId === MAIN_SPACE ? '主空间' : spaceId}</Text>
-          <Text style={styles.detail}>重置将停止当前运行，清空聊天历史与未完成的审批，开启全新对话。空间规则、技能开关与已保存的工作区文件都会保留。</Text>
+          <Text style={styles.detail}>重置将停止当前运行，清空聊天历史及其消息反馈（喜欢/不喜欢/评论及操作记录）与未完成的审批，开启全新对话。空间规则、技能开关与已保存的工作区文件都会保留。</Text>
           <Pressable accessibilityRole="checkbox" accessibilityLabel="同时清理定时任务与网页监控"
             accessibilityState={{ checked: clearSchedules, disabled: busy }} disabled={busy}
             onPress={() => setClearSchedules((value) => !value)} style={styles.option}>
             <CheckIcon size={workspaceTheme.layout.iconSize} color={clearSchedules ? colors.blue : colors.faint} />
             <Text style={styles.optionText}>{clearSchedules ? '已选择：' : '未选择：'}同时清理此空间下的定时任务与网页监控</Text>
           </Pressable>
-          <Text style={styles.caption}>默认保留定时任务与监控，并由服务端绑定到新会话。清空的聊天历史无法恢复。</Text>
+          <Text style={styles.caption}>默认保留定时任务与监控，并由服务端绑定到新会话。清空的聊天历史与消息反馈无法恢复。</Text>
           {session.resetUncertain && <Text accessibilityRole="alert" style={styles.error}>重置结果未确认，请关闭对话框并刷新空间列表核对；不会自动重试。</Text>}
           {!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
           <View style={styles.actions}>

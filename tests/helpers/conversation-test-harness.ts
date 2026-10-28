@@ -42,7 +42,7 @@ export function agentStatusOf(spaceId: string, runId: string, status: RunStatus)
 
 export function createMockApi(handlers: MockApiHandlers = {}) {
   return {
-    getConversation: handlers.getConversation ?? (async () => ({ messages: [], revision: 'rev-0' })),
+    getConversation: handlers.getConversation ?? (async () => ({ sessionId: 'mock-session', messages: [], revision: 'rev-0' })),
     runAgent: handlers.runAgent ?? (async () => {}),
     stopRun: handlers.stopRun ?? (async () => true),
     getServerTimeZone: async () => 'Asia/Shanghai',

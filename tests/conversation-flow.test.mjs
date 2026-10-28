@@ -20,10 +20,18 @@ const { ApiError } = await import('../src/api/errors.ts');
 const { createMockApi, agentStatusOf } = await import('./helpers/conversation-test-harness.ts');
 const { renderConversationHook } = await import('./helpers/hook-runner.ts');
 
+const feedback = { reaction: null, comments: [] };
+const metadata = (feedbackAvailable = true) => ({
+  createdAt: '2026-10-28T00:00:00.000Z', source: 'chat', runId: null, jobId: null,
+  notificationId: null, feedbackAvailable,
+});
+const userMessage = (id, content) => ({ id, role: 'user', content, metadata: metadata(), feedback });
+const conversation = (messages, revision, sessionId = 'mock-session') => ({ sessionId, revision, messages });
+
 test('1) 终态 RUN_ERROR + 无原ID历史：failed 保留输入和错误，不锁历史、不自动重发', async () => {
   let runAgentCalled = 0;
   const api = createMockApi({
-    getConversation: async () => ({ messages: [], revision: 'rev-initial' }),
+    getConversation: async () => conversation([], 'rev-initial'),
     runAgent: async (_input, onEvent) => {
       runAgentCalled++;
       // 触发流内终态 RUN_ERROR，随后请求正常 resolve（原始 A01 路径）。
@@ -67,8 +75,8 @@ test('2) 恢复未发送正文后可手动发送一次：无重复乐观消息�
   let submittedId = '';
   const api = createMockApi({
     getConversation: async () => {
-      if (!submittedId) return { messages: [], revision: 'rev-0' };
-      return { messages: [{ id: submittedId, role: 'user', content: '重要用户灵感' }], revision: 'rev-1' };
+      if (!submittedId) return conversation([], 'rev-0');
+      return conversation([userMessage(submittedId, '重要用户灵感')], 'rev-1');
     },
     runAgent: async (input, onEvent) => {
       runAgentCalled++;
@@ -117,8 +125,8 @@ test('3) 原ID已持久化后 RUN_ERROR：只保留服务端记录，无重复�
   let submittedId = '';
   const api = createMockApi({
     getConversation: async () => {
-      if (!submittedId) return { messages: [], revision: 'rev-0' };
-      return { messages: [{ id: submittedId, role: 'user', content: '已落盘的消息' }], revision: 'rev-1' };
+      if (!submittedId) return conversation([], 'rev-0');
+      return conversation([userMessage(submittedId, '已落盘的消息')], 'rev-1');
     },
     runAgent: async (input, onEvent) => {
       submittedId = input.message.id;
@@ -149,7 +157,7 @@ test('4a) 同步失败后 reload：终态证据 + 完整历史对账为 failed�
     getConversation: async () => {
       historyReads++;
       if (historyReads === 2) throw new Error('网络同步中断');
-      return { messages: [], revision: `rev-${historyReads}` };
+      return conversation([], `rev-${historyReads}`);
     },
     runAgent: async () => {},
     getAgentStatus: async (spaceId, runId) => {
@@ -208,9 +216,9 @@ test('4b) 旧快照竞态：终态查询期间 run 落盘，不得误判为未�
   let latePersist = false;
   const api = createMockApi({
     getConversation: async () => {
-      if (!submittedId) return { messages: [], revision: 'rev-0' };
-      if (!latePersist) return { messages: [], revision: 'rev-stale' };
-      return { messages: [{ id: submittedId, role: 'user', content: '迟到落盘的消息' }], revision: 'rev-fresh' };
+      if (!submittedId) return conversation([], 'rev-0');
+      if (!latePersist) return conversation([], 'rev-stale');
+      return conversation([userMessage(submittedId, '迟到落盘的消息')], 'rev-fresh');
     },
     runAgent: async () => {},
     getAgentStatus: async (spaceId, runId) => {
@@ -245,7 +253,7 @@ test('4b) 旧快照竞态：终态查询期间 run 落盘，不得误判为未�
 test('5) 契约前置拒绝判未发送；网络错误 / 不明 5xx 保持待确认', async () => {
   // 503 + MODEL_NOT_CONFIGURED：请求未被接受；先对账完整历史（保留旧历史），再判 failed。
   const rejectingApi = createMockApi({
-    getConversation: async () => ({ messages: [{ id: 'u-old', role: 'user', content: '旧历史消息' }], revision: 'rev-1' }),
+    getConversation: async () => conversation([userMessage('u-old', '旧历史消息')], 'rev-1'),
     runAgent: async () => { throw new ApiError(503, 'Configure the server model before sending', 'MODEL_NOT_CONFIGURED'); },
   });
   const rejectingStore = new SpaceStore(rejectingApi);
@@ -266,7 +274,7 @@ test('5) 契约前置拒绝判未发送；网络错误 / 不明 5xx 保持待确
 
   // 400 schema 拒绝（code 缺省视为契约 schema 拒绝）同样属于未接受。
   const badRequestApi = createMockApi({
-    getConversation: async () => ({ messages: [], revision: 'rev-0' }),
+    getConversation: async () => conversation([], 'rev-0'),
     runAgent: async () => { throw new ApiError(400, 'Invalid conversation request'); },
   });
   const badRequestStore = new SpaceStore(badRequestApi);
@@ -284,8 +292,8 @@ test('5) 契约前置拒绝判未发送；网络错误 / 不明 5xx 保持待确
   let conflictSubmittedId = '';
   const conflictApi = createMockApi({
     getConversation: async () => {
-      if (!conflictSubmittedId) return { messages: [], revision: conflictRuns === 0 ? 'rev-0' : 'rev-2' };
-      return { messages: [{ id: conflictSubmittedId, role: 'user', content: '冲突后的提问' }], revision: 'rev-3' };
+      if (!conflictSubmittedId) return conversation([], conflictRuns === 0 ? 'rev-0' : 'rev-2');
+      return conversation([userMessage(conflictSubmittedId, '冲突后的提问')], 'rev-3');
     },
     runAgent: async (input) => {
       conflictRuns++;
@@ -312,7 +320,7 @@ test('5) 契约前置拒绝判未发送；网络错误 / 不明 5xx 保持待确
 
   // 409 agent_thread_locked：同属前置拒绝白名单，对账后判 failed。
   const lockedApi = createMockApi({
-    getConversation: async () => ({ messages: [], revision: 'rev-1' }),
+    getConversation: async () => conversation([], 'rev-1'),
     runAgent: async () => { throw new ApiError(409, 'Wait for the current response to stop', 'agent_thread_locked'); },
   });
   const lockedStore = new SpaceStore(lockedApi);
@@ -329,8 +337,8 @@ test('5) 契约前置拒绝判未发送；网络错误 / 不明 5xx 保持待确
   let conflictIdSubmitted = '';
   const idConflictApi = createMockApi({
     getConversation: async () => {
-      if (!conflictIdSubmitted) return { messages: [], revision: 'rev-0' };
-      return { messages: [{ id: conflictIdSubmitted, role: 'user', content: '服务端已有同 ID' }], revision: 'rev-1' };
+      if (!conflictIdSubmitted) return conversation([], 'rev-0');
+      return conversation([userMessage(conflictIdSubmitted, '服务端已有同 ID')], 'rev-1');
     },
     runAgent: async (input) => {
       conflictIdSubmitted = input.message.id;
@@ -349,7 +357,7 @@ test('5) 契约前置拒绝判未发送；网络错误 / 不明 5xx 保持待确
 
   // 409 但 code 不在契约白名单：不泛化，保守待确认。
   const unknownConflictApi = createMockApi({
-    getConversation: async () => ({ messages: [], revision: 'rev-0' }),
+    getConversation: async () => conversation([], 'rev-0'),
     runAgent: async () => { throw new ApiError(409, 'unknown conflict', 'SOMETHING_ELSE'); },
   });
   const unknownConflictStore = new SpaceStore(unknownConflictApi);
@@ -364,7 +372,7 @@ test('5) 契约前置拒绝判未发送；网络错误 / 不明 5xx 保持待确
 
   // 网络错误（无状态码）：绝不能泛化为未发送。
   const networkApi = createMockApi({
-    getConversation: async () => ({ messages: [], revision: 'rev-0' }),
+    getConversation: async () => conversation([], 'rev-0'),
     runAgent: async () => { throw new Error('fetch failed'); },
   });
   const networkStore = new SpaceStore(networkApi);
@@ -382,7 +390,7 @@ test('5) 契约前置拒绝判未发送；网络错误 / 不明 5xx 保持待确
 
   // 不明 5xx（无契约 code）：同样保守待确认。
   const serverApi = createMockApi({
-    getConversation: async () => ({ messages: [], revision: 'rev-0' }),
+    getConversation: async () => conversation([], 'rev-0'),
     runAgent: async () => { throw new ApiError(500, 'Internal error'); },
   });
   const serverStore = new SpaceStore(serverApi);
@@ -398,7 +406,7 @@ test('5) 契约前置拒绝判未发送；网络错误 / 不明 5xx 保持待确
 
 test('6) 发送后新草稿不被覆盖；恢复拒绝覆盖任何已有草稿（含纯空白）', async () => {
   const api = createMockApi({
-    getConversation: async () => ({ messages: [], revision: 'rev-0' }),
+    getConversation: async () => conversation([], 'rev-0'),
     runAgent: async (_input, onEvent) => {
       onEvent({ type: 'RUN_ERROR', code: 'MODEL_ERROR', message: '服务拒绝' });
     },
@@ -432,7 +440,7 @@ test('6) 发送后新草稿不被覆盖；恢复拒绝覆盖任何已有草稿�
 
 test('7) 卸载/重挂保留暂存；首次绑定不清暂存，reset/delete/dispose 真实清理且旧回调隔离', async () => {
   const api = createMockApi({
-    getConversation: async () => ({ messages: [], revision: 'rev-0' }),
+    getConversation: async () => conversation([], 'rev-0'),
     runAgent: async (_input, onEvent) => {
       onEvent({ type: 'RUN_ERROR', code: 'MODEL_ERROR', message: '错误' });
     },
@@ -506,8 +514,8 @@ test('8) 已落盘后 RUN_ERROR：运行失败错误保留展示，不被释放�
   let submittedId = '';
   const api = createMockApi({
     getConversation: async () => {
-      if (!submittedId) return { messages: [], revision: 'rev-0' };
-      return { messages: [{ id: submittedId, role: 'user', content: '已落盘但运行失败' }], revision: 'rev-1' };
+      if (!submittedId) return conversation([], 'rev-0');
+      return conversation([userMessage(submittedId, '已落盘但运行失败')], 'rev-1');
     },
     runAgent: async (input, onEvent) => {
       submittedId = input.message.id;
@@ -535,7 +543,7 @@ test('9) RUN_ERROR 终态 + 首次回读失败：内存终态证据让 reload �
     getConversation: async () => {
       historyReads++;
       if (historyReads === 2) throw new Error('同步中断');
-      return { messages: [], revision: `rev-${historyReads}` };
+      return conversation([], `rev-${historyReads}`);
     },
     runAgent: async (_input, onEvent) => {
       onEvent({ type: 'RUN_ERROR', code: 'MODEL_ERROR', message: '终态失败证据' });
@@ -581,7 +589,7 @@ test('9) RUN_ERROR 终态 + 首次回读失败：内存终态证据让 reload �
 
 test('10) dispose 后：迟到 setDraft/setPending/send 全部不执行', async () => {
   const api = createMockApi({
-    getConversation: async () => ({ messages: [], revision: 'rev-0' }),
+    getConversation: async () => conversation([], 'rev-0'),
     runAgent: async () => {},
   });
   const store = new SpaceStore(api);
@@ -628,7 +636,7 @@ test('11) UI 入口契约：unconfirmed 待确认时“重新同步”按钮始�
   // Hook 场景：无终态断网 -> unconfirmed -> 卸载重挂后 historyFailed=false 且 pending 保留，
   // 此时按钮唯一入口就是 pending?.status === 'unconfirmed'。
   const api = createMockApi({
-    getConversation: async () => ({ messages: [], revision: 'rev-0' }),
+    getConversation: async () => conversation([], 'rev-0'),
     runAgent: async () => {},
     getAgentStatus: async () => { throw new ApiError(404, '运行不存在'); },
   });

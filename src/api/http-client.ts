@@ -43,6 +43,8 @@ import {
   type MonitorAction,
   type Profile,
   type RunInput,
+  parseMessageFeedback,
+  parseMessageFeedbackEvents,
   parseConversationSnapshot,
   parseMessagesSnapshotEvent,
 } from './contracts';
@@ -88,6 +90,7 @@ import type {
   WorkspaceListResult,
   WorkspaceTextDetail,
 } from '../files/types';
+import type { MessageFeedback, MessageFeedbackEvents, MessageReaction } from '../feedback/types';
 
 export type TransportState = { kind: 'online' | 'offline'; token?: string; error?: string };
 export type HttpApiOptions = { onTransportState?: (state: TransportState) => void; timeoutMs?: number; headerTimeoutMs?: number };
@@ -98,6 +101,17 @@ type RequestControl = {
   stopTimeout: () => void;
   finish: () => void;
   assertActive: () => void;
+};
+
+const messageFeedbackPath = (spaceId: string, messageId: string, suffix = '') =>
+  `/api/spaces/${encodeURIComponent(spaceId)}/messages/${encodeURIComponent(messageId)}/feedback${suffix}`;
+const sessionQuery = (sessionId: string) => `?sessionId=${encodeURIComponent(sessionId)}`;
+const normalizedComment = (text: string): string => {
+  const trimmed = text.trim();
+  if (!trimmed || trimmed.length > 4000) {
+    throw new ApiError(400, '评论去除首尾空白后必须为 1 到 4000 字');
+  }
+  return trimmed;
 };
 
 export class HttpApiClient implements ApiClient {
@@ -271,6 +285,84 @@ export class HttpApiClient implements ApiClient {
     return parseConversationSnapshot(
       await this.request<unknown>(`/api/conversation?spaceId=${encodeURIComponent(spaceId)}`, { signal }),
     );
+  }
+
+  async getMessageFeedback(
+    spaceId: string,
+    messageId: string,
+    sessionId: string,
+    signal?: AbortSignal,
+  ): Promise<MessageFeedback> {
+    return parseMessageFeedback(await this.request<unknown>(
+      `${messageFeedbackPath(spaceId, messageId)}${sessionQuery(sessionId)}`,
+      { signal },
+    ));
+  }
+
+  async getMessageFeedbackEvents(
+    spaceId: string,
+    messageId: string,
+    sessionId: string,
+    signal?: AbortSignal,
+  ): Promise<MessageFeedbackEvents> {
+    return parseMessageFeedbackEvents(await this.request<unknown>(
+      `${messageFeedbackPath(spaceId, messageId, '/events')}${sessionQuery(sessionId)}`,
+      { signal },
+    ));
+  }
+
+  async setMessageReaction(
+    spaceId: string,
+    messageId: string,
+    sessionId: string,
+    reaction: MessageReaction | null,
+    signal?: AbortSignal,
+  ): Promise<MessageFeedback> {
+    return parseMessageFeedback(await this.request<unknown>(
+      messageFeedbackPath(spaceId, messageId, '/reaction'),
+      { method: 'PUT', body: { sessionId, reaction }, signal },
+    ));
+  }
+
+  async addMessageComment(
+    spaceId: string,
+    messageId: string,
+    sessionId: string,
+    text: string,
+    signal?: AbortSignal,
+  ): Promise<MessageFeedback> {
+    return parseMessageFeedback(await this.request<unknown>(
+      messageFeedbackPath(spaceId, messageId, '/comments'),
+      { method: 'POST', body: { sessionId, text: normalizedComment(text) }, signal },
+    ));
+  }
+
+  async editMessageComment(
+    spaceId: string,
+    messageId: string,
+    commentId: string,
+    sessionId: string,
+    text: string,
+    signal?: AbortSignal,
+  ): Promise<MessageFeedback> {
+    return parseMessageFeedback(await this.request<unknown>(
+      messageFeedbackPath(spaceId, messageId, `/comments/${encodeURIComponent(commentId)}`),
+      { method: 'PATCH', body: { sessionId, text: normalizedComment(text) }, signal },
+    ));
+  }
+
+  async deleteMessageComment(
+    spaceId: string,
+    messageId: string,
+    commentId: string,
+    sessionId: string,
+    signal?: AbortSignal,
+  ): Promise<MessageFeedback> {
+    return parseMessageFeedback(await this.request<unknown>(
+      `${messageFeedbackPath(spaceId, messageId, `/comments/${encodeURIComponent(commentId)}`)}` +
+        sessionQuery(sessionId),
+      { method: 'DELETE', signal },
+    ));
   }
 
   // --- 空间配置：响应字段必须存在且类型正确，200 但结构错位报 502（与服务端快照校验一致） ---

@@ -7,6 +7,8 @@
  *   分开表达，避免把客户端派生通知误认为服务端快照字段。
  */
 
+import type { MessageFeedback } from '../feedback/types';
+
 // ---------------------------------------------------------------------------
 // 会话与历史
 // ---------------------------------------------------------------------------
@@ -53,19 +55,58 @@ export type ToolCallProjection = {
   function: { name: string; arguments: string };
 };
 
-/** GET /api/conversation 条目：role=tool 时 content 为结果、toolCallId 关联调用 */
-export type ConversationMessage = {
+/** 服务端可靠执行来源；null 是历史事实缺失，客户端不得按正文猜测。 */
+export type MessageSource = 'chat' | 'job' | 'notification';
+
+/** 用户/助手消息的执行事实投影；工具消息不评价，因此不携带 metadata。 */
+export type ConversationMessageMetadata = {
+  createdAt: string;
+  source: MessageSource | null;
+  runId: string | null;
+  jobId: string | null;
+  notificationId: string | null;
+  feedbackAvailable: boolean;
+};
+
+type ConversationMessageBase = {
   id: string;
-  role: ChatRole;
   content?: string;
-  /** 仅 role=user；按提交顺序返回，图片可有服务端投影的 Base64 预览。 */
-  attachments?: ConversationAttachment[];
   toolCalls?: ToolCallProjection[];
   toolCallId?: string;
 };
 
-/** 历史与版本必须同时保存；发送只提交新消息和 expectedRevision，冲突由服务端返回 409。 */
-export type ConversationSnapshot = { revision: string; messages: ConversationMessage[] };
+export type ConversationUserMessage = ConversationMessageBase & {
+  role: 'user';
+  /** 按提交顺序返回，图片可有服务端投影的 Base64 预览。 */
+  attachments?: ConversationAttachment[];
+  metadata: ConversationMessageMetadata;
+  feedback: MessageFeedback;
+};
+
+export type ConversationAssistantMessage = ConversationMessageBase & {
+  role: 'assistant';
+  metadata: ConversationMessageMetadata;
+  feedback: MessageFeedback;
+};
+
+/** role=tool 是结果投影，只关联调用；isError 为 true 表示工具执行失败。 */
+export type ConversationToolMessage = ConversationMessageBase & {
+  role: 'tool';
+  isError?: boolean;
+};
+
+/** GET /api/conversation 条目：用户/助手可评价，工具消息只执行投影。 */
+export type ConversationMessage =
+  | ConversationUserMessage
+  | ConversationAssistantMessage
+  | ConversationToolMessage;
+
+/** 历史、版本与当前会话必须同时保存；sessionId=null 表示空间合法但当前无绑定。 */
+export type ConversationSnapshot = {
+  sessionId: string | null;
+  revision: string;
+  messages: ConversationMessage[];
+};
 
 // ---------------------------------------------------------------------------
 // AG-UI SSE 事件（POST /api/conversation/run）

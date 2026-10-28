@@ -39,6 +39,7 @@ Prebuilt downloads are currently available for Android. iOS is a source-developm
 </p>
 
 - **Streaming chat.** Messages run through the server's AG-UI SSE stream and are consumed natively by the client. The chat stream is separate from the shared notification stream used for runtime status.
+- **Persistent message feedback.** Saved user and assistant messages support mutually exclusive Like/Dislike reactions with undo, plus multiple comments that can be added, edited, or deleted. Edited and deleted comment text remains in the server ledger. Feedback never starts a model run or writes model preferences. Incomplete streaming messages are not eligible, and resetting or deleting a conversation clears its feedback.
 - **Purposeful Markdown rendering.** Assistant messages render headings, emphasis, lists, quotations, tables, and copyable code blocks with native React Native components. Markdown images are not loaded, HTML is shown as literal text, and message/search links are restricted to credential-free HTTP(S).
 - **Transparent tool cards.** Tool activity displays the projections returned by the server. The client does not infer hidden details or mark a result as saved or approved merely because a tool returned.
 - **Isolated spaces.** Create, search, and switch contexts such as Work, Life, or Study. Each space has its own conversation, instructions, skills, and private files.

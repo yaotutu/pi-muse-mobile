@@ -273,7 +273,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
   }), [drawerOpen, openDrawer, sessionMounted]);
   const otherPage = page === 'chat' ? null : page === 'settings' ? <SettingsPage snapshot={snapshot} openConnection={openConnection} memoryAvailable profileAvailable dreamAvailable currentSpaceId={spaces.currentSpace}
     onReset={connection?.enabled ? () => { setResetError(undefined); setResetTarget(spaces.currentSpace); } : undefined} /> : page === 'activity' ? !sessionOpen && <TasksPage spaceId={spaces.currentSpace} /> : !sessionOpen && <GoalsPanel />;
-  const sessionSettings = <>{deleteConfirm ? <Card style={styles.exampleCard} tone="danger"><Text style={styles.itemTitle}>确认删除当前空间？</Text><Text style={styles.mutedText}>空间的全部聊天历史、工作区文件、规则、技能和绑定的定时任务、监控将被彻底删除，无法撤销。</Text>
+  const sessionSettings = <>{deleteConfirm ? <Card style={styles.exampleCard} tone="danger"><Text style={styles.itemTitle}>确认删除当前空间？</Text><Text style={styles.mutedText}>空间的全部聊天历史及其消息反馈（喜欢/不喜欢/评论及操作记录）、工作区文件、规则、技能和绑定的定时任务、监控将被彻底删除，无法撤销。</Text>
         <View style={styles.confirmActions}>
           <ActionButton label="确认删除空间" text={session.deleting ? '正在删除…' : '确认删除'} tone="danger" busy={session.deleting} onPress={() => void remove()} />
           <ActionButton label="取消删除空间" text="取消" disabled={session.deleting} onPress={() => setDeleteConfirm(false)} />

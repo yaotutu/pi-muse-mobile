@@ -144,6 +144,11 @@ test('HttpApiClient 只上传四字段 DTO，并严格解析历史与流快照�
       type: 'MESSAGES_SNAPSHOT',
       messages: [{
         id: 'message-1', role: 'user', content: '',
+        metadata: {
+          createdAt: '2026-10-28T00:00:00.000Z', source: 'chat', runId: null, jobId: null,
+          notificationId: null, feedbackAvailable: true,
+        },
+        feedback: { reaction: null, comments: [] },
         attachments: [{
           id: 'image-1', name: 'probe.png', kind: 'image', mimeType: 'image/png',
           size: pngHeader.length, sha256: 'a'.repeat(64),
@@ -176,12 +181,18 @@ test('HttpApiClient 只上传四字段 DTO，并严格解析历史与流快照�
   }
 
   const parsed = parseConversationSnapshot({
+    sessionId: 'session-1',
     revision: 'rev-1',
     messages: [{
       id: 'message-1', role: 'user', content: '', attachments: [{
         id: 'text-1', name: 'notes.txt', kind: 'text', mimeType: 'text/plain',
         size: 18, sha256: '0'.repeat(64),
       }],
+      metadata: {
+        createdAt: '2026-10-28T00:00:00.000Z', source: null, runId: null, jobId: null,
+        notificationId: null, feedbackAvailable: true,
+      },
+      feedback: { reaction: 'like', comments: [] },
     }],
   });
   assert.equal(parsed.messages[0].attachments[0].image, undefined);

@@ -6,12 +6,21 @@ import { ApiError, isRequestCancelled, requestCancelled } from '../api/errors';
 import { useServiceConnection } from '../connection/ConnectionProvider';
 import { StreamAggregator, projectHistory, type MessageView } from './chat-state';
 import type { ConversationMessage, ConversationSnapshot } from '../api/types';
+import type { ApiClient } from '../api/contracts';
 import { validateOutgoingDraftMessage } from '../attachments/validation';
 import type { AttachmentDraft } from '../attachments/types';
 import type { PendingSubmission } from '../spaces/space-store';
 
 let clientSequence = 0;
 const nextClientId = (prefix: string) => `${prefix}-${Date.now()}-${++clientSequence}`;
+const EMPTY_MESSAGE_IDS: ReadonlySet<string> = new Set();
+type ConversationAuthority = {
+  api: ApiClient;
+  spaceId: string;
+  epoch: number;
+  sessionId: string | null;
+  persistedMessageIds: ReadonlySet<string>;
+};
 
 /**
  * 契约明确的运行前置拒绝（server routes.ts 在开启 SSE 前返回，与 status/code 精确对应）。
@@ -62,6 +71,13 @@ export function useConversation(spaceId: string, refreshKey = 0) {
   const refreshVersion = connection?.snapshot.refreshVersion ?? 0;
   const enabledRef = useRef(enabled);
   const [views, setViews] = useState<MessageView[]>([]);
+  const [authorityState, setAuthorityState] = useState<ConversationAuthority>(() => ({
+    api,
+    spaceId,
+    epoch,
+    sessionId: null,
+    persistedMessageIds: EMPTY_MESSAGE_IDS,
+  }));
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(true);
@@ -73,6 +89,23 @@ export function useConversation(spaceId: string, refreshKey = 0) {
   const aliveRef = useRef(false);
   const historyRequest = useRef<AbortController | null>(null);
   const current = () => aliveRef.current && sessions.isCurrent(spaceId, epoch);
+  const authority = authorityState.api === api && authorityState.spaceId === spaceId && authorityState.epoch === epoch
+    ? authorityState
+    : null;
+  const sessionId = authority?.sessionId ?? null;
+  const persistedMessageIds = authority?.persistedMessageIds ?? EMPTY_MESSAGE_IDS;
+
+  /** 只有完整权威历史可以一次性替换视图、会话绑定与已落盘 ID 集合。 */
+  const adoptHistory = useCallback((history: ConversationSnapshot) => {
+    setAuthorityState({
+      api,
+      spaceId,
+      epoch,
+      sessionId: history.sessionId,
+      persistedMessageIds: new Set(history.messages.map((message) => message.id)),
+    });
+    setViews(projectHistory(history.messages));
+  }, [api, epoch, spaceId]);
 
   /** 权威历史核对：原 ID 已落盘则释放暂存；缺失且持有终态证据（含条目内存的流内 RUN_ERROR 记录）才可判定未发送。 */
   const reconcilePendingWithHistory = useCallback(
@@ -178,7 +211,7 @@ export function useConversation(spaceId: string, refreshKey = 0) {
               if (probe) {
                 revisionRef.current = probe.latest.revision;
                 reconcilePendingWithHistory(probe.latest.messages, pending.messageId, true, probe.message);
-                setViews(projectHistory(probe.latest.messages));
+                adoptHistory(probe.latest);
                 // 终态证据 + 完整历史：无论释放或判 failed，都不是历史失败，解除发送锁。
                 setHistoryFailed(false);
                 setError(undefined);
@@ -186,14 +219,14 @@ export function useConversation(spaceId: string, refreshKey = 0) {
                 return;
               }
               // 查询失败 / 404 / 仍 running：保守待确认，保持发送锁定。
-              setViews(projectHistory(history.messages));
+              adoptHistory(history);
               setLoading(false);
               return;
             }
             // sending / failed / unconfirmed 但已持久化：按当前快照直接对账。
             reconcilePendingWithHistory(history.messages, pending.messageId, pending.status === 'failed', pending.error);
           }
-          setViews(projectHistory(history.messages));
+          adoptHistory(history);
           setHistoryFailed(false);
           setError(undefined);
         }
@@ -207,7 +240,7 @@ export function useConversation(spaceId: string, refreshKey = 0) {
       }
     })();
     return () => { alive = false; controller.abort(); if (historyRequest.current === controller) historyRequest.current = null; };
-  }, [api, spaceId, historyVersion, enabled, refreshVersion, refreshKey, epoch, sessions, writable, probeRunTerminal, reconcilePendingWithHistory]);
+  }, [api, spaceId, historyVersion, enabled, refreshVersion, refreshKey, epoch, sessions, writable, probeRunTerminal, reconcilePendingWithHistory, adoptHistory]);
 
   useEffect(() => {
     if (!writable) {
@@ -239,6 +272,7 @@ export function useConversation(spaceId: string, refreshKey = 0) {
       text: submission.text,
       ...(attachments.length ? { attachments } : {}),
       toolCalls: [],
+      feedbackAvailable: false,
     };
     const baseViews = views.some((view) => view.id === submission.messageId)
       ? views.map((view) => (view.id === submission.messageId ? userView : view))
@@ -265,6 +299,18 @@ export function useConversation(spaceId: string, refreshKey = 0) {
         (event) => {
           if (!current() || controller.signal.aborted) return;
           aggregator.push(event);
+          if (event.type === 'MESSAGES_SNAPSHOT' && event.messages) {
+            const snapshotIds = new Set(event.messages.map((message) => message.id));
+            setAuthorityState((previous) => ({
+              api,
+              spaceId,
+              epoch,
+              sessionId: previous.api === api && previous.spaceId === spaceId && previous.epoch === epoch
+                ? previous.sessionId
+                : null,
+              persistedMessageIds: snapshotIds,
+            }));
+          }
           if (event.type === 'RUN_ERROR') {
             runErrorOccurred = true;
             runErrorMessage = event.message ?? '助手运行失败，请重试';
@@ -308,13 +354,13 @@ export function useConversation(spaceId: string, refreshKey = 0) {
           // 终态 RUN_ERROR + 完整历史缺失原 ID = 确切未发送证据；正常结束缺失仍待确认。
           const released = reconcilePendingWithHistory(history.messages, submission.messageId, runErrorOccurred, runErrorMessage);
           if (released) {
-            setViews(projectHistory(history.messages));
+            adoptHistory(history);
             setHistoryFailed(false);
             // 已落盘 + RUN_ERROR：消息所有权已移交服务端，但运行失败的事实必须保留展示。
             setError(runErrorOccurred ? runErrorMessage : undefined);
           } else if (runErrorOccurred) {
             // failed 不是历史失败：完整历史与版本已成功读取，保留 pending 阻塞即可，允许恢复后手动发送。
-            setViews(projectHistory(history.messages));
+            adoptHistory(history);
             setHistoryFailed(false);
             setError(runErrorMessage);
           } else {
@@ -323,7 +369,7 @@ export function useConversation(spaceId: string, refreshKey = 0) {
               error: '消息保存状态未明，请重新同步核对',
             });
             setHistoryFailed(true);
-            setViews(projectHistory(history.messages));
+            adoptHistory(history);
           }
         }
       } catch (syncError) {
@@ -357,14 +403,14 @@ export function useConversation(spaceId: string, refreshKey = 0) {
             revisionRef.current = history.revision;
             const released = reconcilePendingWithHistory(history.messages, submission.messageId, false);
             if (released) {
-              setViews(projectHistory(history.messages));
+              adoptHistory(history);
             } else {
               sessions.updatePendingSubmissionStatus(spaceId, epoch, submission.messageId, {
                 status: 'unconfirmed',
                 error: '已停止但保存状态未确认',
               });
               setHistoryFailed(true);
-              setViews(projectHistory(history.messages));
+              adoptHistory(history);
             }
           }
         } catch (syncError) {
@@ -386,7 +432,7 @@ export function useConversation(spaceId: string, refreshKey = 0) {
             // 有原 ID 释放、无原 ID 判 failed；HISTORY_CONFLICT 已由本次回读拿到新 revision 解除，
             // 恢复草稿后可手动重提，绝不自动发送。
             reconcilePendingWithHistory(history.messages, submission.messageId, true, message);
-            setViews(projectHistory(history.messages));
+            adoptHistory(history);
             setHistoryFailed(false);
             setError(message);
           }
@@ -504,12 +550,15 @@ export function useConversation(spaceId: string, refreshKey = 0) {
             text: pendingSubmission.text,
             ...(pendingSubmission.attachments?.length ? { attachments: pendingSubmission.attachments } : {}),
             toolCalls: [],
+            feedbackAvailable: false,
           },
         ]
       : views;
 
   return {
     views: displayedViews,
+    sessionId,
+    persistedMessageIds,
     running,
     error,
     loading: loading || !enabled,

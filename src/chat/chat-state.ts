@@ -11,6 +11,7 @@
  */
 
 import type { AgUiEvent, ConversationAttachment, ConversationMessage } from '../api/types';
+import type { MessageFeedback } from '../feedback/types';
 
 /** 单次工具调用的渲染视图 */
 export type ToolCallView = {
@@ -18,6 +19,8 @@ export type ToolCallView = {
   name: string;
   args: string;
   result?: string;
+  /** 仅权威 role=tool 投影；true 表示工具执行失败。 */
+  isError?: boolean;
 };
 
 /** 渲染层只需要附件元数据；SHA 只用于服务端身份，不进入气泡展示。 */
@@ -31,6 +34,10 @@ export type MessageView = {
   /** 仅用户消息附件元数据；文本正文不进入气泡，图片仅消费服务端投影预览。 */
   attachments?: MessageAttachmentView[];
   toolCalls: ToolCallView[];
+  /** 仅服务端 metadata.feedbackAvailable=true 的权威用户/助手消息为 true。 */
+  feedbackAvailable: boolean;
+  /** 权威历史反馈初值；流式与本地未确认消息不携带。 */
+  feedback?: MessageFeedback;
   /** 运行中的 assistant 消息（流式聚合中） */
   streaming?: boolean;
 };
@@ -46,6 +53,8 @@ export function projectHistory(messages: ConversationMessage[]): MessageView[] {
         text: message.content ?? '',
         ...(message.attachments?.length ? { attachments: message.attachments } : {}),
         toolCalls: [],
+        feedbackAvailable: message.metadata.feedbackAvailable,
+        feedback: message.feedback,
       });
     } else if (message.role === 'assistant') {
       views.push({
@@ -57,12 +66,15 @@ export function projectHistory(messages: ConversationMessage[]): MessageView[] {
           name: call.function.name,
           args: call.function.arguments,
         })),
+        feedbackAvailable: message.metadata.feedbackAvailable,
+        feedback: message.feedback,
       });
     } else if (message.role === 'tool' && message.toolCallId) {
       for (let i = views.length - 1; i >= 0; i--) {
         const hit = views[i]!.toolCalls.find((x) => x.id === message.toolCallId);
         if (hit) {
           hit.result = message.content ?? '';
+          if (message.isError !== undefined) hit.isError = message.isError;
           break;
         }
       }
@@ -109,9 +121,12 @@ export class StreamAggregator {
           role: 'assistant',
           text: '',
           toolCalls: [],
+          feedbackAvailable: false,
           streaming: true,
         };
         this.current.streaming = true;
+        this.current.feedbackAvailable = false;
+        delete this.current.feedback;
         if (!this.messages.includes(this.current)) this.messages.push(this.current);
         break;
       }
@@ -133,9 +148,12 @@ export class StreamAggregator {
           role: 'assistant',
           text: '',
           toolCalls: [],
+          feedbackAvailable: false,
           streaming: true,
         };
         this.current = target;
+        target.feedbackAvailable = false;
+        delete target.feedback;
         if (!this.messages.includes(target)) this.messages.push(target);
         target.toolCalls.push({
           id: event.toolCallId ?? '',

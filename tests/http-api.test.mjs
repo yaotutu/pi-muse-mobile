@@ -23,7 +23,24 @@ const jsonResponse = (body, status = 200) => new Response(JSON.stringify(body), 
 const jobFixture = (patch = {}) => ({ id: 'job-1', title: '任务', prompt: '提示', kind: 'job', daily: true, at: '09:00', enabled: true, status: 'scheduled', createdAt: '2026-10-20T00:00:00Z', updatedAt: '2026-10-20T00:00:00Z', error: null, ...patch });
 
 test('getConversation 保留 revision 与 messages 响应结构', async () => {
-  const conversation = { revision: 'rev-17', messages: [{ id: 'message-1', role: 'user', content: '你好' }] };
+  const conversation = {
+    sessionId: 'session-17',
+    revision: 'rev-17',
+    messages: [{
+      id: 'message-1',
+      role: 'user',
+      content: '你好',
+      metadata: {
+        createdAt: '2026-10-28T00:00:00.000Z',
+        source: 'chat',
+        runId: 'run-1',
+        jobId: null,
+        notificationId: null,
+        feedbackAvailable: true,
+      },
+      feedback: { reaction: null, comments: [] },
+    }],
+  };
   await withFetch(async (url) => {
     assert.equal(url, 'https://api.example/api/conversation?spaceId=thread%2F%E4%B8%80');
     return jsonResponse(conversation);

@@ -3,6 +3,7 @@ import type {
   AgUiEvent,
   ConversationAttachment,
   ConversationMessage,
+  ConversationMessageMetadata,
   ConversationSnapshot,
   DeleteGoalResult,
   DeleteJobResult,
@@ -31,6 +32,14 @@ import type {
 } from './types';
 import { ApiError } from './errors';
 import { isCanonicalBase64 } from '../attachments/validation';
+import type {
+  MessageComment,
+  MessageFeedback,
+  MessageFeedbackEvent,
+  MessageFeedbackEvents,
+  MessageFeedbackRole,
+  MessageReaction,
+} from '../feedback/types';
 import type { AgentStatusResponse, RuntimeEvent } from '../runtime/types';
 import type { ApprovalClient } from '../approvals/types';
 import type { ActivityClient } from '../activities/types';
@@ -62,10 +71,114 @@ const ATTACHMENT_MIME_TYPES = new Set([
 ]);
 const IMAGE_PREVIEW_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 const SHA256 = /^[a-f0-9]{64}$/;
+const SESSION_ID = /^[A-Za-z0-9_-]{1,128}$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
 
 const invalidHistory = () => new ApiError(502, '服务器返回的会话历史格式不正确，请确认服务器版本与地址');
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
+const hasOnlyKeys = (value: Record<string, unknown>, keys: readonly string[]) =>
+  Object.keys(value).every((key) => keys.includes(key));
+const isIsoTimestamp = (value: unknown): value is string =>
+  typeof value === 'string' && value.length <= 64 && ISO_TIMESTAMP.test(value) &&
+  !Number.isNaN(Date.parse(value));
+const isReaction = (value: unknown): value is MessageReaction | null =>
+  value === null || value === 'like' || value === 'dislike';
+const isFeedbackRole = (value: unknown): value is MessageFeedbackRole =>
+  value === 'user' || value === 'assistant';
+
+function parseMessageComment(value: unknown): MessageComment {
+  if (!isRecord(value) || !hasOnlyKeys(value, ['id', 'text', 'createdAt', 'updatedAt'])) {
+    throw invalidHistory();
+  }
+  const { id, text, createdAt, updatedAt } = value;
+  if (typeof id !== 'string' || !UUID.test(id)) throw invalidHistory();
+  if (typeof text !== 'string' || !text.trim() || text.length > 4000) throw invalidHistory();
+  if (!isIsoTimestamp(createdAt) || !isIsoTimestamp(updatedAt)) throw invalidHistory();
+  return { id, text, createdAt, updatedAt };
+}
+
+/** 写接口成功响应与历史中的 feedback 共用严格解析，避免部分反馈进入 UI。 */
+export function parseMessageFeedback(value: unknown): MessageFeedback {
+  if (!isRecord(value) || !hasOnlyKeys(value, ['reaction', 'comments'])) throw invalidHistory();
+  if (!isReaction(value.reaction) || !Array.isArray(value.comments)) throw invalidHistory();
+  return {
+    reaction: value.reaction,
+    comments: value.comments.map(parseMessageComment),
+  };
+}
+
+function parseMessageMetadata(value: unknown): ConversationMessageMetadata {
+  if (!isRecord(value) || !hasOnlyKeys(value, [
+    'createdAt', 'source', 'runId', 'jobId', 'notificationId', 'feedbackAvailable',
+  ])) {
+    throw invalidHistory();
+  }
+  const { createdAt, source, runId, jobId, notificationId, feedbackAvailable } = value;
+  if (!isIsoTimestamp(createdAt)) throw invalidHistory();
+  if (source !== null && source !== 'chat' && source !== 'job' && source !== 'notification') throw invalidHistory();
+  if (runId !== null && typeof runId !== 'string') throw invalidHistory();
+  if (jobId !== null && typeof jobId !== 'string') throw invalidHistory();
+  if (notificationId !== null && typeof notificationId !== 'string') throw invalidHistory();
+  if (typeof feedbackAvailable !== 'boolean') throw invalidHistory();
+  return { createdAt, source, runId, jobId, notificationId, feedbackAvailable };
+}
+
+function parseFeedbackEvent(value: unknown): MessageFeedbackEvent {
+  if (!isRecord(value) || typeof value.type !== 'string' || !isFeedbackRole(value.role) ||
+    typeof value.messageId !== 'string' || !value.messageId ||
+    typeof value.id !== 'string' || !UUID.test(value.id) ||
+    !isIsoTimestamp(value.at)) {
+    throw invalidHistory();
+  }
+  const common = { id: value.id, messageId: value.messageId, role: value.role, at: value.at };
+  switch (value.type) {
+    case 'reaction_changed':
+      if (!hasOnlyKeys(value, ['id', 'type', 'messageId', 'role', 'from', 'to', 'at']) ||
+        !isReaction(value.from) || !isReaction(value.to)) {
+        throw invalidHistory();
+      }
+      return { ...common, type: value.type, from: value.from, to: value.to };
+    case 'comment_added':
+      if (!hasOnlyKeys(value, ['id', 'type', 'messageId', 'role', 'commentId', 'text', 'at']) ||
+        typeof value.commentId !== 'string' || !UUID.test(value.commentId) ||
+        typeof value.text !== 'string' || !value.text.trim() || value.text.length > 4000) {
+        throw invalidHistory();
+      }
+      return { ...common, type: value.type, commentId: value.commentId, text: value.text };
+    case 'comment_edited':
+      if (!hasOnlyKeys(value, ['id', 'type', 'messageId', 'role', 'commentId', 'fromText', 'toText', 'at']) ||
+        typeof value.commentId !== 'string' || !UUID.test(value.commentId) ||
+        typeof value.fromText !== 'string' || !value.fromText.trim() || value.fromText.length > 4000 ||
+        typeof value.toText !== 'string' || !value.toText.trim() || value.toText.length > 4000) {
+        throw invalidHistory();
+      }
+      return {
+        ...common,
+        type: value.type,
+        commentId: value.commentId,
+        fromText: value.fromText,
+        toText: value.toText,
+      };
+    case 'comment_deleted':
+      if (!hasOnlyKeys(value, ['id', 'type', 'messageId', 'role', 'commentId', 'text', 'at']) ||
+        typeof value.commentId !== 'string' || !UUID.test(value.commentId) ||
+        typeof value.text !== 'string' || !value.text.trim() || value.text.length > 4000) {
+        throw invalidHistory();
+      }
+      return { ...common, type: value.type, commentId: value.commentId, text: value.text };
+    default:
+      throw invalidHistory();
+  }
+}
+
+export function parseMessageFeedbackEvents(value: unknown): MessageFeedbackEvents {
+  if (!isRecord(value) || !hasOnlyKeys(value, ['events']) || !Array.isArray(value.events)) {
+    throw invalidHistory();
+  }
+  return { events: value.events.map(parseFeedbackEvent) };
+}
 
 function parseAttachment(value: unknown): ConversationAttachment {
   if (!isRecord(value)) throw invalidHistory();
@@ -95,13 +208,20 @@ function parseAttachment(value: unknown): ConversationAttachment {
 }
 
 function parseMessage(value: unknown): ConversationMessage {
-  if (!isRecord(value)) throw invalidHistory();
-  const { id, role, content, attachments, toolCalls, toolCallId } = value;
+  if (!isRecord(value) || !hasOnlyKeys(value, [
+    'id', 'role', 'content', 'attachments', 'toolCalls', 'toolCallId', 'isError', 'metadata', 'feedback',
+  ])) {
+    throw invalidHistory();
+  }
+  const { id, role, content, attachments, toolCalls, toolCallId, isError, metadata, feedback } = value;
   if (typeof id !== 'string' || !id) throw invalidHistory();
   if (role !== 'user' && role !== 'assistant' && role !== 'tool') throw invalidHistory();
   if (content !== undefined && typeof content !== 'string') throw invalidHistory();
   if (toolCallId !== undefined && typeof toolCallId !== 'string') throw invalidHistory();
   if (role !== 'user' && attachments !== undefined) throw invalidHistory();
+  if (role === 'tool' && (metadata !== undefined || feedback !== undefined)) throw invalidHistory();
+  if (role !== 'tool' && isError !== undefined) throw invalidHistory();
+  if (role === 'tool' && isError !== undefined && typeof isError !== 'boolean') throw invalidHistory();
 
   let parsedAttachments: ConversationAttachment[] | undefined;
   if (attachments !== undefined) {
@@ -124,13 +244,22 @@ function parseMessage(value: unknown): ConversationMessage {
       };
     });
   }
-  return {
+  const parsedIsError = typeof isError === 'boolean' ? isError : undefined;
+  const common = {
     id,
-    role,
     ...(content === undefined ? {} : { content }),
     ...(parsedAttachments ? { attachments: parsedAttachments } : {}),
     ...(parsedToolCalls ? { toolCalls: parsedToolCalls } : {}),
     ...(toolCallId === undefined ? {} : { toolCallId }),
+  };
+  if (role === 'tool') {
+    return { ...common, role, ...(parsedIsError === undefined ? {} : { isError: parsedIsError }) };
+  }
+  return {
+    ...common,
+    role,
+    metadata: parseMessageMetadata(metadata),
+    feedback: parseMessageFeedback(feedback),
   };
 }
 
@@ -141,8 +270,16 @@ export function parseConversationMessages(value: unknown): ConversationMessage[]
 }
 
 export function parseConversationSnapshot(value: unknown): ConversationSnapshot {
-  if (!isRecord(value) || typeof value.revision !== 'string' || !value.revision) throw invalidHistory();
-  return { revision: value.revision, messages: parseConversationMessages(value.messages) };
+  if (!isRecord(value) || !hasOnlyKeys(value, ['sessionId', 'revision', 'messages']) ||
+    typeof value.revision !== 'string' || !value.revision ||
+    (value.sessionId !== null && (typeof value.sessionId !== 'string' || !SESSION_ID.test(value.sessionId)))) {
+    throw invalidHistory();
+  }
+  return {
+    sessionId: value.sessionId,
+    revision: value.revision,
+    messages: parseConversationMessages(value.messages),
+  };
 }
 
 export function parseMessagesSnapshotEvent(event: AgUiEvent): AgUiEvent {
@@ -164,6 +301,53 @@ export interface ApiClient extends DreamClient, ApprovalClient, ActivityClient, 
   resetSpace(spaceId: string, options?: { clearSchedules?: boolean }, signal?: AbortSignal): Promise<ResetSpaceResult>;
   /** GET /api/conversation?spaceId= 权威历史；empty 不代表空间存在，存在性以空间列表为准。 */
   getConversation(spaceId: string, signal?: AbortSignal): Promise<ConversationSnapshot>;
+  /** GET 消息当前反馈；读取失败由调用方保留旧值，不用空反馈冒充。 */
+  getMessageFeedback(
+    spaceId: string,
+    messageId: string,
+    sessionId: string,
+    signal?: AbortSignal,
+  ): Promise<MessageFeedback>;
+  /** GET 服务端保留的原始反馈操作事件。 */
+  getMessageFeedbackEvents(
+    spaceId: string,
+    messageId: string,
+    sessionId: string,
+    signal?: AbortSignal,
+  ): Promise<MessageFeedbackEvents>;
+  /** PUT 互斥反应；null 表示撤销。成功返回完整反馈，不改变聊天 revision。 */
+  setMessageReaction(
+    spaceId: string,
+    messageId: string,
+    sessionId: string,
+    reaction: MessageReaction | null,
+    signal?: AbortSignal,
+  ): Promise<MessageFeedback>;
+  /** POST 新评论；服务端 trim 后必须为 1..4000 字。 */
+  addMessageComment(
+    spaceId: string,
+    messageId: string,
+    sessionId: string,
+    text: string,
+    signal?: AbortSignal,
+  ): Promise<MessageFeedback>;
+  /** PATCH 编辑评论；成功返回完整反馈。 */
+  editMessageComment(
+    spaceId: string,
+    messageId: string,
+    commentId: string,
+    sessionId: string,
+    text: string,
+    signal?: AbortSignal,
+  ): Promise<MessageFeedback>;
+  /** DELETE 评论；成功返回完整反馈。 */
+  deleteMessageComment(
+    spaceId: string,
+    messageId: string,
+    commentId: string,
+    sessionId: string,
+    signal?: AbortSignal,
+  ): Promise<MessageFeedback>;
   /** 发起一轮对话：SSE 流式回调 AG-UI 事件；signal 中断即停止消费 */
   runAgent(
     input: RunInput,

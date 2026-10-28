@@ -14,7 +14,13 @@ const tool = (parentMessageId, toolCallId) => ({
   type: 'TOOL_CALL_START', parentMessageId, toolCallId, toolCallName: 'lookup',
 });
 const snapshot = (messages) => ({ type: 'MESSAGES_SNAPSHOT', messages });
-const assistant = (id, content) => ({ id, role: 'assistant', content });
+const feedback = { reaction: null, comments: [] };
+const metadata = (feedbackAvailable = true) => ({
+  createdAt: '2026-10-28T00:00:00.000Z', source: 'chat', runId: null, jobId: null,
+  notificationId: null, feedbackAvailable,
+});
+const user = (id, content) => ({ id, role: 'user', content, metadata: metadata(), feedback });
+const assistant = (id, content) => ({ id, role: 'assistant', content, metadata: metadata(), feedback });
 
 test('文本增量和结束事件按 messageId 路由，不误写当前消息', () => {
   const state = aggregate([
@@ -30,7 +36,7 @@ test('文本增量和结束事件按 messageId 路由，不误写当前消息', 
 
 test('未知或指向 user 的显式 messageId 不得回退到 current', () => {
   const state = aggregate([
-    snapshot([{ id: 'user', role: 'user', content: '问题' }]), start('active'),
+    snapshot([user('user', '问题')]), start('active'),
     content('missing', '忽略'), content('user', '不可写入'),
     { type: 'TEXT_MESSAGE_END', messageId: 'missing' },
   ]);
@@ -152,8 +158,10 @@ test('RUN_ERROR 暴露受控错误并结束所有 streaming，保留已有回复
 });
 
 test('历史允许无正文的纯工具消息，空正文不影响按调用 ID 关联', () => {
+  const assistantTools = assistant('assistant-tools', '');
+  delete assistantTools.content;
   const history = [
-    { id: 'assistant-tools', role: 'assistant', toolCalls: [
+    { ...assistantTools, toolCalls: [
       { id: 'lookup-1', type: 'function', function: { name: 'lookup', arguments: '{}' } },
     ] },
     { id: 'tool-result', role: 'tool', toolCallId: 'lookup-1' },
@@ -162,6 +170,7 @@ test('历史允许无正文的纯工具消息，空正文不影响按调用 ID �
   assert.deepEqual(views, [{
     id: 'assistant-tools', role: 'assistant', text: '',
     toolCalls: [{ id: 'lookup-1', name: 'lookup', args: '{}', result: '' }],
+    feedbackAvailable: true, feedback,
   }]);
   assert.equal('content' in history[0], false);
   assert.equal('content' in history[1], false);
@@ -169,7 +178,7 @@ test('历史允许无正文的纯工具消息，空正文不影响按调用 ID �
 
 test('历史投影按调用 ID 回填结果且不修改输入，settle 可重复收尾', () => {
   const history = [
-    { id: 'user', role: 'user', content: '问题' },
+    user('user', '问题'),
     { ...assistant('active', '回答'), toolCalls: [
       { id: 'call', type: 'function', function: { name: 'lookup', arguments: '{}' } },
     ] },

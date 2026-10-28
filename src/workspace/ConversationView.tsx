@@ -21,6 +21,7 @@ import { TypingIndicator } from './primitives';
 import { MessageContent } from './MessageContent';
 import { ToolResultCard } from './ToolResultCard';
 import { ActionButton } from '../ui/ActionButton';
+import { MessageFeedbackControls } from '../feedback/MessageFeedbackControls';
 
 const { layout: l, radius: r, typography: t } = workspaceTheme;
 
@@ -208,6 +209,10 @@ export function ConversationView({
               key={message.id}
               message={message}
               pendingStatus={pending && pending.messageId === message.id ? pending.status : undefined}
+              feedbackScope={message.feedbackAvailable === true && conversation.sessionId &&
+                conversation.persistedMessageIds.has(message.id) && message.feedback
+                ? { spaceId, sessionId: conversation.sessionId, initialFeedback: message.feedback }
+                : undefined}
             />
           ))}
           {pending?.status === 'failed' && (
@@ -316,7 +321,11 @@ export function ConversationView({
   );
 }
 
-function Message({ message, pendingStatus }: { message: MessageView; pendingStatus?: 'sending' | 'failed' | 'unconfirmed' }) {
+function Message({ message, pendingStatus, feedbackScope }: {
+  message: MessageView;
+  pendingStatus?: 'sending' | 'failed' | 'unconfirmed';
+  feedbackScope?: { spaceId: string; sessionId: string; initialFeedback: NonNullable<MessageView['feedback']> };
+}) {
   const styles = useStyles();
   return (
     <View style={styles.messageBlock}>
@@ -344,6 +353,14 @@ function Message({ message, pendingStatus }: { message: MessageView; pendingStat
         </View>
       )}
       {message.toolCalls.map((tool) => <ToolResultCard key={tool.id} tool={tool} />)}
+      {feedbackScope && <MessageFeedbackControls
+        key={`${feedbackScope.sessionId}:${message.id}`}
+        spaceId={feedbackScope.spaceId}
+        sessionId={feedbackScope.sessionId}
+        messageId={message.id}
+        role={message.role}
+        initialFeedback={feedbackScope.initialFeedback}
+      />}
     </View>
   );
 }
