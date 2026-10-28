@@ -8,7 +8,7 @@ import { decodeHTML } from 'entities';
 import { Copy, Check, AlertCircle } from 'lucide-react-native';
 import { marked } from 'marked';
 import { useMemo, useState, type ReactNode } from 'react';
-import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View, type TextStyle } from 'react-native';
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View, type TextProps, type TextStyle } from 'react-native';
 import { safeMessageUrl } from '../chat/message-links';
 import { useTheme } from '../theme/ThemeProvider';
 import { sizing, spacing, workspaceTheme, type WorkspaceColors } from '../ui/tokens';
@@ -33,7 +33,15 @@ type MarkdownToken = {
   rows?: MarkdownToken[][];
 };
 
-export function MessageContent({ text }: { text: string }) {
+/** 将读屏自定操作放在正文 Text 上，避免气泡容器覆盖正文朗读和子控件焦点。 */
+function messageActionAccessibility(onOpen?: () => void): Pick<TextProps, 'accessibilityActions' | 'onAccessibilityAction'> {
+  return onOpen ? {
+    accessibilityActions: [{ name: 'openMessageActions', label: '打开消息操作' }],
+    onAccessibilityAction: (event) => { if (event.nativeEvent.actionName === 'openMessageActions') onOpen(); },
+  } : {};
+}
+
+export function MessageContent({ text, onMessageLongPress }: { text: string; onMessageLongPress?: () => void }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const tokens = useMemo(() => {
@@ -65,7 +73,8 @@ export function MessageContent({ text }: { text: string }) {
           const url = safeMessageUrl(decodeHTML(part.href ?? ''));
           const label = inline(part.tokens, value);
           return url
-            ? <Text key={key} accessibilityRole="link" style={styles.link} onPress={() => {
+            ? <Text key={key} accessibilityRole="link" style={styles.link} onLongPress={onMessageLongPress}
+              {...messageActionAccessibility(onMessageLongPress)} onPress={() => {
                 void Linking.openURL(url).catch(() => Alert.alert('无法打开链接', '请稍后重试。'));
               }}>{label}</Text>
             : <Text key={key}>{label}</Text>;
@@ -85,11 +94,13 @@ export function MessageContent({ text }: { text: string }) {
       case 'space': return null;
       case 'heading': {
         const headingStyle = part.depth === 1 ? styles.heading1 : part.depth === 2 ? styles.heading2 : styles.heading3;
-        return <Text key={key} selectable style={[styles.body, headingStyle]}>{inline(part.tokens, value)}</Text>;
+        return <Text key={key} selectable={!onMessageLongPress} onLongPress={onMessageLongPress}
+          {...messageActionAccessibility(onMessageLongPress)} style={[styles.body, headingStyle]}>{inline(part.tokens, value)}</Text>;
       }
       case 'paragraph':
-      case 'text': return <Text key={key} selectable style={styles.body}>{inline(part.tokens, value)}</Text>;
-      case 'code': return <CodeBlock key={key} code={value} language={part.lang} />;
+      case 'text': return <Text key={key} selectable={!onMessageLongPress} onLongPress={onMessageLongPress}
+        {...messageActionAccessibility(onMessageLongPress)} style={styles.body}>{inline(part.tokens, value)}</Text>;
+      case 'code': return <CodeBlock key={key} code={value} language={part.lang} onMessageLongPress={onMessageLongPress} />;
       case 'blockquote': return <View key={key} style={styles.quote}>{blocks(part.tokens ?? [{ type: 'text', text: value }])}</View>;
       case 'list': return <View key={key} style={styles.list}>{part.items?.map((item, itemIndex) => (
         <View key={itemIndex} style={styles.listItem}>
@@ -97,17 +108,18 @@ export function MessageContent({ text }: { text: string }) {
           <View style={styles.listBody}>{blocks(item.tokens ?? [{ type: 'text', text: item.text ?? '' }])}</View>
         </View>
       ))}</View>;
-      case 'table': return <MarkdownTable key={key} token={part} inline={inline} />;
+      case 'table': return <MarkdownTable key={key} token={part} inline={inline} onMessageLongPress={onMessageLongPress} />;
       case 'hr': return <View key={key} style={styles.rule} />;
       // 未识别结构及 HTML 保留字面内容；不会执行标签、脚本或图片请求。
-      default: return value ? <Text key={key} selectable style={styles.body}>{value}</Text> : null;
+      default: return value ? <Text key={key} selectable={!onMessageLongPress} onLongPress={onMessageLongPress}
+        {...messageActionAccessibility(onMessageLongPress)} style={styles.body}>{value}</Text> : null;
     }
   });
 
   return <View style={styles.root}>{blocks(tokens)}</View>;
 }
 
-function CodeBlock({ code, language }: { code: string; language?: string }) {
+function CodeBlock({ code, language, onMessageLongPress }: { code: string; language?: string; onMessageLongPress?: () => void }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [lastCopy, setLastCopy] = useState<{ code: string; status: 'copied' | 'failed' }>();
@@ -130,19 +142,22 @@ function CodeBlock({ code, language }: { code: string; language?: string }) {
       </Pressable>
     </View>
     <ScrollView horizontal style={styles.horizontalContent} contentContainerStyle={styles.codeScroll} showsHorizontalScrollIndicator>
-      <Text selectable style={styles.codeText}>{code}</Text>
+      {onMessageLongPress
+        ? <Text onLongPress={onMessageLongPress} {...messageActionAccessibility(onMessageLongPress)} style={styles.codeText}>{code}</Text>
+        : <Text selectable style={styles.codeText}>{code}</Text>}
     </ScrollView>
   </View>;
 }
 
-function MarkdownTable({ token, inline }: { token: MarkdownToken; inline: (parts: MarkdownToken[] | undefined, fallback?: string) => ReactNode }) {
+function MarkdownTable({ token, inline, onMessageLongPress }: { token: MarkdownToken; inline: (parts: MarkdownToken[] | undefined, fallback?: string) => ReactNode; onMessageLongPress?: () => void }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const rows = [token.header ?? [], ...(token.rows ?? [])];
   return <ScrollView horizontal style={styles.horizontalContent} contentContainerStyle={styles.table} showsHorizontalScrollIndicator>
     {rows.map((row, rowIndex) => <View key={rowIndex} style={styles.tableRow}>
       {row.map((cell, cellIndex) => <View key={cellIndex} style={[styles.tableCell, rowIndex === 0 && styles.tableHeader]}>
-        <Text selectable style={[styles.tableText, rowIndex === 0 && styles.bold]}>{inline(cell.tokens, cell.text ?? '')}</Text>
+        <Text selectable={!onMessageLongPress} onLongPress={onMessageLongPress}
+          {...messageActionAccessibility(onMessageLongPress)} style={[styles.tableText, rowIndex === 0 && styles.bold]}>{inline(cell.tokens, cell.text ?? '')}</Text>
       </View>)}
     </View>)}
   </ScrollView>;

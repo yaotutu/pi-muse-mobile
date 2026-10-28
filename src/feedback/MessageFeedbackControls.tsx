@@ -2,7 +2,8 @@
  * 已落盘消息的局部反馈 UI。父级负责确认消息归属；此处只管理展开、草稿与删除确认，
  * 所有反馈读写交给 Hook。评论输入与聊天发送完全独立，不触发模型运行。
  */
-import { Check, MessageCircle, MoreHorizontal, Pencil, RotateCw, ThumbsDown, ThumbsUp, Trash2, X } from 'lucide-react-native';
+import * as Clipboard from 'expo-clipboard';
+import { Check, Copy, MessageCircle, Pencil, RotateCw, ThumbsDown, ThumbsUp, Trash2, X } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
 import {
   Keyboard,
@@ -31,12 +32,15 @@ const { layout: l, radius: r, typography: t } = workspaceTheme;
 
 type Reaction = MessageFeedback['reaction'];
 
-export function MessageFeedbackControls({ spaceId, sessionId, messageId, role, initialFeedback }: {
+export function MessageFeedbackControls({ spaceId, sessionId, messageId, messageText, role, initialFeedback, visible, onClose }: {
   spaceId: string;
   sessionId: string;
   messageId: string;
+  messageText: string;
   role: 'user' | 'assistant';
   initialFeedback: MessageFeedback;
+  visible: boolean;
+  onClose: () => void;
 }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -46,8 +50,8 @@ export function MessageFeedbackControls({ spaceId, sessionId, messageId, role, i
   const compact = width < l.sheetCompactBreakpoint;
   const { feedback, loading, busy, error, uncertain, refresh, setReaction, addComment, editComment, deleteComment } =
     useMessageFeedback({ spaceId, sessionId, messageId, initialFeedback });
-  const [expanded, setExpanded] = useState(false);
-  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [section, setSection] = useState<'actions' | 'comments'>('actions');
+  const [copyError, setCopyError] = useState(false);
   const [draft, setDraft] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState('');
@@ -55,18 +59,17 @@ export function MessageFeedbackControls({ spaceId, sessionId, messageId, role, i
   const locked = loading || busy || uncertain;
   const ownerLabel = role === 'user' ? '用户消息' : '助手消息';
   const count = feedback.comments.length;
-  const summary = [
-    feedback.reaction === 'like' ? '已喜欢' : feedback.reaction === 'dislike' ? '已不喜欢' : '',
-    count ? `${count} 条评论` : '',
-  ].filter(Boolean).join(' · ');
+  const reactionLabel = feedback.reaction === 'like' ? '已喜欢' : feedback.reaction === 'dislike' ? '已不喜欢' : '未选择';
 
-  const closeComments = () => {
+  const closePanel = () => {
     Keyboard.dismiss();
-    setCommentsOpen(false);
+    onClose();
+    setSection('actions');
     setDeletingId(null);
+    setCopyError(false);
   };
   const openComments = () => {
-    setCommentsOpen(true);
+    setSection('comments');
     // 历史已有初值；只有用户打开评论时才按需读取，避免每条消息挂载即请求。
     if (!busy && !loading) void refresh();
   };
@@ -92,62 +95,68 @@ export function MessageFeedbackControls({ spaceId, sessionId, messageId, role, i
     if (locked) return;
     if (await deleteComment(id)) setDeletingId(null);
   };
+  const copyMessage = async () => {
+    try {
+      setCopyError(!(await Clipboard.setStringAsync(messageText)));
+    } catch {
+      setCopyError(true);
+    }
+  };
 
-  return (
-    <View style={[styles.root, role === 'user' ? styles.userRoot : styles.assistantRoot]} testID={`message-feedback-${messageId}`}>
-      <View style={styles.compactRow}>
-        <Pressable accessibilityRole="button" accessibilityLabel={`${ownerLabel}反馈操作${summary ? `，${summary}` : ''}`}
-          accessibilityState={{ expanded }} onPress={() => setExpanded((value) => !value)}
-          style={({ pressed }) => [styles.entry, pressed && styles.pressed]} testID={`message-feedback-open-${messageId}`}>
-          <MoreHorizontal size={sizing.iconMedium} color={summary ? colors.accentText : colors.muted} />
-          {!!summary && <Text style={styles.summary}>{summary}</Text>}
-        </Pressable>
-        {!!error && !expanded && <Text style={styles.errorDot} accessibilityLabel="反馈操作失败">!</Text>}
-      </View>
-      {expanded && <View style={styles.actions}>
-        <Pressable accessibilityRole="button" accessibilityLabel={feedback.reaction === 'like' ? '撤销喜欢' : '喜欢这条消息'}
-          accessibilityState={{ selected: feedback.reaction === 'like', disabled: locked, busy }}
-          disabled={locked} onPress={() => toggleReaction('like')}
-          style={({ pressed }) => [styles.iconAction, feedback.reaction === 'like' && styles.selected, pressed && styles.pressed, locked && styles.disabled]}>
-          <ThumbsUp size={sizing.iconMedium} color={feedback.reaction === 'like' ? colors.accentText : colors.muted} />
-        </Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel={feedback.reaction === 'dislike' ? '撤销不喜欢' : '不喜欢这条消息'}
-          accessibilityState={{ selected: feedback.reaction === 'dislike', disabled: locked, busy }}
-          disabled={locked} onPress={() => toggleReaction('dislike')}
-          style={({ pressed }) => [styles.iconAction, feedback.reaction === 'dislike' && styles.selected, pressed && styles.pressed, locked && styles.disabled]}>
-          <ThumbsDown size={sizing.iconMedium} color={feedback.reaction === 'dislike' ? colors.accentText : colors.muted} />
-        </Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel={`查看${ownerLabel}评论，${count} 条`}
-          onPress={openComments}
-          style={({ pressed }) => [styles.iconAction, pressed && styles.pressed]} testID={`message-comments-open-${messageId}`}>
-          <MessageCircle size={sizing.iconMedium} color={colors.muted} />
-          {!!count && <Text style={styles.count}>{count}</Text>}
-        </Pressable>
-      </View>}
-      {expanded && !!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
-      {expanded && uncertain && <ActionButton label="刷新核对反馈" icon={RotateCw} disabled={loading || busy}
-        onPress={() => void refresh()} />}
-
-      {commentsOpen && <Modal transparent visible animationType={reducedMotion ? 'none' : 'slide'}
-        onRequestClose={closeComments} accessibilityLabel={`${ownerLabel}评论`}>
+  // 组件保持挂载以保存未明锁定和草稿；关闭时只渲染 Modal，不给聊天列表增加任何布局节点。
+  return visible && <Modal transparent visible animationType={reducedMotion ? 'none' : 'slide'}
+        onRequestClose={closePanel} accessibilityLabel={`${ownerLabel}消息操作`}>
         <ThemeStatusBar />
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={[styles.shade, compact && styles.compactShade]}>
-          <Pressable accessibilityRole="button" accessibilityLabel="关闭评论" onPress={closeComments}
+          <Pressable accessibilityRole="button" accessibilityLabel="关闭消息操作" onPress={closePanel}
             style={StyleSheet.absoluteFill} />
           <View accessibilityViewIsModal style={[styles.panel, compact && styles.compactPanel,
-            compact && { paddingBottom: Math.max(insets.bottom, spacing[16]) }]}>
+            compact && { paddingBottom: Math.max(insets.bottom, spacing[16]) }]}
+            testID={section === 'actions' ? `message-feedback-menu-${messageId}` : `message-comments-panel-${messageId}`}>
             {compact && <View style={styles.grabber} />}
             <View style={styles.panelHeader}>
               <View style={styles.panelHeading}>
-                <Text style={styles.title}>评论</Text>
-                <Text style={styles.caption}>{ownerLabel} · {count} 条</Text>
+                <Text style={styles.title}>{section === 'actions' ? '消息操作' : '评论'}</Text>
+                <Text style={styles.caption}>{ownerLabel}</Text>
               </View>
-              <Pressable accessibilityRole="button" accessibilityLabel="关闭评论" onPress={closeComments}
+              <Pressable accessibilityRole="button" accessibilityLabel="关闭消息操作" onPress={closePanel}
                 style={({ pressed }) => [styles.iconAction, pressed && styles.pressed]}>
                 <X size={sizing.iconMedium} color={colors.ink} />
               </Pressable>
             </View>
+            {section === 'actions' ? <>
+              <Text style={styles.caption} accessibilityLabel={`反馈状态，${reactionLabel}，${count} 条评论`}
+                testID={`message-feedback-state-${messageId}`}>{reactionLabel} · {count} 条评论</Text>
+              <View style={styles.actions}>
+                <Pressable accessibilityRole="button" accessibilityLabel={feedback.reaction === 'like' ? '撤销喜欢' : '喜欢这条消息'}
+                  accessibilityState={{ selected: feedback.reaction === 'like', disabled: locked, busy }}
+                  disabled={locked} onPress={() => toggleReaction('like')}
+                  style={({ pressed }) => [styles.iconAction, feedback.reaction === 'like' && styles.selected, pressed && styles.pressed, locked && styles.disabled]}>
+                  <ThumbsUp size={sizing.iconMedium} color={feedback.reaction === 'like' ? colors.accentText : colors.muted} />
+                  <Text style={styles.actionText}>喜欢</Text>
+                </Pressable>
+                <Pressable accessibilityRole="button" accessibilityLabel={feedback.reaction === 'dislike' ? '撤销不喜欢' : '不喜欢这条消息'}
+                  accessibilityState={{ selected: feedback.reaction === 'dislike', disabled: locked, busy }}
+                  disabled={locked} onPress={() => toggleReaction('dislike')}
+                  style={({ pressed }) => [styles.iconAction, feedback.reaction === 'dislike' && styles.selected, pressed && styles.pressed, locked && styles.disabled]}>
+                  <ThumbsDown size={sizing.iconMedium} color={feedback.reaction === 'dislike' ? colors.accentText : colors.muted} />
+                  <Text style={styles.actionText}>不喜欢</Text>
+                </Pressable>
+                <Pressable accessibilityRole="button" accessibilityLabel={`查看${ownerLabel}评论，${count} 条`}
+                  onPress={openComments}
+                  style={({ pressed }) => [styles.iconAction, pressed && styles.pressed]} testID={`message-comments-open-${messageId}`}>
+                  <MessageCircle size={sizing.iconMedium} color={colors.muted} />
+                  <Text style={styles.actionText}>评论</Text>
+                </Pressable>
+              </View>
+              {!!messageText && <ActionButton label="复制消息" icon={Copy} onPress={() => void copyMessage()} />}
+              {copyError && <Text accessibilityRole="alert" style={styles.error}>复制失败，请重试</Text>}
+            </> : <>
+            <Pressable accessibilityRole="button" accessibilityLabel="返回消息操作" onPress={() => { Keyboard.dismiss(); setSection('actions'); }}
+              style={({ pressed }) => [styles.backAction, pressed && styles.pressed]}>
+              <Text style={styles.actionText}>返回操作</Text>
+            </Pressable>
             <ScrollView style={styles.commentScroll} contentContainerStyle={styles.commentList}
               keyboardShouldPersistTaps="handled">
               {loading && <Text style={styles.caption}>正在读取反馈…</Text>}
@@ -185,6 +194,7 @@ export function MessageFeedbackControls({ spaceId, sessionId, messageId, role, i
               <ActionButton label="添加评论" text="发送" disabled={locked || !draft.trim()}
                 onPress={() => void submitComment()} />
             </View>
+            </>}
             <FeedbackNotice text={error ?? undefined} tone="danger" />
             {uncertain && <View style={styles.uncertain}>
               <Text style={styles.caption}>结果待核对。请刷新确认后再修改；不会自动重试。</Text>
@@ -193,25 +203,16 @@ export function MessageFeedbackControls({ spaceId, sessionId, messageId, role, i
             </View>}
           </View>
         </KeyboardAvoidingView>
-      </Modal>}
-    </View>
-  );
+      </Modal>;
 }
 
 const createStyles = (c: WorkspaceColors) => StyleSheet.create({
-  root: { gap: spacing[2], maxWidth: l.assistantMessageWidth },
-  userRoot: { alignSelf: 'flex-end', alignItems: 'flex-end' },
-  assistantRoot: { alignSelf: 'flex-start', alignItems: 'flex-start' },
-  compactRow: { flexDirection: 'row', alignItems: 'center' },
-  entry: { minHeight: l.smallControl, minWidth: l.smallControl, flexDirection: 'row', alignItems: 'center',
-    gap: spacing[6], paddingHorizontal: spacing[10], borderRadius: r.round },
-  summary: { ...t.caption, color: c.muted },
-  count: { ...t.caption, color: c.muted },
-  errorDot: { ...t.caption, color: c.danger },
   error: { ...t.caption, color: c.danger },
-  actions: { flexDirection: 'row', alignItems: 'center', gap: spacing[4] },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing[4] },
   iconAction: { minWidth: l.smallControl, minHeight: l.smallControl, flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'center', gap: spacing[4], borderRadius: r.round },
+    justifyContent: 'center', gap: spacing[4], paddingHorizontal: spacing[8], borderRadius: r.round },
+  actionText: { ...t.caption, color: c.ink },
+  backAction: { minHeight: l.smallControl, justifyContent: 'center', alignSelf: 'flex-start', paddingHorizontal: spacing[8] },
   selected: { backgroundColor: c.blueSoft },
   pressed: { opacity: workspaceTheme.interaction.pressedOpacity },
   disabled: { opacity: workspaceTheme.interaction.disabledOpacity },

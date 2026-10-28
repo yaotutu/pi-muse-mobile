@@ -200,55 +200,93 @@ def chat_scroll(down):
     sh('shell', 'input', 'swipe', str(x), str(int(start)), str(x), str(int(end)), '350')
 
 
-def seek_entry(message_id):
-    label = 'message-feedback-open-' + message_id
+def chat_viewport():
+    composer = find('消息输入框')
+    if composer is None:
+        raise AssertionError('chat composer absent')
+    top_limit = bounds(composer)[1]
+    areas = [bounds(node) for node in tree.iter('node') if visible(node)
+             and node.get('class') == 'android.widget.ScrollView'
+             and bounds(node)[2] - bounds(node)[0] > width * .5
+             and bounds(node)[1] < top_limit and bounds(node)[3] <= top_limit + height * .04]
+    if not areas:
+        raise AssertionError('chat ScrollView not identifiable')
+    return max(areas, key=lambda box: (box[2] - box[0]) * (box[3] - box[1]))
+
+
+def bubble_press_point(message_id):
+    bubble = find('message-bubble-' + message_id)
+    if bubble is None:
+        return None
+    box, viewport = bounds(bubble), chat_viewport()
+    left, top = max(box[0], viewport[0]), max(box[1], viewport[1])
+    right, bottom = min(box[2], viewport[2]), min(box[3], viewport[3])
+    if right - left < 20 * density or bottom - top < 20 * density:
+        return None
+    # 优先落在目标气泡内可见正文 Text 上；UIAutomator 扁平化正文时选正文起始区域。
+    texts = [node for node in tree.iter('node') if node.get('class') == 'android.widget.TextView'
+             and node.get('text') and visible(node) and center_in_box(node, box)
+             and left + 2 <= (bounds(node)[0] + bounds(node)[2]) / 2 <= right - 2
+             and top + 2 <= (bounds(node)[1] + bounds(node)[3]) / 2 <= bottom - 2]
+    if texts:
+        target = min(texts, key=lambda node: bounds(node)[1])
+        x, y = (bounds(target)[0] + bounds(target)[2]) // 2, (bounds(target)[1] + bounds(target)[3]) // 2
+    else:
+        x = min(right - 3, left + int(24 * density))
+        y = min(bottom - 3, top + int(24 * density))
+    return x, y
+
+
+def seek_bubble(message_id):
     refresh()
-    if find(label) is not None:
+    if bubble_press_point(message_id) is not None:
         return
-    # 仅滚动聊天列表；先回到前段，再按消息时间向后扫描，绝不点击其他消息。
+    # 仅滚动聊天列表；绝不点击或长按其他消息，也不把离屏节点当成可操作目标。
     for down, limit in ((True, 14), (False, 28)):
         for _ in range(limit):
             chat_scroll(down)
             refresh()
-            if find(label) is not None:
+            if bubble_press_point(message_id) is not None:
                 return
-    raise AssertionError('target persisted message entry not visible: ' + message_id)
+    raise AssertionError('target persisted message bubble not visible: ' + message_id)
 
 
 def feedback_scope(message_id):
-    root_node = find('message-feedback-' + message_id)
-    if root_node is not None:
-        box = tuple(bounds(root_node))
-    else:
-        # 少数 RN 树省略普通 View：两个目标专属 testID 仍可限定其联合区域。
-        entry = find('message-feedback-open-' + message_id)
-        comment = find('message-comments-open-' + message_id)
-        if entry is None or comment is None:
-            raise AssertionError('target feedback row is not expanded: ' + message_id)
-        first, last = bounds(entry), bounds(comment)
-        box = (min(first[0], last[0]), min(first[1], last[1]),
-               max(first[2], last[2]), max(first[3], last[3]))
-    if find('message-feedback-open-' + message_id, box) is None or find('message-comments-open-' + message_id, box) is None:
-        raise AssertionError('target feedback controls are outside their own bounds: ' + message_id)
+    root_node = find('message-feedback-menu-' + message_id)
+    if root_node is None:
+        raise AssertionError('target message operation panel is not open: ' + message_id)
+    box = tuple(bounds(root_node))
+    if find('message-comments-open-' + message_id, box) is None or find('message-feedback-state-' + message_id, box) is None:
+        raise AssertionError('target feedback controls are outside their own panel: ' + message_id)
     return box
 
 
 def open_actions(message_id):
-    seek_entry(message_id)
     refresh()
-    if find('message-comments-open-' + message_id) is None:
-        tap('message-feedback-open-' + message_id)
-    wait(lambda: find('message-comments-open-' + message_id) is not None,
-         'expanded target feedback actions')
+    if find('message-feedback-menu-' + message_id) is None:
+        if find('message-comments-panel-' + message_id) is not None:
+            raise AssertionError('target comment panel is open; refusing to long-press hidden chat')
+        if any(find('message-feedback-menu-' + other) is not None or
+               find('message-comments-panel-' + other) is not None for other in ids.values()):
+            raise AssertionError('another message panel is open; refusing to target hidden chat')
+        seek_bubble(message_id)
+        point = bubble_press_point(message_id)
+        if point is None:
+            raise AssertionError('target bubble is outside visible chat viewport: ' + message_id)
+        sh('shell', 'input', 'swipe', str(point[0]), str(point[1]),
+           str(point[0]), str(point[1]), '900')
+    wait(lambda: find('message-feedback-menu-' + message_id) is not None
+         and find('message-comments-open-' + message_id) is not None,
+         'target message panel opened by native long press')
     feedback_scope(message_id)
 
 
 def reaction_state(message_id, reaction):
     scope = feedback_scope(message_id)
-    entry = find('message-feedback-open-' + message_id, scope)
-    if entry is None:
+    state = find('message-feedback-state-' + message_id, scope)
+    if state is None:
         return False
-    summary = entry.get('content-desc') or ''
+    summary = state.get('content-desc') or state.get('text') or ''
     if reaction == 'like':
         control = find('撤销喜欢', scope)
         return control is not None and control.get('enabled') != 'false' and '已喜欢' in summary
@@ -259,7 +297,7 @@ def reaction_state(message_id, reaction):
     dislike = find('不喜欢这条消息', scope)
     return (like is not None and like.get('enabled') != 'false'
             and dislike is not None and dislike.get('enabled') != 'false'
-            and '已喜欢' not in summary and '已不喜欢' not in summary)
+            and '未选择' in summary)
 
 
 def react(message_id, action, expected, name):
@@ -274,9 +312,11 @@ def react(message_id, action, expected, name):
 
 def open_comments(message_id):
     open_actions(message_id)
-    tap('message-comments-open-' + message_id)
-    wait(lambda: find('新评论', kind='android.widget.EditText') is not None and visible_text('评论'),
-         'target comment panel opened')
+    tap('message-comments-open-' + message_id, feedback_scope(message_id))
+    wait(lambda: find('message-comments-panel-' + message_id) is not None
+         and (lambda field: field is not None and field.get('enabled') != 'false')(
+             find('新评论', kind='android.widget.EditText'))
+         and visible_text('评论'), 'target comment panel ready')
 
 
 def keyboard_visible():
@@ -291,10 +331,11 @@ def hide_keyboard_if_visible():
              'Back hides keyboard while comments remain open')
 
 
-def close_comments_with_back(name):
+def close_comments_with_back(name, message_id):
     hide_keyboard_if_visible()
     sh('shell', 'input', 'keyevent', 'KEYCODE_BACK')
-    step(name, lambda: find('新评论', kind='android.widget.EditText') is None
+    step(name, lambda: find('message-comments-panel-' + message_id) is None
+         and find('新评论', kind='android.widget.EditText') is None
          and find('打开空间侧栏') is not None)
 
 
@@ -391,11 +432,11 @@ def phase_comments():
                lambda: not visible_text(comment_b) and visible_text(comment_a_edit)
                and find('确认删除评论') is None)
     hide_keyboard_if_visible()
-    tap('关闭评论')
+    tap('关闭消息操作')
     step('assistant-comments-closed', lambda: find('新评论', kind='android.widget.EditText') is None)
     open_comments(assistant)
     step('assistant-comments-reopened', lambda: visible_text(comment_a_edit) and not visible_text(comment_b))
-    close_comments_with_back('assistant-comments-back-closed')
+    close_comments_with_back('assistant-comments-back-closed', assistant)
 
     user = ids['user']
     open_actions(user)
@@ -408,7 +449,7 @@ def phase_comments():
     enter('新评论', comment_user)
     write_step('user-comment-added', lambda: tap('添加评论'),
                lambda: visible_text(comment_user) and empty_new_comment())
-    close_comments_with_back('user-comments-back-closed')
+    close_comments_with_back('user-comments-back-closed', user)
 
 
 def phase_restore():
@@ -417,12 +458,12 @@ def phase_restore():
     step('restore-assistant-reaction', lambda: reaction_state(ids['assistant'], None))
     open_comments(ids['assistant'])
     step('restore-assistant-comment', lambda: visible_text(comment_a_edit) and not visible_text(comment_b))
-    close_comments_with_back('restore-assistant-closed')
+    close_comments_with_back('restore-assistant-closed', ids['assistant'])
     open_actions(ids['user'])
     step('restore-user-reaction', lambda: reaction_state(ids['user'], 'like'))
     open_comments(ids['user'])
     step('restore-user-comment', lambda: visible_text(comment_user))
-    close_comments_with_back('restore-user-closed')
+    close_comments_with_back('restore-user-closed', ids['user'])
 
 
 try:

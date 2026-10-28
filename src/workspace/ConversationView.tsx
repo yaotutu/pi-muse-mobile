@@ -327,37 +327,46 @@ function Message({ message, pendingStatus, feedbackScope }: {
   feedbackScope?: { spaceId: string; sessionId: string; initialFeedback: NonNullable<MessageView['feedback']> };
 }) {
   const styles = useStyles();
+  // 整条消息保持原有 key；仅反馈面板按会话归属开启，防止落盘时重挂工具卡。
+  const [feedbackOpenSessionId, setFeedbackOpenSessionId] = useState<string | null>(null);
+  const openFeedback = () => { if (feedbackScope) setFeedbackOpenSessionId(feedbackScope.sessionId); };
+  const bubbleContent = <>
+    {!!message.text && (message.role === 'user'
+      ? <Text selectable={!feedbackScope} onLongPress={feedbackScope ? openFeedback : undefined}
+        accessibilityActions={feedbackScope ? [{ name: 'openMessageActions', label: '打开消息操作' }] : undefined}
+        onAccessibilityAction={feedbackScope ? (event) => { if (event.nativeEvent.actionName === 'openMessageActions') openFeedback(); } : undefined}
+        style={[styles.messageText, styles.userMessageText]}>{message.text}</Text>
+      : <MessageContent text={message.text} onMessageLongPress={feedbackScope ? openFeedback : undefined} />)}
+    {message.role === 'user' && !!message.attachments?.length && <MessageAttachments items={message.attachments} />}
+    {pendingStatus === 'sending' && <Text style={styles.messageSubtext}>发送中…</Text>}
+    {pendingStatus === 'failed' && <Text style={styles.messageSubtext}>未发送</Text>}
+    {pendingStatus === 'unconfirmed' && <Text style={styles.messageSubtext}>待确认</Text>}
+  </>;
+  const bubbleStyle = [
+    styles.message,
+    message.role === 'user' ? styles.userMessage : styles.assistantMessage,
+    message.role === 'user' && !!message.attachments?.length && styles.userMessageWithAttachments,
+    pendingStatus === 'failed' && styles.userMessageFailed,
+    pendingStatus === 'unconfirmed' && styles.userMessageUnconfirmed,
+  ];
   return (
     <View style={styles.messageBlock}>
       {(!!message.text || (message.role === 'user' && !!message.attachments?.length)) && (
-        <View style={[
-          styles.message,
-          message.role === 'user' ? styles.userMessage : styles.assistantMessage,
-          message.role === 'user' && !!message.attachments?.length && styles.userMessageWithAttachments,
-          pendingStatus === 'failed' && styles.userMessageFailed,
-          pendingStatus === 'unconfirmed' && styles.userMessageUnconfirmed,
-        ]}>
-          {!!message.text && (message.role === 'user'
-            ? <Text selectable style={[styles.messageText, styles.userMessageText]}>{message.text}</Text>
-            : <MessageContent text={message.text} />)}
-          {message.role === 'user' && !!message.attachments?.length && <MessageAttachments items={message.attachments} />}
-          {pendingStatus === 'sending' && (
-            <Text style={styles.messageSubtext}>发送中…</Text>
-          )}
-          {pendingStatus === 'failed' && (
-            <Text style={styles.messageSubtext}>未发送</Text>
-          )}
-          {pendingStatus === 'unconfirmed' && (
-            <Text style={styles.messageSubtext}>待确认</Text>
-          )}
-        </View>
+        <Pressable style={bubbleStyle} disabled={!feedbackScope}
+          onLongPress={feedbackScope ? openFeedback : undefined} accessible={false} focusable={false}
+          testID={feedbackScope ? `message-bubble-${message.id}` : undefined}>
+          {bubbleContent}
+        </Pressable>
       )}
       {message.toolCalls.map((tool) => <ToolResultCard key={tool.id} tool={tool} />)}
       {feedbackScope && <MessageFeedbackControls
         key={`${feedbackScope.sessionId}:${message.id}`}
+        visible={feedbackOpenSessionId === feedbackScope.sessionId}
+        onClose={() => setFeedbackOpenSessionId(null)}
         spaceId={feedbackScope.spaceId}
         sessionId={feedbackScope.sessionId}
         messageId={message.id}
+        messageText={message.text}
         role={message.role}
         initialFeedback={feedbackScope.initialFeedback}
       />}
