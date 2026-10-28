@@ -1,192 +1,177 @@
-# pi-muse-mobile
+<div align="center">
 
-Pi Muse 的官方移动客户端（iOS / Android / 平板）。Expo + React Native + TypeScript，UI 参考 OpenMuse，代码全自研。
+<img src="assets/icon.png" width="112" alt="Pi Muse Mobile">
 
-## 运行当前界面
+# Pi Muse Mobile
 
-```sh
-npm run web  # Expo 调试页面，固定端口 8082
-```
+[English](README.md) | [简体中文](README.zh-CN.md)
 
-打开 `http://localhost:8082/` 即进入唯一的新版工作区，刷新或重启不会回到旧 UI。首次可从连接引导或「应用 → 服务器连接」填写自己的服务器 URL 与可选 Key。
+**The official React Native client for [Pi Muse](https://github.com/yaotutu/pi-muse), a self-hosted personal agent built on [pi](https://github.com/earendil-works/pi)**
 
-- 左上角打开揭示式空间侧栏，聊天前景整体右移；侧栏只负责切换／新建空间。空间持有规则、技能和文件，`sessionId` 只表示当前聊天上下文。
-- 点击中央会话信息区打开全屏会话面板，动态／审批／工作区／历史四个胶囊 Tab 原位切换；“动态”顶部“当前执行”展示本会话的运行、工具与子代理状态。
-- 视觉以 `ui-references/` 为参照：深黑画布、柔和灰面、蓝色行动、完整胶囊与疏朗时间线；只参考风格，不照搬对方五栏导航或未接功能。
-- 「应用 → 外观」可选经典蓝白、晨光白和深夜黑；无本机偏好时默认经典蓝白，重启恢复所选主题。右上角月亮／太阳快速切换亮暗，并返回上次选择的浅色方案。根级共享主题，切换不重建会话或清空内存草稿；主题维护见 `docs/themes.md`。
-- 原创 Muse 矢量头像不依赖远程图片；消息支持回到最新。assistant 回复以原生 Markdown 展示标题、强调、列表、引用、表格和代码，代码块可复制，长表格与代码可横向滚动；用户消息保持原文。Markdown 链接与工具搜索来源只开放安全的 HTTP(S) 地址，Markdown 图片不加载。工具调用按类型展示服务端提供的摘要，未知工具可展开查看。侧栏底部可搜索已读取的空间；建议消息只填入草稿，不自动发送。
-- 会话信息区独立占位，不遮住滚动历史；原生键盘出现时压缩顶栏并收起主导航，关闭键盘后恢复。会话面板切换 Tab 从顶部阅读，不沿用另一 Tab 的滚动偏移，业务草稿仍保留。
-- **空间列表、聊天、运行状态、空间规则／技能、会话重置及空间删除已接入。** 请求统一发送 `spaceId`，空间管理使用 `/api/spaces/*`，不再调用旧线程端点。状态来自独立命名SSE，不从聊天文案猜测。
-- 会话面板右上角的重置按钮打开二次确认：清空当前聊天、取消运行和未决审批，但保留空间规则、技能和私有文件；默认保留定时任务与监控，只有勾选后才级联清理。删除空间是另一项不可恢复的操作，也会删除文件与配置；主空间不能删除，但可以重置会话。
-- 审批已接入真实列表、完整预览、二次确认及独立执行回执；运行状态、审批和活动刷新共用一条通知流。
-- “任务”主 Tab 和会话面板“历史”可查看真实活动、目标／交付／进展／结果与关联执行步骤，支持会话和状态过滤、游标分页与手动刷新；动态可打开明确关联的活动。这里只包含模型登记的工作，不是所有聊天运行的持久档案，不把一轮成功当工作完成。
-- 活动共用通知流消费 `ready.activities` 与 `activity_updated`：前者整体替换当前非终态集合，后者按接收顺序替换状态概览；不借时间或运行 revision 判活动新旧。过程进展和步骤仍按需查询，不承诺逐步实时。
-- 「应用 → 长期记忆」接入独立列表／搜索、新增、编辑与确认删除；记忆由全部空间共用，不是当前空间设置。无关键词读取全量，关键词搜索最多10条；没有记忆 SSE，打开／回前台／成功写入／手动刷新时回读。
-- 「应用 → 助手与用户资料」在连接后可编辑全空间共用的助手名字与语气，以及 SOUL 人设和 USER 用户资料。助手设置与人设资料分别保存，空文本可清空；保存后从下一轮对话生效。页面草稿留在当前连接内，可按区域取消修改并采用最近读取的服务端值；读取旧数据或写入结果未明时按页面提示刷新核对，不自动重试。主空间会话信息区显示已保存的助手名字，自定义空间仍显示空间 ID。
-- 「应用 → Dream 记忆整理」连接后可查看服务端固定周期、全局运行状态、各空间最近整理与待决建议。进入时优先选当前聊天空间，也能切换概览中的已有空间；切换前会确认丢弃当前空间未保存草稿，全局草稿保留。全局提示词和空间周期／继承／补充提示词分别保存，清空全局提示词并保存会恢复内置默认提示词，内置原文可展开只读查看。关闭周期仍可手动整理；未保存修改须先保存或取消。立即整理会等待真实模型返回，200 也可能是失败或部分完成，以最近整理状态为准。待决建议展示完整正文、原因和建议归属，可改选 USER／SOUL／本空间规则／MEMORY 后确认应用，或确认忽略；USER 和 SOUL 会影响所有空间。请求中断或退后台不会停止远端 Dream，先刷新核对，不自动重跑。
-- 记忆正文及草稿仅在当前连接内存中。写入结果未明时保留草稿、锁定再次提交，不自动重试；必须先读取全部记忆，由用户核对并明确解除锁定。删除有独立确认，刷新和退后台会使旧确认失效。
-- 任务页通过同层切换管理真实定时任务：列表／空间筛选／排序、详情与时间线、内容与时刻编辑，以及二次确认的暂停／恢复／取消／失败重试／删除。创建仍通过聊天工具，不发明创建REST端点；每日HH:mm按服务端health时区原样发送，一次性发送带偏移ISO，返回时间按手机本地显示。
-- 「目标」主 Tab 管理真实长期目标：创建、状态切换、里程碑勾选和确认删除；列表按状态过滤并按创建或更新时间排序，分类在创建时填写并在列表展示。目标进展由用户明确维护，不把聊天内容猜成已完成。
-- 「任务」主 Tab 同层切换活动历史、定时任务和网页监控。网页监控通过聊天创建，页面读取真实 `/api/monitors` 列表，支持空间筛选、排序、暂停／恢复、确认停止与确认删除；只展示累计检查、最近检查／通知及服务端抓取错误，没有逐次检查历史详情。停止后不可恢复，结果未明时先刷新并人工核对，再解除操作锁定。
-- 「会话面板 → 工作区 → 工作区文件」支持当前空间私有文件与全部空间共享文件的目录浏览、完整文本查看、图片预览和下载到 Android 所选设备目录。文本新建／修改须先查看完整保存前后内容并确认，最后成功保存生效；普通文件删除须另行确认，不提供目录删除。模型 write／edit 仍使用原有版本绑定人工审批，手动保存后旧审批不能覆盖新内容。设备下载遇同名文件不覆盖；返回前台会重新读取当前目录和所选文件，草稿留在当前连接内，结果未明不会自动重发。
-- 聊天附件使用 Android 系统文件选择器，支持 PNG/JPEG/GIF/WebP 图片和 UTF-8 文本／代码文件；可以只发送附件，支持移除草稿附件、历史图片预览和失败消息恢复。每条最多 4 项，合计最多 8 MiB，文本文件合计最多 100000 字节；PDF、Office、压缩包等二进制格式不支持。
-- 附件随消息进入服务端会话历史，不自动保存到工作区；图片识别要求服务端当前业务模型支持视觉，不自动换模型或丢弃图片。语音等未实现能力仍禁用，不加载示例数组冒充服务端数据，也不提前请求系统权限。
-- 旧 `AppShell`、会话底部 Sheet、旧功能页面、示例数据及产品演示 API 已删除；测试仅保留针对当前协议的独立夹具。
+Keep conversations, isolated spaces, approvals, recurring jobs, web monitors, goals, memory, and workspace files within reach—without moving your model credentials from your own server.
 
-## 真实服务连接边界
+[Features](#features) · [Quick start](#quick-start) · [Develop from source](#develop-from-source) · [Security](#security-and-data-handling) · [Documentation](#documentation)
 
-- 单服务器 URL 与永久 Token 绑定保存在设备，Key仅连接表单内存，不落盘；401原址重新认证，断网不清凭据或草稿；修改服务器需确认清本地业务数据与旧凭据，不删远端数据。
-- 复用连接状态机与会话生命周期，不恢复旧登录页或双界面；服务地址由用户填写，不硬编码默认实际地址。
-- 运行状态通知与聊天文字流独立；原生前台订阅、后台断开通知、回前台重新同步，断开通知流不发送聊天Stop；不等同于锁屏系统推送。
-- 本轮不挂旧 `getSnapshot`／五秒轮询。聊天 Markdown 使用 Marked 分词并由 React Native 原生组件绘制；工具卡只展示实际收到的结果投影，不把结果返回推断为成功、已保存或已批准，不引 CopilotKit SDK。
-- 服务端位于兄弟目录 `../pi-muse-server/`，跨端任务由主 Agent 按 [根协作规则](../AGENTS.md) 统一确定契约和修改范围，不由移动端执行者自行越界。隔离联调使用服务端官方 `pnpm dev:mock`（17891），不替代真实接口验收；`npm run proxy` 是旧跨域调试工具，不是产品服务地址。全局入口与未闭环事项见 [项目地图](../project-map.md)。
+[![Pi Muse server](https://img.shields.io/badge/Server-pi--muse-2563EB?style=flat-square)](https://github.com/yaotutu/pi-muse)
+[![Android releases](https://img.shields.io/badge/Android-APK-3DDC84?style=flat-square)](https://github.com/yaotutu/pi-muse-mobile/releases/latest)
+[![License](https://img.shields.io/badge/License-MIT-black?style=flat-square)](LICENSE)
 
-原生调试运行 `npx expo start`。本仓库只用 Web 渲染辅助界面验收，不作为独立 Web 产品。
+<br/>
 
-## 代码组织
+<p align="center">
+  <img src="https://raw.githubusercontent.com/yaotutu/pi-muse/main/docs/assets/showcase.png" width="98%" alt="Pi Muse Mobile product overview">
+</p>
 
-- `App.tsx` → `src/app/AppRoot.tsx`：安全区、异常边界、独立更新模块与唯一新版工作区。
-- `src/workspace/`：真实聊天与空间侧栏、全屏会话面板、连接面板、当前执行；`primitives.tsx` 提供头像、状态胶囊、标题、空态和流式指示，不混入示例数据。
-- `src/runtime/`：共享命名SSE、运行状态类型／store、重连与终态补查；通知扇出给审批、活动与定时任务领域，与聊天AG-UI流独立。
-- `src/activities/`：只读活动契约、严格安全投影解析、当前活动集合与可见分页历史；状态直接消费共享SSE，步骤按需读，隔离迟到成功及错误，无额外SSE或定时轮询。
-- `src/memories/`：独立记忆契约、严格公开字段投影、搜索与串行写入store；按连接隔离、保留草稿与结果未明锁，无SSE或轮询。
-- `src/profile/`：助手身份与全局 SOUL／USER 资料的连接内状态；`src/workspace/ProfilePanel.tsx` 只负责原生编辑界面和两组独立保存操作。
-- `src/jobs/`：独立定时任务状态、时刻校验与串行管理；消费权威服务端时区，保留草稿、确认及未明写入锁，运行通知只作失效提示，不另开SSE或轮询。
-- `src/goals/`：长期目标和里程碑的真实 REST 状态及写入管理。
-- `src/monitors/`：网页监控的真实 REST 列表、控制与删除；打开、前台恢复、成功写入及手动刷新时回读，不另开 SSE 或轮询。
-- `src/dream/`：Dream 全局概览、空间配置与待决建议的非视觉层；刷新只读一次概览，保存／立即整理／处理待决项串行写入，未明结果只刷新核对不自动重发。
-- `src/files/`：显式私有／共享文件契约、目录与详情状态、完整文本确认写入及设备下载；`src/workspace/FilesPanel.tsx` 提供原生管理界面，无文件 SSE 或轮询。
-- `src/api/`：客户端契约、HTTP／SSE 解析、网络类型与注入点。
-- `src/connection/`、`src/spaces/`、`src/chat/`：连接与凭据安全机制、空间配置与聊天代次隔离、权威历史与流式聚合。重置或列表观察到新的 `sessionId` 只失效聊天，不销毁空间设置草稿。
-- `src/approvals/`：审批预览、决定、执行回执及分页历史；以 `spaceId`、`workspaceSpaceId`、`ownerSpaceId` 为归属事实，支持 `space` 与历史 `thread` 私有作用域。旧别名矛盾时拒绝消费，不从路径推断文件归属。
-- `src/theme/`：独立主题定义／注册表、共享视觉 token、根级 Provider、选择器／快捷键／状态栏和本机偏好；不依赖业务数据，所有页面及更新弹层共用当前语义色。增加主题只改 preset 和注册表。
-- `src/ui/`：公共 token 兼容入口、系统减少动画偏好、异常边界与共享 UI 原语；`tokens.ts` 转出 `src/theme/tokens.ts` 的常量，不再内置配色。
-- `src/update/`：官方 GitHub Release 检测、独立下载状态机与 Android 系统安装器，根级挂载，不依赖业务凭据。
-- `tests/`：入口守卫、HTTP 契约、SSE／聊天聚合、重置与连接隔离、状态与主题测试；夹具不替代真实接口验收。
+</div>
 
-依赖方向为应用组装 → 新版工作区 → 协议／内存状态与主题；数据层不反向引用页面。业务正文与运行状态仅在连接内存中，沿用鉴权、请求取消和会话隔离约束。
+---
 
-## 多主题端到端验证
+Pi Muse Mobile is a native mobile interface, not a standalone assistant. It connects to a Pi Muse server over the product's public HTTP/SSE API; the server owns agent execution, model access, spaces, files, schedules, approvals, and other persistent state.
 
-```sh
-E2E_ALLOW_LIVE=1 E2E_API_BASE_URL="http://<真实服务主机>:<端口>" npm run test:e2e:themes
-```
+Prebuilt downloads are currently available for Android. iOS is a source-development target, and the Expo web output is a development preview rather than the official Pi Muse web client.
 
-要求最终源码的Metro8082、已连接Android模拟器，以及Expo Go配置同址真实服务。验证三套主题、草稿／会话面板／过滤保留、真实连接和活动列表消费、一次原生实际聊天的HTTP／SSE结果、三套主题各自跨进程恢复与320dp窄屏。通过API清理本轮专用空间，保留原有数据；最后返回主空间和经典蓝白，不写设备偏好文件、不读取凭据。真实存储故障、iOS、物理设备和独立APK不在此脚本验收范围。详细维护规则见 `docs/themes.md`。
+## Features
 
-## Android应用更新
+### Chat and isolated spaces
 
-本项目通过 GitHub Releases 提供 APK 形式的 Android 更新，详情由 `src/app/AppRoot.tsx` 根级独立更新模块负责，与服务端 Token / Key 完全解耦。检测源固定为公开仓库 `yaotutu/pi-muse-mobile` 的 `releases/latest`，仅识别其中稳定 `app-release.apk`。
+<p align="center">
+  <img src="https://raw.githubusercontent.com/yaotutu/pi-muse/main/docs/assets/chat-preview.png" width="88%" alt="Chat with Markdown, tool cards, and the space sidebar">
+</p>
 
-行为边界：
+- **Streaming chat.** Messages run through the server's AG-UI SSE stream and are consumed natively by the client. The chat stream is separate from the shared notification stream used for runtime status.
+- **Purposeful Markdown rendering.** Assistant messages render headings, emphasis, lists, quotations, tables, and copyable code blocks with native React Native components. Markdown images are not loaded, HTML is shown as literal text, and message/search links are restricted to credential-free HTTP(S).
+- **Transparent tool cards.** Tool activity displays the projections returned by the server. The client does not infer hidden details or mark a result as saved or approved merely because a tool returned.
+- **Isolated spaces.** Create, search, and switch contexts such as Work, Life, or Study. Each space has its own conversation, instructions, skills, and private files.
+- **Useful attachments.** A message can contain up to four attachments: PNG, JPEG, GIF, or WebP images and recognized UTF-8 text/code files. The total attachment limit is 8 MiB, and text attachments together may contain at most 100,000 bytes. PDF, Office, archives, and other binary formats are not supported. Image understanding requires the server's configured model to support vision; the client does not silently switch models.
 
-- 检测仅限 Android 独立包：冷启动及前台按一小时间隔检查，回到前台超过间隔也会检查；发现新版自动下载，完成后自动唤起系统安装器，不提供额外下载 / 校验确认页。
-- 下载 / 校验：依赖 OS 与系统签名；不做应用层 checksum；失败可重试、下载可取消，进度可收起。
-- 安装交互：系统签名校验、未知来源授权、最终安装确认必须保留用户确认（不静默安装）。
-- 本次会话取消安装后保留已下载包，继续安装不重复下载；系统可能清理缓存，届时需重新下载。
-- 流量与进程：下载会消耗用户网络流量，OS 杀后台后不保证继续；只有前台唤起安装才会启动系统安装器。
-- 首次使用更新能力需要用户手动安装含更新模块的版本；之后版本才走自动检测。
-- 新版应用页「应用更新」可手动触发检查；旧连接页入口已随旧 UI 删除。
-- Expo Go / Web / iOS 不支持 APK 安装；更新模块仅在 Android 独立包生效，不等同于 Expo OTA。
+### Jobs, activity, and web monitoring
 
-验收记录及环境限制见 `docs/HANDOFF.md`。
+<p align="center">
+  <img src="https://raw.githubusercontent.com/yaotutu/pi-muse/main/docs/assets/tasks-preview.png" width="88%" alt="Activity history, scheduled jobs, and web monitors">
+</p>
 
-## 常用命令
+- **Model-registered activity history.** Browse and filter registered activities, inspect status and steps, and refresh manually. Only activities reported by the server are shown; the client does not invent progress data.
+- **Scheduled jobs.** Create one-time or daily jobs through chat, then manage their content, schedule, and lifecycle in the Tasks screen. Pause, resume, cancel, retry failed work, and delete with explicit confirmation. Job controls manage schedule state; they are not a precise Stop button for an already-running agent run.
+- **Web monitors.** Create monitors through chat and use the Tasks screen to filter, refresh, pause, resume, stop, or delete them. Pi Muse Mobile shows cumulative checks and the most recent check, notification, or fetch error; the server does not expose a per-check history.
+- **Optional real-browser takeover.** The Real Browser setting opens a configured noVNC URL in the device's system browser. The mobile app neither embeds nor deploys that browser; deploy the optional browser container on the Pi Muse server side.
 
-```sh
-npm run typecheck   # 类型检查
-npm run lint        # lint
-npm test            # 协议、聚合与工作区纯状态回归
-npx expo install X   # 装依赖（总是用它，解析 SDK 兼容版本）
-npx expo-doctor      # 依赖/配置诊断
-```
+### Long-term goals and milestones
 
-### 空间与会话迁移端到端测试
+<p align="center">
+  <img src="https://raw.githubusercontent.com/yaotutu/pi-muse/main/docs/assets/goals-preview.png" width="52%" alt="Long-term goals and milestone tracking">
+</p>
 
-```sh
-E2E_ALLOW_LIVE=1 E2E_API_BASE_URL="http://<真实服务主机>:<端口>" npm run test:e2e:spaces
-# 同时操作已启动的 Android 模拟器、Expo Go SDK57 与 Metro8082：
-E2E_ALLOW_LIVE=1 E2E_API_BASE_URL="http://<真实服务主机>:<端口>" E2E_NATIVE=1 npm run test:e2e:spaces
-```
+- **Turn plans into checkpoints.** Create goals, organize milestones, and track progress such as `1 / 3`.
+- **Maintain progress deliberately.** Change goal status and check milestones yourself; the app does not infer completion from chat text.
+- **Keep the view focused.** Filter by state and sort by creation or update time before confirming irreversible deletions.
 
-这不是普通 CI 测试：会调用真实模型、在新建的 `spaces-e2e-*` 专用空间创建私有测试文件，并登记一个立即暂停的专用监控。审批的空间、路径和完整内容严格核对后才批准该测试写入，不绕过审批接口。测试默认重置／可选级联清理、配置与文件保留、运行及审批取消、新会话继续、精确停止与旧 Stop 无副作用，以及唯一通知流的重连恢复。文件保留同时核对新会话的读取回复及另一条真实审批的固定 `before` 全文，必须与原批准内容逐字一致，然后拒绝这次探测写入；不要求服务开启工具正文投影，也不只凭模型自述下结论。原生模式另外从实际输入框发送、杀进程恢复历史、取消确认和操作两个重置选项，再用真实 HTTP 交叉核对。失败或结束都只通过 API 删除本轮空间及关联数据，保留已有空间，证据不存 Token。
+### Session panel, approvals, and workspace files
 
-旧服务不兼容时应升级服务，不能回退到 `/api/threads` 或静默使用兼容 `threadId`。运行后以打印的 `results.json` 和原生结果为准；本地 fixture 不能替代这一验收。
+<p align="center">
+  <img src="https://raw.githubusercontent.com/yaotutu/pi-muse/main/docs/assets/session-preview.png" width="88%" alt="Session panel with activity, approvals, workspace rules, and history">
+</p>
 
-可额外指定 `E2E_SCOPE=reset-ui` 单独回归原生聊天／恢复／重置交互（必须同时 `E2E_NATIVE=1`）。结果明确写入 `scope` 和未覆盖场景，不会执行后续文件审批与 Stop 验收，**不能替代默认 `full` 的最终结果**。真实服务最新复验与遗留协调项见 `docs/notes.md`；默认完整脚本保留严格的重置计数断言，不把历史故障或限定范围通过混作本轮完整结果。
+- **One full-screen session center.** Tap the session information area at the top of the chat to open the current session panel. Its Activity, Approvals, Workspace, and History tabs switch in place while the chat remains mounted behind it.
+- **Current execution and activity history.** Follow the current run, tool work, model-registered activities, progress, results, and related steps. Activity is not hidden model reasoning and is not represented as an archive of every chat run.
+- **Human-in-the-loop approvals.** Agent-initiated file writes and edits require full before/after review and explicit confirmation. A stale approval cannot overwrite content that changed after the approval was created.
+- **Workspace file management.** Browse current-space private files and all-space shared files, read complete text, preview supported images, and download files to a chosen Android directory without overwriting same-name files. Manual text saves require complete-content review and confirmation.
 
-### 活动真实接口与 Android 端到端测试
+### Settings, memory, Dream, and themes
 
-先启动 Android 模拟器，在 Expo Go 中配置已确认的真实服务（不使用 mock），并启动最终源码的 Metro：
+<p align="center">
+  <img src="https://raw.githubusercontent.com/yaotutu/pi-muse/main/docs/assets/settings-preview.png" width="52%" alt="Settings, profiles, memory, Dream, and themes">
+</p>
+
+- **Server connection management.** Save one reachable Pi Muse address, authenticate with the server AccessKey, and keep the resulting session token on the device. The plaintext AccessKey is not persisted by the client.
+- **Assistant and user profiles.** Edit the assistant name and tone plus global SOUL and USER profiles. Profile changes take effect on later conversations.
+- **Global long-term memory.** Search, create, edit, and delete memories shared across spaces. Refreshes happen when the page opens or returns to the foreground, after successful writes, or manually.
+- **Dream memory maintenance.** Inspect Dream's global and per-space status, review pending suggestions, adjust prompts and cycles, trigger maintenance, and explicitly apply or dismiss suggestions.
+- **Three complete themes.** Choose Classic Blue, Morning Light, or Midnight Black. The selection is local, survives restarts, and never encodes server credentials.
+- **Android app updates.** The packaged Android app checks public GitHub releases, downloads stable APK assets, and hands installation to the Android system installer. Updates are not Expo OTA and are unavailable in Expo Go, web, or iOS builds.
+- **Current boundaries.** Voice input/transcription and lock-screen push notifications are not implemented. The client uses foreground SSE reconnection rather than claiming always-on background delivery.
+
+## Quick start
+
+### 1. Deploy Pi Muse first
+
+Pi Muse Mobile requires a reachable Pi Muse server and cannot store your model provider key.
+
+Follow the [Pi Muse server quick start](https://github.com/yaotutu/pi-muse#quick-start) to deploy the server, configure its AccessKey, and connect an OpenAI-compatible model. Its runtime `/docs` and `/openapi.json` pages document the HTTP and SSE contracts. The same public API also allows terminals and other platforms to build their own clients; those clients are not part of this repository.
+
+### 2. Install the Android app
+
+1. Download the latest stable `app-release.apk` from [Pi Muse Mobile Releases](https://github.com/yaotutu/pi-muse-mobile/releases/latest).
+2. Install and open it on an Android device or emulator. Android may require you to approve installation from that source.
+3. Open **Settings -> Server Connection**.
+4. Enter an address reachable from the device, such as `http://192.168.x.x:17890` on a private network or an HTTPS domain for remote access.
+5. Enter the `server.accessKey` configured on your server.
+
+The server exchanges the AccessKey for a session token. The mobile client stores that token and the server address; it does not persist the plaintext AccessKey or any model API key.
+
+For public deployment, put the server behind HTTPS or another secure private network instead of exposing plain HTTP to the internet.
+
+## Develop from source
+
+The app is built with Expo 57, React Native 0.86, and TypeScript. For a workspace that develops the mobile client and the Node.js-based Pi Muse server together, use Node.js 24 or newer. The mobile package itself does not declare a lower supported minimum.
 
 ```sh
-CI=1 REACT_NATIVE_PACKAGER_HOSTNAME=127.0.0.1 npm run start -- --port 8082 --lan
-
-# 在另一个终端执行；URL 通过环境传入，不成为产品默认值。
-E2E_ALLOW_LIVE=1 E2E_API_BASE_URL="http://<真实服务主机>:<端口>" npm run test:e2e:activity
+git clone https://github.com/yaotutu/pi-muse-mobile.git
+cd pi-muse-mobile
+npm ci
+npm start
 ```
 
-需要 Node、Python3、ADB 和已安装 Expo Go57 的 Android 模拟器。可选 `ADB` 指定工具路径、`ANDROID_SERIAL` 选择设备、`E2E_ACCESS_KEY` 认证；默认使用 Android SDK 的 ADB 与唯一模拟器。不得把 Key 写入仓库或证据。
+### Command guide
 
-此测试会发起三个真实聊天 run（内部可以多次调用模型），产生专用 `activity-e2e-*` 会话和两项由模型工具登记的活动；不拦截 HTTP/SSE，不伪造投影，测试指令不允许文件或其它业务域操作。验证活动状态推送、重连当前集合替换／排除终态、等待继续→原活动追加执行→交付完成、非空游标分页、过滤、404、原生完整步骤顺序、详情前台无刷新消费完成结果、后台新增后的前台回读、亮暗主题与两个入口。结束或失败时经 API 删除本轮会话和活动，保留用户已有数据。证据目录及失败原因打印到终端；任一接口／UI／清理／部署标识断言失败都会非零退出。
+| Command | Purpose |
+| --- | --- |
+| `npm ci` | Install dependencies reproducibly from the lockfile. |
+| `npm start` | Start the Expo/Metro development server without launching a specific platform. |
+| `npm run android` | Start Expo and open the Android app on a connected device or emulator. |
+| `npm run ios` | Start Expo and open the iOS simulator when the required macOS and Xcode toolchain is available. |
+| `npm run web` | Start the Expo web development preview on port 8082. |
+| `npm run lint` | Run the Expo/ESLint checks. |
+| `npm run typecheck` | Run TypeScript with `--noEmit`. |
+| `npm test` | Run local Node protocol, state, and contract regression tests. |
 
-真实端到端命令与 `npm test` 分开，以免普通 CI 擅自调用用户模型或设备；验收必须二者都跑通。测试数据准备通过实际客户端/API进行，受测列表和详情由实际原生界面自行请求消费，不通过 ADB 注入业务状态。
+Android source development uses the Android SDK and a connected emulator or device. iOS is intended for source development and has no prebuilt package or App Store release in this repository. The web target is useful for quick development checks, not a standalone web product.
 
-### 长期记忆真实接口与 Android 端到端测试
+### Development quality gates
 
-使用同一套 Android／Expo Go57／Metro8082 前置环境，设备已配置同一个真实服务：
+Before submitting a code change, run:
 
 ```sh
-E2E_ALLOW_LIVE=1 E2E_API_BASE_URL="http://<真实服务主机>:<端口>" npm run test:e2e:memories
+npm run lint
+npm run typecheck
+npm test
 ```
 
-`tools/e2e-memories.mjs` 配合 `tools/e2e-memories-native.py`，不调用模型，不拦截请求或注入页面状态。实际原生界面新增、编辑和确认删除本轮唯一标记条目，独立真实HTTP交叉核对原文、ID、来源、时间、单条详情与检索；验证 `createdAt`／`updatedAt` 的升降序及删除后详情／编辑404。空库仅补一条本轮排序锚点，核对后立即通过API删除，不修改已有条目。另覆盖取消删除、大小写搜索、空结果、全部列表、离开／重开草稿、前后台自动回读外部修改、手动刷新及亮暗主题。写入结果未明等故障边界由本地故障注入测试覆盖，不伪称在真实服务制造了500或满额。
+These are local development gates. `npm test` uses local protocol and state fixtures; it is not a substitute for testing against a real Pi Muse server, a real external model, and the relevant native Android flow. Functional acceptance requirements are described in [AGENTS.md](AGENTS.md).
 
-全程核对 docs／OpenAPI／health 部署标识，Token仅内存；finally经API清理本轮自建条目，核对原有记忆未变，不清空记忆库，也不覆盖设备配置。任一接口、界面、清理或版本断言失败均非零退出。证据目录打印到终端，普通CI不自动操作真实数据或设备。
+## Security and data handling
 
-### 定时任务真实接口与 Android 端到端测试
+- **Credentials stay split.** Model provider keys and the server AccessKey live in the server deployment. The mobile app sends the AccessKey only for authentication and retains the returned session token, not the plaintext key.
+- **Changing servers is explicit.** Replacing the server connection clears the local business data and old credentials for the previous server; it does not delete data stored on that server.
+- **Cautious links and projections.** Message and search links are limited to credential-free HTTP(S), Markdown images are not fetched, and tool cards display server-provided projections without inventing hidden state.
+- **Approved file mutations.** Pi Muse's server policy provides no shell tool. Agent-initiated file writes and edits are workspace-scoped and require full human diff approval.
+- **Self-hosting is not offline AI.** The configured model provider receives the prompts and context needed for a task. Protect server configuration, backups, and any remotely exposed endpoint accordingly.
 
-使用已配置同一真实服务的 Android／Expo Go57，以及本仓库的 Metro8082。新增模块后若 Metro 未发现文件，先用 `npm start -- --port 8082 --clear` 重建开发缓存，不清除应用数据或凭据。
+## Architecture notes
 
-```sh
-E2E_ALLOW_LIVE=1 E2E_API_BASE_URL="http://<真实服务主机>:<端口>" npm run test:e2e:jobs
-```
+- Four main tabs—Chat, Tasks, Goals, and Settings—are switched with an in-app state machine; the project does not use React Navigation or Expo Router.
+- The chat stream uses AG-UI SSE through `expo/fetch`, with custom framing and aggregation implemented in the client.
+- Runtime status, approvals, activities, and job invalidation share the server's notification SSE. Spaces, files, memory, goals, jobs, monitors, profiles, and Dream use documented REST endpoints.
+- Business state is kept in focused providers and stores around React context. The UI renders native React Native components rather than embedding a web app.
+- The source is purpose-written for this client; it is not a CopilotKit SDK wrapper.
 
-`tools/e2e-jobs.mjs` 和 `tools/e2e-jobs-native.py` 先在唯一专用空间中用真实聊天调度工具创建独立命名、远期排期的管理／自动调度／失败重试任务；三项全部就绪才开始耗时的原生流程，创建异常立即失败并保存专用会话诊断，不自动重放。原生页面消费真实列表／详情并修改每日及一次性时刻，确认暂停／恢复／取消／删除。独立HTTP核对每步落盘、时区、六组排序、来源空间、原生草稿／主题／前后台恢复；真实到点触发和来源空间交付通过唯一运行SSE交叉验证。已取消或完成任务不会强行resume；只停止本轮失败重试任务的精确run来产生合法failed，再从原生确认立即重试，并验证新的真实成功执行。不改服务端配置／存储，不用fixture伪造失败或绕过审批。
+## Documentation
 
-本地单元故障注入覆盖写入结果未明、重复提交防护、过期响应、404、非法日期及夏令时跳跃，不能当作在真实服务制造了这些故障。真实整轮对部署及客户端源码／驱动做首尾一致性核对；finally只经API清理本轮空间与任务，保留用户已有数据。任一断言、原生操作或清理失败均非零退出。普通CI不运行此命令，证据位置打印到终端。
+- [Pi Muse server](https://github.com/yaotutu/pi-muse) — deployment, configuration, architecture, and API documentation
+- [Project handoff](docs/HANDOFF.md) — implementation scope, current status, and historical acceptance notes
+- [Theme maintenance](docs/themes.md) — theme registry, tokens, and verification guidance
+- [Engineering guidelines](AGENTS.md) — development boundaries, protocol rules, and release policy
+- [Release downloads](https://github.com/yaotutu/pi-muse-mobile/releases) — public Android APK assets
 
-2026-10-21最终主线验收通过：23组整轮与7组Android界面检查，仓库441/441本地测试、typecheck和lint通过。每日连续多天触发、运行中所有控制组合、真实网络故障、iOS／物理机／独立APK尚未覆盖；服务端无时区一次性输入校验与PATCH编辑未刷新updatedAt仍为非阻塞协调项。部署、清理与原始证据详见 `docs/HANDOFF.md` 文首，不据此宣称其他模块的历史验收欠账已完成。
+## License
 
-### 网页监控真实接口与 Android 验收
-
-使用当前源码的 Metro8082、Android 模拟器与同址真实服务。验收脚本通过真实 HTTP／SSE 和外部模型创建本轮专用监控；命令由环境变量显式指定服务地址，不写入产品默认配置：
-
-```sh
-E2E_ALLOW_LIVE=1 E2E_API_BASE_URL="http://<真实服务主机>:<端口>" node --import ./tests/register-source.mjs tools/e2e-monitors.mjs
-```
-
-主 Agent 需实际核对 Android 上的暂停／恢复、停止终态、删除与取消、全部／当前空间筛选、三种排序与升降序、断网时保留上次列表和恢复回读，并查看浅色／深色及窄屏截图。脚本的实际输出决定已覆盖范围；仅打开文档、读取空列表、本地模拟测试或旧截图都不能算本轮验收。测试数据只使用本轮专用空间并经 API 清理，不能删除已有监控。网页监控接口仅给出累计检查和最近检查／通知字段，不提供逐次检查历史详情。
-
-### Dream 非视觉层真实回归
-
-```sh
-E2E_ALLOW_LIVE=1 E2E_API_BASE_URL="http://<真实服务主机>:<端口>" node --import ./tests/register-source.mjs tools/e2e-dream.mjs
-```
-
-脚本使用实际 `HttpApiClient`／`DreamStore` 连接真实服务并调用外部模型，创建唯一专用空间，覆盖默认值、全局／空间独立保存、草稿保留、20000边界、真实聊天与Dream pending、改选SOUL后apply落盘、dismiss不写、无新消息processed=0、404及可复现时的409。全局提示词与SOUL／USER资料先记录基线并在finally恢复；每次整理立即保留真实返回值与store快照，失败不自动重跑，不拦截请求或注入客户端状态。HTTP 300秒超时只表示本地等待结束，脚本只允许通过只读回读确认新 `lastRun.at` 且 `running/completed` 后等待已提交执行终态；`failed`、`partial`、无新run或未终态仍失败，且不会把HTTP超时记录成正常HTTP完成。该脚本仅覆盖非视觉层；应用页 Dream 原生界面需在 Android 上单独验收。
-
-### 工作区文件真实回归
-
-```sh
-E2E_ALLOW_LIVE=1 E2E_API_BASE_URL=http://127.0.0.1:17890 \
-  node --import ./tests/register-source.mjs tools/e2e-workspace-files.mjs
-```
-
-脚本使用实际 `HttpApiClient`／`FilesStore` 与真实外部模型，验证专用空间的目录、完整内容、私有／共享隔离、预览取消及确认写入、前台与重开详情回读、容量边界，以及真实模型读写和旧审批失效。仅通过 API 清理专用空间和标记文件，不触碰原始资料或配置。Android 图片展示、系统目录选择器及实际设备下载须另行原生验收，不能由该脚本替代。
-
-## 文档
-
-- `docs/HANDOFF.md` — 交接文档：进度、阶段计划、页面规格、验收方式
-- `AGENTS.md` — 协同红线与技术决策定稿（agent 接手必读）
-- `docs/notes.md` — 接口问题记录（非阻塞项集中汇报，真正阻塞主线时再协调）
+Released under the [MIT License](LICENSE).
