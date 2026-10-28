@@ -103,12 +103,13 @@ Pi Muse Mobile 必须连接一个可访问的 Pi Muse 服务端，不能代替�
 1. 从 [Pi Muse Mobile Releases](https://github.com/yaotutu/pi-muse-mobile/releases/latest) 下载最新的稳定 `app-release.apk`。
 2. 在 Android 手机或模拟器安装并打开。系统可能要求你先允许来自该来源的安装。
 3. 打开 **设置 -> 服务器连接**。
-4. 填写手机可访问的服务地址，例如私有网络中的 `http://192.168.x.x:17890`，或远程访问的 HTTPS 域名。
+4. 填写手机可访问的 HTTP 地址，例如 `http://192.168.1.100:17890` 或 `http://your-server.example:17890`，不要求域名、证书或 HTTPS 反向代理。
 5. 输入服务端配置的 `server.accessKey`。
+6. 点击 **测试连接**，通过后再点击 **连接服务器** 保存已验证的连接。
 
 服务端会把 AccessKey 交换为 Session Token。移动端保存这个 Token 和服务地址，不持久化明文 AccessKey，也不保存任何模型 API Key。
 
-如果服务端需要公网访问，请使用 HTTPS 反向代理或其他安全专用网络，不要把明文 HTTP 直接暴露到公网。
+直接支持 HTTP。HTTP 下访问密钥、Token 和聊天内容没有传输加密，优先在可信网络中使用；HTTPS 或安全虚拟组网是远程访问的可选保护，不是连接前提。
 
 ## 源码开发
 
