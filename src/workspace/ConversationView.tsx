@@ -6,7 +6,7 @@
  */
 import { ArrowDown, ArrowUp, Square } from 'lucide-react-native';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type TextStyle } from 'react-native';
+import { Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type LayoutRectangle, type TextStyle } from 'react-native';
 import { useApi } from '../api/ApiProvider';
 import { pickMessageAttachments } from '../attachments/picker';
 import { AttachmentAction, AttachmentStrip, MessageAttachments } from '../attachments/AttachmentViews';
@@ -327,9 +327,25 @@ function Message({ message, pendingStatus, feedbackScope }: {
   feedbackScope?: { spaceId: string; sessionId: string; initialFeedback: NonNullable<MessageView['feedback']> };
 }) {
   const styles = useStyles();
-  // 整条消息保持原有 key；仅反馈面板按会话归属开启，防止落盘时重挂工具卡。
-  const [feedbackOpenSessionId, setFeedbackOpenSessionId] = useState<string | null>(null);
-  const openFeedback = () => { if (feedbackScope) setFeedbackOpenSessionId(feedbackScope.sessionId); };
+  const bubbleRef = useRef<View>(null);
+  const [bubbleLayout, setBubbleLayout] = useState<LayoutRectangle | null>(null);
+  const [anchor, setAnchor] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  // 整条消息保持原有 key；弹层按空间和会话归属开启，测量迟到也不能打开新目标。
+  const feedbackOwner = feedbackScope ? `${feedbackScope.spaceId}:${feedbackScope.sessionId}` : null;
+  const latestFeedbackOwner = useRef(feedbackOwner);
+  useLayoutEffect(() => { latestFeedbackOwner.current = feedbackOwner; }, [feedbackOwner]);
+  const [feedbackOpenOwner, setFeedbackOpenOwner] = useState<string | null>(null);
+  const openFeedback = () => {
+    if (!feedbackOwner) return;
+    const owner = feedbackOwner;
+    // 长按时才测量原气泡的 window 坐标；历史刷新只更新反馈数据，不重建正文或工具卡。
+    Keyboard.dismiss();
+    bubbleRef.current?.measureInWindow((x, y, width, height) => {
+      if (latestFeedbackOwner.current !== owner || width <= 0 || height <= 0) return;
+      setAnchor({ x, y, width, height });
+      setFeedbackOpenOwner(owner);
+    });
+  };
   const bubbleContent = <>
     {!!message.text && (message.role === 'user'
       ? <Text selectable={!feedbackScope} onLongPress={feedbackScope ? openFeedback : undefined}
@@ -352,24 +368,30 @@ function Message({ message, pendingStatus, feedbackScope }: {
   return (
     <View style={styles.messageBlock}>
       {(!!message.text || (message.role === 'user' && !!message.attachments?.length)) && (
-        <Pressable style={bubbleStyle} disabled={!feedbackScope}
+        <View style={styles.bubbleWrap}>
+        <Pressable ref={bubbleRef} style={bubbleStyle} disabled={!feedbackScope}
+          onLayout={(event) => setBubbleLayout(event.nativeEvent.layout)}
           onLongPress={feedbackScope ? openFeedback : undefined} accessible={false} focusable={false}
           testID={feedbackScope ? `message-bubble-${message.id}` : undefined}>
           {bubbleContent}
         </Pressable>
+        {feedbackScope && <MessageFeedbackControls
+          key={`${feedbackScope.spaceId}:${feedbackScope.sessionId}:${message.id}`}
+          visible={feedbackOpenOwner === feedbackOwner && !!anchor}
+          anchor={anchor}
+          bubbleLayout={bubbleLayout}
+          onClose={() => { setFeedbackOpenOwner(null); setAnchor(null); }}
+          onOpen={openFeedback}
+          spaceId={feedbackScope.spaceId}
+          sessionId={feedbackScope.sessionId}
+          messageId={message.id}
+          messageText={message.text}
+          role={message.role}
+          initialFeedback={feedbackScope.initialFeedback}
+        />}
+        </View>
       )}
       {message.toolCalls.map((tool) => <ToolResultCard key={tool.id} tool={tool} />)}
-      {feedbackScope && <MessageFeedbackControls
-        key={`${feedbackScope.sessionId}:${message.id}`}
-        visible={feedbackOpenSessionId === feedbackScope.sessionId}
-        onClose={() => setFeedbackOpenSessionId(null)}
-        spaceId={feedbackScope.spaceId}
-        sessionId={feedbackScope.sessionId}
-        messageId={message.id}
-        messageText={message.text}
-        role={message.role}
-        initialFeedback={feedbackScope.initialFeedback}
-      />}
     </View>
   );
 }
@@ -388,6 +410,7 @@ const createStyles = (c: WorkspaceColors) =>
       gap: l.messageGap,
     },
     messageBlock: { gap: spacing[8] },
+    bubbleWrap: { position: 'relative' },
     message: { padding: l.chatMessagePadding, borderRadius: r.message },
     assistantMessage: {
       backgroundColor: c.surface,

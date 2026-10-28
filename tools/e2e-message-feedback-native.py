@@ -254,10 +254,12 @@ def seek_bubble(message_id):
 def feedback_scope(message_id):
     root_node = find('message-feedback-menu-' + message_id)
     if root_node is None:
-        raise AssertionError('target message operation panel is not open: ' + message_id)
+        raise AssertionError('target message context menu is not open: ' + message_id)
     box = tuple(bounds(root_node))
-    if find('message-comments-open-' + message_id, box) is None or find('message-feedback-state-' + message_id, box) is None:
-        raise AssertionError('target feedback controls are outside their own panel: ' + message_id)
+    if find('message-comments-open-' + message_id, box) is None or find('喜欢这条消息', box) is None and find('撤销喜欢', box) is None:
+        raise AssertionError('target feedback controls are outside their own context menu: ' + message_id)
+    if box[3] - box[1] > 280 * density or box[0] < 0 or box[2] > width or box[1] < 0 or box[3] > height:
+        raise AssertionError('context menu is too large or extends beyond the screen: ' + message_id)
     return box
 
 
@@ -283,21 +285,33 @@ def open_actions(message_id):
 
 def reaction_state(message_id, reaction):
     scope = feedback_scope(message_id)
-    state = find('message-feedback-state-' + message_id, scope)
-    if state is None:
-        return False
-    summary = state.get('content-desc') or state.get('text') or ''
     if reaction == 'like':
         control = find('撤销喜欢', scope)
-        return control is not None and control.get('enabled') != 'false' and '已喜欢' in summary
+        return control is not None and control.get('enabled') != 'false'
     if reaction == 'dislike':
         control = find('撤销不喜欢', scope)
-        return control is not None and control.get('enabled') != 'false' and '已不喜欢' in summary
+        return control is not None and control.get('enabled') != 'false'
     like = find('喜欢这条消息', scope)
     dislike = find('不喜欢这条消息', scope)
     return (like is not None and like.get('enabled') != 'false'
-            and dislike is not None and dislike.get('enabled') != 'false'
-            and '未选择' in summary)
+            and dislike is not None and dislike.get('enabled') != 'false')
+
+
+def badge_state(message_id, reaction):
+    if find('message-feedback-menu-' + message_id) is not None:
+        return False
+    badge = find('message-feedback-badge-' + message_id)
+    if reaction is None:
+        return badge is None
+    summary = (badge.get('content-desc') or '') if badge is not None else ''
+    return ('已喜欢' if reaction == 'like' else '已不喜欢') in summary
+
+
+def badge_count(message_id, count):
+    badge = find('message-feedback-badge-' + message_id)
+    if badge is None:
+        return count == 0
+    return str(count) + ' 条评论' in (badge.get('content-desc') or '')
 
 
 def react(message_id, action, expected, name):
@@ -307,7 +321,7 @@ def react(message_id, action, expected, name):
     if find(action, scope) is None:
         raise AssertionError('unexpected reaction precondition: ' + action)
     write_step(name, lambda: tap_node(find(action, scope), action),
-               lambda: reaction_state(message_id, expected))
+               lambda: badge_state(message_id, expected))
 
 
 def open_comments(message_id):
@@ -392,6 +406,9 @@ def row_for(comment_text):
 
 def phase_reaction():
     assistant = ids['assistant']
+    refresh()
+    if find('message-feedback-badge-' + assistant) is not None:
+        raise AssertionError('neutral assistant unexpectedly has a feedback badge')
     open_actions(assistant)
     if not reaction_state(assistant, None):
         raise AssertionError('assistant reaction must initially be neutral in dedicated test data')
@@ -433,7 +450,8 @@ def phase_comments():
                and find('确认删除评论') is None)
     hide_keyboard_if_visible()
     tap('关闭消息操作')
-    step('assistant-comments-closed', lambda: find('新评论', kind='android.widget.EditText') is None)
+    step('assistant-comments-closed', lambda: find('新评论', kind='android.widget.EditText') is None
+         and badge_count(assistant, 1))
     open_comments(assistant)
     step('assistant-comments-reopened', lambda: visible_text(comment_a_edit) and not visible_text(comment_b))
     close_comments_with_back('assistant-comments-back-closed', assistant)
@@ -450,6 +468,7 @@ def phase_comments():
     write_step('user-comment-added', lambda: tap('添加评论'),
                lambda: visible_text(comment_user) and empty_new_comment())
     close_comments_with_back('user-comments-back-closed', user)
+    step('user-comment-badge', lambda: badge_count(user, 1))
 
 
 def phase_restore():
