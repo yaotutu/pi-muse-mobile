@@ -9,6 +9,10 @@ import { approvalFixture, approvalResolution } from './helpers/approval-fixtures
 const status = (overrides = {}) => ({ activityId: null, spaceId: 'a', runId: 'run-a', revision: 1, source: 'chat', jobId: null, title: '当前执行', status: 'running', phase: 'waiting_model', label: '等待模型响应', tools: [], subagents: [], pendingApprovalIds: [], startedAt: '2026-10-19T10:00:00.000Z', updatedAt: '2026-10-19T10:00:00.000Z', endedAt: null, ...overrides });
 const ready = (runs = [], instanceId = 'instance-a') => ({ event: 'ready', data: { instanceId, serverTime: '2026-10-19T10:00:00.000Z', agentStatuses: runs, pendingApprovals: [], activities: [] } });
 const update = (run, instanceId = 'instance-a') => ({ event: 'agent_status_updated', data: { ...run, instanceId } });
+const conversationUpdate = (spaceId = 'a', sessionId = 'session-a', instanceId = 'instance-a') => ({
+  event: 'conversation_updated',
+  data: { instanceId, spaceId, sessionId },
+});
 const tick = () => new Promise(setImmediate);
 function fixture() {
   const connections = [];
@@ -67,6 +71,28 @@ test('通知断流保留最后观测但不能伪装就绪，退避后ready整体
   await tick();
   assert.deepEqual(queries, [['a', 'run-a']]);
   assert.equal(spaceRuntime(store.getSnapshot(), 'a').label, '执行已停止');
+  store.dispose();
+});
+
+test('conversation_updated 只记录轻量历史失效，ready清除瞬时记录并提高同步序号', () => {
+  const { store, connections } = fixture();
+  store.setActive(true);
+  connections[0].onEvent(ready());
+  connections[0].onEvent(conversationUpdate('a', 'session-1'));
+  connections[0].onEvent(conversationUpdate('b', 'session-b'));
+  assert.deepEqual(spaceRuntime(store.getSnapshot(), 'a'), {
+    ...spaceRuntime(store.getSnapshot(), 'a'),
+    conversationSyncVersion: 1,
+    conversationInvalidationVersion: 1,
+    conversationInvalidationSessionId: 'session-1',
+  });
+  assert.equal(spaceRuntime(store.getSnapshot(), 'b').conversationInvalidationVersion, 2);
+  assert.equal(spaceRuntime(store.getSnapshot(), 'missing').conversationInvalidationVersion, 0);
+
+  connections[0].onEvent(ready());
+  assert.equal(store.getSnapshot().conversationSyncVersion, 2);
+  assert.deepEqual(store.getSnapshot().conversationInvalidations, []);
+  assert.equal(spaceRuntime(store.getSnapshot(), 'a').conversationInvalidationVersion, 0);
   store.dispose();
 });
 

@@ -27,6 +27,12 @@ test('共享活动推送不会被误合并成审批轻量回执', () => {
   store.receive({ event: 'activity_updated', data: { id: 'approval-a', spaceId: 'thread-a', instanceId: 'instance-a', status: 'completed' } });
   assert.equal(store.getSnapshot(), before); store.dispose();
 });
+
+test('会话历史失效事件不会被默认分支误当成审批', () => {
+  const { store } = setup(); store.receive(ready([approvalFixture()])); const before = store.getSnapshot();
+  store.receive({ event: 'conversation_updated', data: { instanceId: 'instance-a', spaceId: 'thread-a', sessionId: 'session-a' } });
+  assert.equal(store.getSnapshot(), before); store.dispose();
+});
 test('ready 整体替换 pending，断线期间消失项补读权威终态而不猜测', async () => {
   const { store, calls } = setup(); store.receive(ready([approvalFixture()])); assert.equal(store.canDecide('approval-a'), true);
   store.setConnection('reconnecting'); assert.equal(store.canDecide('approval-a'), false);

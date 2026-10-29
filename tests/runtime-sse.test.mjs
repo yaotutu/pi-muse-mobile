@@ -150,6 +150,12 @@ test('decodeRuntimeFrame：ready/agent_status_updated 解码为 RuntimeEvent，�
   assert.equal(decodeRuntimeFrame({ event: '', data: '{}' }), null);
 });
 
+test('decodeRuntimeFrame：conversation_updated 是受支持的身份失效事件', () => {
+  const payload = { instanceId: 'i1', spaceId: 'thread-a', sessionId: 'session-a' };
+  const out = decodeRuntimeFrame({ event: 'conversation_updated', data: JSON.stringify(payload) });
+  assert.deepEqual(out, { event: 'conversation_updated', data: payload });
+});
+
 test('decodeRuntimeFrame：坏 JSON 必须报错并重新同步，不能静默漏状态', () => {
   assert.throws(() => decodeRuntimeFrame({ event: 'ready', data: 'not-json' }), (error) => error.kind === 'invalid_json');
   assert.throws(() => decodeRuntimeFrame({ event: 'agent_status_updated', data: '{]' }), (error) => error.kind === 'invalid_json');

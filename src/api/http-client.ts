@@ -59,6 +59,7 @@ import type {
   RuntimeEvent,
 } from '../runtime/types';
 import {
+  parseConversationUpdated,
   parseAgentStatusResponse,
   parseAgentStatusUpdate,
   parseRuntimeReady,
@@ -997,7 +998,8 @@ export class HttpApiClient implements ApiClient {
             if (approval.status !== 'pending') throw new ApiError(502, '待审批事件不是 pending 状态');
             event = { event: decoded.event, data: { ...approval, instanceId: readyInstanceId } };
           } else if (decoded.event === 'approval_updated') event = { event: 'approval_updated', data: { ...parseApprovalResolution(decoded.data), instanceId: readyInstanceId } };
-          else event = { event: 'activity_updated', data: { ...parseActivityOverview(decoded.data), instanceId: readyInstanceId } };
+          else if (decoded.event === 'activity_updated') event = { event: 'activity_updated', data: { ...parseActivityOverview(decoded.data), instanceId: readyInstanceId } };
+          else event = { event: 'conversation_updated', data: parseConversationUpdated(decoded.data, readyInstanceId) };
           try { onEvent(event); } catch (error) { markCallbackFailed(); throw error; }
         }
       }

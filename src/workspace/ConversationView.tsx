@@ -34,7 +34,7 @@ export type ConversationViewProps = {
   spaceId: string;
   visible: boolean;
   otherPage: ReactNode;
-  refreshKey: number;
+  refreshKey: string | number;
   onSettled: () => void;
   openConnection: () => void;
 };

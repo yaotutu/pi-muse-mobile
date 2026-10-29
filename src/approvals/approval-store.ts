@@ -71,7 +71,12 @@ export class ApprovalStore {
   };
 
   receive = (event: RuntimeEvent) => {
-    if (!this.active || event.event === 'agent_status_updated' || event.event === 'activity_updated') return;
+    if (
+      !this.active
+      || event.event === 'agent_status_updated'
+      || event.event === 'activity_updated'
+      || event.event === 'conversation_updated'
+    ) return;
     this.eventVersion++;
     if (event.event === 'ready') {
       const oldPending = this.state.pendingIds;

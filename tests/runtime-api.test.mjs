@@ -79,6 +79,38 @@ test('subscribeRuntime ready 当前活动与 activity_updated 概览独立解析
   assert.equal(requests, 1);
 });
 
+test('subscribeRuntime 解析严格的 conversation_updated，未知字段或跨实例帧断流', async () => {
+  const ready = { instanceId: 'inst-1', serverTime: 't', agentStatuses: [] };
+  const valid = { instanceId: 'inst-1', spaceId: 'thread-a', sessionId: 'session-1' };
+  const stream = makeStream();
+  await withFetch(async () => {
+    stream.push(frame('ready', ready));
+    stream.push(frame('conversation_updated', valid));
+    stream.close(); return new Response(stream);
+  }, async () => {
+    const received = [];
+    const api = new HttpApiClient(BASE, () => 'token-1', () => {});
+    await api.subscribeRuntime((event) => received.push(event));
+    assert.deepEqual(received.at(-1), { event: 'conversation_updated', data: valid });
+  });
+
+  for (const payload of [
+    { ...valid, extra: true },
+    { instanceId: 'inst-1', spaceId: 'thread-a' },
+    { ...valid, instanceId: 'other' },
+  ]) {
+    const invalid = makeStream();
+    await withFetch(async () => {
+      invalid.push(frame('ready', ready));
+      invalid.push(frame('conversation_updated', payload));
+      invalid.close(); return new Response(invalid);
+    }, async () => {
+      const api = new HttpApiClient(BASE, () => 'token-1', () => {});
+      await assert.rejects(api.subscribeRuntime(() => {}), (error) => error.status === 502);
+    });
+  }
+});
+
 test('subscribeRuntime 缺活动集合、重复/终态 ready、坏活动或跨实例活动必须报502', async () => {
   const ready = { instanceId: 'inst-1', serverTime: 't', agentStatuses: [] };
   const cases = [

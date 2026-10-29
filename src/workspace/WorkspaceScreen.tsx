@@ -198,6 +198,24 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
   const name = spaces.currentSpace === MAIN_SPACE ? (profile.identity?.name ?? 'Pi Muse') : spaces.currentSpace;
   const reloadSpaces = spaces.reload;
   const refresh = useCallback(() => { void reloadSpaces(); activities.invalidate(); jobs.invalidate(); monitors.invalidate(); goals.invalidate(); setHistoryRefresh((value) => value + 1); }, [reloadSpaces, activities, jobs, monitors, goals]);
+  const invalidationSessionMatches = !runtime.conversationInvalidationSessionId
+    || !session.sessionId
+    || session.sessionId === runtime.conversationInvalidationSessionId;
+  const conversationInvalidationVersion = invalidationSessionMatches
+    ? runtime.conversationInvalidationVersion
+    : 0;
+  const conversationRefreshKey = runtime.synchronized
+    ? `${historyRefresh}:${runtime.conversationSyncVersion}:${conversationInvalidationVersion}`
+    : `${historyRefresh}:0:0`;
+  useEffect(() => {
+    // ready 不重放通知历史；空间绑定与当前聊天都要回到服务端权威事实。
+    if (runtime.synchronized) void reloadSpaces();
+  }, [runtime.synchronized, reloadSpaces]);
+  useEffect(() => {
+    if (!runtime.synchronized || invalidationSessionMatches) return;
+    // 旧 session 迟到帧不污染当前视图；疑似远端 reset 时先核对空间绑定。
+    void reloadSpaces();
+  }, [runtime.synchronized, runtime.conversationInvalidationVersion, invalidationSessionMatches, reloadSpaces]);
   useEffect(() => {
     // 原生键盘出现时让出阅读空间；系统 Back 收起键盘也必须恢复完整顶栏与主导航。
     const show = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => setKeyboardVisible(true));
@@ -321,7 +339,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
                   pointerEvents={sessionMounted ? 'none' : 'auto'} aria-hidden={sessionMounted}
                   {...(Platform.OS === 'web' && sessionMounted ? { inert: true } : {})}
                   accessibilityElementsHidden={sessionMounted} importantForAccessibility={sessionMounted ? 'no-hide-descendants' : 'auto'}>
-                  <ConversationView key={`${spaces.currentSpace}:${session.epoch}`} spaceId={spaces.currentSpace} visible={page === 'chat'} otherPage={otherPage} refreshKey={historyRefresh} onSettled={refresh} openConnection={openConnection} />
+                  <ConversationView key={`${spaces.currentSpace}:${session.epoch}`} spaceId={spaces.currentSpace} visible={page === 'chat'} otherPage={otherPage} refreshKey={conversationRefreshKey} onSettled={refresh} openConnection={openConnection} />
                   {!!notice && <Text accessibilityRole="alert" style={[styles.notice, notice.tone === 'error' && styles.error]}>{notice.text}</Text>}
                   {!(page === 'chat' && keyboardVisible) && <Navigation page={page} onPage={(next) => { setPage(next); setSessionOpen(false); }} />}
                 </View>

@@ -23,6 +23,7 @@ export async function renderConversationHook(
   spaceId: string,
   api: ApiClient,
   store: SpaceStore,
+  refreshKey = 0,
 ): Promise<HookHandle<ReturnType<typeof useConversation>>> {
   let stateIndex = 0;
   const states: unknown[] = [];
@@ -136,7 +137,7 @@ export async function renderConversationHook(
         callbackIndex = 0;
         if (internals) internals.H = dispatcher;
         try {
-          result.current = useConversation(spaceId);
+        result.current = useConversation(spaceId, refreshKey);
         } finally {
           // 关键不变式：渲染结束立即恢复原 dispatcher，绝不在全局残留测试 dispatcher。
           if (internals) internals.H = prevH;
@@ -156,7 +157,8 @@ export async function renderConversationHook(
 
   return {
     result,
-    rerender: async () => {
+    rerender: async (nextRefreshKey = refreshKey) => {
+      refreshKey = nextRefreshKey;
       await runCycle();
     },
     unmount: () => {

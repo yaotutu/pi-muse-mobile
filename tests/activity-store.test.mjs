@@ -25,6 +25,27 @@ test('不可见不读接口，打开/前台恢复读真实第一页；关闭和�
   store.setActive(true); assert.equal(lists.length, 2); store.close(); assert.equal(lists[1].signal.aborted, true);
   lists[1].resolve(activityPage([])); await tick(); assert.equal(store.getSnapshot().activities.length, 1); store.dispose();
 });
+
+test('conversation_updated 不触发活动列表或详情补读', async () => {
+  const { store, lists } = fixture(); store.setActive(true); store.open({ spaceId: 'thread-a' });
+  lists[0].resolve(activityPage()); await tick();
+  store.receive({ event: 'conversation_updated', data: { instanceId: 'i', spaceId: 'thread-a', sessionId: 'session-a' } });
+  await wait();
+  assert.equal(lists.length, 1); store.dispose();
+});
+
+test('运行与审批通知仍驱动活动补读', async () => {
+  const { store, lists } = fixture(); store.setActive(true); store.open({ spaceId: 'thread-a' });
+  lists[0].resolve(activityPage()); await tick();
+  store.receive({ event: 'agent_status_updated', data: { instanceId: 'i', spaceId: 'thread-a' } });
+  await wait();
+  assert.equal(lists.length, 2, 'agent_status_updated 应保留原有活动失效');
+  lists[1].resolve(activityPage());
+  store.receive({ event: 'approval_updated', data: { instanceId: 'i', spaceId: 'thread-a' } });
+  await wait();
+  assert.equal(lists.length, 3, 'approval_updated 应保留原有活动失效');
+  store.dispose();
+ });
 test('切会话/状态丢弃旧游标、详情和迟到读取，不能串服或串范围', async () => {
   const { store, lists, details } = fixture(); store.setActive(true); store.open({ spaceId: 'thread-a' });
   store.select('activity-a'); store.setFilter({ spaceId: 'thread-b', status: 'completed' });

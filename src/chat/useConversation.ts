@@ -59,7 +59,7 @@ const preRunRejectMessage = (error: ApiError) =>
  * 任何终态判断只依据确切证据（权威历史包含原 ID、或终态运行证据后的完整历史核对），
  * 网络错误、404、仍 running 一律保持 unconfirmed，绝不自动重发。
  */
-export function useConversation(spaceId: string, refreshKey = 0) {
+export function useConversation(spaceId: string, refreshKey: string | number = 0) {
   const api = useApi();
   const sessions = useSpaceStore();
   const spaceState = useSpaceState(spaceId);

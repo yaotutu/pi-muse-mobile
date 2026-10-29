@@ -97,8 +97,15 @@ export type RuntimeAgentStatusUpdatedEvent = {
   data: AgentStatus & { instanceId: string };
 };
 
+/** 通知已落盘的瞬时历史失效信号；不含消息正文，也不得推导 agent 状态。 */
+export type ConversationInvalidation = {
+  spaceId: string;
+  sessionId: string;
+};
+
 /** 本轮订阅对外契约；未知事件由传输层直接跳过，不向上抛。 */
 export type RuntimeEvent = RuntimeReadyEvent | RuntimeAgentStatusUpdatedEvent
   | { event: 'approval_pending'; data: ApprovalView & { instanceId: string } }
   | { event: 'approval_updated'; data: ApprovalResolution & { instanceId: string } }
-  | { event: 'activity_updated'; data: ActivityOverview & { instanceId: string } };
+  | { event: 'activity_updated'; data: ActivityOverview & { instanceId: string } }
+  | { event: 'conversation_updated'; data: ConversationInvalidation & { instanceId: string } };

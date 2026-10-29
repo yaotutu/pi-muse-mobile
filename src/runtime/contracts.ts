@@ -13,6 +13,7 @@ import { isActiveActivity } from '../activities/types';
 import type {
   AgentStatus,
   AgentStatusResponse,
+  ConversationInvalidation,
   RunPhase,
   RuntimeEvent,
   SubagentPhase,
@@ -167,4 +168,26 @@ export function parseAgentStatusUpdate(value: unknown, expectedInstanceId: strin
   }
   const status = ensureAgentStatus(entry);
   return { ...status, instanceId };
+}
+
+export function parseConversationUpdated(
+  value: unknown,
+  expectedInstanceId: string,
+): ConversationInvalidation & { instanceId: string } {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ApiError(502, 'conversation_updated data 不是对象');
+  const entry = value as Record<string, unknown>;
+  // 契约是 strictObject；未知字段说明服务端与客户端协议版本不一致，不能悄悄当作状态或审批载荷。
+  if (Object.keys(entry).sort().join(',') !== 'instanceId,sessionId,spaceId') {
+    throw new ApiError(502, 'conversation_updated 字段不符合契约');
+  }
+  const instanceId = ensureString(entry.instanceId, 'conversation_updated.data.instanceId');
+  if (instanceId !== expectedInstanceId) {
+    throw new ApiError(502, 'conversation_updated 与 ready 的 instanceId 不一致，按服务端约定视为非法帧');
+  }
+  assertSpaceAlias(entry);
+  return {
+    instanceId,
+    spaceId: ensureString(entry.spaceId, 'conversation_updated.data.spaceId'),
+    sessionId: ensureString(entry.sessionId, 'conversation_updated.data.sessionId'),
+  };
 }

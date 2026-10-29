@@ -121,8 +121,10 @@ export class ActivityStore {
         ...(this.state.detail?.activity.id === activity.id ? { detail: { ...this.state.detail, activity } } : {}),
       });
       this.invalidate(activity.spaceId);
+    } else if (event.event !== 'conversation_updated') {
+      // 运行与审批变化仍可能带来活动事实；conversation_updated 只失效聊天历史。
+      this.invalidate(event.data.spaceId ?? undefined);
     }
-    else this.invalidate(event.data.spaceId ?? undefined);
   };
   setConnection = (connection: RuntimeConnection) => {
     if (connection !== 'live') this.publish({ stale: true, detailStale: true });

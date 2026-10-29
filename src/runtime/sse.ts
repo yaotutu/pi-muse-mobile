@@ -112,7 +112,14 @@ function parseFrame(frame: string): ParsedRuntimeFrame | null {
  * 已接入领域的事件无法解码时不能静默丢弃，否则连接看似在线却漏掉状态或审批变化。
  */
 export function decodeRuntimeFrame(frame: ParsedRuntimeFrame): RuntimeEvent | null {
-  if (!['ready', 'agent_status_updated', 'approval_pending', 'approval_updated', 'activity_updated'].includes(frame.event)) return null;
+  if (![
+    'ready',
+    'agent_status_updated',
+    'approval_pending',
+    'approval_updated',
+    'activity_updated',
+    'conversation_updated',
+  ].includes(frame.event)) return null;
   let payload: unknown;
   try {
     payload = JSON.parse(frame.data);
