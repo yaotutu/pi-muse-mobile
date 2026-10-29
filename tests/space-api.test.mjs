@@ -55,18 +55,28 @@ test('resetSpace 错误/取消不自动重试，保留 SPACE_DELETING 语义与4
     assert.equal(count, 0);
   } finally { globalThis.fetch = original; }
 });
-test('审批以空间字段为准，兼容thread作用域但绝不回退旧归属或接受矛盾别名', () => {
+test('审批作用域与归属必须成对出现，旧thread作用域不再进入客户端契约', () => {
   const v = approvalFixture();
-  for (const scope of ['space', 'thread']) {
-    const raw = { ...v, threadId: v.spaceId, workspaceThreadId: v.workspaceSpaceId,
-      preview: { ...v.preview, scope, ownerThreadId: v.preview.ownerSpaceId } };
-    const parsed = parseApprovalView(raw);
-    assert.equal(parsed.spaceId, v.spaceId); assert.equal(parsed.preview.scope, scope);
-    assert.equal('threadId' in parsed, false); assert.equal('ownerThreadId' in parsed.preview, false);
-  }
+  const space = { ...v, threadId: v.spaceId, workspaceThreadId: v.workspaceSpaceId,
+    preview: { ...v.preview, ownerThreadId: v.preview.ownerSpaceId } };
+  assert.equal(parseApprovalView(space).preview.scope, 'space');
+  const shared = { ...v, workspaceSpaceId: null, preview: { ...v.preview, scope: 'shared', ownerSpaceId: null } };
+  const parsedShared = parseApprovalView(shared);
+  assert.equal(parsedShared.preview.ownerSpaceId, null);
+  assert.equal(parsedShared.workspaceSpaceId, null);
+  const skill = { ...v, workspaceSpaceId: null,
+    preview: { ...v.preview, scope: 'skill', ownerSpaceId: null, path: 'notes/SKILL.md' } };
+  const parsedSkill = parseApprovalView(skill);
+  assert.equal(parsedSkill.preview.scope, 'skill');
+  assert.equal(parsedSkill.preview.ownerSpaceId, null);
+  assert.equal(parsedSkill.workspaceSpaceId, null);
   for (const raw of [{ ...v, spaceId: undefined, threadId: v.spaceId }, { ...v, threadId: 'other' },
     { ...v, workspaceThreadId: 'other' }, { ...v, preview: { ...v.preview, ownerSpaceId: undefined, ownerThreadId: v.preview.ownerSpaceId } },
-    { ...v, preview: { ...v.preview, ownerThreadId: 'other' } }]) assert.throws(() => parseApprovalView(raw), invalid);
+    { ...v, preview: { ...v.preview, ownerThreadId: 'other' } },
+    { ...v, preview: { ...v.preview, scope: 'thread' } },
+    { ...v, preview: { ...v.preview, ownerSpaceId: null } },
+    { ...shared, preview: { ...shared.preview, ownerSpaceId: v.preview.ownerSpaceId } },
+    { ...skill, preview: { ...skill.preview, ownerSpaceId: v.preview.ownerSpaceId } }]) assert.throws(() => parseApprovalView(raw), invalid);
 });
 test('活动必须有spaceId，兼容别名只能一致且不进入缓存', () => {
   const v = activityFixture();

@@ -4,7 +4,7 @@ export type SettledApprovalStatus = Exclude<ApprovalStatus, 'pending'>;
 export type ApprovalDecision = 'approve' | 'deny';
 
 export type ApprovalPreview = {
-  scope: 'space' | 'thread' | 'shared';
+  scope: 'space' | 'shared' | 'skill';
   /** 文件归属由服务端明确给出，不能用子代理 ID 或路径反推。 */
   ownerSpaceId: string | null;
   path: string;

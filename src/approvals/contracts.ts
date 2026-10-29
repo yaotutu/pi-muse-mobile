@@ -63,13 +63,13 @@ export function parseApprovalView(value: unknown): ApprovalView {
   const preview = object(entry.preview);
   assertSpaceAlias(preview, 'ownerSpaceId', 'ownerThreadId');
   const ownerSpaceId = nullableText(preview.ownerSpaceId);
-  if (preview.scope !== 'space' && preview.scope !== 'thread' && preview.scope !== 'shared') invalid();
-  if (preview.scope !== 'shared' ? ownerSpaceId === null : ownerSpaceId !== null) invalid();
+  if (preview.scope !== 'space' && preview.scope !== 'shared' && preview.scope !== 'skill') invalid();
+  if (preview.scope === 'space' ? ownerSpaceId === null : ownerSpaceId !== null) invalid();
   if (typeof preview.beforeExists !== 'boolean') invalid();
   return {
     ...parseApprovalSummary(entry),
     preview: {
-      scope: preview.scope as 'space' | 'thread' | 'shared', ownerSpaceId,
+      scope: preview.scope as 'space' | 'shared' | 'skill', ownerSpaceId,
       path: text(preview.path, true), before: text(preview.before), after: text(preview.after),
       beforeExists: preview.beforeExists as boolean,
     },

@@ -16,6 +16,18 @@ test('审批严格解析完整不可变预览，空内容不是缺失字段', ()
   const empty = approvalFixture({ preview: { ...approvalFixture().preview, after: '' } });
   assert.equal(parseApprovalView(empty).preview.after, '');
 });
+test('技能资源审批必须使用 scope=skill 且不归属工作区', () => {
+  const skill = approvalFixture({
+    preview: { ...approvalFixture().preview, scope: 'skill', ownerSpaceId: null, path: 'notes/SKILL.md' },
+  });
+  assert.equal(parseApprovalView(skill).preview.scope, 'skill');
+  assert.equal(parseApprovalView(skill).preview.ownerSpaceId, null);
+  const invalid = [
+    { ...skill, preview: { ...skill.preview, ownerSpaceId: 'thread-a' } },
+    { ...skill, preview: { ...skill.preview, scope: 'thread' } },
+  ];
+  for (const value of invalid) assert.throws(() => parseApprovalView(value), (error) => error.status === 502);
+});
 test('审批缺字段、伪造作用域、坏 revision/时间/执行状态均拒绝而非补默认', () => {
   const item = approvalFixture();
   const invalid = [null, {}, { ...item, execution: undefined }, { ...item, revision: 0 }, { ...item, revision: 1.5 },
