@@ -13,6 +13,7 @@ Pi Muse 官方移动客户端，当前源码使用 Expo 57、React Native 0.86�
 | 修改颜色、主题、 tokens 或共享控件外观 | [主题维护](docs/themes.md) |
 | 修改 Android 更新、版本字段、构建、签名、CI 或发布 | [Android 发布指南](docs/android-release-guide.md) |
 | 编写文档或修改用户可见行为 | [Agent 文档编写指南](../pi-muse-server/docs/agent-documentation-guide.md) |
+| 制作或修改吉祥物、默认角色、图标及其派生素材 | [项目级品牌资产基准](../pi-muse-server/docs/assets/brand/README.md)，移动端不另立形象母版 |
 
 ## 硬边界
 
