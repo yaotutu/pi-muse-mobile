@@ -1,0 +1,43 @@
+# 移动开发指南
+
+本文面向 Pi Muse Mobile 的日常开发任务，整理术语、导航、契约消费、状态保护和验证入口。它不复制业务功能清单、历史验收或完整主题规范；修改前必须静态核对当前源码与相关测试，指南只提供入口和稳定边界。
+
+## 源码入口
+
+- 组装：`src/app/AppRoot.tsx` 只组装 Provider 与唯一 `WorkspaceScreen`；`src/workspace/` 是当前工作区、页面组装和状态挂载入口。
+- 连接与协议：`src/connection/`、`src/api/`、`src/chat/`、`src/runtime/` 分别负责连接记录、HTTP/SSE 客户端、聊天聚合与运行状态。迟到响应不得污染当前连接或空间。
+- 业务域按目录划分：`src/spaces/`、`src/approvals/`、`src/activities/`、`src/jobs/`、`src/monitors/`、`src/goals/`、`src/memories/`、`src/files/`、`src/profile/`、`src/dream/`、`src/feedback/`、`src/attachments/`、`src/update/`。修改任一领域先读对应源码与测试，不在本指南复制字段清单。
+- 外观：`src/theme/`、`src/ui/` 与 [主题维护](themes.md) 是唯一主题细节入口；业务页面消费语义颜色与共享 tokens，不散写固定色值或布局魔法值。
+
+## 统一术语与导航
+
+- 「顶栏」指聊天页整个顶部区域；「会话信息区」指顶栏中间由头像、名称和当前状态组成的整块可点击区域；「会话面板」指点击该区域后在同一根层展开的全屏页面。三者不得混称。
+- 本项目不使用 Expo Router 或 react-navigation。四个主 tab 由状态机切换：`chat | activity | goals | settings`；左侧会话入口使用揭示式侧栏并推动聊天前景右移。
+- 会话面板与聊天同根层持续挂载：头像、名称和状态原位保留，聊天在面板打开时屏蔽触控和读屏；内部胶囊 Tab 平级切换，不用独立 Modal、底部 Sheet 或树形导航。系统 Back 先关闭面板或键盘。
+- 旧 `AppShell`、旧 Screen/Sheet 和产品演示分支已删除，不恢复双界面入口；`src/ui/Sheet` 仅服务独立应用更新流程。
+
+## 契约与状态
+
+- 按模块串行推进。开始实现前核对当前真实后端的 `/docs`、`/openapi.json` 与 health 版本，并由实际客户端重跑本模块相关真实接口与安全主线；只看 schema、打开文档或沿用历史通过不算预验。缺少契约、凭据或合法场景时先报告，本模块实现与验收未收口前不进入下一个新模块；开工预验不替代收口验收。
+- 修改 HTTP/SSE 前核对当前服务端 `/docs`、`/openapi.json`、health 版本与 `pi-muse-server/src/http/contracts/`；服务端自有 `web/src/lib/api.ts` 与 `web/src/chat/chat-state.ts` 可作为分帧和 AG-UI 聚合参考，但不是契约权威。
+- 聊天 AG-UI SSE 与 `/api/events` 通知 SSE 是两条流；运行、审批与活动共用一条通知流。具体字段、事件顺序和错误语义以当前契约为准，不从历史交接或旧客户端代码推测。
+- 用户消息原文展示；assistant Markdown 用原生组件绘制，HTML 按字面文字处理且 Markdown 图片不加载。消息与搜索来源链接仅允许无凭据 HTTP(S)，不推断隐藏工具详情或审批事实。
+- 不假定写操作幂等。请求超时、断线或结果未明时保留草稿并锁定重提，先完整回读或以契约明确的安全方式核对结果，经用户需要的确认后解锁；不自动重发。
+- 列表读取失败保留旧状态并显示错误，不能伪装成空列表。按打开、前台、成功写入或手动刷新的领域规则回读；不为方便展示添加全局轮询、第二 SSE 或兼容旧字段。
+- 工具卡、审批和活动只消费服务端实际投影，不推断隐藏详情、审批状态或保存成功；未知工具可展开，但不能伪造结构化结果。
+- 连接与鉴权只保存服务地址和 Session Token，不持久化明文 AccessKey；换服、重连或退出不能泄露或复用错误凭据。测试使用专用空间/数据，收口后按授权清理。
+
+## Expo 与依赖
+
+- 写任何 Expo 或 React Native API 前，先读当前 `package.json` 的准确版本，再查该 SDK 版本对应的 Expo 官方文档；不确定的 API 不凭训练记忆编码。当前项目使用 npm。
+- 新增依赖前先确认需求无法由现有依赖或推荐 Expo 模块满足；含原生能力的包使用 `npx expo install <package>` 解析 SDK 兼容版本，不用其他包管理器直接安装。
+- 本项目采用 CNG：`ios/` 与 `android/` 不入库。目录不存在时不得手工创建或修改，原生行为通过 `app.json` 与 config plugin 配置；发布流程由 [Android 发布指南](android-release-guide.md)管理。
+- Expo Go 只含内置原生模块。新增原生能力后需要开发构建或按发布流程重新生成原生工程验证；Expo Web 只能做快速布局检查，不能替代 Android 原生链路。
+- 移动优先：触控目标、键盘、安全区、读屏、窄屏和前后台生命周期是常规检查；不为桌面或 Web 预览牺牲原生行为。
+
+## 验证
+
+- 默认本地门禁：`npm run lint`、`npm run typecheck`、`npm test`。这些测试使用本地协议与状态夹具，不能替代真实验收。
+- 功能收口前，由主 Agent 启动当前源码的本地隔离真实后端，实际客户端消费相关 HTTP/SSE 并真实调用外部模型；同时在 Android 模拟器或真机验证本轮界面与业务链路。费用授权与数据边界见根规则。
+- 涉及主题时按 [主题维护](themes.md) 覆盖三主题、窄屏和真实原生场景；涉及用户可见行为时同步产品手册；涉及 APK 更新、签名或发布时转入 Android 发布指南。
+- 文档-only 任务只检查差异、引用、命名与规则一致性；不得为文档修改启动业务、模型或原生验收。
