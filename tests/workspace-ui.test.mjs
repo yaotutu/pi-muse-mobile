@@ -94,13 +94,24 @@ test('聊天浮层不占正文高度，首条消息避开头像，隐藏空间�
   assert.match(read('src/workspace/SessionPanel.tsx'), /<ScrollView\s+key=\{tab\}/);
 });
 
-test('聊天名称状态只用贴合自身的主题浮动表面，键盘紧凑态与会话面板几何独立', () => {
+test('聊天只为非主空间非键盘名称挂小浮层，详细状态留在可点击头像的会话面板', () => {
   const screen = read('src/workspace/WorkspaceScreen.tsx');
-  assert.match(screen, /style=\{\[styles\.identityLabel, styles\.identityLabelSurface, keyboardVisible && styles\.identityLabelCompact\]\}/);
+  const chatHeader = screen.slice(screen.indexOf("{page === 'chat' && <View"), screen.indexOf('<View style={styles.bodyStage}>'));
+  const sessionHeader = screen.slice(screen.indexOf('headerCenter={'), screen.indexOf('headerRight={<ThemeToggle', screen.indexOf('headerCenter={')));
+  assert.match(chatHeader, /<Pressable accessibilityRole="button" accessibilityLabel="打开当前会话面板"/);
+  assert.match(chatHeader, /accessibilityHint=\{`当前空间：\$\{labels\.title\(spaces\.currentSpace\)\}；当前状态：\$\{statusLabel\}/);
+  assert.match(chatHeader, /<MuseAvatar size=\{keyboardVisible \? l\.compactHeaderAvatar : l\.headerAvatar\}/);
+  assert.match(chatHeader, /\{headerNames\.chat && <View style=\{\[styles\.identityLabel, styles\.identityLabelSurface\]\}>/);
+  assert.doesNotMatch(chatHeader, /<StatusPill|identityLabelCompact/);
+  assert.match(sessionHeader, /\{headerNames\.session && <Text numberOfLines=\{1\}/);
+  assert.match(sessionHeader, /<StatusPill label=\{statusLabel\} testID="workspace-session-status"/);
   assert.match(screen, /identityLabelSurface: \{ backgroundColor: c\.floatingSurface, borderColor: c\.floatingLine, borderWidth: StyleSheet\.hairlineWidth, borderRadius: r\.field, paddingBottom: spacing\[6\] \}/);
-  assert.match(screen, /identityLabelCompact: \{[^}]*paddingHorizontal: spacing\[6\], paddingTop: spacing\[1\], paddingBottom: spacing\[1\]/);
   assert.match(screen, /style=\{\[styles\.identityLabel, styles\.sessionIdentityLabel\]\}/);
   assert.doesNotMatch(screen.match(/chatHeader: \{[^}]*\}/)?.[0] ?? '', /backgroundColor|borderWidth/);
+  assert.match(screen, /accessibilityLabel=\{labels\.title\(space\.id\)\} accessibilityState=\{\{ selected: space\.id === spaces\.currentSpace \}\}/);
+  const execution = read('src/workspace/CurrentExecution.tsx');
+  assert.match(execution, /<Text accessibilityRole="alert" style=\{styles\.syncTitle\}>\{runtime\.label\}/);
+  assert.match(execution, /accessibilityLabel="查看待审批"/);
 });
 
 test('会话面板采样持续挂载的聊天层，关闭期间继续隔离底层交互', () => {

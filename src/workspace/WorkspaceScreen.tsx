@@ -27,11 +27,11 @@ import { useGoals } from '../goals/GoalProvider';
 import { FilesProvider } from '../files/FilesProvider';
 import { MemoryPanel } from './MemoryPanel';
 import { ProfilePanel } from './ProfilePanel';
-import { ProfileProvider, useProfile } from '../profile/ProfileProvider';
+import { ProfileProvider } from '../profile/ProfileProvider';
 import { DreamProvider } from '../dream/DreamProvider';
 import { DreamPanel } from './DreamPanel';
 import { ConversationHost } from './ConversationHost';
-import { SpaceLabels, spaceTime } from './space-labels';
+import { SpaceLabels, headerSpaceNames, spaceTime } from './space-labels';
 import { workspaceBackAction } from './workspace-back';
 import { SessionPanel, type SessionTab } from './SessionPanel';
 import { ResetSessionDialog } from './ResetSessionDialog';
@@ -153,7 +153,6 @@ function Navigation({ page, onPage }: { page: WorkspacePage; onPage: (page: Work
 
 function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
   const connection = useServiceConnection();
-  const { snapshot: profile } = useProfile();
   const spaces = useSpaces(!!connection?.enabled, snapshot.refreshVersion);
   const session = useSpaceState(spaces.currentSpace);
   const sessions = useSpaceStore(); const runtimeStore = useRuntimeStore();
@@ -192,7 +191,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
   const labelIds = spaces.spaces.map((space) => space.id).sort().join('|');
   if (labelState.ids !== labelIds) setLabelState({ ids: labelIds, labels: labelState.labels.sync(spaces.spaces) });
   const labels = labelState.ids === labelIds ? labelState.labels : labelState.labels.sync(spaces.spaces);
-  const name = spaces.currentSpace === MAIN_SPACE ? (profile.identity?.name ?? 'Pi Muse') : labels.title(spaces.currentSpace);
+  const headerNames = headerSpaceNames(labels, spaces.currentSpace, keyboardVisible);
   const reloadSpaces = spaces.reload;
   const refresh = useCallback((spaceId = spaces.currentSpace) => { void reloadSpaces(); activities.invalidate(); jobs.invalidate(); monitors.invalidate(); goals.invalidate(); setHistoryRefresh((value) => ({ ...value, [spaceId]: (value[spaceId] ?? 0) + 1 })); }, [reloadSpaces, activities, jobs, monitors, goals, spaces.currentSpace]);
   useEffect(() => {
@@ -313,10 +312,10 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
             {/* 头像与左右操作浮在聊天层上方，不占正文高度；触控只落在实际控件。 */}
             {page === 'chat' && <View pointerEvents="box-none" style={[styles.chatHeader, keyboardVisible && styles.chatHeaderCompact]}>
               <View style={styles.headerLeft}><IconControl icon={Menu} label="打开空间侧栏" testID="workspace-open-drawer" onPress={openDrawer} /></View>
-              <Pressable accessibilityRole="button" accessibilityLabel="打开当前会话面板" accessibilityHint="全屏显示当前会话的动态、审批、工作区和历史" accessibilityState={{ disabled: sessionMounted }} disabled={sessionMounted} testID="workspace-open-session" style={[styles.identity, keyboardVisible && styles.identityCompact]}
+              <Pressable accessibilityRole="button" accessibilityLabel="打开当前会话面板" accessibilityHint={`当前空间：${labels.title(spaces.currentSpace)}；当前状态：${statusLabel}。全屏显示当前会话的动态、审批、工作区和历史`} accessibilityState={{ disabled: sessionMounted }} disabled={sessionMounted} testID="workspace-open-session" style={[styles.identity, keyboardVisible && styles.identityCompact]}
                 onPress={openSession}>
                 <MuseAvatar size={keyboardVisible ? l.compactHeaderAvatar : l.headerAvatar} />
-                <View style={[styles.identityLabel, styles.identityLabelSurface, keyboardVisible && styles.identityLabelCompact]}><Text numberOfLines={1} style={styles.identityName}>{name}</Text><StatusPill label={statusLabel} testID="workspace-session-status" tone={!runtime.synchronized ? 'warning' : runtime.running ? 'accent' : 'neutral'} /></View>
+                {headerNames.chat && <View style={[styles.identityLabel, styles.identityLabelSurface]}><Text numberOfLines={1} style={styles.identityName}>{headerNames.chat}</Text></View>}
               </Pressable>
               <View style={styles.headerRight}><ThemeToggle testID="workspace-theme-toggle" /></View>
             </View>}
@@ -359,7 +358,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
                 headerCenter={
                   <View style={styles.identity}>
                     <MuseAvatar size={l.headerAvatar} />
-                    <View style={[styles.identityLabel, styles.sessionIdentityLabel]}><Text numberOfLines={1} style={styles.identityName}>{name}</Text><StatusPill label={statusLabel} testID="workspace-session-status" tone={!runtime.synchronized ? 'warning' : runtime.running ? 'accent' : 'neutral'} /></View>
+                    <View style={[styles.identityLabel, styles.sessionIdentityLabel]}>{headerNames.session && <Text numberOfLines={1} style={styles.identityName}>{headerNames.session}</Text>}<StatusPill label={statusLabel} testID="workspace-session-status" tone={!runtime.synchronized ? 'warning' : runtime.running ? 'accent' : 'neutral'} /></View>
                   </View>
                 }
                 headerRight={<ThemeToggle testID="workspace-session-theme-toggle" />}
@@ -414,9 +413,8 @@ const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   identity: { alignSelf: 'center', alignItems: 'center', maxWidth: l.identityMaxWidth },
   identityCompact: { height: l.controlSize, flexDirection: 'row', gap: spacing[8] },
   identityLabel: { paddingHorizontal: spacing[8], paddingTop: spacing[6], gap: spacing[3], alignItems: 'center', maxWidth: '100%' },
-  // 只覆盖聊天态名称与状态自身，不给透明顶栏增加整条背景或正文占位。
+  // 只覆盖非主空间聊天名称自身，不给透明顶栏增加整条背景或正文占位。
   identityLabelSurface: { backgroundColor: c.floatingSurface, borderColor: c.floatingLine, borderWidth: StyleSheet.hairlineWidth, borderRadius: r.field, paddingBottom: spacing[6] },
-  identityLabelCompact: { flexShrink: 1, minWidth: 0, paddingHorizontal: spacing[6], paddingTop: spacing[1], paddingBottom: spacing[1], alignItems: 'flex-start' },
   identityName: { ...t.name, color: c.ink, maxWidth: '100%', textAlign: 'center' },
   navigation: { flexDirection: 'row', height: l.navigationHeight, marginHorizontal: spacing[18], marginBottom: l.navigationBottom, alignItems: 'center' },
   navigationItem: { flex: 1, minHeight: l.controlSize, gap: l.navigationLabelGap, alignItems: 'center', justifyContent: 'center' }, navigationLabel: { ...t.navigation, color: c.faint }, navigationLabelSelected: { color: c.ink },

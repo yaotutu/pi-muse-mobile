@@ -1,7 +1,7 @@
 import type { SpaceEntry } from '../api/types';
 import { MAIN_SPACE } from '../spaces/space-state';
 
-/** 服务端没有标题；首次见到空间时按时间排序分配会话编号，刷新不会重排已有编号。 */
+/** 服务端没有标题；首次见到空间时按时间排序分配空间编号，刷新不会重排已有编号。 */
 export class SpaceLabels {
   constructor(private readonly labels = new Map<string, number>()) {}
   sync(spaces: SpaceEntry[]): SpaceLabels {
@@ -14,7 +14,13 @@ export class SpaceLabels {
     if (updated.size === this.labels.size && [...updated].every(([id, number]) => this.labels.get(id) === number)) return this;
     return new SpaceLabels(updated);
   }
-  title(id: string) { return id === MAIN_SPACE ? '主空间' : `对话 ${this.labels.get(id) ?? '…'}`; }
+  title(id: string) { return id === MAIN_SPACE ? '主空间' : `空间 ${this.labels.get(id) ?? '…'}`; }
+}
+
+/** 头部只把非主空间的编号当作名称；聊天键盘打开时连名称浮层一起收起。 */
+export function headerSpaceNames(labels: SpaceLabels, spaceId: string, keyboardVisible: boolean) {
+  const name = spaceId === MAIN_SPACE ? null : labels.title(spaceId);
+  return { chat: keyboardVisible ? null : name, session: name };
 }
 
 export function spaceTime(updatedAt: string) {

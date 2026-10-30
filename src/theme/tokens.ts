@@ -118,7 +118,7 @@ export const themeTokens = {
     sessionHeaderBottom: 28,
     /** 面板内容在持续挂载的会话信息区下方展开。 */
     sessionPanelTabsBottom: 16,
-    /** 全屏内容从会话信息区下方进入，头像、名称、状态保持原位。 */
+    /** 全屏内容从会话信息区下方进入，头像保持原位，面板补充详细状态。 */
     sessionTravel: 22,
     controlSize: 48,
     smallControl: 44,
@@ -132,7 +132,7 @@ export const themeTokens = {
     navigationBottom: 4,
     sessionTabsHeight: 66,
     sessionTabInset: 6,
-    /** 首条消息避开浮动头像与状态，后续内容可从其下滚过。 */
+    /** 首条消息避开浮动头像与可选空间名称，后续内容可从其下滚过。 */
     chatContentTop: 152,
     chatContentTopCompact: 60,
     messageGap: 16,
