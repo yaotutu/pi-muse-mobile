@@ -6,7 +6,7 @@
 
 - 组装：`src/app/AppRoot.tsx` 只组装 Provider 与唯一 `WorkspaceScreen`；`src/workspace/` 是当前工作区、页面组装和状态挂载入口。
 - 连接与协议：`src/connection/`、`src/api/`、`src/chat/`、`src/runtime/` 分别负责连接记录、HTTP/SSE 客户端、聊天聚合与运行状态。迟到响应不得污染当前连接或空间。
-- 业务域按目录划分：`src/spaces/`、`src/approvals/`、`src/activities/`、`src/jobs/`、`src/monitors/`、`src/goals/`、`src/memories/`、`src/files/`、`src/profile/`、`src/dream/`、`src/feedback/`、`src/attachments/`、`src/update/`。修改任一领域先读对应源码与测试，不在本指南复制字段清单。
+- 业务域按目录划分：`src/spaces/`、`src/approvals/`、`src/activities/`、`src/jobs/`、`src/monitors/`、`src/goals/`、`src/memories/`、`src/files/`、`src/profile/`、`src/dream/`、`src/feedback/`、`src/attachments/`、`src/browser/`、`src/update/`。修改任一领域先读对应源码与测试，不在本指南复制字段清单。
 - 外观：`src/theme/`、`src/ui/` 与 [主题维护](themes.md) 是唯一主题细节入口；业务页面消费语义颜色与共享 tokens，不散写固定色值或布局魔法值。
 
 ## 统一术语与导航
@@ -16,6 +16,7 @@
 - 本项目不使用 Expo Router 或 react-navigation。四个主 tab 由状态机切换：`chat | news | goals | settings`；新闻属于当前连接，不随聊天空间切换或会话重置清空。左侧会话入口使用揭示式侧栏并推动聊天前景右移。
 - 会话面板与聊天同根层持续挂载：头像保持原位，面板头部显示完整状态，仅非主空间显示空间名称；聊天在面板打开时屏蔽触控和读屏。内部胶囊 Tab 平级切换，不用独立 Modal、底部 Sheet 或树形导航。系统 Back 先关闭键盘、面板、侧栏；新闻页依次关闭详情或来源管理，再回聊天；设置子页与目标创建保持各自返回行为。
 - `ConversationHost` 保留当前连接中已访问空间的聊天所有者；切换空间只隐藏旧视图，不卸载仍在运行的 SSE。空间删除、会话 epoch 重置与连接销毁分别释放对应所有者；其他主页面只渲染一次。每个所有者以自己的 runtime、session 与失效版本回读，隐藏后返回前台时按原跟随状态定位滚动。
+- 设置中的浏览器是全屏原生 WebView，沿用当前服务器连接换取一次性桌面票据，不增加独立地址或密码配置。打开时底层页面保留挂载但屏蔽触控与读屏，主导航隐藏；Back 先收键盘，再关闭 viewer，不操作服务端 Chrome。票据仅留连接内存，不向 WebView 注入 API 凭据；关闭清理票据，重开和显式重试重新获取，换服销毁整个连接内的 store。导航边界与服务端桌面网关共同验收。
 - 服务端空间列表只有 ID、sessionId 与更新时间。侧栏为主空间显示固定名称，为其他空间在当前连接内按首次读到的时间分配“空间 1/2…”标签；副标题显示更新时间与真实运行状态，搜索仍包含原始 ID。编号不承诺跨进程稳定。
 - 旧 `AppShell`、旧 Screen/Sheet 和产品演示分支已删除，不恢复双界面入口；`src/ui/Sheet` 仅服务独立应用更新流程。
 

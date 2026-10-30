@@ -111,6 +111,8 @@ import type {
   NewsReaction,
   NewsSourceCreateInput,
 } from '../news/types';
+import { parseBrowserDesktopTicket, parseBrowserStatus } from '../browser/contracts';
+import type { BrowserDesktopTicket, BrowserStatus } from '../browser/types';
 
 export type TransportState = { kind: 'online' | 'offline'; token?: string; error?: string };
 export type HttpApiOptions = { onTransportState?: (state: TransportState) => void; timeoutMs?: number; headerTimeoutMs?: number };
@@ -1119,5 +1121,21 @@ export class HttpApiClient implements ApiClient {
       await reader.cancel().catch(() => {});
       reader.releaseLock();
     }
+  }
+
+  // --- 远程桌面浏览器（GET /api/browser/status + POST /api/browser/desktop-ticket） ---
+
+  async getBrowserStatus(signal?: AbortSignal): Promise<BrowserStatus> {
+    return parseBrowserStatus(await this.request<unknown>('/api/browser/status', { signal }));
+  }
+
+  async createBrowserDesktopTicket(signal?: AbortSignal): Promise<BrowserDesktopTicket> {
+    return parseBrowserDesktopTicket(
+      await this.request<unknown>('/api/browser/desktop-ticket', {
+        method: 'POST',
+        body: {},
+        signal,
+      }),
+    );
   }
 }

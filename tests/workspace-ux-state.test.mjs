@@ -163,6 +163,14 @@ test('手动上滚保持旧消息阅读，重新进入空间只在原本跟随�
 
 const { workspaceBackAction } = await import('../src/workspace/workspace-back.ts');
 
+test('浏览器覆盖时 Back 先收键盘再关闭 viewer，不触发底层会话或设置', () => {
+  const state = { keyboardVisible: true, browserOpen: true, sessionMounted: true, drawerOpen: true,
+    page: 'settings', settingsSubpage: 'profile', goalCreating: true };
+  assert.equal(workspaceBackAction(state), 'keyboard');
+  assert.equal(workspaceBackAction({ ...state, keyboardVisible: false }), 'browser');
+  assert.equal(workspaceBackAction({ ...state, keyboardVisible: false, browserOpen: false }), 'session');
+});
+
 test('Android Back 优先关闭键盘、会话面板和侧栏，然后返回设置子页', () => {
   const state = { keyboardVisible: true, sessionMounted: true, drawerOpen: true, page: 'settings', settingsSubpage: 'profile', goalCreating: false };
   assert.equal(workspaceBackAction(state), 'keyboard');

@@ -1,5 +1,5 @@
 import { Card } from '../ui/Surfaces';
-import { BookOpen, Check, ChevronRight, Download, Menu, MessageCircle, Moon, Newspaper, RotateCcw, Search, Server, Settings, SquareCheck, SquarePen, UserRound, X, type LucideIcon } from 'lucide-react-native';
+import { BookOpen, Check, ChevronRight, Download, Menu, MessageCircle, Moon, Newspaper, RotateCcw, Search, Server, Settings, SquareCheck, SquarePen, UserRound, X, Globe, type LucideIcon } from 'lucide-react-native';
 import { BlurTargetView } from 'expo-blur';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ThemeStatusBar } from '../theme/ThemeStatusBar';
@@ -45,6 +45,8 @@ import { IconControl, MuseAvatar, StatusPill, useReducedMotion } from './primiti
 import { FrostedSurface } from '../ui/FrostedSurface';
 import { ActionButton } from '../ui/ActionButton';
 import { FormInput } from '../ui/FormInput';
+import { BrowserPanel } from '../browser/BrowserPanel';
+import { createBrowserStore } from '../browser/browser-store';
 
 type WorkspacePage = 'chat' | 'news' | 'goals' | 'settings';
 type SettingsSubpage = 'memory' | 'profile' | 'dream' | null;
@@ -97,7 +99,7 @@ function SettingRow({ title, label, description, address, icon: Icon, onPress, d
     <ChevronRight size={sizing[18]} color={colors.faint} />
   </Pressable>;
 }
-function SettingsPage({ snapshot, openConnection, memoryAvailable = false, profileAvailable = false, dreamAvailable = false, currentSpaceId, onReset, subpage, onSubpage }: Pick<WorkspaceConnectionProps, 'snapshot' | 'openConnection'> & { memoryAvailable?: boolean; profileAvailable?: boolean; dreamAvailable?: boolean; currentSpaceId?: string; onReset?: () => void; subpage: SettingsSubpage; onSubpage: (page: SettingsSubpage) => void }) {
+function SettingsPage({ snapshot, openConnection, openBrowser, memoryAvailable = false, profileAvailable = false, dreamAvailable = false, currentSpaceId, onReset, subpage, onSubpage }: Pick<WorkspaceConnectionProps, 'snapshot' | 'openConnection'> & { openBrowser?: () => void; memoryAvailable?: boolean; profileAvailable?: boolean; dreamAvailable?: boolean; currentSpaceId?: string; onReset?: () => void; subpage: SettingsSubpage; onSubpage: (page: SettingsSubpage) => void }) {
   const styles = useStyles(); const update = useAppUpdate();
   if (subpage === 'memory' && memoryAvailable) return <ScrollView key="memory" keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}><MemoryPanel onBack={() => onSubpage(null)} /></ScrollView>;
   if (subpage === 'profile' && profileAvailable) return <ScrollView key="profile" keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}><ProfilePanel onBack={() => onSubpage(null)} /></ScrollView>;
@@ -106,6 +108,7 @@ function SettingsPage({ snapshot, openConnection, memoryAvailable = false, profi
     <View style={styles.appSection}><Text accessibilityRole="header" style={styles.appSectionTitle}>连接与设备</Text>
       <View style={styles.appSettingsGroup}>
         <SettingRow title="服务器连接" label="服务器连接" description={connectionLabel(snapshot)} address={snapshot.serverUrl ?? undefined} icon={Server} onPress={openConnection} />
+        {openBrowser && <SettingRow title="浏览器" label="打开浏览器" description="使用服务端同一 Chrome" icon={Globe} onPress={openBrowser} testID="viewer-open" />}
         {update && <SettingRow title="应用更新" label="应用更新" description={update.snapshot.status === 'unsupported' ? '当前环境不支持自动安装' : '检查版本、下载与安装进度'} icon={Download} onPress={update.open} />}
       </View>
     </View>
@@ -156,6 +159,9 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
   const api = useApi();
   // 连接键改变会卸载整层；新闻 Store 在此持续挂载，切空间与重置会话不会丢草稿。
   const [news] = useState(() => createNewsStore(api));
+  // Store 随 ApiProvider 的连接键创建和销毁，票据不会跨服务地址复用。
+  const [browser] = useState(() => createBrowserStore(api, snapshot.serverUrl ?? ''));
+  const [browserOpen, setBrowserOpen] = useState(false);
   const connection = useServiceConnection();
   const spaces = useSpaces(!!connection?.enabled, snapshot.refreshVersion);
   const session = useSpaceState(spaces.currentSpace);
@@ -204,6 +210,16 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
     const subscription = AppState.addEventListener('change', (state) => news.setActive(state === 'active'));
     return () => { subscription.remove(); news.dispose(); };
   }, [news]);
+  useEffect(() => () => browser.dispose(), [browser]);
+  const openBrowser = useCallback(() => {
+    Keyboard.dismiss();
+    setBrowserOpen(true);
+    browser.open();
+  }, [browser]);
+  const closeBrowser = useCallback(() => {
+    browser.close();
+    setBrowserOpen(false);
+  }, [browser]);
   useEffect(() => {
     if (page === 'news') news.open();
     else news.close();
@@ -241,9 +257,10 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
   }, [session.deleting, session.resetting]);
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      const action = workspaceBackAction({ keyboardVisible, sessionMounted, drawerOpen, page, newsArticleOpen: !!news.getSnapshot().selectedArticleId,
+      const action = workspaceBackAction({ keyboardVisible, browserOpen, sessionMounted, drawerOpen, page, newsArticleOpen: !!news.getSnapshot().selectedArticleId,
         newsManaging, settingsSubpage, goalCreating: !!goals.getSnapshot().creator });
       if (action === 'keyboard') { pendingSessionOpen.current = false; Keyboard.dismiss(); }
+      else if (action === 'browser') closeBrowser();
       else if (action === 'session') closeSession();
       else if (action === 'drawer') setDrawerOpen(false);
       else if (action === 'news-article') news.closeArticle();
@@ -254,7 +271,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
       return action !== 'none';
     });
     return () => subscription.remove();
-  }, [drawerOpen, keyboardVisible, sessionMounted, closeSession, page, news, newsManaging, settingsSubpage, goals]);
+  }, [drawerOpen, keyboardVisible, browserOpen, closeBrowser, sessionMounted, closeSession, page, news, newsManaging, settingsSubpage, goals]);
   const openSession = useCallback(() => {
     setDrawerOpen(false);
     if (keyboardVisible) { pendingSessionOpen.current = true; Keyboard.dismiss(); return; }
@@ -289,10 +306,11 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
     }
   };
   const pan = useMemo(() => PanResponder.create({
-    onMoveShouldSetPanResponder: (event, gesture) => !sessionMounted && Math.abs(gesture.dx) > l.gestureThreshold && Math.abs(gesture.dx) > Math.abs(gesture.dy) * l.gestureAxisRatio && (drawerOpen ? gesture.dx < 0 : event.nativeEvent.pageX - gesture.dx < l.edgeGestureWidth && gesture.dx > 0),
+    onMoveShouldSetPanResponder: (event, gesture) => !browserOpen && !sessionMounted && Math.abs(gesture.dx) > l.gestureThreshold && Math.abs(gesture.dx) > Math.abs(gesture.dy) * l.gestureAxisRatio && (drawerOpen ? gesture.dx < 0 : event.nativeEvent.pageX - gesture.dx < l.edgeGestureWidth && gesture.dx > 0),
     onPanResponderRelease: (_event, gesture) => { if (sessionMounted) return; if (gesture.dx < -l.gestureThreshold) setDrawerOpen(false); if (gesture.dx > l.gestureThreshold) openDrawer(); },
-  }), [drawerOpen, openDrawer, sessionMounted]);
+  }), [browserOpen, drawerOpen, openDrawer, sessionMounted]);
   const otherPage = page === 'chat' ? null : page === 'settings' ? <SettingsPage snapshot={snapshot} openConnection={openConnection} memoryAvailable profileAvailable dreamAvailable currentSpaceId={spaces.currentSpace}
+    openBrowser={openBrowser}
     subpage={settingsSubpage} onSubpage={setSettingsSubpage}
     onReset={connection?.enabled ? () => { setResetError(undefined); setResetTarget(spaces.currentSpace); } : undefined} /> : page === 'news' ? <NewsPage store={news} managing={newsManaging} onManaging={setNewsManaging} /> : !sessionOpen && <GoalsPanel />;
   const sessionSettings = <>{deleteConfirm ? <Card style={styles.exampleCard} tone="danger"><Text style={styles.itemTitle}>确认删除当前空间？</Text><Text style={styles.mutedText}>空间的全部聊天历史及其消息反馈（喜欢/不喜欢/评论及操作记录）、工作区文件、规则、技能和绑定的定时任务、监控将被彻底删除，无法撤销。</Text>
@@ -304,7 +322,8 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
       </Card> : <SpaceSettings spaceId={spaces.currentSpace} onSaved={refresh} />}</>;
   // 文件状态留在当前真实连接内；会话面板关闭时只卸载可见 UI，不销毁草稿。
   return <FilesProvider currentSpaceId={spaces.currentSpace}><View style={styles.root} testID="workspace-screen"><ThemeStatusBar />
-    <View style={[styles.viewport, { width: contentWidth }]} {...pan.panHandlers}>
+    <View style={[styles.viewport, { width: contentWidth }]} {...pan.panHandlers}
+      pointerEvents={browserOpen ? 'none' : 'auto'} accessibilityElementsHidden={browserOpen} importantForAccessibility={browserOpen ? 'no-hide-descendants' : 'auto'}>
       <View style={[styles.drawer, { width: drawerWidth }]} pointerEvents={drawerOpen ? 'auto' : 'none'} aria-hidden={!drawerOpen}
         {...(Platform.OS === 'web' && !drawerOpen ? { inert: true } : {})} accessibilityElementsHidden={!drawerOpen} importantForAccessibility={drawerOpen ? 'yes' : 'no-hide-descendants'}>
         <SafeAreaView style={styles.screen} edges={['top', 'bottom', 'left']}>
@@ -347,7 +366,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
                   <ConversationHost currentSpaceId={spaces.currentSpace} spaceIds={spaces.spaces.map((space) => space.id)} chatVisible={page === 'chat'} compactHeader={keyboardVisible} otherPage={otherPage}
                     refreshVersions={historyRefresh} onSettled={refresh} onBindingMismatch={reloadSpaces} openConnection={openConnection} />
                   {!!notice && <Text accessibilityRole="alert" style={[styles.notice, notice.tone === 'error' && styles.error]}>{notice.text}</Text>}
-                  {!(page === 'chat' && keyboardVisible) && <Navigation page={page} onPage={(next) => { setPage(next); setSessionOpen(false); }} />}
+                  {!browserOpen && !(page === 'chat' && keyboardVisible) && <Navigation page={page} onPage={(next) => { setPage(next); setSessionOpen(false); }} />}
                 </View>
               </BlurTargetView>
             </View>
@@ -406,6 +425,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
         {drawerOpen && <Pressable accessibilityRole="button" accessibilityLabel="收起空间侧栏" onPress={() => setDrawerOpen(false)} style={styles.foregroundCover} />}
       </Animated.View>
     </View>
+    {browserOpen && <BrowserPanel store={browser} baseUrl={snapshot.serverUrl ?? ''} onClose={closeBrowser} />}
     {resetTarget && <ResetSessionDialog key={resetTarget} spaceId={resetTarget} available={!!connection?.enabled} error={resetError}
       onCancel={() => { setResetTarget(undefined); setResetError(undefined); }} onConfirm={reset} />}
   </View></FilesProvider>;

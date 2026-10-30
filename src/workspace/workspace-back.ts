@@ -1,8 +1,9 @@
 /** Android Back 由工作区根层统一判定优先级，避免父子监听器互相抢先。 */
-export type WorkspaceBackAction = 'keyboard' | 'session' | 'drawer' | 'news-article' | 'news-sources' | 'chat' | 'settings' | 'goal' | 'none';
+export type WorkspaceBackAction = 'keyboard' | 'browser' | 'session' | 'drawer' | 'news-article' | 'news-sources' | 'chat' | 'settings' | 'goal' | 'none';
 
 export function workspaceBackAction(state: {
   keyboardVisible: boolean;
+  browserOpen?: boolean;
   sessionMounted: boolean;
   drawerOpen: boolean;
   page: 'chat' | 'news' | 'goals' | 'settings';
@@ -12,6 +13,7 @@ export function workspaceBackAction(state: {
   goalCreating: boolean;
 }): WorkspaceBackAction {
   if (state.keyboardVisible) return 'keyboard';
+  if (state.browserOpen) return 'browser';
   if (state.sessionMounted) return 'session';
   if (state.drawerOpen) return 'drawer';
   if (state.page === 'news' && state.newsArticleOpen) return 'news-article';
