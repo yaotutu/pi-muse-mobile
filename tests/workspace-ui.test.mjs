@@ -142,13 +142,15 @@ test('会话动态按 OpenMuse 极简时间线展示真实状态，去除冗余�
   assert.doesNotMatch(execution, /查看活动历史|状态说明/);
 });
 
-test('会话与新闻阅读视图复用受控分段', () => {
+test('会话复用整组分段，新闻使用紧凑受控文字Tab', () => {
   const control = read('src/ui/SegmentedControl.tsx');
   const session = read('src/workspace/SessionPanel.tsx');
   const news = read('src/workspace/NewsPage.tsx');
   assert.match(session, /<SegmentedControl value=\{tab\} options=\{TABS\}/);
-  assert.match(news, /<SegmentedControl value=\{snapshot\.view\} options=\{segments\}/);
-  for (const label of ['推荐', '全部']) assert.match(news, new RegExp(`label: '${label}'`));
+  assert.doesNotMatch(news, /<SegmentedControl/);
+  assert.match(news, /\(\['recommended', 'all'\] as const\)\.map/);
+  assert.match(news, /store\.setView\(view\)/);
+  assert.match(news, /aria-selected=\{snapshot\.view === view\}/);
   for (const [id, label] of [['activity', '动态'], ['approvals', '审批'], ['workspace', '工作区'], ['history', '历史']]) {
     assert.match(session, new RegExp(`label: '${label}'.*testID: 'workspace-session-tab-${id}'`));
   }
