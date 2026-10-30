@@ -525,31 +525,6 @@ def check_session_controls(theme, space_id, chat_header, evidence_prefix=''):
     passed(evidence_prefix+theme+' session segmented navigation, help and confirmation controls')
 
 
-task_tab_panels = {
-    '活动历史': ('activity-panel', '当前空间活动'),
-    '定时任务': ('jobs-panel', '刷新定时任务'),
-    '网页监控': ('monitors-panel', '刷新网页监控'),
-}
-
-
-def select_task_tab(tab):
-    select_segment_tab(tab, task_tab_panels, {'activity-panel', 'jobs-panel', 'monitors-panel'}, down=False)
-
-
-def check_task_controls(theme, space_id, evidence_prefix='', check_draft=False):
-    tap_node(find('任务'))
-    refresh()
-    for tab in task_tab_panels:
-        select_task_tab(tab)
-    capture_current(evidence_prefix+theme+'-tasks-controls')
-    tap_node(find('聊天'))
-    refresh()
-    assert find(space_id) is not None, 'Tasks navigation lost current space'
-    if check_draft:
-        assert find('消息输入框').get('text') == context['draft'], 'Tasks navigation lost unsent draft'
-    passed(evidence_prefix+theme+' tasks segmented navigation')
-
-
 try:
     original_size = sh('shell', 'wm', 'size').decode()
     width, height = map(int, re.findall(r'(\d+)x(\d+)', original_size)[-1])

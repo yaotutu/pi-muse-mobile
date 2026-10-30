@@ -92,6 +92,25 @@ import type {
   WorkspaceTextDetail,
 } from '../files/types';
 import type { MessageFeedback, MessageFeedbackEvents, MessageReaction } from '../feedback/types';
+import {
+  assertNewsSourceInput,
+  normalizedNewsComment,
+  parseNewsArticleDetail,
+  parseNewsArticlePage,
+  parseNewsFeedbackResponse,
+  parseNewsPreferences,
+  parseNewsRefresh,
+  parseNewsSourceCreate,
+  parseNewsSourceDelete,
+  parseNewsSourceList,
+  parseNewsStatus,
+} from '../news/contracts';
+import type {
+  NewsArticlesQuery,
+  NewsPreferencesInput,
+  NewsReaction,
+  NewsSourceCreateInput,
+} from '../news/types';
 
 export type TransportState = { kind: 'online' | 'offline'; token?: string; error?: string };
 export type HttpApiOptions = { onTransportState?: (state: TransportState) => void; timeoutMs?: number; headerTimeoutMs?: number };
@@ -750,6 +769,91 @@ export class HttpApiClient implements ApiClient {
   async saveProfile(profile: Profile, signal?: AbortSignal): Promise<Profile> {
     return parseProfile(await this.request<unknown>('/api/profile', {
       method: 'PUT', body: profile, signal,
+    }));
+  }
+
+  // --- 新闻 V1（/api/news）；全部接口鉴权，不携带 spaceId ---
+
+  async getNewsStatus(signal?: AbortSignal) {
+    return parseNewsStatus(await this.request<unknown>('/api/news/status', { signal }));
+  }
+
+  async listNewsSources(signal?: AbortSignal) {
+    return parseNewsSourceList(await this.request<unknown>('/api/news/sources', { signal }));
+  }
+
+  async createNewsSource(input: NewsSourceCreateInput, signal?: AbortSignal) {
+    return parseNewsSourceCreate(await this.request<unknown>('/api/news/sources', {
+      method: 'POST', body: assertNewsSourceInput(input), signal,
+    }));
+  }
+
+  async deleteNewsSource(sourceId: string, signal?: AbortSignal) {
+    return parseNewsSourceDelete(await this.request<unknown>(
+      `/api/news/sources/${encodeURIComponent(sourceId)}`,
+      { method: 'DELETE', signal },
+    ), sourceId);
+  }
+
+  async listNewsArticles(query: NewsArticlesQuery = {}, signal?: AbortSignal) {
+    const params = new URLSearchParams();
+    params.set('view', query.view ?? 'all');
+    // 查询布尔值显式编码为协议字符串，不让 false 退化成含糊的 truthy 参数。
+    params.set('savedOnly', query.savedOnly === true ? 'true' : 'false');
+    params.set('limit', String(query.limit ?? 20));
+    if (query.cursor) params.set('cursor', query.cursor);
+    return parseNewsArticlePage(await this.request<unknown>(`/api/news/articles?${params.toString()}`, { signal }));
+  }
+
+  async getNewsArticle(articleId: string, signal?: AbortSignal) {
+    return parseNewsArticleDetail(await this.request<unknown>(
+      `/api/news/articles/${encodeURIComponent(articleId)}`,
+      { signal },
+    ), articleId);
+  }
+
+  async setNewsReaction(articleId: string, reaction: NewsReaction | null, signal?: AbortSignal) {
+    return parseNewsFeedbackResponse(await this.request<unknown>(
+      `/api/news/articles/${encodeURIComponent(articleId)}/reaction`,
+      { method: 'PUT', body: { reaction }, signal },
+    ));
+  }
+
+  async setNewsSaved(articleId: string, saved: boolean, signal?: AbortSignal) {
+    return parseNewsFeedbackResponse(await this.request<unknown>(
+      `/api/news/articles/${encodeURIComponent(articleId)}/saved`,
+      { method: 'PUT', body: { saved }, signal },
+    ));
+  }
+
+  async addNewsComment(articleId: string, text: string, signal?: AbortSignal) {
+    return parseNewsFeedbackResponse(await this.request<unknown>(
+      `/api/news/articles/${encodeURIComponent(articleId)}/comments`,
+      { method: 'POST', body: { text: normalizedNewsComment(text) }, signal },
+    ));
+  }
+
+  async deleteNewsComment(articleId: string, commentId: string, signal?: AbortSignal) {
+    return parseNewsFeedbackResponse(await this.request<unknown>(
+      `/api/news/articles/${encodeURIComponent(articleId)}/comments/${encodeURIComponent(commentId)}`,
+      { method: 'DELETE', signal },
+    ));
+  }
+
+  async refreshNews(signal?: AbortSignal) {
+    return parseNewsRefresh(await this.request<unknown>('/api/news/refresh', {
+      method: 'POST', body: {}, signal,
+    }));
+  }
+
+  async getNewsPreferences(signal?: AbortSignal) {
+    return parseNewsPreferences(await this.request<unknown>('/api/news/preferences', { signal }));
+  }
+
+  async saveNewsPreferences(input: NewsPreferencesInput, signal?: AbortSignal) {
+    if (input.notes.length > 20000) throw new ApiError(400, '新闻偏好备注不能超过 20000 字');
+    return parseNewsPreferences(await this.request<unknown>('/api/news/preferences', {
+      method: 'PUT', body: { notes: input.notes }, signal,
     }));
   }
 
