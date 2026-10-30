@@ -5,6 +5,54 @@ import { readFileSync } from 'node:fs';
 const read = (path) => readFileSync(new URL(`../src/${path}`, import.meta.url), 'utf8');
 const { canOpenMeasuredNewsMenu, createArticlePressGuard, newsActionPresentation } =
   await import('../src/news/news-action-interaction.ts');
+const { newsFeedDateLabel, newsListExcerpt } = await import('../src/news/news-feed-display.ts');
+
+test('列表预览只去除独立的 RSS 链接行，详情原文仍由原字段显示（本地夹具）', () => {
+  const linkOnly = 'Article URL: https://example.com/story\r\nComments URL: https://example.com/comments';
+  assert.equal(newsListExcerpt(linkOnly), null);
+  assert.equal(newsListExcerpt('https://example.com/story'), null);
+  assert.equal(newsListExcerpt('Article URL: https://example.com/story\n...'), null);
+  const mixed = '这篇报道有新进展。\nArticle URL: https://example.com/story\n第二段仍应显示。';
+  assert.equal(newsListExcerpt(mixed), '这篇报道有新进展。 第二段仍应显示。');
+  assert.equal(newsListExcerpt('2 min read\n\nNovember’s Night Sky Notes:\nLight-Day Away'),
+    '2 min read November’s Night Sky Notes: Light-Day Away', '段落空白不能占据三行预览');
+  assert.equal(newsListExcerpt('Earth Observatory\r\n\r\nScience...'), 'Earth Observatory Science...');
+  assert.equal(newsListExcerpt('正文中的 https://example.com 是参考链接。'), '正文中的 https://example.com 是参考链接。');
+  assert.equal(newsListExcerpt('Article URL: https://example.com/story 的来源值得核对。'),
+    'Article URL: https://example.com/story 的来源值得核对。');
+  assert.equal(mixed.includes('Article URL:'), true, '输入原文保持不变');
+  const page = read('workspace/NewsPage.tsx');
+  assert.match(page, /\{article\.content \|\| 'RSS 未提供可显示的正文。'\}/);
+});
+
+test('新闻列表时间省秒并采用本地24小时制，详情保留原时间函数（本地夹具）', () => {
+  const currentYear = new Date(2026, 10, 1);
+  const published = new Date(2026, 9, 30, 18, 5, 42).toISOString();
+  const older = new Date(2025, 5, 3, 8, 9, 59).toISOString();
+  assert.equal(newsFeedDateLabel(published, currentYear), '10/30 18:05');
+  assert.equal(newsFeedDateLabel(older, currentYear), '2025/6/3 08:09');
+  assert.equal(newsFeedDateLabel('invalid', currentYear), '时间未知');
+  const page = read('workspace/NewsPage.tsx');
+  assert.match(page, /article\.sourceTitle\} · \{newsFeedDateLabel\(article\.publishedAt\)\}/);
+  assert.match(page, /article\.sourceTitle\} · \{dateLabel\(article\.publishedAt\)\}/);
+});
+
+test('列表以标题和正文开篇，推荐理由与来源时间收在后方（320dp 静态布局检查）', () => {
+  const page = read('workspace/NewsPage.tsx');
+  const card = page.split('function ArticleCard(')[1].split('function UncertainArticle(')[0];
+  const order = ['styles.feedTitle', 'numberOfLines={3}', 'numberOfLines={2}', 'article.sourceTitle'];
+  let last = -1;
+  for (const marker of order) {
+    const next = card.indexOf(marker);
+    assert.ok(next > last, `${marker} 必须出现在前一个内容层级之后`);
+    last = next;
+  }
+  assert.match(card, /newsListExcerpt\(article\.content\)/);
+  assert.doesNotMatch(card, /查看内容|styles\.readMore|<Card\b/);
+  assert.match(page, /viewTabs: \{ flex: 1, minWidth: 0/);
+  assert.match(page, /textTab: \{ flex: 1, minWidth: 0, minHeight: l\.smallControl/);
+  assert.match(page, /articleOpen: \{ gap: spacing\[8\], minHeight: l\.smallControl \}/);
+});
 
 test('新闻阅读页使用真实连接状态、共享控件和安全原文入口', () => {
   const page = read('workspace/NewsPage.tsx');

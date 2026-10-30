@@ -11,6 +11,7 @@ import { Card } from '../ui/Surfaces';
 import { safeMessageUrl } from '../chat/message-links';
 import { NewsArticleActions, NewsFeedbackBadge } from '../news/NewsArticleActions';
 import { canOpenMeasuredNewsMenu, createArticlePressGuard, newsActionLocked } from '../news/news-action-interaction';
+import { newsFeedDateLabel, newsListExcerpt } from '../news/news-feed-display';
 import type { NewsStore } from '../news/news-store';
 import type { NewsArticle, NewsSnapshot } from '../news/types';
 import { useNews } from '../news/useNews';
@@ -53,6 +54,7 @@ function ArticleCard({ article, store, snapshot, onOpenActions }: { article: New
   const [pressGuard] = useState(createArticlePressGuard);
   const work = snapshot.articleWork[article.id];
   const uncertain = !!work && (work.reactionUncertain || work.savedUncertain || work.commentUncertain);
+  const excerpt = newsListExcerpt(article.content);
   return <View style={[styles.article, { borderBottomColor: colors.line }]}>
     <Pressable ref={articleRef} accessibilityRole="button" accessibilityLabel={`阅读文章，${article.title}`}
       accessibilityActions={[{ name: 'openNewsActions', label: '打开文章操作' }]}
@@ -60,11 +62,11 @@ function ArticleCard({ article, store, snapshot, onOpenActions }: { article: New
       onPressIn={pressGuard.begin} onLongPress={() => { pressGuard.longPress(); onOpenActions(article.id, articleRef.current); }}
       onPress={() => { if (pressGuard.shouldOpen()) store.openArticle(article.id); }}
       testID={`news-article-${article.id}`} style={styles.articleOpen}>
-      <Text style={[styles.meta, { color: colors.faint }]}>{article.sourceTitle} · {dateLabel(article.publishedAt)}</Text>
-      <Text style={[styles.articleTitle, { color: colors.ink }]}>{article.title}</Text>
-      {!!article.content && <Text numberOfLines={3} style={[styles.excerpt, { color: colors.muted }]}>{article.content}</Text>}
-      {snapshot.view === 'recommended' && article.recommendation && <Text style={[styles.reason, { color: colors.accentText }]}>推荐理由 · {article.recommendation.reason}</Text>}
-      <Text style={[styles.readMore, { color: colors.accentText }]}>查看内容 ›</Text>
+      <Text accessibilityRole="header" style={[styles.feedTitle, { color: colors.ink }]}>{article.title}</Text>
+      {excerpt && <Text numberOfLines={3} style={[styles.excerpt, { color: colors.muted }]}>{excerpt}</Text>}
+      {snapshot.view === 'recommended' && article.recommendation && <Text numberOfLines={2}
+        style={[styles.reason, { color: colors.faint }]}>推荐理由 · {article.recommendation.reason}</Text>}
+      <Text style={[styles.meta, { color: colors.faint }]}>{article.sourceTitle} · {newsFeedDateLabel(article.publishedAt)}</Text>
     </Pressable>
     <NewsFeedbackBadge article={article} onOpen={(target) => onOpenActions(article.id, target)} />
     {uncertain && <UncertainArticle articleId={article.id} snapshot={snapshot} store={store} />}
@@ -329,10 +331,10 @@ const styles = StyleSheet.create({
   meta: { ...t.caption },
   article: { paddingVertical: spacing[14], borderBottomWidth: StyleSheet.hairlineWidth, gap: spacing[12] },
   articleOpen: { gap: spacing[8], minHeight: l.smallControl },
+  feedTitle: { ...t.itemTitle, fontWeight: '600' },
   articleTitle: { ...t.itemTitle },
   excerpt: { ...t.detail },
   reason: { ...t.status },
-  readMore: { ...t.status, fontWeight: '600' },
   actionRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing[8] },
   detailHeading: { gap: spacing[12], paddingTop: spacing[8] },
   detailTitle: { ...t.pageTitle },
