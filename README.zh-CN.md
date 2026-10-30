@@ -28,7 +28,7 @@
 
 Pi Muse Mobile 是原生移动界面，不是独立运行的助手。它通过 Pi Muse 的公开 HTTP/SSE API 连接服务端；Agent 执行、模型访问、空间、文件、排期、审批和持久状态都由服务端持有。
 
-当前提供 Android 预编译安装包。iOS 是源码开发目标；Expo Web 输出只作为开发预览，不是独立的 Web 产品。
+发布流程构建 Android 签名 APK，以及供自己具备 iOS 签名资格的用户使用的未签名 IPA；请核对所选 Release 实际附带的产物，该 IPA 不能直接安装。除此之外 iOS 是源码开发目标；Expo Web 输出只作为开发预览，不是独立的 Web 产品。
 
 ## 功能总览
 
@@ -111,6 +111,10 @@ Pi Muse Mobile 必须连接一个可访问的 Pi Muse 服务端，不能代替�
 
 直接支持 HTTP。HTTP 下访问密钥、Token 和聊天内容没有传输加密，优先在可信网络中使用；HTTPS 或安全虚拟组网是远程访问的可选保护，不是连接前提。
 
+### 3. iOS 未签名 IPA 边界
+
+发布流程从与 `app-release.apk` 相同的版本提交构建 `app-release-unsigned.ipa`；只有所选 Release 实际附带该文件时才可下载。它没有 Apple 代码签名，不能直接安装；只有自己拥有 iOS 证书、App ID 与描述文件的用户应下载并先自行重签，再安装到设备。CI 不保存、不注入任何 Apple 签名凭据。
+
 ## 源码开发
 
 应用使用 Expo 57、React Native 0.86 和 TypeScript。若在同一工作区同时开发移动端和基于 Node.js 的 Pi Muse 服务端，请使用 Node.js 24 及以上版本；移动端包本身没有声明更低的最低版本。
@@ -135,7 +139,7 @@ npm start
 | `npm run typecheck` | 以 `--noEmit` 运行 TypeScript。 |
 | `npm test` | 运行本地 Node 协议、状态与契约回归测试。 |
 
-Android 源码开发需要 Android SDK 和已连接的模拟器或设备。iOS 面向源码开发，本仓库没有预编译 iOS 包或 App Store 发布。Web 目标适合快速开发检查，不是独立的 Web 产品。
+Android 源码开发需要 Android SDK 和已连接的模拟器或设备。iOS 面向源码开发；Release 中的 iOS 产物刻意保持未签名，必须由有资格的用户自行重签，本仓库不提供 App Store 分发。Web 目标适合快速开发检查，不是独立的 Web 产品。
 
 ### 开发质量门禁
 
@@ -171,7 +175,7 @@ npm test
 - [项目交接文档](docs/HANDOFF.md) — 实现范围、当前状态与历史验收记录
 - [主题维护](docs/themes.md) — 主题注册表、token 与验证说明
 - [工程协作规范](AGENTS.md) — 开发边界、协议规则与发布策略
-- [Release 下载](https://github.com/yaotutu/pi-muse-mobile/releases) — 公开 Android APK
+- [Release 下载](https://github.com/yaotutu/pi-muse-mobile/releases) — 公开 Android APK 与供资格用户自签的未签名 iOS IPA
 
 ## 许可证
 

@@ -28,7 +28,7 @@ Keep conversations, isolated spaces, approvals, recurring jobs, web monitors, go
 
 Pi Muse Mobile is a native mobile interface, not a standalone assistant. It connects to a Pi Muse server over the product's public HTTP/SSE API; the server owns agent execution, model access, spaces, files, schedules, approvals, and other persistent state.
 
-Prebuilt downloads are currently available for Android. iOS is a source-development target, and the Expo web output is a development preview rather than the official Pi Muse web client.
+The release workflow builds a signed Android APK and an unsigned iOS IPA for users who have their own iOS signing credentials. Check the assets attached to your chosen Release; the IPA is not directly installable. iOS otherwise remains a source-development target, and the Expo web output is a development preview rather than the official Pi Muse web client.
 
 ## Features
 
@@ -111,6 +111,10 @@ The server exchanges the AccessKey for a session token. The mobile client stores
 
 HTTP is supported directly. It sends login credentials, tokens, and conversation content without transport encryption, so prefer a trusted network. HTTPS or a secure private network is optional protection for remote access, not a connection requirement.
 
+### 3. iOS unsigned IPA boundary
+
+The release workflow builds `app-release-unsigned.ipa` from the same version commit as `app-release.apk`. Download it only when it is actually attached to the selected Release. It has no Apple code signature and cannot be installed directly. Only download it if you have your own iOS certificate, App ID, and provisioning profile, and sign the app yourself before installation. CI never stores or injects Apple signing credentials.
+
 ## Develop from source
 
 The app is built with Expo 57, React Native 0.86, and TypeScript. For a workspace that develops the mobile client and the Node.js-based Pi Muse server together, use Node.js 24 or newer. The mobile package itself does not declare a lower supported minimum.
@@ -135,7 +139,7 @@ npm start
 | `npm run typecheck` | Run TypeScript with `--noEmit`. |
 | `npm test` | Run local Node protocol, state, and contract regression tests. |
 
-Android source development uses the Android SDK and a connected emulator or device. iOS is intended for source development and has no prebuilt package or App Store release in this repository. The web target is useful for quick development checks, not a standalone web product.
+Android source development uses the Android SDK and a connected emulator or device. iOS is intended for source development; its release artifact is deliberately unsigned and must be re-signed by a qualified user, with no App Store distribution provided by this repository. The web target is useful for quick development checks, not a standalone web product.
 
 ### Development quality gates
 
@@ -171,7 +175,7 @@ These are local development gates. `npm test` uses local protocol and state fixt
 - [Project handoff](docs/HANDOFF.md) — implementation scope, current status, and historical acceptance notes
 - [Theme maintenance](docs/themes.md) — theme registry, tokens, and verification guidance
 - [Engineering guidelines](AGENTS.md) — development boundaries, protocol rules, and release policy
-- [Release downloads](https://github.com/yaotutu/pi-muse-mobile/releases) — public Android APK assets
+- [Release downloads](https://github.com/yaotutu/pi-muse-mobile/releases) — signed Android APK assets and an unsigned iOS IPA for qualified self-signing
 
 ## License
 
