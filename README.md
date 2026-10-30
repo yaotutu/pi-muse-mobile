@@ -103,7 +103,7 @@ Follow the [Pi Muse server quick start](https://github.com/yaotutu/pi-muse#quick
 1. Download the latest stable `app-release.apk` from [Pi Muse Mobile Releases](https://github.com/yaotutu/pi-muse-mobile/releases/latest).
 2. Install and open it on an Android device or emulator. Android may require you to approve installation from that source.
 3. Open **Settings -> Server Connection**.
-4. Enter an HTTP address reachable from the device, such as `http://192.168.1.100:17890` or `http://your-server.example:17890`. No domain, certificate, or HTTPS reverse proxy is required.
+4. Enter an HTTP address reachable from the device, such as `http://192.168.1.100:12330` or `http://your-server.example:12330`. No domain, certificate, or HTTPS reverse proxy is required.
 5. Enter the `server.accessKey` configured on your server.
 6. Tap **Save**. The app verifies the current address and access key before saving. **Test Connection** is optional and does not save anything.
 
