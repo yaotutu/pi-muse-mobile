@@ -2,13 +2,13 @@
   "expo": {
     "name": "Pi Muse",
     "slug": "pi-muse-mobile",
-    "version": "1.0.18",
+    "version": "1.0.19",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "buildNumber": "18"
+      "buildNumber": "19"
     },
     "android": {
       "adaptiveIcon": {
@@ -22,7 +22,7 @@
         "android.permission.REQUEST_INSTALL_PACKAGES"
       ],
       "package": "com.yaotutu.pimusemobile",
-      "versionCode": 18
+      "versionCode": 19
     },
     "web": {
       "favicon": "./assets/favicon.png"
