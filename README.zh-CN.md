@@ -117,7 +117,7 @@ Pi Muse Mobile 必须连接一个可访问的 Pi Muse 服务端，不能代替�
 
 ## 源码开发
 
-应用使用 Expo 57、React Native 0.86 和 TypeScript。若在同一工作区同时开发移动端和基于 Node.js 的 Pi Muse 服务端，请使用 Node.js 24 及以上版本；移动端包本身没有声明更低的最低版本。
+应用使用 Expo 58、React Native 0.88 和 TypeScript。若在同一工作区同时开发移动端和基于 Node.js 的 Pi Muse 服务端，请使用 Node.js 24.x LTS，最低 24.3.0。其他 Node.js 主版本还须满足 Expo 声明的 engine 范围，不能只凭主版本更高判断兼容。
 
 ```sh
 git clone https://github.com/yaotutu/pi-muse-mobile.git

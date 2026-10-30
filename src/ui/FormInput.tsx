@@ -1,10 +1,10 @@
 import { forwardRef, useState } from 'react';
-import { StyleSheet, TextInput, type TextInputProps } from 'react-native';
+import { StyleSheet, TextInput, type TextInputInstance, type TextInputProps } from 'react-native';
 import { useTheme } from '../theme/ThemeProvider';
 import { spacing, themeTokens } from '../theme/tokens';
 
 /** 仅统一输入外观；值、校验、提交、安全输入与键盘行为完全由调用方控制。 */
-export const FormInput = forwardRef<TextInput, TextInputProps & { variant?: 'field' | 'search' | 'code' }>(
+export const FormInput = forwardRef<TextInputInstance, TextInputProps & { variant?: 'field' | 'search' | 'code' }>(
   function FormInput({ variant = 'field', multiline, editable = true, style, placeholderTextColor, onFocus, onBlur, ...props }, ref) {
     const { colors } = useTheme();
     const [focused, setFocused] = useState(false);

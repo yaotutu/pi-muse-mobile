@@ -35,6 +35,7 @@
 ## Expo 与依赖
 
 - 写任何 Expo 或 React Native API 前，先读当前 `package.json` 的准确版本，再查该 SDK 版本对应的 Expo 官方文档；不确定的 API 不凭训练记忆编码。当前项目使用 npm。
+- 当前 Expo 58 配套 React 19.3.0、React Native 0.88.1 与 TypeScript 6.0.x；Reanimated、Worklets、WebView 和安全区模块也按 SDK 配套，不独立强升。ESLint 使用 9.x，因为 Expo 配置中的 React/import 插件尚不支持 ESLint 10；升级前重新核对实际 peer 范围，不用 `--force`、忽略检查或运行时修改第三方配置来掩盖冲突。
 - 新增依赖前先确认需求无法由现有依赖或推荐 Expo 模块满足；含原生能力的包使用 `npx expo install <package>` 解析 SDK 兼容版本，不用其他包管理器直接安装。
 - 本项目采用 CNG：`ios/` 与 `android/` 不入库。目录不存在时不得手工创建或修改，原生行为通过 `app.json` 与 config plugin 配置；发布流程由 [Android 发布指南](android-release-guide.md)管理。
 - Expo Go 只含内置原生模块。新增原生能力后需要开发构建或按发布流程重新生成原生工程验证；Expo Web 只能做快速布局检查，不能替代 Android 原生链路。

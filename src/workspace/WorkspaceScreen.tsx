@@ -3,7 +3,7 @@ import { BookOpen, Check, ChevronRight, Download, Menu, MessageCircle, Moon, New
 import { BlurTargetView } from 'expo-blur';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ThemeStatusBar } from '../theme/ThemeStatusBar';
-import { Animated, AppState, BackHandler, Easing, Keyboard, KeyboardAvoidingView, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Animated, AppState, BackHandler, Easing, Keyboard, KeyboardAvoidingView, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, View, type ViewInstance, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ApiProvider, useApi } from '../api/ApiProvider';
 import { ConnectionProvider, useServiceConnection } from '../connection/ConnectionProvider';
@@ -178,7 +178,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [sessionOpen, setSessionOpen] = useState(false);
   const [sessionMounted, setSessionMounted] = useState(false);
-  const chatBlurTarget = useRef<View | null>(null);
+  const chatBlurTarget = useRef<ViewInstance | null>(null);
   const pendingSessionOpen = useRef(false);
   const [sessionTab, setSessionTab] = useState<SessionTab>('activity');
   const [deleteConfirm, setDeleteConfirm] = useState(false);

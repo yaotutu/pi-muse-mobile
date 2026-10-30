@@ -1,6 +1,6 @@
 import { Bookmark, ChevronLeft, ExternalLink, RefreshCw, Rss, X } from 'lucide-react-native';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Alert, Keyboard, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Keyboard, Linking, Pressable, ScrollView, StyleSheet, Text, View, type ScrollViewInstance, type ViewInstance } from 'react-native';
 import { useTheme } from '../theme/ThemeProvider';
 import { spacing, themeTokens } from '../theme/tokens';
 import { ActionButton } from '../ui/ActionButton';
@@ -48,9 +48,9 @@ function dateLabel(value: string): string {
 }
 
 function ArticleCard({ article, store, snapshot, onOpenActions }: { article: NewsArticle; store: NewsStore;
-  snapshot: NewsSnapshot; onOpenActions: (id: string, target: View | null) => void }) {
+  snapshot: NewsSnapshot; onOpenActions: (id: string, target: ViewInstance | null) => void }) {
   const { colors } = useTheme();
-  const articleRef = useRef<View>(null);
+  const articleRef = useRef<ViewInstance>(null);
   const [pressGuard] = useState(createArticlePressGuard);
   const work = snapshot.articleWork[article.id];
   const uncertain = !!work && (work.reactionUncertain || work.savedUncertain || work.commentUncertain);
@@ -93,12 +93,12 @@ function UncertainArticle({ articleId, snapshot, store }: { articleId: string; s
 }
 
 function ArticleDetail({ store, snapshot, onOpenActions, focusComments, onCommentsFocused }: { store: NewsStore;
-  snapshot: NewsSnapshot; onOpenActions: (id: string, target: View | null) => void;
+  snapshot: NewsSnapshot; onOpenActions: (id: string, target: ViewInstance | null) => void;
   focusComments: boolean; onCommentsFocused: () => void }) {
   const { colors } = useTheme();
-  const scrollRef = useRef<ScrollView>(null);
-  const titleRef = useRef<View>(null);
-  const bodyRef = useRef<View>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
+  const titleRef = useRef<ViewInstance>(null);
+  const bodyRef = useRef<ViewInstance>(null);
   const [commentsY, setCommentsY] = useState<number | null>(null);
   const id = snapshot.selectedArticleId!;
   const article = snapshot.articleMissing ? undefined : snapshot.article?.id === id ? snapshot.article : snapshot.articles.find((item) => item.id === id);
@@ -250,7 +250,7 @@ export function NewsPage({ store, managing, onManaging }: { store: NewsStore; ma
     return () => { measureSequence.current += 1; };
   }, [store, snapshot.selectedArticleId, managing, snapshot.view, snapshot.savedOnly]);
   const closeMenu = () => { measureSequence.current += 1; setMenuState({ scope, menu: null }); };
-  const openActions = (articleId: string, target: View | null) => {
+  const openActions = (articleId: string, target: ViewInstance | null) => {
     if (!target) return;
     const sequence = ++measureSequence.current;
     const owner = currentContext.current;

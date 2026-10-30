@@ -13,7 +13,7 @@
 
   <!-- 标题 -->
   <text x="360" y="34" text-anchor="middle" font-size="22" font-weight="700" fill="#11191C">pi-muse-mobile 架构</text>
-  <text x="360" y="56" text-anchor="middle" font-size="11" fill="#697176">Expo SDK 57 · RN 0.86 · React 19.2 · TS strict · 全自研 / 无导航库 / 无状态库</text>
+  <text x="360" y="56" text-anchor="middle" font-size="11" fill="#697176">Expo SDK 58 · RN 0.88 · React 19.3 · TS strict · 全自研 / 无导航库 / 无状态库</text>
 
   <!-- ============ L1 AppRoot ============ -->
   <rect x="220" y="80" width="280" height="52" rx="10" fill="#1473C8"/>

@@ -10,7 +10,7 @@ test('共享控件保留受控输入、选择语义及最小点击区', () => {
   const button = read('ui/ActionButton.tsx');
   const feedback = read('ui/Feedback.tsx');
 
-  assert.match(input, /forwardRef<TextInput, TextInputProps/);
+  assert.match(input, /forwardRef<TextInputInstance, TextInputProps/);
   assert.match(input, /<TextInput \{\.\.\.props\} ref=\{ref\} multiline=\{multiline\} editable=\{editable\}/);
   assert.match(input, /onFocus=\{\(event\) => \{ setFocused\(true\); onFocus\?\.\(event\); \}\}/);
   assert.match(input, /onBlur=\{\(event\) => \{ setFocused\(false\); onBlur\?\.\(event\); \}\}/);

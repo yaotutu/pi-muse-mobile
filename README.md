@@ -117,7 +117,7 @@ The release workflow builds `app-release-unsigned.ipa` from the same version com
 
 ## Develop from source
 
-The app is built with Expo 57, React Native 0.86, and TypeScript. For a workspace that develops the mobile client and the Node.js-based Pi Muse server together, use Node.js 24 or newer. The mobile package itself does not declare a lower supported minimum.
+The app is built with Expo 58, React Native 0.88, and TypeScript. For a workspace that develops the mobile client and the Node.js-based Pi Muse server together, use Node.js 24.x LTS, version 24.3.0 or newer. Other Node.js major versions must also satisfy Expo's declared engine range; a higher major number alone does not guarantee support.
 
 ```sh
 git clone https://github.com/yaotutu/pi-muse-mobile.git

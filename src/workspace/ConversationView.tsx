@@ -6,7 +6,7 @@
  */
 import { ArrowDown, ArrowUp, Square } from 'lucide-react-native';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type LayoutRectangle, type TextStyle } from 'react-native';
+import { Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type LayoutRectangle, type ScrollViewInstance, type TextStyle, type ViewInstance } from 'react-native';
 import { useApi } from '../api/ApiProvider';
 import { pickMessageAttachments } from '../attachments/picker';
 import { AttachmentAction, AttachmentStrip, MessageAttachments } from '../attachments/AttachmentViews';
@@ -56,7 +56,7 @@ export function ConversationView({
   const connection = useServiceConnection();
   const styles = useStyles();
   const { colors } = useTheme();
-  const scroll = useRef<ScrollView>(null);
+  const scroll = useRef<ScrollViewInstance>(null);
   const scrollFollow = useRef(new ScrollFollow());
   const visibleRef = useRef(visible);
   const [discardTarget, setDiscardTarget] = useState<string>();
@@ -370,7 +370,7 @@ function Message({ message, pendingStatus, feedbackScope }: {
   feedbackScope?: { spaceId: string; sessionId: string; initialFeedback: NonNullable<MessageView['feedback']> };
 }) {
   const styles = useStyles();
-  const bubbleRef = useRef<View>(null);
+  const bubbleRef = useRef<ViewInstance>(null);
   const [bubbleLayout, setBubbleLayout] = useState<LayoutRectangle | null>(null);
   const [anchor, setAnchor] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   // 整条消息保持原有 key；弹层按空间和会话归属开启，测量迟到也不能打开新目标。

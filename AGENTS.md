@@ -1,6 +1,6 @@
 # AGENTS.md — pi-muse 移动端开发入口
 
-Pi Muse 官方移动客户端，当前源码使用 Expo 57、React Native 0.86、TypeScript 与 npm。Android 是默认原生验收平台；iOS 只作源码开发目标，Expo Web 只是开发预览，不是独立产品或验收替代。
+Pi Muse 官方移动客户端，当前源码使用 Expo 58、React Native 0.88、TypeScript 与 npm。Android 是默认原生验收平台；iOS 只作源码开发目标，Expo Web 只是开发预览，不是独立产品或验收替代。
 
 所有开发工作先读[根规则](../AGENTS.md)、[Agent 协作指南](../pi-muse-server/docs/agent-workflow-guide.md)和[移动开发指南](docs/mobile-development-guide.md)，再按下表读取专项入口；涉及版本、签名、构建或发布时必读[Android 发布指南](docs/android-release-guide.md)。
 

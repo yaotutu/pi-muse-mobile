@@ -4,12 +4,12 @@
  */
 import { BlurView } from 'expo-blur';
 import { type ReactNode, type RefObject } from 'react';
-import { Platform, StyleSheet, View, type View as NativeView } from 'react-native';
+import { Platform, StyleSheet, View, type ViewInstance } from 'react-native';
 import { useTheme } from '../theme/ThemeProvider';
 import { themeTokens } from '../theme/tokens';
 
 export function FrostedSurface({ blurTarget, children }: {
-  blurTarget: RefObject<NativeView | null>;
+  blurTarget: RefObject<ViewInstance | null>;
   children: ReactNode;
 }) {
   const { appearance, colors } = useTheme();

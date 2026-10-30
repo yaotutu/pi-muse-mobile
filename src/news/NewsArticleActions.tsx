@@ -1,7 +1,7 @@
 /** 新闻文章菜单只消费 NewsStore 的既有反馈状态；评论仍进入阅读详情。 */
 import { Bookmark, MessageCircle } from 'lucide-react-native';
 import { useRef } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View, type ViewInstance } from 'react-native';
 import { useTheme } from '../theme/ThemeProvider';
 import { ThemeStatusBar } from '../theme/ThemeStatusBar';
 import { spacing, themeTokens } from '../theme/tokens';
@@ -13,9 +13,9 @@ import type { NewsStore } from './news-store';
 import { newsActionPresentation } from './news-action-interaction';
 import type { NewsArticle, NewsArticleWork } from './types';
 
-export function NewsFeedbackBadge({ article, onOpen }: { article: NewsArticle; onOpen: (target: View | null) => void }) {
+export function NewsFeedbackBadge({ article, onOpen }: { article: NewsArticle; onOpen: (target: ViewInstance | null) => void }) {
   const { colors } = useTheme();
-  const ref = useRef<View>(null);
+  const ref = useRef<ViewInstance>(null);
   const { reaction, saved, comments } = article.feedback;
   if (!newsActionPresentation(article.feedback).hasBadge) return null;
   return <Pressable ref={ref} accessibilityRole="button"
