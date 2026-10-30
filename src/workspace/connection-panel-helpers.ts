@@ -32,6 +32,23 @@ export function ownsConnectionDraft(id: number, currentId: number, unmounted: bo
   return !unmounted && id === currentId;
 }
 
+/** 保存资格只看地址和运行状态；测试证明是可选的，未知旧配置必须先确认清理。 */
+export function connectionSaveAvailability(input: {
+  serverUrl?: string;
+  storedUrl?: string;
+  status: ConnectionStatus;
+  confirmed: boolean;
+  busy: boolean;
+  locked: boolean;
+}): { requiresConfirmation: boolean; enabled: boolean } {
+  const requiresConfirmation = input.status === 'storage-error'
+    || !!input.serverUrl && !!input.storedUrl && input.serverUrl !== input.storedUrl;
+  return {
+    requiresConfirmation,
+    enabled: !!input.serverUrl && (!requiresConfirmation || input.confirmed) && !input.busy && !input.locked,
+  };
+}
+
 /** 把 ConnectionStatus 翻译为中文文案与视觉 tone，供面板直接渲染。 */
 export function describeStatus(status: ConnectionStatus): {
   label: string;

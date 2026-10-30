@@ -2,12 +2,50 @@ import './register-source.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  connectionSaveAvailability,
   describeStatus,
   isPlainHttp,
   ownsConnectionDraft,
   runConnectionOperation,
   tryNormalize,
 } from '../src/workspace/connection-panel-helpers.ts';
+
+test('保存不依赖测试证明，换服和未知旧配置必须先确认', () => {
+  const base = { serverUrl: 'https://new.example', storedUrl: undefined, status: 'unconfigured', confirmed: false, busy: false, locked: false };
+  assert.deepEqual(connectionSaveAvailability(base), { requiresConfirmation: false, enabled: true });
+  assert.deepEqual(connectionSaveAvailability({ ...base, storedUrl: base.serverUrl, status: 'online' }),
+    { requiresConfirmation: false, enabled: true }, '同址空密钥可直接尝试沿用当前登录状态');
+  assert.deepEqual(connectionSaveAvailability({ ...base, storedUrl: 'https://old.example', status: 'online' }),
+    { requiresConfirmation: true, enabled: false });
+  assert.deepEqual(connectionSaveAvailability({ ...base, storedUrl: 'https://old.example', status: 'online', confirmed: true }),
+    { requiresConfirmation: true, enabled: true });
+  assert.deepEqual(connectionSaveAvailability({ ...base, status: 'storage-error' }),
+    { requiresConfirmation: true, enabled: false }, '旧配置不可读也不能跳过清理确认');
+  assert.deepEqual(connectionSaveAvailability({ ...base, status: 'storage-error', confirmed: true }),
+    { requiresConfirmation: true, enabled: true });
+  for (const changes of [{ serverUrl: undefined }, { busy: true }, { locked: true }]) {
+    assert.equal(connectionSaveAvailability({ ...base, ...changes }).enabled, false);
+  }
+});
+
+test('直接保存的探测被关闭或改草稿取消后释放 busy，迟到结果不关闭新草稿', async () => {
+  let finish;
+  const pending = new Promise((resolve) => { finish = resolve; });
+  const operation = { current: false };
+  const busy = [];
+  let draftId = 1;
+  let closed = false;
+  const save = runConnectionOperation(operation, () => false, () => true, (value) => busy.push(value), async () => {
+    await pending;
+    if (ownsConnectionDraft(1, draftId, false)) closed = true;
+  });
+  draftId++;
+  finish();
+  await save;
+  assert.deepEqual(busy, [true, false]);
+  assert.equal(closed, false);
+  assert.equal(operation.current, false);
+});
 
 test('retry/start 期间改草稿仍释放 busy，旧成功不关闭新表单', async () => {
   let finish;

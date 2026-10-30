@@ -160,7 +160,7 @@ try:
         sh('shell', 'input', 'text', context['base'])
         hide_keyboard()
         tap('测试连接', scroll=True)
-        wait(lambda: '测试通过，尚未保存' in text(), 'actual connection test')
+        wait(lambda: '连接正常' in text(), 'actual connection test')
         tap('workspace-connection-save', scroll=True)
         # 保存成功会自动关闭连接面板，不能再按其旧关闭按钮。
         wait(lambda: find('打开空间侧栏') is not None, 'connection saved and panel closed')

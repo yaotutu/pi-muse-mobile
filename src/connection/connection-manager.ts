@@ -23,7 +23,6 @@ export class ConnectionManager {
   private disposed = false;
   private critical = false;
   private unknownConfiguration = false;
-  private pendingKey = '';
   private createClient: ClientFactory;
   private state: ConnectionSnapshot = { status: 'loading', hasToken: false, workspaceReady: false, workspaceKey: 0, refreshVersion: 0, busy: false };
 
@@ -33,7 +32,6 @@ export class ConnectionManager {
 
   getSnapshot = () => this.state;
   getClient = () => this.client;
-  getPendingKey = () => this.pendingKey;
   isCritical = () => this.critical;
   subscribe = (listener: (snapshot: ConnectionSnapshot) => void) => {
     this.listeners.add(listener);
@@ -152,6 +150,7 @@ export class ConnectionManager {
     this.probeClient = client;
     try {
       if (!token) token = (await client.createSession(key || undefined)).token;
+      if (this.disposed || id !== this.probeVersion || this.probeClient !== client) throw requestCancelled();
       await client.listSpaces();
       if (this.disposed || id !== this.probeVersion || this.probeClient !== client) throw requestCancelled();
       this.lastProbe = { id, serverUrl, token, key };
@@ -164,7 +163,10 @@ export class ConnectionManager {
 
   testConnection = async (input: string, key: string) => {
     this.available();
-    return this.probe(normalizeServerAddress(input), key);
+    const serverUrl = normalizeServerAddress(input);
+    // 新的有效探测代表用户已修正输入；只清旧操作错误，不改变当前连接状态。
+    this.publish({ error: undefined });
+    return this.probe(serverUrl, key);
   };
 
   private verified(input: string, key: string, test?: ConnectionTest): Probe | undefined {
@@ -172,33 +174,6 @@ export class ConnectionManager {
     if (!this.lastProbe || this.lastProbe.id !== test.id || test.serverUrl !== input || this.lastProbe.serverUrl !== input || this.lastProbe.key !== key) throw new Error('连接草稿已更改，请重新测试');
     return this.lastProbe;
   }
-
-  connect = async (input: string, key: string, test?: ConnectionTest) => {
-    this.available();
-    const serverUrl = normalizeServerAddress(input);
-    if (this.unknownConfiguration || this.record?.resetPending || (this.record && this.record.serverUrl !== serverUrl)) throw new Error('请通过更改服务器并确认清理后保存新地址');
-    const operation = ++this.operation;
-    this.publish({ status: 'connecting', busy: true, error: undefined });
-    try {
-      const proof = test ?? await this.probe(serverUrl, key);
-      const verified = this.verified(serverUrl, key, proof)!;
-      if (!this.current(operation)) throw requestCancelled();
-      this.critical = true;
-      const record = { serverUrl, token: verified.token };
-      await this.dependencies.store.save(record);
-      if (!this.current(operation)) throw requestCancelled();
-      this.install(record, !this.record);
-      this.pendingKey = '';
-      this.publish({ status: 'online', error: undefined, refreshVersion: this.state.refreshVersion + 1 });
-    } catch (error) {
-      const result = this.critical && !isRequestCancelled(error) ? new Error('无法保存连接配置，请检查设备存储权限后重试') : error;
-      if (this.current(operation)) this.publish({ status: this.record ? 'authentication-required' : 'unconfigured', error: isRequestCancelled(result) ? undefined : message(result) });
-      throw result;
-    } finally {
-      if (this.operation === operation) this.critical = false;
-      if (this.current(operation)) this.publish({ busy: false });
-    }
-  };
 
   retry = async () => {
     if (this.disposed || !this.active || this.state.busy || this.critical || !this.record || this.record.resetPending) return;
@@ -216,42 +191,49 @@ export class ConnectionManager {
     }
   };
 
-  saveServer = async (input: string, key: string, test?: ConnectionTest) => {
+  saveConnection = async (input: string, key: string, options?: { test?: ConnectionTest; confirmChange?: boolean }) => {
     this.available();
     const serverUrl = normalizeServerAddress(input);
-    const verified = this.verified(serverUrl, key, test);
     const same = serverUrl === this.record?.serverUrl;
-    if (same && !this.record?.resetPending && !verified) {
-      if (key) throw new Error('新 Key 尚未验证，请先测试连接');
-      return;
-    }
-    const reset = this.unknownConfiguration || !!this.record?.resetPending || (!!this.record && !same);
+    const changesServer = this.unknownConfiguration || (this.record !== undefined && !same);
+    if (changesServer && !options?.confirmChange) throw new Error('更改服务器会清理当前业务数据，请先确认');
+
+    const before = this.state;
     const operation = ++this.operation;
-    this.critical = true;
-    this.publish({ busy: true, error: undefined });
+    this.publish({ status: 'connecting', busy: true, error: undefined });
     let committed = false;
     try {
-      const record: ConnectionRecord = {
-        serverUrl,
-        ...(verified ? { token: verified.token } : same && this.record?.token ? { token: this.record.token } : {}),
-        ...(reset ? { resetPending: true } : {}),
-      };
+      // 直接保存也必须先认证；已传 proof 则严格绑定当前地址、Key 与探测序号。
+      const proof = options?.test ? this.verified(serverUrl, key, options.test)! : await this.probe(serverUrl, key);
+      if (!this.current(operation)) throw requestCancelled();
+      const verified = this.verified(serverUrl, key, proof)!;
+
+      this.critical = true;
+      const reset = this.unknownConfiguration || !!this.record?.resetPending || (!!this.record && !same);
+      const record: ConnectionRecord = { serverUrl, token: verified.token, ...(reset ? { resetPending: true } : {}) };
       // 先写清理日志再删业务数据；写入失败不能破坏仍有效的旧配置。
       await this.dependencies.store.save(record);
       if (!this.current(operation)) throw requestCancelled();
       committed = true;
       this.install(record, !same);
       this.unknownConfiguration = false;
-      this.pendingKey = record.token ? '' : key;
+      // 成功提交后立即释放 proof，避免旧证据被后续输入复用。
       this.cancelTest();
       if (reset) await this.completeReset(operation);
-      else this.publish({ status: record.token ? 'online' : 'authentication-required', error: record.token ? undefined : '地址已保存，尚未完成连接认证' });
+      else this.publish({ status: 'online', error: undefined, refreshVersion: this.state.refreshVersion + 1 });
     } catch (error) {
-      if (this.current(operation)) {
-        if (committed && this.record?.resetPending) this.publish({ status: 'reset-error', error: '本地数据清理未完成，请重试清理后再连接新服务器' });
-        else this.publish({ error: '无法保存连接配置，请检查设备存储权限后重试' });
+      if (this.current(operation) && (!this.critical || !committed)) {
+        // 探测失败只恢复旧状态；401/网络错误不能被包装成存储损坏。
+        const failureMessage = this.critical && !isRequestCancelled(error)
+          ? '无法保存连接配置，请检查设备存储权限后重试'
+          : message(error);
+        this.publish({ ...before, status: before.status, busy: false, error: isRequestCancelled(error) ? before.error : failureMessage });
       }
-      if (!committed) throw isRequestCancelled(error) ? error : new Error('无法保存连接配置，请检查设备存储权限后重试');
+      if (!committed) {
+        if (isRequestCancelled(error)) throw error;
+        if (!this.critical) throw error;
+        throw new Error('无法保存连接配置，请检查设备存储权限后重试');
+      }
     } finally {
       if (this.operation === operation) this.critical = false;
       if (this.current(operation)) this.publish({ busy: false });
@@ -267,7 +249,7 @@ export class ConnectionManager {
       await this.dependencies.store.save(record);
       if (!this.current(operation)) throw requestCancelled();
       this.install(record, false);
-      this.publish({ status: record.token ? 'connecting' : 'authentication-required', error: record.token ? undefined : '地址已保存，尚未完成连接认证', busy: false });
+      this.publish({ status: record.token ? 'connecting' : 'authentication-required', busy: false });
     } catch (error) {
       if (this.current(operation)) this.publish({ status: 'reset-error', busy: false, error: '本地数据清理未完成，请重试清理；旧缓存不会用于新服务器' });
       throw error;

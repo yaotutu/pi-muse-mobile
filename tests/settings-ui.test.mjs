@@ -4,31 +4,35 @@ import test from 'node:test';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
-test('连接页保留测试与保存分离、换址确认及迟到响应守卫', () => {
+test('连接页只有测试和保存主流程，保留换址确认、取消和迟到响应守卫', () => {
   const source = read('src/workspace/ConnectionPanel.tsx');
   assert.doesNotMatch(source, /YOUR OWN SPACE|连接你的 Pi Muse/);
-  assert.match(source, /测试通过，尚未保存/);
-  assert.match(source, /const saveEnabled = !!proof && !showConfirmStep && !actionsBusy && !isLocked/);
-  assert.match(source, /const showConfirmStep = isDifferentUrl && !confirmChange/);
+  assert.match(source, /连接正常/);
+  assert.match(source, /保存后生效/);
+  assert.match(source, /const saveState = connectionSaveAvailability\(/);
+  assert.match(source, /const showConfirmStep = saveState\.requiresConfirmation && !confirmChange/);
   assert.match(source, /清除本地业务数据与旧凭据，但不会删除远端数据/);
+  assert.match(source, /无法确认原有服务器配置/);
   assert.match(source, /当前使用 http 明文传输，访问密钥与业务数据可被网络中间设备读取/);
   assert.match(source, /密钥仅保存在本次表单内存中，关闭面板后清空，不写入设备存储/);
   assert.match(source, /await manager\.testConnection\(url, key\)/);
-  assert.match(source, /if \(useSaveServer\) await manager\.saveServer\(url, key, proof\)/);
-  assert.match(source, /else await manager\.connect\(url, key, proof\)/);
-  assert.match(source, /await manager\.saveServer\(url, ''\)/);
+  assert.match(source, /await manager\.saveConnection\(url, key, \{ test: proof, confirmChange \}\)/);
+  assert.doesNotMatch(source, /saveServer|manager\.connect\(|getPendingKey|onSaveOffline|useSaveServer|仅保存地址|稍后认证|留空沿用当前 Token/);
+  assert.match(source, /onChangeText=\{changeKey\}/);
+  assert.match(source, /invalidateDraft\(\);\s*setKey\(value\)/);
   assert.match(source, /if \(!ownsConnectionDraft\(id, draftIdRef\.current, unmountedRef\.current\)\) return/);
   assert.match(source, /if \(saved && ownsConnectionDraft\(id, draftIdRef\.current, unmountedRef\.current\)\)/);
   assert.match(source, /runConnectionOperation\(\s*operationRef, manager\.isCritical/);
   assert.match(source, /manager\.cancelTest\(\)/);
-  assert.match(source, /const handleCancelChange = useCallback\(\(\) => \{/);
-  assert.match(source, /manager\.cancelTest\(\);\s*setUrl\(snapshot\.serverUrl \?\? ''\);\s*setKey\(''\);/);
-  assert.match(source, /setProof\(undefined\);\s*setError\(undefined\);\s*setConfirmChange\(false\);/);
-  assert.match(source, /onPress=\{handleCancelChange\}/);
-  assert.doesNotMatch(source, /onPress=\{\(\) => setConfirmChange\(false\)\}/);
+  assert.match(source, /const handleCancelChange = useCallback\(\(\) => \{\s*invalidateDraft\(\);\s*setUrl\(snapshot\.serverUrl \?\? ''\);\s*setKey\(''\);/);
+  assert.match(source, /onPress=\{snapshot\.status === 'storage-error' \? handleClose : handleCancelChange\}/);
+  assert.match(source, /onPress=\{\(\) => setConfirmChange\(true\)\}/);
   for (const id of ['confirm', 'confirm-cancel', 'confirm-accept', 'test', 'save', 'retry', 'retry-reset', 'reload']) {
     assert.ok(source.includes(`workspace-connection-${id}`), id);
   }
+  assert.match(source, /label="测试连接"/);
+  assert.match(source, /label="保存"/);
+  assert.match(source, /text=\{busy \? '保存中' : '保存'\}/);
   assert.match(source, /flexWrap: 'wrap'/);
   assert.match(source, /onRequestClose=\{handleClose\}/);
   assert.match(source, /testID="workspace-connection-cancel-test"/);

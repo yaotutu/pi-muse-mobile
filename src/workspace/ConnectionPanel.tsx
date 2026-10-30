@@ -49,6 +49,7 @@ import type {
 } from '../connection/types';
 import { useTheme } from '../theme/ThemeProvider';
 import {
+  connectionSaveAvailability,
   describeStatus,
   isPlainHttp,
   ownsConnectionDraft,
@@ -90,29 +91,31 @@ export function ConnectionPanel({ manager, snapshot, onClose }: ConnectionPanelP
   const operationRef = useRef(false);
   const unmountedRef = useRef<boolean>(false);
   const draftIdRef = useRef<number>(0);
-  const initializedRef = useRef<boolean>(false);
 
   const normalizedStored = useMemo(
     () => normalizeSafe(snapshot.serverUrl ?? ''),
     [snapshot.serverUrl],
   );
   const normalizedInput = useMemo(() => normalizeSafe(url), [url]);
-  const isDifferentUrl =
-    !!normalizedInput && !!normalizedStored && normalizedInput !== normalizedStored;
-
-  // URL 或 Key 变更 → 取消旧探测并清 proof/error；草稿 ID 自增以拒掉迟到的 resolve。
-  useEffect(() => {
-    if (!initializedRef.current) {
-      initializedRef.current = true;
-      return;
-    }
+  // 输入事件同步废弃旧证明和请求；旧探测或直接保存的迟到结果不能关闭新草稿。
+  const invalidateDraft = useCallback(() => {
     draftIdRef.current += 1;
     manager.cancelTest();
     setTesting(false);
     setProof(undefined);
     setError(undefined);
     setConfirmChange(false);
-  }, [manager, url, key]);
+  }, [manager]);
+
+  const changeUrl = useCallback((value: string) => {
+    invalidateDraft();
+    setUrl(value);
+  }, [invalidateDraft]);
+
+  const changeKey = useCallback((value: string) => {
+    invalidateDraft();
+    setKey(value);
+  }, [invalidateDraft]);
 
   // Strict Mode 下 effect mount→cleanup→mount；每次挂载都重置 unmountedRef。
   useEffect(() => {
@@ -133,13 +136,14 @@ export function ConnectionPanel({ manager, snapshot, onClose }: ConnectionPanelP
   // 探测只在本地校验 URL 格式；是否需要访问密钥由实际服务端决定。
   const testEnabled = !!normalizedInput && !actionsBusy && !isLocked;
 
-  // saveServer 路由：不同址 / 未配置 / 存储异常 / 清理过程中；首次与同址走 connect。
-  const useSaveServer =
-    isDifferentUrl ||
-    snapshot.status === 'unconfigured' ||
-    snapshot.status === 'storage-error' ||
-    snapshot.status === 'resetting' ||
-    snapshot.status === 'reset-error';
+  const saveState = connectionSaveAvailability({
+    serverUrl: normalizedInput,
+    storedUrl: normalizedStored,
+    status: snapshot.status,
+    confirmed: confirmChange,
+    busy: actionsBusy,
+    locked: isLocked,
+  });
 
   const runOperation = useCallback(
     (action: () => Promise<void>) => runConnectionOperation(
@@ -175,26 +179,26 @@ export function ConnectionPanel({ manager, snapshot, onClose }: ConnectionPanelP
   }, [manager]);
 
   const onSave = useCallback(async () => {
-    if (!proof || !normalizedInput) return;
+    if (!saveState.enabled) return;
     const id = draftIdRef.current;
     setError(undefined);
     let saved = false;
     await runOperation(async () => {
       try {
-        if (useSaveServer) await manager.saveServer(url, key, proof);
-        else await manager.connect(url, key, proof);
+        // 无证明时由管理器先校验当前地址和密钥；通过后才进入不可关闭的存储阶段。
+        await manager.saveConnection(url, key, { test: proof, confirmChange });
         saved = true;
       } catch (e) {
         if (!ownsConnectionDraft(id, draftIdRef.current, unmountedRef.current)) return;
         setError(e instanceof Error ? e.message : String(e));
       }
     });
-    // 成功 → 关闭面板；不调 setKey/setProof 以免触发 URL/Key 副作用把 draftId 推后导致 busy 卡死。
+    // 保存成功才关闭；草稿若已改变，旧请求不得关闭新表单。
     if (saved && ownsConnectionDraft(id, draftIdRef.current, unmountedRef.current)) {
       manager.cancelTest();
       onClose();
     }
-  }, [manager, url, key, proof, normalizedInput, useSaveServer, runOperation, onClose]);
+  }, [manager, url, key, proof, confirmChange, saveState.enabled, runOperation, onClose]);
 
   const onRetry = useCallback(async () => {
     const id = draftIdRef.current;
@@ -240,38 +244,14 @@ export function ConnectionPanel({ manager, snapshot, onClose }: ConnectionPanelP
     onClose();
   }, [manager, cancelTest, onClose]);
 
-  const testLabel = proof ? '重新测试' : '测试连接';
-  const saveLabel =
-    isDifferentUrl
-      ? '保存新地址'
-      : snapshot.hasToken
-        ? '重新认证'
-        : '连接服务器';
-  const showConfirmStep = isDifferentUrl && !confirmChange;
-  const saveEnabled = !!proof && !showConfirmStep && !actionsBusy && !isLocked;
-
-  const onSaveOffline = useCallback(async () => {
-    if (!normalizedInput || isLocked || actionsBusy || showConfirmStep) return;
-    const id = draftIdRef.current;
-    await runOperation(async () => {
-      try {
-        await manager.saveServer(url, '');
-        if (ownsConnectionDraft(id, draftIdRef.current, unmountedRef.current)) onClose();
-      } catch (e) {
-        if (ownsConnectionDraft(id, draftIdRef.current, unmountedRef.current)) setError(e instanceof Error ? e.message : String(e));
-      }
-    });
-  }, [manager, url, normalizedInput, isLocked, actionsBusy, showConfirmStep, runOperation, onClose]);
+  const showConfirmStep = saveState.requiresConfirmation && !confirmChange;
 
   // 暂不更换是撤销草稿，而不是确认步骤内的一次空状态切换。
   const handleCancelChange = useCallback(() => {
-    manager.cancelTest();
+    invalidateDraft();
     setUrl(snapshot.serverUrl ?? '');
     setKey('');
-    setProof(undefined);
-    setError(undefined);
-    setConfirmChange(false);
-  }, [manager, snapshot.serverUrl]);
+  }, [invalidateDraft, snapshot.serverUrl]);
 
   return (
     <Modal
@@ -313,10 +293,8 @@ export function ConnectionPanel({ manager, snapshot, onClose }: ConnectionPanelP
                   accessibilityRole="text"
                   testID="workspace-connection-proof"
                 >
-                  <Text style={styles.proofLabel}>测试通过，尚未保存</Text>
-                  <Text style={styles.proofHint}>
-                    点击下方按钮以{isDifferentUrl ? '保存新地址' : snapshot.hasToken ? '重新认证' : '连接服务器'}
-                  </Text>
+                  <Text style={styles.proofLabel}>连接正常</Text>
+                  <Text style={styles.proofHint}>保存后生效</Text>
                 </Card>
               )}
 
@@ -326,7 +304,7 @@ export function ConnectionPanel({ manager, snapshot, onClose }: ConnectionPanelP
                     accessibilityLabel="服务器地址"
                     accessibilityHint="支持 http 或 https，不含查询参数与账号信息"
                     value={url}
-                    onChangeText={setUrl}
+                    onChangeText={changeUrl}
                     placeholder="https://example.com"
                     placeholderTextColor={colors.faint}
                     autoCapitalize="none"
@@ -350,10 +328,10 @@ export function ConnectionPanel({ manager, snapshot, onClose }: ConnectionPanelP
                       accessibilityLabel="访问密钥"
                       accessibilityHint="仅保存在当前会话内存中，关闭面板即清空"
                       value={key}
-                      onChangeText={setKey}
+                      onChangeText={changeKey}
                       placeholder={
                         snapshot.hasToken && normalizedStored === normalizedInput
-                          ? '留空沿用当前 Token'
+                          ? '留空沿用当前登录状态'
                           : '请输入访问密钥'
                       }
                       placeholderTextColor={colors.faint}
@@ -376,8 +354,6 @@ export function ConnectionPanel({ manager, snapshot, onClose }: ConnectionPanelP
                 </Section>
               </Card>
 
-              {normalizedInput && !proof && <ActionButton label="仅保存服务器地址" text="仅保存地址，稍后认证"
-                disabled={isLocked || actionsBusy || showConfirmStep} onPress={() => void onSaveOffline()} />}
               {(error || snapshot.error) && (
                 <Card style={styles.errorBox} tone="danger" accessibilityRole="alert" testID="workspace-connection-error">
                   <Text style={styles.errorText}>{error ?? snapshot.error}</Text>
@@ -386,26 +362,28 @@ export function ConnectionPanel({ manager, snapshot, onClose }: ConnectionPanelP
 
               {showConfirmStep && (
                 <Card style={styles.confirmBox} tone="danger" testID="workspace-connection-confirm">
-                  <Text style={styles.confirmTitle}>更换服务器前请确认</Text>
+                  <Text style={styles.confirmTitle}>保存前请确认</Text>
                   <Text style={styles.confirmDetail}>
-                    保存新地址将清除本地业务数据与旧凭据，但不会删除远端数据。清除后旧地址的会话、消息与缓存无法恢复。
+                    {snapshot.status === 'storage-error'
+                      ? '无法确认原有服务器配置。继续保存将清除本地业务数据与旧凭据，但不会删除远端数据。清除后旧地址的会话、消息与缓存无法恢复。'
+                      : '保存新地址将清除本地业务数据与旧凭据，但不会删除远端数据。清除后旧地址的会话、消息与缓存无法恢复。'}
                   </Text>
                   <View style={styles.confirmActions}>
-                    <ActionButton label="暂不更换服务器" text="暂不更换" wide
-                      onPress={handleCancelChange} disabled={isLocked || actionsBusy} testID="workspace-connection-confirm-cancel" />
-                    <ActionButton label="我已了解，继续保存新服务器" text="继续保存" tone="danger" wide
+                    <ActionButton label="暂不保存服务器连接" text="暂不保存" wide
+                      onPress={snapshot.status === 'storage-error' ? handleClose : handleCancelChange}
+                      disabled={isLocked || actionsBusy} testID="workspace-connection-confirm-cancel" />
+                    <ActionButton label="我已了解本地清理影响" text="确认清理" tone="danger" wide
                       onPress={() => setConfirmChange(true)} disabled={isLocked || actionsBusy} testID="workspace-connection-confirm-accept" />
                   </View>
                 </Card>
               )}
 
               <View style={styles.actions}>
-                <ActionButton label={testLabel} icon={Check} busy={testing} disabled={!testEnabled}
-                  text={testLabel} onPress={onTest} wide testID="workspace-connection-test" />
+                <ActionButton label="测试连接" icon={Check} busy={testing} disabled={!testEnabled}
+                  text="测试连接" onPress={onTest} wide testID="workspace-connection-test" />
                 {testing && <ActionButton label="取消连接测试" text="取消测试" onPress={cancelTest} testID="workspace-connection-cancel-test" />}
-                <ActionButton label={`${saveLabel}${showConfirmStep ? '（请先确认）' : ''}`}
-                  icon={ShieldCheck} busy={busy} disabled={!saveEnabled}
-                  text={saveLabel} tone="primary" onPress={onSave} wide testID="workspace-connection-save" />
+                <ActionButton label="保存" icon={ShieldCheck} busy={busy} disabled={!saveState.enabled}
+                  text={busy ? '保存中' : '保存'} tone="primary" onPress={onSave} wide testID="workspace-connection-save" />
               </View>
 
               {snapshot.status === 'offline' && (
