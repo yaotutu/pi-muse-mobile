@@ -71,6 +71,8 @@ test('Release workflow 从同一源 SHA 构建两平台并等待完整产物', (
   assert.match(workflow, /-workspace ios\/PiMuse\.xcworkspace/);
   assert.doesNotMatch(workflow, /-project ios\/PiMuse\.xcodeproj/);
   assert.match(workflow, /-scheme PiMuse/);
+  assert.match(workflow, /-derivedDataPath build/);
+  assert.doesNotMatch(workflow, /-derivedBuildPath/);
   assert.match(workflow, /CODE_SIGNING_ALLOWED=NO/);
   assert.match(workflow, /CODE_SIGNING_REQUIRED=NO/);
   assert.match(workflow, /node tools\/package-ios-unsigned\.mjs/);
