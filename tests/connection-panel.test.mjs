@@ -4,8 +4,54 @@ import test from 'node:test';
 import {
   describeStatus,
   isPlainHttp,
+  ownsConnectionDraft,
+  runConnectionOperation,
   tryNormalize,
 } from '../src/workspace/connection-panel-helpers.ts';
+
+test('retry/start 期间改草稿仍释放 busy，旧成功不关闭新表单', async () => {
+  let finish;
+  const pending = new Promise((resolve) => { finish = resolve; });
+  const operation = { current: false };
+  const transitions = [];
+  let draftId = 1;
+  let closed = false;
+  const first = runConnectionOperation(operation, () => false, () => true, (value) => transitions.push(value), async () => {
+    await pending;
+    if (ownsConnectionDraft(1, draftId, false)) closed = true;
+  });
+  assert.deepEqual(transitions, [true]);
+  draftId++;
+  finish();
+  await first;
+  assert.deepEqual(transitions, [true, false]);
+  assert.equal(operation.current, false);
+  assert.equal(closed, false);
+  await runConnectionOperation(operation, () => false, () => true, (value) => transitions.push(value), async () => {});
+  assert.deepEqual(transitions, [true, false, true, false], '新草稿可以再次测试或保存');
+});
+
+test('旧请求失败不覆盖新草稿错误，卸载后只释放操作锁', async () => {
+  let rejectRequest;
+  const pending = new Promise((_, reject) => { rejectRequest = reject; });
+  const operation = { current: false };
+  const transitions = [];
+  let draftId = 3;
+  let error;
+  const first = runConnectionOperation(operation, () => false, () => true, (value) => transitions.push(value), async () => {
+    try { await pending; }
+    catch (caught) { if (ownsConnectionDraft(3, draftId, false)) error = caught.message; }
+  });
+  draftId++;
+  rejectRequest(new Error('旧地址失败'));
+  await first;
+  assert.equal(error, undefined);
+  assert.deepEqual(transitions, [true, false]);
+  assert.equal(ownsConnectionDraft(4, 4, true), false);
+  await runConnectionOperation(operation, () => false, () => false, (value) => transitions.push(value), async () => {});
+  assert.equal(operation.current, false);
+  assert.deepEqual(transitions, [true, false, true], '卸载后不写 React state');
+});
 
 // describeStatus 必须覆盖 ConnectionStatus 全部取值并保持 stable tone。
 

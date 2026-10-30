@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import './helpers/register-conversation-tests.mjs';
 import { readFileSync } from 'node:fs';
+import { conversationRefreshKey, reconcileConversationOwners } from '../src/workspace/conversation-host-state.ts';
 
 const { SpaceStore } = await import('../src/spaces/space-store.ts');
 const { createMockApi } = await import('./helpers/conversation-test-harness.ts');
@@ -86,11 +87,19 @@ test('空间切换后的历史读取只归属新空间，不回写旧空间消�
   nextSpace.unmount();
 });
 
-test('WorkspaceScreen 只刷新当前空间和当前/未知 session，旧 session 与跨空间只核对权威绑定', () => {
-  const source = readFileSync('src/workspace/WorkspaceScreen.tsx', 'utf8');
-  assert.match(source, /const conversationInvalidationVersion = invalidationSessionMatches/);
-  assert.match(source, /runtime\.conversationInvalidationSessionId/);
-  assert.match(source, /\/\/ 旧 session 迟到帧不污染当前视图；疑似远端 reset 时先核对空间绑定。/);
-  assert.match(source, /const conversationRefreshKey = runtime\.synchronized/);
-  assert.match(source, /if \(runtime\.synchronized\) void reloadSpaces\(\);/);
+test('已访问空间切换后保留原 SSE 所有者；删除空间才释放所有者', () => {
+  const first = reconcileConversationOwners(['local-main'], 'side-a', ['local-main', 'side-a']);
+  const second = reconcileConversationOwners(first, 'local-main', ['local-main', 'side-a']);
+  assert.deepEqual(second, ['local-main', 'side-a']);
+  assert.equal(reconcileConversationOwners(second, 'local-main', ['local-main', 'side-a']), second);
+  assert.deepEqual(reconcileConversationOwners(second, 'local-main', ['local-main']), ['local-main']);
+});
+
+test('每空间失效只接受自己的 session，未同步时不会消费旧失效版本', () => {
+  const runtime = { synchronized: true, conversationSyncVersion: 4, conversationInvalidationVersion: 8, conversationInvalidationSessionId: 'session-a' };
+  assert.equal(conversationRefreshKey(2, runtime, 'session-a'), '2:4:8');
+  assert.equal(conversationRefreshKey(2, runtime, 'session-b'), '2:4:0');
+  assert.equal(conversationRefreshKey(2, { ...runtime, synchronized: false }, 'session-a'), '2:0:0');
+  const host = readFileSync('src/workspace/ConversationHost.tsx', 'utf8');
+  assert.match(host, /runtime\.conversationInvalidationSessionId !== session\.sessionId\) onBindingMismatch\(\)/);
 });

@@ -2,7 +2,6 @@ import { HttpApiClient, type HttpApiOptions, type TransportState } from '../api/
 import { isRequestCancelled, requestCancelled } from '../api/errors';
 import type { ConnectionStore } from './connection-store';
 import { normalizeServerAddress } from './server-address';
-import { normalizeBrowserAddress } from './browser-address';
 import type { ConnectionRecord, ConnectionSnapshot, ConnectionTest } from './types';
 
 type ClientFactory = (url: string, getToken: () => string | undefined, onUnauthorized: (token?: string) => void, options: HttpApiOptions) => HttpApiClient;
@@ -42,7 +41,7 @@ export class ConnectionManager {
   };
 
   private publish(patch: Partial<ConnectionSnapshot>) {
-    this.state = { ...this.state, ...patch, serverUrl: this.record?.serverUrl, browserUrl: this.record?.browserUrl, hasToken: !!this.credentials?.token };
+    this.state = { ...this.state, ...patch, serverUrl: this.record?.serverUrl, hasToken: !!this.credentials?.token };
     for (const listener of this.listeners) listener(this.state);
   }
   private current(operation: number) { return !this.disposed && this.operation === operation; }
@@ -80,7 +79,7 @@ export class ConnectionManager {
   private unauthorized(client: HttpApiClient, credentials: { token?: string }, sentToken?: string) {
     if (this.disposed || !this.active || this.critical || this.client !== client || !sentToken || sentToken !== credentials.token || !this.record) return;
     const operation = ++this.operation;
-    const record: ConnectionRecord = { serverUrl: this.record.serverUrl, ...(this.record.browserUrl ? { browserUrl: this.record.browserUrl } : {}) };
+    const record: ConnectionRecord = { serverUrl: this.record.serverUrl };
     this.record = record;
     credentials.token = undefined;
     this.publish({ status: 'authentication-required', busy: false, error: '服务器拒绝了当前凭证，请在原地址重新认证' });
@@ -185,7 +184,7 @@ export class ConnectionManager {
       const verified = this.verified(serverUrl, key, proof)!;
       if (!this.current(operation)) throw requestCancelled();
       this.critical = true;
-      const record = { serverUrl, token: verified.token, ...(this.record?.browserUrl ? { browserUrl: this.record.browserUrl } : {}) };
+      const record = { serverUrl, token: verified.token };
       await this.dependencies.store.save(record);
       if (!this.current(operation)) throw requestCancelled();
       this.install(record, !this.record);
@@ -217,27 +216,6 @@ export class ConnectionManager {
     }
   };
 
-  /** 独立保存外部 GUI 链接；不探测浏览器服务，也不变更认证、连接或业务数据域。 */
-  saveBrowserUrl = async (input: string) => {
-    this.available();
-    if (!this.record) throw new Error('请先保存服务器地址');
-    const browserUrl = input.trim() ? normalizeBrowserAddress(input) : undefined;
-    if (browserUrl === this.record.browserUrl) return;
-    const previous = this.record;
-    const record: ConnectionRecord = { ...previous };
-    if (browserUrl) record.browserUrl = browserUrl;
-    else delete record.browserUrl;
-    // 先更新内存记录，使同时到达的 401 写入也保留浏览器地址；持久化失败则撤回。
-    this.record = record;
-    try { await this.dependencies.store.save(record); }
-    catch (error) {
-      if (this.record === record) this.record = previous;
-      throw error;
-    }
-    if (this.disposed) return;
-    this.publish({});
-  };
-
   saveServer = async (input: string, key: string, test?: ConnectionTest) => {
     this.available();
     const serverUrl = normalizeServerAddress(input);
@@ -255,7 +233,6 @@ export class ConnectionManager {
     try {
       const record: ConnectionRecord = {
         serverUrl,
-        ...(this.record?.browserUrl ? { browserUrl: this.record.browserUrl } : {}),
         ...(verified ? { token: verified.token } : same && this.record?.token ? { token: this.record.token } : {}),
         ...(reset ? { resetPending: true } : {}),
       };
@@ -286,7 +263,7 @@ export class ConnectionManager {
     try {
       await this.dependencies.clearWorkspaceData();
       if (!this.current(operation)) throw requestCancelled();
-      const record: ConnectionRecord = { serverUrl: this.record!.serverUrl, ...(this.record!.browserUrl ? { browserUrl: this.record!.browserUrl } : {}), ...(this.record!.token ? { token: this.record!.token } : {}) };
+      const record: ConnectionRecord = { serverUrl: this.record!.serverUrl, ...(this.record!.token ? { token: this.record!.token } : {}) };
       await this.dependencies.store.save(record);
       if (!this.current(operation)) throw requestCancelled();
       this.install(record, false);

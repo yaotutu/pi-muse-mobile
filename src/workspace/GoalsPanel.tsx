@@ -64,7 +64,7 @@ export function GoalsPanel() {
         </View>
 
         {/* 五个状态作为同一组胶囊；短文案适配窄屏，完整名称留给读屏。 */}
-        <View accessibilityRole="tablist" accessibilityLabel="目标状态筛选" style={styles.tablist}>
+        {!state.creator && <View accessibilityRole="tablist" accessibilityLabel="目标状态筛选" style={styles.tablist}>
           {([
             [undefined, '全部', '全部'],
             ['active', '进行中', '进行'],
@@ -83,9 +83,9 @@ export function GoalsPanel() {
               style={styles.tab}
             />
           ))}
-        </View>
+        </View>}
 
-        <View style={styles.sortRow}>
+        {!state.creator && <View style={styles.sortRow}>
           <Text style={styles.groupLabel}>排序</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator style={styles.sortScroll} contentContainerStyle={styles.sortOptions} accessibilityLabel="目标排序">
             {([
@@ -107,7 +107,7 @@ export function GoalsPanel() {
             disabled={locked || !!state.creator}
             onPress={() => query({ order: state.query.order === 'asc' ? 'desc' : 'asc' })}
           />
-        </View>
+        </View>}
 
         {state.loading && (
           <ActivityIndicator color={colors.muted} accessibilityLabel="正在读取目标" />

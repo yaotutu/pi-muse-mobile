@@ -67,51 +67,15 @@ test('首次未配置没有网络请求，不自动选择编译期地址', async
   assert.equal(f.clearCount(), 0);
 });
 
-test('浏览器地址仅在已有服务器记录时保存，离线也不发请求或重建业务域', async () => {
-  const empty = fixture(); await empty.boot();
-  await assert.rejects(empty.manager.saveBrowserUrl('https://gui.example/vnc.html'), /先保存服务器地址/);
-  assert.equal(empty.writes().length, 0);
-  const f = fixture({ serverUrl: A, token: 'token-a' }); await f.boot();
-  const client = f.manager.getClient(); const key = f.manager.getSnapshot().workspaceKey;
-  client.options.onTransportState({ kind: 'offline', token: 'token-a', error: 'network down' });
-  assert.equal(f.manager.getSnapshot().status, 'offline');
-  const calls = f.calls.length;
-  await f.manager.saveBrowserUrl(' https://GUI.example/vnc.html?autoconnect=1 ');
-  assert.equal(f.manager.getSnapshot().browserUrl, 'https://gui.example/vnc.html?autoconnect=1');
-  assert.deepEqual(f.record(), { serverUrl: A, token: 'token-a', browserUrl: 'https://gui.example/vnc.html?autoconnect=1' });
-  assert.equal(f.manager.getSnapshot().status, 'offline');
-  assert.equal(f.manager.getClient(), client);
-  assert.equal(f.manager.getSnapshot().workspaceKey, key);
-  assert.equal(f.calls.length, calls);
-  assert.equal(f.clearCount(), 0);
-  await f.manager.saveBrowserUrl('');
-  assert.equal(f.manager.getSnapshot().browserUrl, undefined);
-  assert.deepEqual(f.record(), { serverUrl: A, token: 'token-a' });
-});
-
-test('浏览器保存失败不改快照或原记录；认证失效后仍保留已保存地址', async () => {
-  const f = fixture({ serverUrl: A, token: 'token-a', browserUrl: 'https://gui.example/vnc.html' }); await f.boot();
-  f.control.failWrite = true;
-  await assert.rejects(f.manager.saveBrowserUrl('https://other.example/vnc.html'), /disk error/);
-  assert.equal(f.manager.getSnapshot().browserUrl, 'https://gui.example/vnc.html');
-  assert.equal(f.record().browserUrl, 'https://gui.example/vnc.html');
-  f.control.failWrite = false;
+test('旧浏览器字段不进入快照，重新认证时也不会写回存储', async () => {
+  const f = fixture({ serverUrl: A, token: 'token-a', browserUrl: 'https://obsolete.example/vnc.html' }); await f.boot();
+  assert.equal(f.manager.getSnapshot().serverUrl, A);
+  assert.equal('browserUrl' in f.manager.getSnapshot(), false);
   f.manager.getClient().onUnauthorized('token-a'); await flush();
-  assert.deepEqual(f.record(), { serverUrl: A, browserUrl: 'https://gui.example/vnc.html' });
-  assert.equal(f.manager.getSnapshot().browserUrl, 'https://gui.example/vnc.html');
-});
-
-test('重新认证及更换服务器时保留独立的浏览器地址', async () => {
-  const browserUrl = 'https://gui.example/vnc.html?autoconnect=1';
-  const f = fixture({ serverUrl: A, token: 'token-a', browserUrl }); await f.boot();
-  f.manager.setActive(false);
+  assert.deepEqual(f.record(), { serverUrl: A });
   await f.manager.connect(A, 'new-key');
-  assert.equal(f.record().browserUrl, browserUrl);
-  const proof = await f.manager.testConnection(B, 'key-b');
-  await f.manager.saveServer(B, 'key-b', proof);
-  assert.equal(f.record().browserUrl, browserUrl);
-  assert.equal(f.manager.getSnapshot().browserUrl, browserUrl);
-  assert.equal(f.clearCount(), 1);
+  assert.deepEqual(f.record(), { serverUrl: A, token: 'token-a' });
+  assert.equal(JSON.stringify(f.record()).includes('obsolete.example'), false);
 });
 
 test('首次连接只保存当前地址和永久Token，不持久化Key或清业务缓存', async () => {

@@ -164,8 +164,8 @@ export function useConversation(spaceId: string, refreshKey: string | number = 0
     return () => subscription.remove();
   }, []);
 
-  // 父级以 spaceId + epoch 为 key：卸载时取消旧流，且所有异步回写都检查生命周期。
-  // 不保挂载多个会话，也不让旧请求污染新会话或已退出登录的界面。
+  // 本 Hook 实例卸载仍取消旧流；正文与附件暂存由同连接 SpaceStore 持有，重挂后继续可见。
+  // reset/delete/logout/dispose 才是必须释放这些数据的生命周期边界。
   useEffect(() => {
     aliveRef.current = true;
     return () => {

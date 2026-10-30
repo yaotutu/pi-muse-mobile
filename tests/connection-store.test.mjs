@@ -35,25 +35,20 @@ test('连接记录绑定地址与永久Token，保存时丢弃Key和其他非契
   assert.equal([...values.values()].some((value) => value.includes('never-store-me')), false);
 });
 
-test('浏览器地址与旧连接记录均可往返，查询参数和路径保留', async () => {
+test('旧浏览器字段被忽略，不影响有效服务器地址与Token', async () => {
   const { store, values } = memoryStore();
   assert.deepEqual(await store.load(), undefined);
-  await store.save({ serverUrl: 'https://api.example', token: 'token-a', browserUrl: ' https://GUI.example:443/vnc.html?autoconnect=1 ' });
-  assert.deepEqual(JSON.parse(values.get(CONNECTION_KEY)), { serverUrl: 'https://api.example', token: 'token-a', browserUrl: 'https://gui.example/vnc.html?autoconnect=1' });
-  assert.deepEqual(await store.load(), { serverUrl: 'https://api.example', token: 'token-a', browserUrl: 'https://gui.example/vnc.html?autoconnect=1' });
-  const old = memoryStore([[CONNECTION_KEY, JSON.stringify({ serverUrl: 'https://api.example', token: 'old-token' })]]);
-  assert.deepEqual(await old.store.load(), { serverUrl: 'https://api.example', token: 'old-token' });
-});
-
-test('损坏或含凭据的浏览器地址拒绝读写且保留原记录', async () => {
-  for (const browserUrl of [null, 123, '', 'https://user@example.com']) {
-    const raw = JSON.stringify({ serverUrl: 'https://api.example', browserUrl });
-    const { store, values } = memoryStore([[CONNECTION_KEY, raw]]);
-    await assert.rejects(store.load());
-    assert.equal(values.get(CONNECTION_KEY), raw);
-    await assert.rejects(store.save({ serverUrl: 'https://api.example', browserUrl }));
-    assert.equal(values.get(CONNECTION_KEY), raw);
-  }
+  const raw = JSON.stringify({
+    serverUrl: 'https://api.example',
+    token: 'opaque-server-token',
+    browserUrl: null,
+    browserCredentials: 'obsolete-value',
+  });
+  const old = memoryStore([[CONNECTION_KEY, raw]]);
+  assert.deepEqual(await old.store.load(), { serverUrl: 'https://api.example', token: 'opaque-server-token' });
+  await store.save({ serverUrl: 'https://api.example', token: 'opaque-server-token', browserUrl: 'https://obsolete.example/vnc.html' });
+  assert.deepEqual(JSON.parse(values.get(CONNECTION_KEY)), { serverUrl: 'https://api.example', token: 'opaque-server-token' });
+  assert.deepEqual(await store.load(), { serverUrl: 'https://api.example', token: 'opaque-server-token' });
 });
 
 test('未配置连接时 load 返回 undefined', async () => {

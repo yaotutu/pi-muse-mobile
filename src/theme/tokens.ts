@@ -109,7 +109,7 @@ export const themeTokens = {
     maxWidth: 720,
     resetDialogMaxWidth: 420,
     sidePadding: 20,
-    /** 会话信息区为头像、名称与状态完整占位，不影响其他页面的首屏。 */
+    /** 会话面板保留完整信息区几何；聊天页使用绝对浮层。 */
     headerHeight: 150,
     headerTop: 12,
     headerAvatar: 82,
@@ -132,7 +132,9 @@ export const themeTokens = {
     navigationBottom: 4,
     sessionTabsHeight: 66,
     sessionTabInset: 6,
-    chatContentTop: 14,
+    /** 首条消息避开浮动头像与状态，后续内容可从其下滚过。 */
+    chatContentTop: 152,
+    chatContentTopCompact: 60,
     messageGap: 16,
     /** 聊天气泡独有的内边距，不波及连接页的通用消息容器。 */
     chatMessagePadding: 16,

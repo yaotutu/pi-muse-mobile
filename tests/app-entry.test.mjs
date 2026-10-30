@@ -54,7 +54,7 @@ test('新版侧栏职责不变，真实连接与更新从设置页进入', () =>
   assert.match(source, /<RuntimeProvider>/);
   assert.match(source, /<SpaceProvider>/);
   assert.match(source, /<ApiProvider client=\{connection.client\}/);
-  assert.doesNotMatch(source, /getSnapshot\(|useWorkspaceSnapshot/);
+  assert.doesNotMatch(source, /useWorkspaceSnapshot/);
 });
 
 test('会话面板当前执行与文件入口消费真实连接，不消费示例数组', () => {

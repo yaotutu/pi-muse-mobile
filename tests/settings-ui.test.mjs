@@ -8,7 +8,7 @@ test('连接页保留测试与保存分离、换址确认及迟到响应守卫',
   const source = read('src/workspace/ConnectionPanel.tsx');
   assert.doesNotMatch(source, /YOUR OWN SPACE|连接你的 Pi Muse/);
   assert.match(source, /测试通过，尚未保存/);
-  assert.match(source, /const saveEnabled = !!proof && !showConfirmStep && !isLocked/);
+  assert.match(source, /const saveEnabled = !!proof && !showConfirmStep && !actionsBusy && !isLocked/);
   assert.match(source, /const showConfirmStep = isDifferentUrl && !confirmChange/);
   assert.match(source, /清除本地业务数据与旧凭据，但不会删除远端数据/);
   assert.match(source, /当前使用 http 明文传输，访问密钥与业务数据可被网络中间设备读取/);
@@ -17,7 +17,9 @@ test('连接页保留测试与保存分离、换址确认及迟到响应守卫',
   assert.match(source, /if \(useSaveServer\) await manager\.saveServer\(url, key, proof\)/);
   assert.match(source, /else await manager\.connect\(url, key, proof\)/);
   assert.match(source, /await manager\.saveServer\(url, ''\)/);
-  assert.match(source, /if \(unmountedRef\.current \|\| id !== draftIdRef\.current\) return/);
+  assert.match(source, /if \(!ownsConnectionDraft\(id, draftIdRef\.current, unmountedRef\.current\)\) return/);
+  assert.match(source, /if \(saved && ownsConnectionDraft\(id, draftIdRef\.current, unmountedRef\.current\)\)/);
+  assert.match(source, /runConnectionOperation\(\s*operationRef, manager\.isCritical/);
   assert.match(source, /manager\.cancelTest\(\)/);
   assert.match(source, /const handleCancelChange = useCallback\(\(\) => \{/);
   assert.match(source, /manager\.cancelTest\(\);\s*setUrl\(snapshot\.serverUrl \?\? ''\);\s*setKey\(''\);/);
@@ -28,19 +30,15 @@ test('连接页保留测试与保存分离、换址确认及迟到响应守卫',
     assert.ok(source.includes(`workspace-connection-${id}`), id);
   }
   assert.match(source, /flexWrap: 'wrap'/);
-  assert.match(source, /<Text style=\{styles\.statusUrl\}>/);
+  assert.match(source, /onRequestClose=\{handleClose\}/);
+  assert.match(source, /testID="workspace-connection-cancel-test"/);
 });
 
-test('浏览器配置由独立按钮保存，设置入口仅以已存 URL 交给系统浏览器', () => {
+test('连接与设置 UI 不暴露浏览器地址', () => {
   const panel = read('src/workspace/ConnectionPanel.tsx');
   const screen = read('src/workspace/WorkspaceScreen.tsx');
-  assert.match(panel, /await manager\.saveBrowserUrl\(browserUrl\)/);
-  assert.match(panel, /workspace-browser-address-save/);
-  assert.match(panel, /browserError/);
-  assert.match(screen, /title="真实浏览器"[\s\S]*?address=\{snapshot\.browserUrl\}[\s\S]*?disabled=\{!snapshot\.browserUrl\}/);
-  assert.match(screen, /Linking\.openURL\(snapshot\.browserUrl\)\.catch/);
-  assert.match(screen, /browserOpenError/);
-  assert.doesNotMatch(screen, /browserUrl\s*=.*serverUrl/);
+  assert.doesNotMatch(panel, /browserUrl|saveBrowserUrl|workspace-browser-address/);
+  assert.doesNotMatch(screen, /browserUrl|真实浏览器|Linking\.openURL/);
 });
 
 test('主题由注册表生成单组单选项并保留本机状态提示', () => {

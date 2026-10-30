@@ -186,6 +186,16 @@ export class SpaceStore {
     this.changed();
     return true;
   }
+  /** 用户显式丢弃失败提交：只释放暂存正文，不覆盖仍归输入框所有的当前草稿。 */
+  discardFailedSubmission(id: string, epoch: number, messageId: string): boolean {
+    const entry = this.get(id);
+    const pending = entry.pendingSubmission;
+    if (this.disposed || !this.canWrite(id) || entry.epoch !== epoch ||
+      pending?.messageId !== messageId || pending.epoch !== epoch || pending.status !== 'failed') return false;
+    entry.pendingSubmission = null;
+    this.changed();
+    return true;
+  }
   setInstructions(id: string, value: string) { if (this.canWrite(id) && !this.get(id).instructions.saving) { this.get(id).instructions.draft = value; this.changed(); } }
   setSkill(id: string, name: string, enabled: boolean) {
     const entry = this.get(id);

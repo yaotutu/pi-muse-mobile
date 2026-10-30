@@ -8,6 +8,30 @@ import type { ConnectionStatus } from '../connection/types';
 
 export type StatusTone = 'neutral' | 'success' | 'warning' | 'danger';
 
+/** 连接面板的非探测操作串行执行；草稿变更只影响结果归属，不影响 busy 释放。 */
+export async function runConnectionOperation(
+  operation: { current: boolean },
+  isCritical: () => boolean,
+  isMounted: () => boolean,
+  setBusy: (busy: boolean) => void,
+  action: () => Promise<void>,
+): Promise<void> {
+  if (operation.current || isCritical()) return;
+  operation.current = true;
+  setBusy(true);
+  try {
+    await action();
+  } finally {
+    operation.current = false;
+    if (isMounted()) setBusy(false);
+  }
+}
+
+/** 旧请求成功、失败和取消均不得关闭或改写已编辑的新草稿。 */
+export function ownsConnectionDraft(id: number, currentId: number, unmounted: boolean): boolean {
+  return !unmounted && id === currentId;
+}
+
 /** 把 ConnectionStatus 翻译为中文文案与视觉 tone，供面板直接渲染。 */
 export function describeStatus(status: ConnectionStatus): {
   label: string;

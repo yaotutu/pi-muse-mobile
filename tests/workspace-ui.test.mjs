@@ -85,12 +85,22 @@ test('聊天空态只留短句，本地头像与真实流动画均有稳定入�
   assert.doesNotMatch(primitives, /https?:\/\//);
 });
 
-test('会话信息区在聊天正文之前独立占位，长历史不滚入顶栏背后', () => {
+test('聊天浮层不占正文高度，首条消息避开头像，隐藏空间不重复挂载其他页面', () => {
   const source = read('src/workspace/WorkspaceScreen.tsx');
-  assert.ok(source.indexOf('<View style={[styles.chatHeader,') < source.indexOf('<ConversationView key='));
-  assert.match(source, /chatHeader: \{ height: l\.headerHeight, flexShrink: 0/);
+  assert.match(source, /chatHeader: \{ position: 'absolute', zIndex: 2/);
+  assert.match(source, /pointerEvents="box-none" style=\{\[styles\.chatHeader/);
   assert.match(read('src/workspace/ConversationView.tsx'), /paddingTop: l\.chatContentTop/);
+  assert.match(read('src/workspace/ConversationHost.tsx'), /!chatVisible && <View style=\{styles\.owner\}>\{otherPage\}/);
   assert.match(read('src/workspace/SessionPanel.tsx'), /<ScrollView\s+key=\{tab\}/);
+});
+
+test('聊天名称状态只用贴合自身的主题浮动表面，键盘紧凑态与会话面板几何独立', () => {
+  const screen = read('src/workspace/WorkspaceScreen.tsx');
+  assert.match(screen, /style=\{\[styles\.identityLabel, styles\.identityLabelSurface, keyboardVisible && styles\.identityLabelCompact\]\}/);
+  assert.match(screen, /identityLabelSurface: \{ backgroundColor: c\.floatingSurface, borderColor: c\.floatingLine, borderWidth: StyleSheet\.hairlineWidth, borderRadius: r\.field, paddingBottom: spacing\[6\] \}/);
+  assert.match(screen, /identityLabelCompact: \{[^}]*paddingHorizontal: spacing\[6\], paddingTop: spacing\[1\], paddingBottom: spacing\[1\]/);
+  assert.match(screen, /style=\{\[styles\.identityLabel, styles\.sessionIdentityLabel\]\}/);
+  assert.doesNotMatch(screen.match(/chatHeader: \{[^}]*\}/)?.[0] ?? '', /backgroundColor|borderWidth/);
 });
 
 test('会话面板采样持续挂载的聊天层，关闭期间继续隔离底层交互', () => {
@@ -187,8 +197,23 @@ test('原生输入时压缩会话信息区并隐藏主导航，键盘事件监�
   assert.match(source, /return \(\) => \{ show\.remove\(\); hide\.remove\(\); \}/);
   const chat = read('src/workspace/ConversationView.tsx');
   assert.match(chat, /onLayout=\{followLatest\}/);
-  assert.match(chat, /onContentSizeChange=\{followLatest\}/);
-  assert.match(chat, /if \(nearBottom\.current\) scroll\.current\?\.scrollToEnd/);
+  assert.match(chat, /onContentSizeChange=\{\(\) => \{ scrollFollow\.current\.onContentSizeChange\(\); followLatest\(\); \}\}/);
+  assert.match(chat, /if \(visible && scrollFollow\.current\.onLayout\(\)\) anchorFrame\.current\?\.schedule\(\)/);
+  assert.match(chat, /if \(next\.anchor\) anchorFrame\.current\?\.schedule\(\)/);
+  assert.match(chat, /onScrollBeginDrag=\{\(\) => \{ scrollFollow\.current\.onDrag\(\); anchorFrame\.current\?\.cancel\(\); \}\}/);
+});
+
+test('Android 单层 KAV 按键盘重叠收缩完整聊天区，composer 留在正常流内', () => {
+  const screen = read('src/workspace/WorkspaceScreen.tsx');
+  const chat = read('src/workspace/ConversationView.tsx');
+  assert.equal((screen.match(/<KeyboardAvoidingView\b/g) ?? []).length, 1);
+  assert.match(screen, /<KeyboardAvoidingView style=\{styles\.screen\} behavior=\{Platform\.OS === 'ios' \? 'padding' : 'height'\} enabled=\{Platform\.OS !== 'web'\}/);
+  assert.ok(screen.indexOf('<KeyboardAvoidingView') < screen.indexOf('<ConversationHost'));
+  assert.ok(screen.indexOf('<ConversationHost') < screen.indexOf('</KeyboardAvoidingView>'));
+  assert.match(chat, /chatBody: \{ flex: 1, minHeight: 0 \}/);
+  assert.match(chat, /composer: \{/);
+  assert.doesNotMatch(chat.slice(chat.indexOf('composer: {'), chat.indexOf('composerFocused: {')), /position: 'absolute'|bottom: 0/);
+  assert.match(screen, /chatHeader: \{ position: 'absolute'/);
 });
 
 test('工具结果缺席不是运行中证据，结束或停止后的空结果保持中性提示', () => {
@@ -204,6 +229,15 @@ test('侧栏只切换或创建空间，不复制参考产品的功能导航；�
   assert.match(source, /no-hide-descendants/);
   assert.doesNotMatch(source, /label: '点子'|label: '资源库'|label: '旁聊'/);
   for (const page of ['chat', 'activity', 'goals', 'settings']) assert.match(source, new RegExp(`id: '${page}'`));
+});
+
+test('放弃 failed 暂存须二次确认并回读权威历史，当前草稿保持独立', () => {
+  const chat = read('src/workspace/ConversationView.tsx');
+  assert.match(chat, /pending\?\.status === 'failed'/);
+  assert.match(chat, /discardTarget === pending\.messageId/);
+  assert.match(chat, /sessions\.discardFailedSubmission\(spaceId, session\.epoch, pending\.messageId\)\) conversation\.reload\(\)/);
+  assert.match(chat, /label="取消放弃未发送消息"/);
+  assert.match(chat, /sessions\.restorePendingSubmissionToDraft\(spaceId\)/);
 });
 
 test('四个主页面始终显示图标与标题，并使用同一导航高度', () => {

@@ -54,7 +54,6 @@ Prebuilt downloads are currently available for Android. iOS is a source-developm
 - **Model-registered activity history.** Browse and filter registered activities, inspect status and steps, and refresh manually. Only activities reported by the server are shown; the client does not invent progress data.
 - **Scheduled jobs.** Create one-time or daily jobs through chat, then manage their content, schedule, and lifecycle in the Tasks screen. Pause, resume, cancel, retry failed work, and delete with explicit confirmation. Job controls manage schedule state; they are not a precise Stop button for an already-running agent run.
 - **Web monitors.** Create monitors through chat and use the Tasks screen to filter, refresh, pause, resume, stop, or delete them. Pi Muse Mobile shows cumulative checks and the most recent check, notification, or fetch error; the server does not expose a per-check history.
-- **Optional real-browser takeover.** The Real Browser setting opens a configured noVNC URL in the device's system browser. The mobile app neither embeds nor deploys that browser; deploy the optional browser container on the Pi Muse server side.
 
 ### Long-term goals and milestones
 

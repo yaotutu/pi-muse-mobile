@@ -75,6 +75,7 @@ const METHODS = [
   'getSpaceSkills',
   'saveSpaceSkills',
   'deleteSpace',
+  'resetSpace',
 ];
 
 function makeStub() {
@@ -595,4 +596,99 @@ test('dispose 取消正在 loading 的 read；dispose 后 AbortController 应被
   await loading.catch(() => {});
   // dispose 后再调用应不抛——只是不再做动作。
   store.dispose();
+});
+
+test('discardFailedSubmission 仅释放精确匹配的 failed 暂存并保留当前输入框', async () => {
+  const stub = makeStub();
+  const store = new SpaceStore(stub.api);
+  const attachment = {
+    id: 'current-attachment',
+    name: 'current.txt',
+    kind: 'text',
+    mimeType: 'text/plain',
+    size: 4,
+    dataBase64: 'dGVzdA==',
+  };
+  const epoch = store.get('a').epoch;
+  store.setDraft('a', '当前草稿');
+  assert.equal(store.setDraftAttachments('a', epoch, [attachment]).ok, true);
+  store.setPendingSubmission('a', epoch, {
+    messageId: 'message-1',
+    runId: 'run-1',
+    text: '失败的旧提交',
+    epoch,
+    status: 'failed',
+    error: '服务器不可用',
+    attachments: [{ ...attachment, id: 'pending-attachment', name: 'pending.txt' }],
+  });
+
+  assert.equal(store.discardFailedSubmission('b', epoch, 'message-1'), false);
+  assert.equal(store.discardFailedSubmission('a', epoch + 1, 'message-1'), false);
+  assert.equal(store.discardFailedSubmission('a', epoch, 'message-other'), false);
+  assert.equal(store.get('a').pendingSubmission?.messageId, 'message-1');
+
+  assert.equal(store.discardFailedSubmission('a', epoch, 'message-1'), true);
+  assert.equal(store.get('a').pendingSubmission, null);
+  assert.equal(store.get('a').draft, '当前草稿');
+  assert.deepEqual(store.get('a').draftAttachments, [attachment]);
+});
+
+test('discardFailedSubmission 拒绝 sending 与 unconfirmed 暂存', async () => {
+  const stub = makeStub();
+  const store = new SpaceStore(stub.api);
+  for (const [id, status] of [['sending-space', 'sending'], ['unconfirmed-space', 'unconfirmed']]) {
+    const epoch = store.get(id).epoch;
+    store.setPendingSubmission(id, epoch, {
+      messageId: `${id}-message`,
+      runId: `${id}-run`,
+      text: '仍不能丢弃',
+      epoch,
+      status,
+    });
+    assert.equal(store.discardFailedSubmission(id, epoch, `${id}-message`), false);
+    assert.equal(store.get(id).pendingSubmission?.status, status);
+  }
+});
+
+test('discardFailedSubmission 在真实删除、重置不确定与销毁生命周期中均拒绝', async () => {
+  const stub = makeStub();
+  const store = new SpaceStore(stub.api);
+  const deleting = makeStub();
+  const deletingStore = new SpaceStore(deleting.api);
+  const deletingEpoch = deletingStore.get('deleting-space').epoch;
+  deletingStore.setPendingSubmission('deleting-space', deletingEpoch, {
+    messageId: 'deleting-message',
+    runId: 'deleting-run',
+    text: '删除中的旧提交',
+    epoch: deletingEpoch,
+    status: 'failed',
+  });
+  let finishDelete;
+  deleting.enqueue('deleteSpace', () => new Promise((resolve) => { finishDelete = resolve; }));
+  const deletePromise = deletingStore.deleteSpace('deleting-space');
+  await new Promise(setImmediate);
+  assert.equal(deletingStore.get('deleting-space').deleting, true);
+  assert.equal(deletingStore.discardFailedSubmission('deleting-space', deletingEpoch, 'deleting-message'), false);
+  finishDelete({ ok: true, removed: { jobs: 0, monitors: 0 } });
+  await deletePromise;
+  assert.equal(deletingStore.canWrite('deleting-space'), false);
+  assert.equal(deletingStore.discardFailedSubmission('deleting-space', deletingEpoch, 'deleting-message'), false);
+
+  stub.enqueue('resetSpace', rejectWith(new ApiError(0, 'network unavailable')));
+  await assert.rejects(store.resetSpace('reset-space'));
+  assert.equal(store.get('reset-space').resetUncertain, true);
+  assert.equal(store.canWrite('reset-space'), false);
+  assert.equal(store.discardFailedSubmission('reset-space', store.get('reset-space').epoch, 'reset-message'), false);
+
+  const disposeEpoch = store.get('dispose-space').epoch;
+  store.setPendingSubmission('dispose-space', disposeEpoch, {
+    messageId: 'dispose-message',
+    runId: 'dispose-run',
+    text: '销毁后的旧提交',
+    epoch: disposeEpoch,
+    status: 'failed',
+  });
+  store.dispose();
+  assert.equal(store.discardFailedSubmission('dispose-space', disposeEpoch, 'dispose-message'), false);
+  assert.equal(store.get('dispose-space').pendingSubmission, null);
 });

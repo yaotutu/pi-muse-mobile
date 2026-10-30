@@ -33,7 +33,6 @@ import {
   RefreshCw,
   ShieldAlert,
   ShieldCheck,
-  Server,
   X,
 } from 'lucide-react-native';
 
@@ -52,8 +51,9 @@ import { useTheme } from '../theme/ThemeProvider';
 import {
   describeStatus,
   isPlainHttp,
+  ownsConnectionDraft,
+  runConnectionOperation,
   tryNormalize,
-  type StatusTone,
 } from './connection-panel-helpers';
 import { useReducedMotion } from './primitives';
 
@@ -84,10 +84,7 @@ export function ConnectionPanel({ manager, snapshot, onClose }: ConnectionPanelP
   const [error, setError] = useState<string | undefined>(undefined);
   const [confirmChange, setConfirmChange] = useState<boolean>(false);
   const [busy, setBusy] = useState<boolean>(false);
-  const [browserUrl, setBrowserUrl] = useState<string>(snapshot.browserUrl ?? '');
-  const [browserBusy, setBrowserBusy] = useState(false);
-  const [browserError, setBrowserError] = useState<string | undefined>();
-  const [browserSaved, setBrowserSaved] = useState(false);
+  const [testing, setTesting] = useState(false);
 
   // 草稿守卫：异步 resolve 时检查 unmounted + draftId 再写入本地 state。
   const operationRef = useRef(false);
@@ -111,6 +108,7 @@ export function ConnectionPanel({ manager, snapshot, onClose }: ConnectionPanelP
     }
     draftIdRef.current += 1;
     manager.cancelTest();
+    setTesting(false);
     setProof(undefined);
     setError(undefined);
     setConfirmChange(false);
@@ -125,13 +123,15 @@ export function ConnectionPanel({ manager, snapshot, onClose }: ConnectionPanelP
     };
   }, [manager]);
 
-  const isLocked = busy || browserBusy || snapshot.busy || manager.isCritical();
+  // 探测可取消；只有真实保存或清理阶段阻止关闭。
+  const isLocked = manager.isCritical();
+  const actionsBusy = busy || snapshot.busy || testing;
 
   const statusView = useMemo(() => describeStatus(snapshot.status), [snapshot.status]);
   const httpWarning = useMemo(() => isPlainHttp(url), [url]);
 
-  // Test 仅校验 URL 合法：mock/无 Key 服务允许空 Key。
-  const testEnabled = !!normalizedInput && !isLocked;
+  // 探测只在本地校验 URL 格式；是否需要访问密钥由实际服务端决定。
+  const testEnabled = !!normalizedInput && !actionsBusy && !isLocked;
 
   // saveServer 路由：不同址 / 未配置 / 存储异常 / 清理过程中；首次与同址走 connect。
   const useSaveServer =
@@ -141,121 +141,104 @@ export function ConnectionPanel({ manager, snapshot, onClose }: ConnectionPanelP
     snapshot.status === 'resetting' ||
     snapshot.status === 'reset-error';
 
-  const runWithDraft = useCallback(
-    async (id: number, action: () => Promise<void>) => {
-      if (operationRef.current || manager.isCritical()) return;
-      operationRef.current = true;
-      setBusy(true);
-      try {
-        await action();
-      } finally {
-        operationRef.current = false;
-        if (!unmountedRef.current && id === draftIdRef.current) setBusy(false);
-      }
-    },
+  const runOperation = useCallback(
+    (action: () => Promise<void>) => runConnectionOperation(
+      operationRef, manager.isCritical, () => !unmountedRef.current, setBusy, action,
+    ),
     [manager],
   );
 
   const onTest = useCallback(async () => {
-    if (!normalizedInput) return;
+    if (!normalizedInput || testing) return;
     const id = draftIdRef.current;
     setError(undefined);
-    await runWithDraft(id, async () => {
-      try {
-        const result = await manager.testConnection(url, key);
-        if (unmountedRef.current || id !== draftIdRef.current) return;
-        setProof(result);
-      } catch (e) {
-        if (unmountedRef.current || id !== draftIdRef.current) return;
-        setError(e instanceof Error ? e.message : String(e));
-        setProof(undefined);
-      }
-    });
-  }, [manager, url, key, normalizedInput, runWithDraft]);
+    setTesting(true);
+    try {
+      const result = await manager.testConnection(url, key);
+      if (!ownsConnectionDraft(id, draftIdRef.current, unmountedRef.current)) return;
+      setProof(result);
+    } catch (e) {
+      if (!ownsConnectionDraft(id, draftIdRef.current, unmountedRef.current)) return;
+      setError(e instanceof Error ? e.message : String(e));
+      setProof(undefined);
+    } finally {
+      if (ownsConnectionDraft(id, draftIdRef.current, unmountedRef.current)) setTesting(false);
+    }
+  }, [manager, url, key, normalizedInput, testing]);
+
+  const cancelTest = useCallback(() => {
+    draftIdRef.current += 1;
+    manager.cancelTest();
+    setTesting(false);
+    setProof(undefined);
+    setError(undefined);
+  }, [manager]);
 
   const onSave = useCallback(async () => {
     if (!proof || !normalizedInput) return;
     const id = draftIdRef.current;
     setError(undefined);
     let saved = false;
-    await runWithDraft(id, async () => {
+    await runOperation(async () => {
       try {
         if (useSaveServer) await manager.saveServer(url, key, proof);
         else await manager.connect(url, key, proof);
         saved = true;
       } catch (e) {
-        if (unmountedRef.current || id !== draftIdRef.current) return;
+        if (!ownsConnectionDraft(id, draftIdRef.current, unmountedRef.current)) return;
         setError(e instanceof Error ? e.message : String(e));
       }
     });
     // 成功 → 关闭面板；不调 setKey/setProof 以免触发 URL/Key 副作用把 draftId 推后导致 busy 卡死。
-    if (saved && !unmountedRef.current && id === draftIdRef.current) {
+    if (saved && ownsConnectionDraft(id, draftIdRef.current, unmountedRef.current)) {
       manager.cancelTest();
       onClose();
     }
-  }, [manager, url, key, proof, normalizedInput, useSaveServer, runWithDraft, onClose]);
+  }, [manager, url, key, proof, normalizedInput, useSaveServer, runOperation, onClose]);
 
   const onRetry = useCallback(async () => {
     const id = draftIdRef.current;
-    await runWithDraft(id, async () => {
+    await runOperation(async () => {
       try {
         await manager.retry();
       } catch (e) {
-        if (unmountedRef.current || id !== draftIdRef.current) return;
+        if (!ownsConnectionDraft(id, draftIdRef.current, unmountedRef.current)) return;
         setError(e instanceof Error ? e.message : String(e));
       }
     });
-  }, [manager, runWithDraft]);
+  }, [manager, runOperation]);
 
   const onRetryReset = useCallback(async () => {
     const id = draftIdRef.current;
-    await runWithDraft(id, async () => {
+    await runOperation(async () => {
       try {
         await manager.retryReset();
       } catch (e) {
-        if (unmountedRef.current || id !== draftIdRef.current) return;
+        if (!ownsConnectionDraft(id, draftIdRef.current, unmountedRef.current)) return;
         setError(e instanceof Error ? e.message : String(e));
       }
     });
-  }, [manager, runWithDraft]);
+  }, [manager, runOperation]);
 
   const onReload = useCallback(async () => {
     const id = draftIdRef.current;
-    await runWithDraft(id, async () => {
+    await runOperation(async () => {
       try {
         await manager.start();
       } catch (e) {
-        if (unmountedRef.current || id !== draftIdRef.current) return;
+        if (!ownsConnectionDraft(id, draftIdRef.current, unmountedRef.current)) return;
         setError(e instanceof Error ? e.message : String(e));
       }
     });
-  }, [manager, runWithDraft]);
+  }, [manager, runOperation]);
 
-  const onSaveBrowserUrl = useCallback(async () => {
-    setBrowserError(undefined);
-    setBrowserSaved(false);
-    setBrowserBusy(true);
-    try {
-      await manager.saveBrowserUrl(browserUrl);
-      if (!unmountedRef.current) {
-        setBrowserUrl(manager.getSnapshot().browserUrl ?? '');
-        setBrowserSaved(true);
-      }
-    } catch (e) {
-      if (!unmountedRef.current) setBrowserError(e instanceof Error ? e.message : String(e));
-    } finally {
-      if (!unmountedRef.current) setBrowserBusy(false);
-    }
-  }, [manager, browserUrl]);
-
-  // 关闭：busy/critical 时禁止；否则取消探测并清 Key/proof。
+  // 原生 Back 与 X 共用关闭路径；迟到探测不得更新下次打开的表单。
   const handleClose = useCallback(() => {
-    if (isLocked) return;
-    manager.cancelTest();
+    if (manager.isCritical()) return;
+    cancelTest();
     setKey('');
-    setProof(undefined);
     onClose();
-  }, [isLocked, manager, onClose]);
+  }, [manager, cancelTest, onClose]);
 
   const testLabel = proof ? '重新测试' : '测试连接';
   const saveLabel =
@@ -265,20 +248,20 @@ export function ConnectionPanel({ manager, snapshot, onClose }: ConnectionPanelP
         ? '重新认证'
         : '连接服务器';
   const showConfirmStep = isDifferentUrl && !confirmChange;
-  const saveEnabled = !!proof && !showConfirmStep && !isLocked;
+  const saveEnabled = !!proof && !showConfirmStep && !actionsBusy && !isLocked;
 
   const onSaveOffline = useCallback(async () => {
-    if (!normalizedInput || isLocked || showConfirmStep) return;
+    if (!normalizedInput || isLocked || actionsBusy || showConfirmStep) return;
     const id = draftIdRef.current;
-    await runWithDraft(id, async () => {
+    await runOperation(async () => {
       try {
         await manager.saveServer(url, '');
-        if (!unmountedRef.current && id === draftIdRef.current) onClose();
+        if (ownsConnectionDraft(id, draftIdRef.current, unmountedRef.current)) onClose();
       } catch (e) {
-        if (!unmountedRef.current && id === draftIdRef.current) setError(e instanceof Error ? e.message : String(e));
+        if (ownsConnectionDraft(id, draftIdRef.current, unmountedRef.current)) setError(e instanceof Error ? e.message : String(e));
       }
     });
-  }, [manager, url, normalizedInput, isLocked, showConfirmStep, runWithDraft, onClose]);
+  }, [manager, url, normalizedInput, isLocked, actionsBusy, showConfirmStep, runOperation, onClose]);
 
   // 暂不更换是撤销草稿，而不是确认步骤内的一次空状态切换。
   const handleCancelChange = useCallback(() => {
@@ -321,13 +304,7 @@ export function ConnectionPanel({ manager, snapshot, onClose }: ConnectionPanelP
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
             >
-              <StatusCard
-                statusLabel={statusView.label}
-                statusDetail={statusView.detail}
-                tone={statusView.tone}
-                normalizedUrl={snapshot.serverUrl ?? ''}
-                caption={isDifferentUrl ? '草稿地址尚未保存' : undefined}
-              />
+              <Text accessibilityLiveRegion="polite" style={styles.helper}>{statusView.label} · {statusView.detail}</Text>
 
               {!!proof && !error && (
                 <Card
@@ -344,7 +321,6 @@ export function ConnectionPanel({ manager, snapshot, onClose }: ConnectionPanelP
               )}
 
               <Card style={styles.formGroup}>
-                <Text accessibilityRole="header" style={styles.formTitle}>连接设置</Text>
                 <Section title="服务器地址" testID="workspace-connection-url-section">
                   <FormInput
                     accessibilityLabel="服务器地址"
@@ -400,36 +376,8 @@ export function ConnectionPanel({ manager, snapshot, onClose }: ConnectionPanelP
                 </Section>
               </Card>
 
-              <Card style={styles.formGroup} testID="workspace-browser-address-section">
-                <Text accessibilityRole="header" style={styles.formTitle}>真实浏览器</Text>
-                <Section title="真实浏览器 noVNC 地址">
-                  <FormInput
-                    accessibilityLabel="真实浏览器 noVNC 地址"
-                    accessibilityHint="填写完整的 http 或 https noVNC 页面地址；留空保存可清除配置"
-                    value={browserUrl}
-                    onChangeText={(value) => { setBrowserUrl(value); setBrowserError(undefined); setBrowserSaved(false); }}
-                    placeholder="https://browser.example.com/vnc.html"
-                    placeholderTextColor={colors.faint}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    autoComplete="off"
-                    keyboardType="url"
-                    editable={!browserBusy}
-                    testID="workspace-browser-address"
-                    style={styles.input}
-                  />
-                  <Text style={styles.helper}>保存完整 noVNC 页面链接；在设置中由系统浏览器打开。地址不随服务器状态变化。</Text>
-                </Section>
-                <ActionButton label="保存真实浏览器地址" text="保存浏览器地址" icon={Check}
-                  onPress={() => void onSaveBrowserUrl()} busy={browserBusy} disabled={isLocked || !snapshot.serverUrl}
-                  testID="workspace-browser-address-save" />
-                {!snapshot.serverUrl && <Text style={styles.helper}>请先保存服务器地址</Text>}
-                {!!browserError && <Text accessibilityRole="alert" style={styles.errorText}>{browserError}</Text>}
-                {browserSaved && <Text accessibilityLiveRegion="polite" style={styles.helper}>{snapshot.browserUrl ? '浏览器地址已保存' : '浏览器地址已清除'}</Text>}
-              </Card>
-
               {normalizedInput && !proof && <ActionButton label="仅保存服务器地址" text="仅保存地址，稍后认证"
-                disabled={isLocked || showConfirmStep} onPress={() => void onSaveOffline()} />}
+                disabled={isLocked || actionsBusy || showConfirmStep} onPress={() => void onSaveOffline()} />}
               {(error || snapshot.error) && (
                 <Card style={styles.errorBox} tone="danger" accessibilityRole="alert" testID="workspace-connection-error">
                   <Text style={styles.errorText}>{error ?? snapshot.error}</Text>
@@ -444,34 +392,35 @@ export function ConnectionPanel({ manager, snapshot, onClose }: ConnectionPanelP
                   </Text>
                   <View style={styles.confirmActions}>
                     <ActionButton label="暂不更换服务器" text="暂不更换" wide
-                      onPress={handleCancelChange} disabled={isLocked} testID="workspace-connection-confirm-cancel" />
+                      onPress={handleCancelChange} disabled={isLocked || actionsBusy} testID="workspace-connection-confirm-cancel" />
                     <ActionButton label="我已了解，继续保存新服务器" text="继续保存" tone="danger" wide
-                      onPress={() => setConfirmChange(true)} disabled={isLocked} testID="workspace-connection-confirm-accept" />
+                      onPress={() => setConfirmChange(true)} disabled={isLocked || actionsBusy} testID="workspace-connection-confirm-accept" />
                   </View>
                 </Card>
               )}
 
               <View style={styles.actions}>
-                <ActionButton label={testLabel} icon={Check} busy={busy && !proof} disabled={!testEnabled}
+                <ActionButton label={testLabel} icon={Check} busy={testing} disabled={!testEnabled}
                   text={testLabel} onPress={onTest} wide testID="workspace-connection-test" />
+                {testing && <ActionButton label="取消连接测试" text="取消测试" onPress={cancelTest} testID="workspace-connection-cancel-test" />}
                 <ActionButton label={`${saveLabel}${showConfirmStep ? '（请先确认）' : ''}`}
-                  icon={ShieldCheck} busy={busy && !!proof} disabled={!saveEnabled}
+                  icon={ShieldCheck} busy={busy} disabled={!saveEnabled}
                   text={saveLabel} tone="primary" onPress={onSave} wide testID="workspace-connection-save" />
               </View>
 
               {snapshot.status === 'offline' && (
                 <ActionButton label="重试连接当前服务器" text="重试连接" icon={RefreshCw}
-                  onPress={onRetry} disabled={isLocked} testID="workspace-connection-retry" />
+                  onPress={onRetry} disabled={isLocked || actionsBusy} testID="workspace-connection-retry" />
               )}
 
               {snapshot.status === 'reset-error' && (
                 <ActionButton label="重试清理本地数据" text="重试清理" icon={ShieldAlert}
-                  tone="danger" onPress={onRetryReset} disabled={isLocked} testID="workspace-connection-retry-reset" />
+                  tone="danger" onPress={onRetryReset} disabled={isLocked || actionsBusy} testID="workspace-connection-retry-reset" />
               )}
 
               {snapshot.status === 'storage-error' && (
                 <ActionButton label="重新加载本地连接配置" text="重新加载" icon={RefreshCw}
-                  onPress={onReload} disabled={isLocked} testID="workspace-connection-reload" />
+                  onPress={onReload} disabled={isLocked || actionsBusy} testID="workspace-connection-reload" />
               )}
             </ScrollView>
           </KeyboardAvoidingView>
@@ -482,53 +431,6 @@ export function ConnectionPanel({ manager, snapshot, onClose }: ConnectionPanelP
 }
 
 // ─── 子组件 ────────────────────────────────────────────────────────────────
-
-function StatusCard({
-  statusLabel,
-  statusDetail,
-  tone,
-  normalizedUrl,
-  caption,
-}: {
-  statusLabel: string;
-  statusDetail: string;
-  tone: StatusTone;
-  normalizedUrl: string;
-  caption?: string;
-}) {
-  const styles = useConnectionStyles();
-  const { colors } = useTheme();
-  const accent =
-    tone === 'success'
-      ? colors.success
-      : tone === 'danger'
-        ? colors.danger
-        : tone === 'warning'
-          ? colors.warning
-          : colors.muted;
-  return (
-    <Card style={styles.statusCard} accessibilityRole="summary">
-      <View style={styles.serverIcon}><Server size={workspaceTheme.layout.iconSize} color={accent} strokeWidth={1.5} /></View>
-      <View style={styles.statusBody}>
-        <Text style={styles.statusSection}>当前连接</Text>
-        <Text style={styles.statusLabel}>{statusLabel}</Text>
-        <Text style={styles.statusDetail} numberOfLines={2}>
-          {statusDetail}
-        </Text>
-        {!!normalizedUrl && (
-          <Text style={styles.statusUrl}>
-            {normalizedUrl}
-          </Text>
-        )}
-        {!!caption && (
-          <Text style={styles.statusCaption}>
-            {caption}
-          </Text>
-        )}
-      </View>
-    </Card>
-  );
-}
 
 function Section({
   title,
@@ -595,41 +497,6 @@ function createStyles(c: WorkspaceColors) {
       paddingTop: spacing[6],
     },
 
-    statusCard: {
-      flexDirection: 'row',
-      alignItems: 'flex-start',
-      padding: spacing[16],
-      borderRadius: r.card,
-      backgroundColor: c.surface,
-      gap: spacing.md,
-    },
-    serverIcon: { width: l.rowIcon, height: l.rowIcon, alignItems: 'center', justifyContent: 'center', borderRadius: r.round, backgroundColor: c.control },
-    statusBody: { flex: 1, minWidth: 0, gap: spacing.xxs },
-    statusSection: {
-      ...t.caption,
-      color: c.faint,
-    },
-    statusLabel: {
-      ...t.itemTitle,
-      color: c.ink,
-      fontWeight: '600',
-    },
-    statusDetail: {
-      ...t.detail,
-      color: c.muted,
-    },
-    statusUrl: {
-      ...t.status,
-      color: c.muted,
-      marginTop: spacing.xs,
-      flexShrink: 1,
-    },
-    statusCaption: {
-      ...t.caption,
-      color: c.muted,
-      marginTop: spacing.xs,
-    },
-
     proofBox: {
       padding: spacing.md,
       borderRadius: r.card,
@@ -652,7 +519,6 @@ function createStyles(c: WorkspaceColors) {
       padding: spacing[16],
       gap: spacing[16],
     },
-    formTitle: { ...t.itemTitle, color: c.ink, fontWeight: '600' },
     section: { gap: spacing.sm },
     sectionLabel: {
       ...t.status,

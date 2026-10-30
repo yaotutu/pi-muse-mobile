@@ -1,9 +1,9 @@
 import { Card } from '../ui/Surfaces';
-import { BookOpen, Check, ChevronRight, Download, ExternalLink, Menu, MessageCircle, Moon, PanelsTopLeft, RotateCcw, Search, Server, Settings, SquareCheck, SquarePen, UserRound, X, type LucideIcon } from 'lucide-react-native';
+import { BookOpen, Check, ChevronRight, Download, Menu, MessageCircle, Moon, PanelsTopLeft, RotateCcw, Search, Server, Settings, SquareCheck, SquarePen, UserRound, X, type LucideIcon } from 'lucide-react-native';
 import { BlurTargetView } from 'expo-blur';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ThemeStatusBar } from '../theme/ThemeStatusBar';
-import { Animated, BackHandler, Easing, Keyboard, KeyboardAvoidingView, Linking, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Animated, BackHandler, Easing, Keyboard, KeyboardAvoidingView, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ApiProvider } from '../api/ApiProvider';
 import { ConnectionProvider, useServiceConnection } from '../connection/ConnectionProvider';
@@ -30,7 +30,9 @@ import { ProfilePanel } from './ProfilePanel';
 import { ProfileProvider, useProfile } from '../profile/ProfileProvider';
 import { DreamProvider } from '../dream/DreamProvider';
 import { DreamPanel } from './DreamPanel';
-import { ConversationView } from './ConversationView';
+import { ConversationHost } from './ConversationHost';
+import { SpaceLabels, spaceTime } from './space-labels';
+import { workspaceBackAction } from './workspace-back';
 import { SessionPanel, type SessionTab } from './SessionPanel';
 import { ResetSessionDialog } from './ResetSessionDialog';
 import { AvatarBloomTransition } from './AvatarBloomTransition';
@@ -44,6 +46,7 @@ import { ActionButton } from '../ui/ActionButton';
 import { FormInput } from '../ui/FormInput';
 
 type WorkspacePage = 'chat' | 'activity' | 'goals' | 'settings';
+type SettingsSubpage = 'memory' | 'profile' | 'dream' | null;
 type WorkspaceNotice = { text: string; tone: 'success' | 'error' };
 const { layout: l, radius: r, typography: t } = workspaceTheme;
 const NAV: { id: WorkspacePage; label: string; icon: LucideIcon }[] = [
@@ -93,37 +96,25 @@ function SettingRow({ title, label, description, address, icon: Icon, onPress, d
     <ChevronRight size={sizing[18]} color={colors.faint} />
   </Pressable>;
 }
-function SettingsPage({ snapshot, openConnection, memoryAvailable = false, profileAvailable = false, dreamAvailable = false, currentSpaceId, onReset }: Pick<WorkspaceConnectionProps, 'snapshot' | 'openConnection'> & { memoryAvailable?: boolean; profileAvailable?: boolean; dreamAvailable?: boolean; currentSpaceId?: string; onReset?: () => void }) {
+function SettingsPage({ snapshot, openConnection, memoryAvailable = false, profileAvailable = false, dreamAvailable = false, currentSpaceId, onReset, subpage, onSubpage }: Pick<WorkspaceConnectionProps, 'snapshot' | 'openConnection'> & { memoryAvailable?: boolean; profileAvailable?: boolean; dreamAvailable?: boolean; currentSpaceId?: string; onReset?: () => void; subpage: SettingsSubpage; onSubpage: (page: SettingsSubpage) => void }) {
   const styles = useStyles(); const update = useAppUpdate();
-  const [memoryOpen, setMemoryOpen] = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false);
-  const [dreamOpen, setDreamOpen] = useState(false);
-  const [browserOpenError, setBrowserOpenError] = useState<string | undefined>();
-  const openBrowser = useCallback(() => {
-    if (!snapshot.browserUrl) return;
-    setBrowserOpenError(undefined);
-    void Linking.openURL(snapshot.browserUrl).catch(() => setBrowserOpenError('无法打开真实浏览器，请检查地址和系统浏览器。'));
-  }, [snapshot.browserUrl]);
-  if (memoryOpen && memoryAvailable) return <ScrollView key="memory" keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}><MemoryPanel onBack={() => setMemoryOpen(false)} /></ScrollView>;
-  if (profileOpen && profileAvailable) return <ScrollView key="profile" keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}><ProfilePanel onBack={() => setProfileOpen(false)} /></ScrollView>;
-  if (dreamOpen && dreamAvailable && currentSpaceId) return <ScrollView key="dream" keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}><DreamPanel currentSpaceId={currentSpaceId} onBack={() => setDreamOpen(false)} /></ScrollView>;
+  if (subpage === 'memory' && memoryAvailable) return <ScrollView key="memory" keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}><MemoryPanel onBack={() => onSubpage(null)} /></ScrollView>;
+  if (subpage === 'profile' && profileAvailable) return <ScrollView key="profile" keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}><ProfilePanel onBack={() => onSubpage(null)} /></ScrollView>;
+  if (subpage === 'dream' && dreamAvailable && currentSpaceId) return <ScrollView key="dream" keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}><DreamPanel currentSpaceId={currentSpaceId} onBack={() => onSubpage(null)} /></ScrollView>;
   return <ScrollView key="settings" contentContainerStyle={[styles.otherPage, styles.settingsPage]}>
     <View style={styles.appSection}><Text accessibilityRole="header" style={styles.appSectionTitle}>连接与设备</Text>
       <View style={styles.appSettingsGroup}>
         <SettingRow title="服务器连接" label="服务器连接" description={connectionLabel(snapshot)} address={snapshot.serverUrl ?? undefined} icon={Server} onPress={openConnection} />
-        <SettingRow title="真实浏览器" label="打开真实浏览器" description={snapshot.browserUrl ? '通过系统浏览器打开 noVNC' : '未配置，请在服务器连接中填写地址'}
-          address={snapshot.browserUrl} icon={ExternalLink} onPress={openBrowser} disabled={!snapshot.browserUrl} testID="workspace-open-browser" />
         {update && <SettingRow title="应用更新" label="应用更新" description={update.snapshot.status === 'unsupported' ? '当前环境不支持自动安装' : '检查版本、下载与安装进度'} icon={Download} onPress={update.open} />}
       </View>
-      {!!browserOpenError && <Text accessibilityRole="alert" style={styles.error}>{browserOpenError}</Text>}
     </View>
     <View style={styles.appSection}><Text accessibilityRole="header" style={styles.appSectionTitle}>助手与个人资料</Text>
-      <View style={styles.appSettingsGroup}><SettingRow title="助手与用户资料" label="打开助手与用户资料" description={profileAvailable ? '名字、语气、人设与用户资料' : '连接真实服务后可用'} icon={UserRound} onPress={() => setProfileOpen(true)} disabled={!profileAvailable} /></View>
+      <View style={styles.appSettingsGroup}><SettingRow title="助手与用户资料" label="打开助手与用户资料" description={profileAvailable ? '名字、语气、人设与用户资料' : '连接真实服务后可用'} icon={UserRound} onPress={() => onSubpage('profile')} disabled={!profileAvailable} /></View>
     </View>
     <View style={styles.appSection}><Text accessibilityRole="header" style={styles.appSectionTitle}>助手记忆</Text>
       <View style={styles.appSettingsGroup}>
-        <SettingRow title="长期记忆" label="打开长期记忆" description={memoryAvailable ? '查询、搜索与管理全局记忆' : '连接真实服务后管理全局记忆'} icon={BookOpen} onPress={() => setMemoryOpen(true)} disabled={!memoryAvailable} />
-        <SettingRow title="Dream 记忆整理" label="打开Dream记忆整理" description={dreamAvailable ? '整理状态、提示词与待决建议' : '连接真实服务后可用'} icon={Moon} onPress={() => setDreamOpen(true)} disabled={!dreamAvailable} />
+        <SettingRow title="长期记忆" label="打开长期记忆" description={memoryAvailable ? '查询、搜索与管理全局记忆' : '连接真实服务后管理全局记忆'} icon={BookOpen} onPress={() => onSubpage('memory')} disabled={!memoryAvailable} />
+        <SettingRow title="Dream 记忆整理" label="打开Dream记忆整理" description={dreamAvailable ? '整理状态、提示词与待决建议' : '连接真实服务后可用'} icon={Moon} onPress={() => onSubpage('dream')} disabled={!dreamAvailable} />
       </View>
     </View>
     <ThemePicker />
@@ -135,11 +126,12 @@ function SettingsPage({ snapshot, openConnection, memoryAvailable = false, profi
 }
 function DisconnectedWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
   const [page, setPage] = useState<WorkspacePage>('chat');
+  const [settingsSubpage, setSettingsSubpage] = useState<SettingsSubpage>(null);
   const styles = useStyles();
   return <View style={styles.root} testID="workspace-screen"><ThemeStatusBar />
     <SafeAreaView style={styles.disconnected}>
       <View style={styles.disconnectedHeader}><Text style={styles.itemTitle}>Pi Muse</Text><ThemeToggle /></View>
-      {page === 'settings' ? <SettingsPage snapshot={snapshot} openConnection={openConnection} /> : <View style={styles.welcome}>
+      {page === 'settings' ? <SettingsPage snapshot={snapshot} openConnection={openConnection} subpage={settingsSubpage} onSubpage={setSettingsSubpage} /> : <View style={styles.welcome}>
         <MuseAvatar size={l.welcomeAvatar} /><Text style={styles.eyebrow}>HELLO, PI MUSE</Text><Text style={styles.emptyTitle}>{connectionLabel(snapshot)}</Text>
         <Text style={styles.mutedText}>{snapshot.error ?? '连接自己的 Pi Muse 服务器后即可恢复会话、聊天与真实执行状态。'}</Text>
         <ActionButton label="配置服务器连接" text="服务器连接" tone="primary" onPress={openConnection} />
@@ -172,6 +164,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
   const { store: goals } = useGoals();
   const runtime = useSpaceRuntime(spaces.currentSpace);
   const [page, setPage] = useState<WorkspacePage>('chat');
+  const [settingsSubpage, setSettingsSubpage] = useState<SettingsSubpage>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [sessionOpen, setSessionOpen] = useState(false);
   const [sessionMounted, setSessionMounted] = useState(false);
@@ -184,7 +177,8 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
   const [notice, setNotice] = useState<WorkspaceNotice>();
   const reducedMotion = useReducedMotion();
   const [spaceQuery, setSpaceQuery] = useState('');
-  const [historyRefresh, setHistoryRefresh] = useState(0);
+  const [historyRefresh, setHistoryRefresh] = useState<Record<string, number>>({});
+  const [labelState, setLabelState] = useState(() => ({ ids: '', labels: new SpaceLabels() }));
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const { colors } = useTheme(); const styles = useStyles();
   const { width, height } = useWindowDimensions(); const contentWidth = Math.min(width, l.maxWidth);
@@ -195,27 +189,16 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
   const [drawerProgress] = useState(() => new Animated.Value(0));
   const statusLabel = snapshot.status === 'authentication-required' || snapshot.status === 'reset-error' || snapshot.status === 'storage-error'
     ? connectionLabel(snapshot) : runtime.label;
-  const name = spaces.currentSpace === MAIN_SPACE ? (profile.identity?.name ?? 'Pi Muse') : spaces.currentSpace;
+  const labelIds = spaces.spaces.map((space) => space.id).sort().join('|');
+  if (labelState.ids !== labelIds) setLabelState({ ids: labelIds, labels: labelState.labels.sync(spaces.spaces) });
+  const labels = labelState.ids === labelIds ? labelState.labels : labelState.labels.sync(spaces.spaces);
+  const name = spaces.currentSpace === MAIN_SPACE ? (profile.identity?.name ?? 'Pi Muse') : labels.title(spaces.currentSpace);
   const reloadSpaces = spaces.reload;
-  const refresh = useCallback(() => { void reloadSpaces(); activities.invalidate(); jobs.invalidate(); monitors.invalidate(); goals.invalidate(); setHistoryRefresh((value) => value + 1); }, [reloadSpaces, activities, jobs, monitors, goals]);
-  const invalidationSessionMatches = !runtime.conversationInvalidationSessionId
-    || !session.sessionId
-    || session.sessionId === runtime.conversationInvalidationSessionId;
-  const conversationInvalidationVersion = invalidationSessionMatches
-    ? runtime.conversationInvalidationVersion
-    : 0;
-  const conversationRefreshKey = runtime.synchronized
-    ? `${historyRefresh}:${runtime.conversationSyncVersion}:${conversationInvalidationVersion}`
-    : `${historyRefresh}:0:0`;
+  const refresh = useCallback((spaceId = spaces.currentSpace) => { void reloadSpaces(); activities.invalidate(); jobs.invalidate(); monitors.invalidate(); goals.invalidate(); setHistoryRefresh((value) => ({ ...value, [spaceId]: (value[spaceId] ?? 0) + 1 })); }, [reloadSpaces, activities, jobs, monitors, goals, spaces.currentSpace]);
   useEffect(() => {
     // ready 不重放通知历史；空间绑定与当前聊天都要回到服务端权威事实。
     if (runtime.synchronized) void reloadSpaces();
   }, [runtime.synchronized, reloadSpaces]);
-  useEffect(() => {
-    if (!runtime.synchronized || invalidationSessionMatches) return;
-    // 旧 session 迟到帧不污染当前视图；疑似远端 reset 时先核对空间绑定。
-    void reloadSpaces();
-  }, [runtime.synchronized, runtime.conversationInvalidationVersion, invalidationSessionMatches, reloadSpaces]);
   useEffect(() => {
     // 原生键盘出现时让出阅读空间；系统 Back 收起键盘也必须恢复完整顶栏与主导航。
     const show = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => setKeyboardVisible(true));
@@ -245,13 +228,16 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
   }, [session.deleting, session.resetting]);
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (keyboardVisible) { pendingSessionOpen.current = false; Keyboard.dismiss(); return true; }
-      if (sessionMounted) { closeSession(); return true; }
-      if (drawerOpen) { setDrawerOpen(false); return true; }
-      return false;
+      const action = workspaceBackAction({ keyboardVisible, sessionMounted, drawerOpen, page, settingsSubpage, goalCreating: !!goals.getSnapshot().creator });
+      if (action === 'keyboard') { pendingSessionOpen.current = false; Keyboard.dismiss(); }
+      else if (action === 'session') closeSession();
+      else if (action === 'drawer') setDrawerOpen(false);
+      else if (action === 'settings') setSettingsSubpage(null);
+      else if (action === 'goal' && !goals.getSnapshot().writing) goals.cancelCreate();
+      return action !== 'none';
     });
     return () => subscription.remove();
-  }, [drawerOpen, keyboardVisible, sessionMounted, closeSession]);
+  }, [drawerOpen, keyboardVisible, sessionMounted, closeSession, page, settingsSubpage, goals]);
   const openSession = useCallback(() => {
     setDrawerOpen(false);
     if (keyboardVisible) { pendingSessionOpen.current = true; Keyboard.dismiss(); return; }
@@ -290,6 +276,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
     onPanResponderRelease: (_event, gesture) => { if (sessionMounted) return; if (gesture.dx < -l.gestureThreshold) setDrawerOpen(false); if (gesture.dx > l.gestureThreshold) openDrawer(); },
   }), [drawerOpen, openDrawer, sessionMounted]);
   const otherPage = page === 'chat' ? null : page === 'settings' ? <SettingsPage snapshot={snapshot} openConnection={openConnection} memoryAvailable profileAvailable dreamAvailable currentSpaceId={spaces.currentSpace}
+    subpage={settingsSubpage} onSubpage={setSettingsSubpage}
     onReset={connection?.enabled ? () => { setResetError(undefined); setResetTarget(spaces.currentSpace); } : undefined} /> : page === 'activity' ? !sessionOpen && <TasksPage spaceId={spaces.currentSpace} /> : !sessionOpen && <GoalsPanel />;
   const sessionSettings = <>{deleteConfirm ? <Card style={styles.exampleCard} tone="danger"><Text style={styles.itemTitle}>确认删除当前空间？</Text><Text style={styles.mutedText}>空间的全部聊天历史及其消息反馈（喜欢/不喜欢/评论及操作记录）、工作区文件、规则、技能和绑定的定时任务、监控将被彻底删除，无法撤销。</Text>
         <View style={styles.confirmActions}>
@@ -308,10 +295,10 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
         <View style={styles.drawerSectionRow}><Text style={styles.drawerSection}>你的空间</Text><Text style={styles.caption}>{spaces.spaces.length}</Text></View>
         {!!spaces.error && <Text style={styles.error}>{spaces.error}</Text>}
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.drawerList}>
-          {spaces.spaces.filter((space) => (space.id === MAIN_SPACE ? `主空间 ${space.id}` : space.id).toLowerCase().includes(spaceQuery.toLowerCase().trim())).map((space) => <Pressable key={space.id} accessibilityRole="button" accessibilityLabel={space.id === MAIN_SPACE ? '主空间' : space.id} accessibilityState={{ selected: space.id === spaces.currentSpace }}
+          {spaces.spaces.filter((space) => `${labels.title(space.id)} ${space.id}`.toLowerCase().includes(spaceQuery.toLowerCase().trim())).map((space) => <Pressable key={space.id} accessibilityRole="button" accessibilityLabel={labels.title(space.id)} accessibilityState={{ selected: space.id === spaces.currentSpace }}
             onPress={() => select(space.id)} style={[styles.threadRow, space.id === spaces.currentSpace && styles.threadSelected]}>
             <MessageCircle size={l.navigationIconSize} color={colors.ink} /><View style={styles.threadText}>
-              <Text numberOfLines={1} style={styles.itemTitle}>{space.id === MAIN_SPACE ? '主空间' : space.id}</Text><SpaceStatusCaption spaceId={space.id} />
+              <Text numberOfLines={1} style={styles.itemTitle}>{labels.title(space.id)}</Text><SpaceStatusCaption spaceId={space.id} updatedAt={space.updatedAt} />
             </View>{space.id === spaces.currentSpace && <Check size={sizing[18]} color={colors.muted} />}
           </Pressable>)}
         </ScrollView>
@@ -320,15 +307,16 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
       </View>
       <Animated.View style={[styles.foreground, drawerOpen && styles.foregroundRounded, { transform: [{ translateX: drawerProgress.interpolate({ inputRange: [0, 1], outputRange: [0, drawerWidth] }) }] }]} accessibilityElementsHidden={drawerOpen} importantForAccessibility={drawerOpen ? 'no-hide-descendants' : 'auto'}>
         <SafeAreaView style={styles.screen} edges={['top', 'bottom', 'left', 'right']} aria-hidden={drawerOpen} {...(Platform.OS === 'web' && drawerOpen ? { inert: true } : {})}>
+          {/* 唯一键盘避让层：Android 按真实重叠缩小阅读区，iOS 保留 padding；不再另算键盘高度。 */}
           <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled={Platform.OS !== 'web'} accessibilityViewIsModal={sessionMounted}>
             {page !== 'chat' && <View style={styles.pageHeader}><IconControl icon={Menu} label="打开空间侧栏" onPress={openDrawer} /><Text style={styles.pageTitle}>{NAV.find((item) => item.id === page)?.label}</Text><ThemeToggle /></View>}
-            {/* 会话信息区独立占位，长历史滚动与键盘收缩时都不能遮住正文。 */}
-            {page === 'chat' && <View style={[styles.chatHeader, keyboardVisible && styles.chatHeaderCompact]}>
+            {/* 头像与左右操作浮在聊天层上方，不占正文高度；触控只落在实际控件。 */}
+            {page === 'chat' && <View pointerEvents="box-none" style={[styles.chatHeader, keyboardVisible && styles.chatHeaderCompact]}>
               <View style={styles.headerLeft}><IconControl icon={Menu} label="打开空间侧栏" testID="workspace-open-drawer" onPress={openDrawer} /></View>
               <Pressable accessibilityRole="button" accessibilityLabel="打开当前会话面板" accessibilityHint="全屏显示当前会话的动态、审批、工作区和历史" accessibilityState={{ disabled: sessionMounted }} disabled={sessionMounted} testID="workspace-open-session" style={[styles.identity, keyboardVisible && styles.identityCompact]}
                 onPress={openSession}>
                 <MuseAvatar size={keyboardVisible ? l.compactHeaderAvatar : l.headerAvatar} />
-                <View style={[styles.identityLabel, keyboardVisible && styles.identityLabelCompact]}><Text numberOfLines={1} style={styles.identityName}>{name}</Text><StatusPill label={statusLabel} testID="workspace-session-status" tone={!runtime.synchronized ? 'warning' : runtime.running ? 'accent' : 'neutral'} /></View>
+                <View style={[styles.identityLabel, styles.identityLabelSurface, keyboardVisible && styles.identityLabelCompact]}><Text numberOfLines={1} style={styles.identityName}>{name}</Text><StatusPill label={statusLabel} testID="workspace-session-status" tone={!runtime.synchronized ? 'warning' : runtime.running ? 'accent' : 'neutral'} /></View>
               </Pressable>
               <View style={styles.headerRight}><ThemeToggle testID="workspace-theme-toggle" /></View>
             </View>}
@@ -339,7 +327,8 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
                   pointerEvents={sessionMounted ? 'none' : 'auto'} aria-hidden={sessionMounted}
                   {...(Platform.OS === 'web' && sessionMounted ? { inert: true } : {})}
                   accessibilityElementsHidden={sessionMounted} importantForAccessibility={sessionMounted ? 'no-hide-descendants' : 'auto'}>
-                  <ConversationView key={`${spaces.currentSpace}:${session.epoch}`} spaceId={spaces.currentSpace} visible={page === 'chat'} otherPage={otherPage} refreshKey={conversationRefreshKey} onSettled={refresh} openConnection={openConnection} />
+                  <ConversationHost currentSpaceId={spaces.currentSpace} spaceIds={spaces.spaces.map((space) => space.id)} chatVisible={page === 'chat'} compactHeader={keyboardVisible} otherPage={otherPage}
+                    refreshVersions={historyRefresh} onSettled={refresh} onBindingMismatch={reloadSpaces} openConnection={openConnection} />
                   {!!notice && <Text accessibilityRole="alert" style={[styles.notice, notice.tone === 'error' && styles.error]}>{notice.text}</Text>}
                   {!(page === 'chat' && keyboardVisible) && <Navigation page={page} onPage={(next) => { setPage(next); setSessionOpen(false); }} />}
                 </View>
@@ -404,15 +393,15 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
       onCancel={() => { setResetTarget(undefined); setResetError(undefined); }} onConfirm={reset} />}
   </View></FilesProvider>;
 }
-function SpaceStatusCaption({ spaceId }: { spaceId: string }) {
+function SpaceStatusCaption({ spaceId, updatedAt }: { spaceId: string; updatedAt: string }) {
   const runtime = useSpaceRuntime(spaceId); const styles = useStyles();
-  return <Text numberOfLines={1} style={styles.caption}>{runtime.label}</Text>;
+  return <Text numberOfLines={1} style={styles.caption}>{spaceTime(updatedAt)} · {runtime.label}</Text>;
 }
 
 const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: c.canvas }, viewport: { flex: 1, alignSelf: 'center', overflow: 'hidden', backgroundColor: c.canvas }, screen: { flex: 1 },
   foreground: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: c.canvas, overflow: 'hidden' }, foregroundRounded: { borderRadius: r.drawerForeground }, foregroundCover: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: c.overlay },
-  chatHeader: { height: l.headerHeight, flexShrink: 0, marginTop: l.headerTop, marginHorizontal: l.sidePadding }, chatHeaderCompact: { height: l.controlSize }, headerLeft: { position: 'absolute', top: 0, left: 0 }, headerRight: { position: 'absolute', top: 0, right: 0, flexDirection: 'row', gap: spacing[4] },
+  chatHeader: { position: 'absolute', zIndex: 2, top: l.headerTop, left: l.sidePadding, right: l.sidePadding, height: l.headerHeight }, chatHeaderCompact: { height: l.controlSize }, headerLeft: { position: 'absolute', top: 0, left: 0 }, headerRight: { position: 'absolute', top: 0, right: 0, flexDirection: 'row', gap: spacing[4] },
   bodyStage: { flex: 1 },
   sessionLayer: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden' },
   frostedWrap: { flex: 1 },
@@ -424,7 +413,11 @@ const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   pressed: { opacity: workspaceTheme.interaction.pressedOpacity },
   identity: { alignSelf: 'center', alignItems: 'center', maxWidth: l.identityMaxWidth },
   identityCompact: { height: l.controlSize, flexDirection: 'row', gap: spacing[8] },
-  identityLabel: { paddingHorizontal: spacing[8], paddingTop: spacing[6], gap: spacing[3], alignItems: 'center', maxWidth: '100%' }, identityLabelCompact: { flexShrink: 1, minWidth: 0, paddingHorizontal: 0, paddingTop: 0, alignItems: 'flex-start' }, identityName: { ...t.name, color: c.ink, maxWidth: '100%', textAlign: 'center' },
+  identityLabel: { paddingHorizontal: spacing[8], paddingTop: spacing[6], gap: spacing[3], alignItems: 'center', maxWidth: '100%' },
+  // 只覆盖聊天态名称与状态自身，不给透明顶栏增加整条背景或正文占位。
+  identityLabelSurface: { backgroundColor: c.floatingSurface, borderColor: c.floatingLine, borderWidth: StyleSheet.hairlineWidth, borderRadius: r.field, paddingBottom: spacing[6] },
+  identityLabelCompact: { flexShrink: 1, minWidth: 0, paddingHorizontal: spacing[6], paddingTop: spacing[1], paddingBottom: spacing[1], alignItems: 'flex-start' },
+  identityName: { ...t.name, color: c.ink, maxWidth: '100%', textAlign: 'center' },
   navigation: { flexDirection: 'row', height: l.navigationHeight, marginHorizontal: spacing[18], marginBottom: l.navigationBottom, alignItems: 'center' },
   navigationItem: { flex: 1, minHeight: l.controlSize, gap: l.navigationLabelGap, alignItems: 'center', justifyContent: 'center' }, navigationLabel: { ...t.navigation, color: c.faint }, navigationLabelSelected: { color: c.ink },
   drawer: { position: 'absolute', top: 0, bottom: 0, left: 0, paddingHorizontal: l.sidePadding, paddingTop: l.drawerTop, backgroundColor: c.canvas }, drawerHeading: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: l.drawerTop, marginBottom: l.drawerTitleBottom }, drawerTitle: { ...t.drawerTitle, color: c.ink }, drawerSection: { ...t.caption, color: c.faint }, drawerSectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing[4], marginBottom: spacing[14] }, drawerList: { gap: spacing[6] },

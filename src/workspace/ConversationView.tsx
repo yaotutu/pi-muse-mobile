@@ -5,7 +5,7 @@
  * assistant Markdown 与工具专用展示由独立组件负责，不猜测审批决定。
  */
 import { ArrowDown, ArrowUp, Square } from 'lucide-react-native';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type LayoutRectangle, type TextStyle } from 'react-native';
 import { useApi } from '../api/ApiProvider';
 import { pickMessageAttachments } from '../attachments/picker';
@@ -22,6 +22,7 @@ import { MessageContent } from './MessageContent';
 import { ToolResultCard } from './ToolResultCard';
 import { ActionButton } from '../ui/ActionButton';
 import { MessageFeedbackControls } from '../feedback/MessageFeedbackControls';
+import { ScrollAnchorFrame, ScrollFollow } from './scroll-follow';
 
 const { layout: l, radius: r, typography: t } = workspaceTheme;
 
@@ -33,7 +34,7 @@ function useStyles() {
 export type ConversationViewProps = {
   spaceId: string;
   visible: boolean;
-  otherPage: ReactNode;
+  compactHeader: boolean;
   refreshKey: string | number;
   onSettled: () => void;
   openConnection: () => void;
@@ -42,7 +43,7 @@ export type ConversationViewProps = {
 export function ConversationView({
   spaceId,
   visible,
-  otherPage,
+  compactHeader,
   refreshKey,
   onSettled,
   openConnection,
@@ -56,7 +57,9 @@ export function ConversationView({
   const styles = useStyles();
   const { colors } = useTheme();
   const scroll = useRef<ScrollView>(null);
-  const nearBottom = useRef(true);
+  const scrollFollow = useRef(new ScrollFollow());
+  const visibleRef = useRef(visible);
+  const [discardTarget, setDiscardTarget] = useState<string>();
   const previousRunning = useRef(false);
   const lastRun = useRef('');
   const [stopError, setStopError] = useState('');
@@ -69,6 +72,17 @@ export function ConversationView({
   const pickerRequest = useRef(0);
   const mounted = useRef(true);
   const currentOwner = useRef({ sessions, spaceId, epoch: session.epoch });
+  const anchorFrame = useRef<ScrollAnchorFrame | null>(null);
+
+  useLayoutEffect(() => {
+    anchorFrame.current = new ScrollAnchorFrame(
+      requestAnimationFrame,
+      cancelAnimationFrame,
+      () => mounted.current && visibleRef.current && scrollFollow.current.shouldAnchor(),
+      () => scroll.current?.scrollToEnd({ animated: false }),
+    );
+    return () => { anchorFrame.current?.cancel(); anchorFrame.current = null; };
+  }, []);
 
   useLayoutEffect(() => {
     currentOwner.current = { sessions, spaceId, epoch: session.epoch };
@@ -76,8 +90,15 @@ export function ConversationView({
 
   useEffect(() => {
     mounted.current = true;
-    return () => { mounted.current = false; };
+    return () => { mounted.current = false; anchorFrame.current?.cancel(); };
   }, []);
+
+  useLayoutEffect(() => {
+    visibleRef.current = visible;
+    if (!visible) anchorFrame.current?.cancel();
+    // 隐藏空间继续接收流；重新显示后在下一布局帧锚到最新。
+    else if (scrollFollow.current.shouldAnchor()) anchorFrame.current?.schedule();
+  }, [visible]);
 
   useEffect(() => {
     if (previousRunning.current && !conversation.running) onSettled();
@@ -131,6 +152,10 @@ export function ConversationView({
   const send = () => {
     if (pickerInFlight.current || !canSend || !hasInput) return;
     setStopError('');
+    // 从旧历史发送即转向新消息；之后只有用户主动上滚才停止跟随。
+    scrollFollow.current.beginSend();
+    setShowLatest(false);
+    anchorFrame.current?.schedule();
     void conversation.send(
       session.draft,
       // send 只在消息已进入 pending 后同步调用此回调；失败或结果未明时原件仍由 pending 持有。
@@ -174,8 +199,11 @@ export function ConversationView({
   };
   const followLatest = () => {
     // 键盘收缩和转为紧凑顶栏只改变视口尺寸；跟随最新时也要重新锚定，不能截掉尾条回复。
-    if (nearBottom.current) scroll.current?.scrollToEnd({ animated: false });
+    if (visible && scrollFollow.current.onLayout()) anchorFrame.current?.schedule();
   };
+  const atBottom = ({ contentOffset, contentSize, layoutMeasurement }: {
+    contentOffset: { y: number }; contentSize: { height: number }; layoutMeasurement: { height: number };
+  }) => contentSize.height - contentOffset.y - layoutMeasurement.height < l.scrollThreshold;
 
   return (
     <>
@@ -184,16 +212,22 @@ export function ConversationView({
           ref={scroll}
           style={styles.chatScroll}
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={styles.messageList}
+          contentContainerStyle={[styles.messageList, compactHeader && styles.messageListCompact]}
           showsVerticalScrollIndicator={false}
           onScroll={(event) => {
-            const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-            nearBottom.current = contentSize.height - contentOffset.y - layoutMeasurement.height < l.scrollThreshold;
-            setShowLatest(!nearBottom.current);
+            if (!visible) return;
+            const next = scrollFollow.current.onScroll(atBottom(event.nativeEvent));
+            if (next.anchor) anchorFrame.current?.schedule();
+            setShowLatest(next.showLatest);
           }}
           scrollEventThrottle={spacing[16]}
+          onScrollBeginDrag={() => { scrollFollow.current.onDrag(); anchorFrame.current?.cancel(); }}
+          onScrollEndDrag={(event) => {
+            const next = scrollFollow.current.onDragEnd(atBottom(event.nativeEvent));
+            if (visible) setShowLatest(next.showLatest);
+          }}
           onLayout={followLatest}
-          onContentSizeChange={followLatest}
+          onContentSizeChange={() => { scrollFollow.current.onContentSizeChange(); followLatest(); }}
         >
           {conversation.loading && !conversation.views.length ? (
             <Text style={styles.mutedText}>正在读取聊天记录…</Text>
@@ -221,7 +255,17 @@ export function ConversationView({
                 {pending.error ?? '消息未送达服务端'}
               </Text>
               {session.draft.length > 0 || session.draftAttachments.length > 0 ? (
-                <Text style={styles.mutedText}>输入框已有文字或附件：请先保存或清空当前草稿，再恢复此消息</Text>
+                <>
+                  <Text style={styles.mutedText}>当前草稿会保留；也可先清空草稿，再恢复这条未发送消息。</Text>
+                  {discardTarget === pending.messageId ? <>
+                    <Text style={styles.error}>确认放弃未发送消息，保留当前草稿？此操作无法撤销。</Text>
+                    <ActionButton label="放弃未发送消息，保留当前草稿" tone="danger" onPress={() => {
+                      if (sessions.discardFailedSubmission(spaceId, session.epoch, pending.messageId)) conversation.reload();
+                      setDiscardTarget(undefined);
+                    }} />
+                    <ActionButton label="取消放弃未发送消息" onPress={() => setDiscardTarget(undefined)} />
+                  </> : <ActionButton label="放弃未发送消息" onPress={() => setDiscardTarget(pending.messageId)} />}
+                </>
               ) : (
                 <ActionButton label="恢复到输入框" onPress={() => sessions.restorePendingSubmissionToDraft(spaceId)} />
               )}
@@ -253,9 +297,8 @@ export function ConversationView({
             />
           )}
         </ScrollView>
-        {showLatest && <Pressable accessibilityRole="button" accessibilityLabel="回到最新消息" onPress={() => { nearBottom.current = true; setShowLatest(false); scroll.current?.scrollToEnd({ animated: true }); }} style={styles.latestButton}><ArrowDown size={sizing[18]} color={colors.ink} /><Text style={styles.caption}>回到最新</Text></Pressable>}
+        {showLatest && <Pressable accessibilityRole="button" accessibilityLabel="回到最新消息" onPress={() => { scrollFollow.current.returnLatest(); setShowLatest(false); scroll.current?.scrollToEnd({ animated: true }); }} style={styles.latestButton}><ArrowDown size={sizing[18]} color={colors.ink} /><Text style={styles.caption}>回到最新</Text></Pressable>}
       </View>
-      {!visible && <View style={styles.chatBody}>{otherPage}</View>}
       {visible && <>
         {(session.draftAttachments.length > 0 || !!attachmentError) && <View style={styles.attachmentArea}>
           <AttachmentStrip items={session.draftAttachments} disabled={selecting || !!pending || busy || !sessions.canWrite(spaceId)} onRemove={(id) => {
@@ -402,13 +445,14 @@ const createStyles = (c: WorkspaceColors) =>
     hidden: { display: 'none' },
     chatScroll: { flex: 1 },
     messageList: {
-      // 顶栏已经为完整会话信息区占位；这里只留消息与状态胶囊间的呼吸空间。
+      // 首条消息避开浮动会话信息；长历史仍可从浮层下方滚过。
       flexGrow: 1,
       paddingTop: l.chatContentTop,
       paddingHorizontal: l.sidePadding,
       paddingBottom: spacing[24],
       gap: l.messageGap,
     },
+    messageListCompact: { paddingTop: l.chatContentTopCompact },
     messageBlock: { gap: spacing[8] },
     bubbleWrap: { position: 'relative' },
     message: { padding: l.chatMessagePadding, borderRadius: r.message },
