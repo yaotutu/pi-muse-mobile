@@ -1,11 +1,13 @@
 name: release
 
-# 触发：push 到 main。prepare 产生唯一 bump 提交；两个平台都从该 SHA 构建。
-# release job 必须等待 APK 与未签名 IPA 都存在，才能创建 GitHub Release。
+# push 到 main 时，prepare 产生唯一 bump 提交；两个平台都从该 SHA 构建。
+# workflow_dispatch 只做同一 SHA 的双平台构建验收，不 bump、push 或发布。
+# 正式 release job 必须等待 APK 与未签名 IPA 都存在，才能创建 GitHub Release。
 
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: release
@@ -25,33 +27,44 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
+        if: github.event_name == 'push'
 
       - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: npm
+        if: github.event_name == 'push'
 
       - name: Install
         run: npm ci
+        if: github.event_name == 'push'
 
       - name: Bump version
         id: bump
         run: node tools/bump-version.js >> "$GITHUB_OUTPUT"
+        if: github.event_name == 'push'
 
       - name: Commit version bump
-        id: release-source
+        if: github.event_name == 'push'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add app.json
           if git diff --staged --quiet; then
-            echo "sha=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
             echo "No version bump needed"
             exit 0
           fi
           git commit -m "ci: bump version to ${{ steps.bump.outputs.version }} [skip ci]"
           git push origin HEAD:main
-          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve build source
+        id: release-source
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          fi
 
   android:
     needs: prepare
@@ -170,6 +183,7 @@ jobs:
 
   release:
     needs: [prepare, android, ios]
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

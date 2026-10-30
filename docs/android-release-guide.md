@@ -16,7 +16,8 @@
 
 - `expo.version`、`expo.android.versionCode`、`expo.ios.buildNumber` 是受保护字段，开发者不得手工修改。发布流程通过 `tools/bump-version.js` 同步递增三位字段；未获版本写入授权时，本地只使用 `node tools/bump-version.js --check` 查看计算结果。
 - CI 执行 npm 安装、typecheck、lint、test，并检查 `app.json` 三个版本字段没有被人工修改。若版本守卫失败由本人本任务改动引入，只整理该改动；疑似他人或既有修改时先报告，不指示回滚他人代码，也不重复 bump 或改 CI 绕过。
-- Release workflow 在收到 main push 后由脚本写入新版本，创建并推送 `[skip ci]` 版本提交；Android 与 iOS job 都 checkout 这个精确提交分别构建。最终 release job 等待 Android APK 和 iOS IPA artifact 全部存在后才创建 GitHub Release。实际步骤、依赖版本和权限以当前 workflow 为准。
+- Release workflow 在收到 main push 后由脚本写入新版本，创建并推送 `[skip ci]` 版本提交；Android 与 iOS job 都 checkout 这个精确提交分别构建。最终 release job 等待 Android APK 和 iOS IPA artifact 全部存在后才创建 GitHub Release。
+- Release workflow 也提供 `workflow_dispatch` 手动 build-only 验收入口：它记录触发 ref 当次的精确 `GITHUB_SHA`，Android 与 iOS job 都 checkout 这个 SHA，构建后仅上传 Actions artifacts；不执行版本 bump、git push、版本提交或 GitHub Release。实际步骤、依赖版本和权限以当前 workflow 为准。
 - workflow 期望从 GitHub secrets 获取 Android keystore 与密码材料；不在日志、交付、文档或命令输出中展示值，不假设账户配置状态，不把本机 `.keystore/`、`*.keystore` 或生成的 `android/key.properties` 加入 Git。
 
 ## CNG 与签名

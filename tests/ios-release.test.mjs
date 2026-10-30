@@ -62,7 +62,7 @@ test('IPA ZIP 只允许单一 Payload 应用布局', () => {
   assert.throws(() => validateZipLayout(['Payload/../PiMuse.app/Info.plist'], 'PiMuse.app'), /不安全/);
 });
 
-test('Release workflow 从同一 bump 提交构建两平台并等待完整产物', () => {
+test('Release workflow 从同一源 SHA 构建两平台并等待完整产物', () => {
   assert.match(workflow, /needs: prepare/);
   assert.match(workflow, /ref: \$\{\{ needs\.prepare\.outputs\.sha \}\}/);
   assert.equal((workflow.match(/ref: \$\{\{ needs\.prepare\.outputs\.sha \}\}/g) ?? []).length, 3);
@@ -82,6 +82,37 @@ test('Release workflow 从同一 bump 提交构建两平台并等待完整产物
   assert.match(workflow, /不能直接安装/);
   assert.match(workflow, /only downloads this stable APK asset/);
   assert.match(workflow, /只会下载这个稳定 APK asset/);
+});
+
+test('手动 Release workflow 只构建同 SHA 产物而不发布', () => {
+  const prepareJob = workflow.split('  prepare:')[1].split('\n  android:')[0];
+  const androidJob = workflow.split('  android:')[1].split('\n  ios:')[0];
+  const iosJob = workflow.split('  ios:')[1].split('\n  release:')[0];
+  const releaseJob = workflow.split('  release:')[1];
+
+  assert.match(workflow, /^  workflow_dispatch:$/m);
+  assert.equal((prepareJob.match(/if: github\.event_name == 'push'/g) ?? []).length, 5);
+  const bumpStep = prepareJob.slice(
+    prepareJob.indexOf('- name: Bump version'),
+    prepareJob.indexOf('- name: Commit version bump'),
+  );
+  const commitStep = prepareJob.slice(
+    prepareJob.indexOf('- name: Commit version bump'),
+    prepareJob.indexOf('- name: Resolve build source'),
+  );
+  assert.match(bumpStep, /node tools\/bump-version\.js/);
+  assert.match(bumpStep, /if: github\.event_name == 'push'/);
+  assert.match(commitStep, /git push origin HEAD:main/);
+  assert.match(commitStep, /if: github\.event_name == 'push'/);
+  assert.match(prepareJob, /if \[ "\$\{GITHUB_EVENT_NAME\}" = "push" \]/);
+  assert.match(prepareJob, /echo "sha=\$\(git rev-parse HEAD\)" >> "\$GITHUB_OUTPUT"/);
+  assert.match(prepareJob, /echo "sha=\$\{GITHUB_SHA\}" >> "\$GITHUB_OUTPUT"/);
+  assert.match(androidJob, /ref: \$\{\{ needs\.prepare\.outputs\.sha \}\}/);
+  assert.match(iosJob, /ref: \$\{\{ needs\.prepare\.outputs\.sha \}\}/);
+  assert.match(releaseJob, /if: github\.event_name == 'push'/);
+  assert.match(releaseJob, /Create GitHub Release/);
+  assert.equal(/bump-version|git push|Create GitHub Release/.test(androidJob), false);
+  assert.equal(/bump-version|git push|Create GitHub Release/.test(iosJob), false);
 });
 
 test('iOS 发布流程不使用 Apple 证书或签名 secrets', () => {
