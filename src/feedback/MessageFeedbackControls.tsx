@@ -4,21 +4,20 @@
  */
 import * as Clipboard from 'expo-clipboard';
 import { Check, Copy, MessageCircle, Pencil, RotateCw, Trash2, X } from 'lucide-react-native';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text,
-  useWindowDimensions, View, type LayoutRectangle,
+  View, type LayoutRectangle,
 } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemeStatusBar } from '../theme/ThemeStatusBar';
 import { useTheme } from '../theme/ThemeProvider';
 import { ActionButton } from '../ui/ActionButton';
+import { AnchoredFeedbackMenu, FeedbackMenuRow, FeedbackMenuRows, FeedbackReactionPill } from '../ui/AnchoredFeedbackMenu';
 import { FeedbackNotice } from '../ui/Feedback';
 import { FormInput } from '../ui/FormInput';
-import { useReducedMotion } from '../ui/use-reduced-motion';
+import type { MenuRect } from '../ui/menu-position';
 import { sizing, spacing, workspaceTheme, type WorkspaceColors } from '../ui/tokens';
-import { positionFeedbackMenu, type MenuRect } from './menu-position';
 import type { MessageComment, MessageFeedback } from './types';
 import { useMessageFeedback } from './useMessageFeedback';
 
@@ -42,9 +41,7 @@ export function MessageFeedbackControls({
 }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const window = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const reducedMotion = useReducedMotion();
   const { feedback, loading, busy, error, uncertain, refresh, setReaction, addComment, editComment, deleteComment } =
     useMessageFeedback({ spaceId, sessionId, messageId, initialFeedback });
   const [section, setSection] = useState<'actions' | 'comments'>('actions');
@@ -53,24 +50,10 @@ export function MessageFeedbackControls({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [viewport, setViewport] = useState({ width: window.width, height: window.height });
-  const [menuHeight, setMenuHeight] = useState<number>(m.initialMenuHeight);
-  const reveal = useSharedValue(0);
   const locked = loading || busy || uncertain;
   const count = feedback.comments.length;
   const hasBadge = feedback.reaction !== null || count > 0;
   const badgeWidth = m.badgeHitSize + (feedback.reaction && count > 0 ? m.badgeMixedExtra : 0);
-  const menuOpen = visible && !!anchor && section === 'actions';
-
-  useEffect(() => {
-    reveal.value = menuOpen
-      ? (reducedMotion ? 1 : withTiming(1, { duration: m.revealDuration }))
-      : 0;
-  }, [menuOpen, reducedMotion, reveal]);
-  const revealStyle = useAnimatedStyle(() => ({
-    opacity: reveal.value,
-    transform: [{ scale: m.revealScale + (1 - m.revealScale) * reveal.value }],
-  }));
 
   const closePanel = () => {
     Keyboard.dismiss();
@@ -114,14 +97,6 @@ export function MessageFeedbackControls({
       setCopyError(true);
     }
   };
-  const menuPosition = anchor ? positionFeedbackMenu(
-    anchor, { width: m.menuWidth, height: menuHeight }, viewport, insets,
-    role === 'user' ? 'right' : 'left', m.anchorGap, m.screenMargin,
-    // Android Fabric 的气泡测量相对状态栏下方的应用窗口；全屏透明 Modal 从屏幕顶部绘制。
-    // 使用真实安全区修正两个窗口原点，iOS/Web 的同源窗口不需要偏移。
-    Platform.OS === 'android' ? insets.top : 0,
-  ) : { x: 0, y: 0 };
-
   return <>
     {/* 徽标与弹层共享本 Hook。没有反馈时完全不渲染控件；图形靠气泡边缘，44dp 命中区不覆盖正文读屏。 */}
     {hasBadge && bubbleLayout && <Pressable
@@ -143,50 +118,18 @@ export function MessageFeedbackControls({
     {visible && <Modal transparent visible animationType="none" statusBarTranslucent navigationBarTranslucent
       onRequestClose={closePanel}>
       <ThemeStatusBar />
-      {section === 'actions' ? <View style={styles.overlay} onLayout={(event) => {
-        const { width, height } = event.nativeEvent.layout;
-        if (width !== viewport.width || height !== viewport.height) setViewport({ width, height });
-      }}>
-        <Pressable accessibilityRole="button" accessibilityLabel="关闭消息操作" onPress={closePanel}
-          style={StyleSheet.absoluteFill} />
-        <Animated.View accessibilityViewIsModal testID={`message-feedback-menu-${messageId}`}
-          onLayout={(event) => {
-            const height = event.nativeEvent.layout.height;
-            if (height !== menuHeight) setMenuHeight(height);
-          }}
-          style={[styles.context, revealStyle, { left: menuPosition.x, top: menuPosition.y,
-            maxHeight: viewport.height - insets.top - insets.bottom - m.screenMargin * 2 }]}>
-          <View style={[styles.reactionPill, role === 'user' && styles.reactionPillRight]}>
-            <Pressable accessibilityRole="button"
-              accessibilityLabel={feedback.reaction === 'like' ? '撤销喜欢' : '喜欢这条消息'}
-              accessibilityState={{ selected: feedback.reaction === 'like', disabled: locked, busy }}
-              disabled={locked} onPress={() => void toggleReaction('like')}
-              style={({ pressed }) => [styles.reactionButton, feedback.reaction === 'like' && styles.selected,
-                pressed && styles.pressed, locked && styles.disabled]}>
-              <Text style={styles.reactionEmoji}>👍</Text>
-            </Pressable>
-            <Pressable accessibilityRole="button"
-              accessibilityLabel={feedback.reaction === 'dislike' ? '撤销不喜欢' : '不喜欢这条消息'}
-              accessibilityState={{ selected: feedback.reaction === 'dislike', disabled: locked, busy }}
-              disabled={locked} onPress={() => void toggleReaction('dislike')}
-              style={({ pressed }) => [styles.reactionButton, feedback.reaction === 'dislike' && styles.selected,
-                pressed && styles.pressed, locked && styles.disabled]}>
-              <Text style={styles.reactionEmoji}>👎</Text>
-            </Pressable>
-          </View>
-          <View style={styles.actionMenu}>
-            <Pressable accessibilityRole="button" accessibilityLabel={`查看评论，${count} 条`}
-              testID={`message-comments-open-${messageId}`} onPress={openComments}
-              style={({ pressed }) => [styles.actionRow, pressed && styles.pressed]}>
-              <MessageCircle size={sizing.iconMedium} color={colors.ink} />
-              <Text style={styles.actionText}>评论{count > 0 ? `  ${count}` : ''}</Text>
-            </Pressable>
-            {!!messageText && <Pressable accessibilityRole="button" accessibilityLabel="复制消息"
-              onPress={() => void copyMessage()} style={({ pressed }) => [styles.actionRow, pressed && styles.pressed]}>
-              <Copy size={sizing.iconMedium} color={colors.ink} />
-              <Text style={styles.actionText}>复制消息</Text>
-            </Pressable>}
-          </View>
+      {section === 'actions' ? <AnchoredFeedbackMenu anchor={anchor} align={role === 'user' ? 'right' : 'left'}
+        dismissLabel="关闭消息操作" onDismiss={closePanel} testID={`message-feedback-menu-${messageId}`}>
+          <FeedbackReactionPill reaction={feedback.reaction} locked={locked} busy={busy}
+            subjectLabel="这条消息" align={role === 'user' ? 'right' : 'left'}
+            onReaction={(reaction) => void toggleReaction(reaction)} />
+          <FeedbackMenuRows>
+            <FeedbackMenuRow icon={MessageCircle} label={`查看评论，${count} 条`}
+              text={`评论${count > 0 ? `  ${count}` : ''}`} testID={`message-comments-open-${messageId}`}
+              onPress={openComments} />
+            {!!messageText && <FeedbackMenuRow icon={Copy} label="复制消息" text="复制消息"
+              onPress={() => void copyMessage()} />}
+          </FeedbackMenuRows>
           {(copyError || error || uncertain) && <ScrollView style={styles.menuNotice}
             contentContainerStyle={styles.menuNoticeContent}>
             {copyError && <Text accessibilityRole="alert" style={styles.error}>复制失败，请重试</Text>}
@@ -197,8 +140,7 @@ export function MessageFeedbackControls({
                 onPress={() => void refresh()} />
             </View>}
           </ScrollView>}
-        </Animated.View>
-      </View> : <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      </AnchoredFeedbackMenu> : <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.commentShade}>
         <Pressable accessibilityRole="button" accessibilityLabel="关闭消息操作" onPress={closePanel}
           style={StyleSheet.absoluteFill} />
@@ -263,8 +205,6 @@ export function MessageFeedbackControls({
 
 const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   pressed: { opacity: workspaceTheme.interaction.pressedOpacity },
-  disabled: { opacity: workspaceTheme.interaction.disabledOpacity },
-  selected: { backgroundColor: c.blueSoft },
   caption: { ...t.caption, color: c.muted },
   error: { ...t.caption, color: c.danger },
   actionText: { ...t.detail, color: c.ink },
@@ -276,20 +216,6 @@ const createStyles = (c: WorkspaceColors) => StyleSheet.create({
     backgroundColor: c.canvas, elevation: m.elevation },
   badgeEmoji: { fontSize: m.badgeEmojiSize },
   badgeCount: { ...t.caption, color: c.ink },
-  overlay: { flex: 1, backgroundColor: c.scrim },
-  context: { position: 'absolute', width: m.menuWidth, gap: spacing[8],
-    elevation: m.elevation },
-  reactionPill: { alignSelf: 'flex-start', flexDirection: 'row', padding: spacing[4],
-    borderRadius: r.round, borderWidth: StyleSheet.hairlineWidth, borderColor: c.line,
-    backgroundColor: c.canvas },
-  reactionPillRight: { alignSelf: 'flex-end' },
-  reactionButton: { width: m.reactionSize, height: m.reactionSize, alignItems: 'center',
-    justifyContent: 'center', borderRadius: r.round },
-  reactionEmoji: { fontSize: m.reactionEmojiSize },
-  actionMenu: { borderRadius: r.field, borderWidth: StyleSheet.hairlineWidth,
-    borderColor: c.line, backgroundColor: c.canvas, overflow: 'hidden' },
-  actionRow: { minHeight: m.actionHeight, flexDirection: 'row', gap: spacing[12],
-    alignItems: 'center', paddingHorizontal: spacing[16] },
   menuNotice: { flexShrink: 1, borderRadius: r.field, backgroundColor: c.canvas },
   menuNoticeContent: { padding: spacing[8], gap: spacing[8] },
   uncertain: { gap: spacing[8], padding: spacing[8], borderRadius: r.field,

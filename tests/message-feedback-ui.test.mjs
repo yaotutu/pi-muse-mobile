@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
-const { positionFeedbackMenu } = await import('../src/feedback/menu-position.ts');
+const { positionFeedbackMenu } = await import('../src/ui/menu-position.ts');
 
 const viewport = { width: 320, height: 640 };
 const safe = { top: 24, bottom: 24 };
@@ -57,11 +57,17 @@ test('反馈归属、唯一 Hook、无反馈时零徽标与菜单生命周期', 
   assert.match(controls, /const hasBadge = feedback\.reaction !== null \|\| count > 0/);
   assert.match(controls, /\{hasBadge && bubbleLayout && <Pressable/);
   assert.match(controls, /testID=\{`message-feedback-badge-\$\{messageId\}`\}/);
-  assert.match(controls, /positionFeedbackMenu\(/);
-  assert.match(controls, /Platform\.OS === 'android' \? insets\.top : 0/);
+  const menu = read('src/ui/AnchoredFeedbackMenu.tsx');
+  assert.match(controls, /<AnchoredFeedbackMenu/);
+  assert.match(controls, /<FeedbackReactionPill/);
+  assert.match(controls, /<FeedbackMenuRows>/);
+  assert.match(controls, /<FeedbackMenuRow icon=\{MessageCircle\}/);
+  assert.match(controls, /<FeedbackMenuRow icon=\{Copy\}/);
+  assert.match(menu, /positionFeedbackMenu\(/);
+  assert.match(menu, /Platform\.OS === 'android' \? insets\.top : 0/);
   assert.match(controls, /statusBarTranslucent navigationBarTranslucent/);
-  assert.match(controls, /useSharedValue\(0\)/);
-  assert.match(controls, /reducedMotion \? 1 : withTiming/);
+  assert.match(menu, /useSharedValue\(0\)/);
+  assert.match(menu, /reducedMotion \? 1 : withTiming/);
   assert.doesNotMatch(controls, /grabber|消息操作<\/Text>|助手消息<\/Text>|当前未选择/);
 });
 
