@@ -6,6 +6,7 @@ const read = (path) => readFileSync(new URL(`../src/${path}`, import.meta.url), 
 const { canOpenMeasuredNewsMenu, createArticlePressGuard, newsActionPresentation } =
   await import('../src/news/news-action-interaction.ts');
 const { newsFeedDateLabel, newsListExcerpt } = await import('../src/news/news-feed-display.ts');
+const { themeTokens } = await import('../src/theme/tokens.ts');
 
 test('列表预览只去除独立的 RSS 链接行，详情原文仍由原字段显示（本地夹具）', () => {
   const linkOnly = 'Article URL: https://example.com/story\r\nComments URL: https://example.com/comments';
@@ -37,10 +38,10 @@ test('新闻列表时间省秒并采用本地24小时制，详情保留原时间
   assert.match(page, /article\.sourceTitle\} · \{dateLabel\(article\.publishedAt\)\}/);
 });
 
-test('列表以标题和正文开篇，推荐理由与来源时间收在后方（320dp 静态布局检查）', () => {
+test('列表以标题和两行正文开篇，一行推荐理由与来源时间收在后方（320dp 静态布局检查）', () => {
   const page = read('workspace/NewsPage.tsx');
   const card = page.split('function ArticleCard(')[1].split('function UncertainArticle(')[0];
-  const order = ['styles.feedTitle', 'numberOfLines={3}', 'numberOfLines={2}', 'article.sourceTitle'];
+  const order = ['styles.feedTitle', 'numberOfLines={2}', 'numberOfLines={1}', 'article.sourceTitle'];
   let last = -1;
   for (const marker of order) {
     const next = card.indexOf(marker);
@@ -51,7 +52,29 @@ test('列表以标题和正文开篇，推荐理由与来源时间收在后方�
   assert.doesNotMatch(card, /查看内容|styles\.readMore|<Card\b/);
   assert.match(page, /viewTabs: \{ flex: 1, minWidth: 0/);
   assert.match(page, /textTab: \{ flex: 1, minWidth: 0, minHeight: l\.smallControl/);
-  assert.match(page, /articleOpen: \{ gap: spacing\[8\], minHeight: l\.smallControl \}/);
+  assert.match(page, /articleOpen: \{ minHeight: l\.smallControl \}/);
+  assert.match(page, /article: \{ paddingTop: n\.listItemTop, paddingBottom: n\.listItemBottom/);
+  assert.match(page, /feedTitle: \{[^\n]*marginBottom: spacing\[12\]/);
+  assert.match(page, /feedExcerpt: \{[^\n]*marginBottom: spacing\[18\]/);
+  assert.match(page, /feedReason: \{[^\n]*marginBottom: spacing\[14\]/);
+  assert.doesNotMatch(card, /borderBottomColor|styles\.reasonBox/);
+  assert.ok(themeTokens.newsReading.listItemTop + themeTokens.newsReading.listItemBottom >= 48);
+  assert.ok(themeTokens.newsReading.listTitle.fontSize > themeTokens.newsReading.listExcerpt.fontSize);
+  assert.ok(themeTokens.newsReading.listExcerpt.fontSize > themeTokens.newsReading.listReason.fontSize);
+});
+
+test('详情完整显示原始 RSS 正文与推荐理由，阅读行距不影响长按入口', () => {
+  const page = read('workspace/NewsPage.tsx');
+  const detail = page.split('function ArticleDetail(')[1].split('function Sources(')[0];
+  assert.match(detail, /推荐理由 · \{article\.recommendation\.reason\}/);
+  assert.match(detail, /\{article\.content \|\| 'RSS 未提供可显示的正文。'\}/);
+  assert.doesNotMatch(detail, /numberOfLines|newsListExcerpt|reasonBox|blueSoft/);
+  assert.match(detail, /onLongPress=\{\(\) => onOpenActions\(id, bodyRef\.current\)\}/);
+  assert.ok(themeTokens.newsReading.detailBody.lineHeight > themeTokens.newsReading.listExcerpt.lineHeight);
+  assert.ok(themeTokens.newsReading.detailTitle.lineHeight > themeTokens.newsReading.listTitle.lineHeight);
+  const sources = page.split('function Sources(')[1].split('export function NewsPage(')[0];
+  assert.match(sources, /style=\{styles\.sourceHeading\}.*style=\{\[styles\.sourceTitle/);
+  assert.match(page, /sourceHeading: \{ gap: spacing\[12\], paddingTop: spacing\[8\] \}/);
 });
 
 test('新闻阅读页使用真实连接状态、共享控件和安全原文入口', () => {

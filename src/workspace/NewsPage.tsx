@@ -17,7 +17,7 @@ import type { NewsArticle, NewsSnapshot } from '../news/types';
 import { useNews } from '../news/useNews';
 import type { MenuRect } from '../ui/menu-position';
 
-const { typography: t, layout: l, radius: r } = themeTokens;
+const { typography: t, layout: l, radius: r, newsReading: n } = themeTokens;
 
 /** Store 的 notice 含普通错误与成功文案；只把确知的成功提示移出阅读流。 */
 function routineNotice(notice?: string): boolean {
@@ -55,7 +55,7 @@ function ArticleCard({ article, store, snapshot, onOpenActions }: { article: New
   const work = snapshot.articleWork[article.id];
   const uncertain = !!work && (work.reactionUncertain || work.savedUncertain || work.commentUncertain);
   const excerpt = newsListExcerpt(article.content);
-  return <View style={[styles.article, { borderBottomColor: colors.line }]}>
+  return <View style={styles.article}>
     <Pressable ref={articleRef} accessibilityRole="button" accessibilityLabel={`阅读文章，${article.title}`}
       accessibilityActions={[{ name: 'openNewsActions', label: '打开文章操作' }]}
       onAccessibilityAction={(event) => { if (event.nativeEvent.actionName === 'openNewsActions') onOpenActions(article.id, articleRef.current); }}
@@ -63,10 +63,10 @@ function ArticleCard({ article, store, snapshot, onOpenActions }: { article: New
       onPress={() => { if (pressGuard.shouldOpen()) store.openArticle(article.id); }}
       testID={`news-article-${article.id}`} style={styles.articleOpen}>
       <Text accessibilityRole="header" style={[styles.feedTitle, { color: colors.ink }]}>{article.title}</Text>
-      {excerpt && <Text numberOfLines={3} style={[styles.excerpt, { color: colors.muted }]}>{excerpt}</Text>}
-      {snapshot.view === 'recommended' && article.recommendation && <Text numberOfLines={2}
-        style={[styles.reason, { color: colors.faint }]}>推荐理由 · {article.recommendation.reason}</Text>}
-      <Text style={[styles.meta, { color: colors.faint }]}>{article.sourceTitle} · {newsFeedDateLabel(article.publishedAt)}</Text>
+      {excerpt && <Text numberOfLines={2} style={[styles.feedExcerpt, { color: colors.muted }]}>{excerpt}</Text>}
+      {snapshot.view === 'recommended' && article.recommendation && <Text numberOfLines={1}
+        style={[styles.feedReason, { color: colors.muted }]}>推荐理由 · {article.recommendation.reason}</Text>}
+      <Text style={[styles.feedMeta, { color: colors.faint }]}>{article.sourceTitle} · {newsFeedDateLabel(article.publishedAt)}</Text>
     </Pressable>
     <NewsFeedbackBadge article={article} onOpen={(target) => onOpenActions(article.id, target)} />
     {uncertain && <UncertainArticle articleId={article.id} snapshot={snapshot} store={store} />}
@@ -122,11 +122,11 @@ function ArticleDetail({ store, snapshot, onOpenActions, focusComments, onCommen
             onAccessibilityAction={(event) => { if (event.nativeEvent.actionName === 'openNewsActions') onOpenActions(id, titleRef.current); }}
             style={[styles.detailTitle, { color: colors.ink }]}>{article.title}</Text>
         </Pressable>
-        {article.recommendation && <View style={[styles.reasonBox, { backgroundColor: colors.blueSoft }]}><Text style={[styles.reason, { color: colors.accentText }]}>推荐理由 · {article.recommendation.reason}</Text></View>}
+        {article.recommendation && <Text style={[styles.detailReason, { color: colors.muted }]}>推荐理由 · {article.recommendation.reason}</Text>}
       </View>
-      <Text style={[styles.meta, { color: colors.faint }]}>以下为 RSS 提供的内容；如需完整网页，请打开原文。</Text>
+      <Text style={[styles.detailNote, { color: colors.muted }]}>以下为 RSS 提供的内容；如需完整网页，请打开原文。</Text>
       <Pressable ref={bodyRef} accessible={false} focusable={false}
-        onLongPress={() => onOpenActions(id, bodyRef.current)}>
+        onLongPress={() => onOpenActions(id, bodyRef.current)} style={styles.bodyOpen}>
         <Text selectable={false} onLongPress={() => onOpenActions(id, bodyRef.current)}
           accessibilityActions={[{ name: 'openNewsActions', label: '打开文章操作' }]}
           onAccessibilityAction={(event) => { if (event.nativeEvent.actionName === 'openNewsActions') onOpenActions(id, bodyRef.current); }}
@@ -163,7 +163,7 @@ function Sources({ store, snapshot, onBack }: { store: NewsStore; snapshot: News
   const [deleteId, setDeleteId] = useState<string | null>(null);
   return <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content} testID="news-sources">
     <ActionButton label="返回新闻列表" text="返回新闻" icon={ChevronLeft} onPress={onBack} testID="news-sources-back" />
-    <View style={styles.detailHeading}><Text accessibilityRole="header" style={[styles.detailTitle, { color: colors.ink }]}>RSS 来源</Text>
+    <View style={styles.sourceHeading}><Text accessibilityRole="header" style={[styles.sourceTitle, { color: colors.ink }]}>RSS 来源</Text>
       <Text style={[styles.excerpt, { color: colors.muted }]}>添加标准 RSS 地址，新闻会在服务端抓取并分析。</Text></View>
     <Card style={styles.sourceStatus}>
       <Text style={[styles.sectionTitle, { color: colors.ink }]}>抓取与分析</Text>
@@ -329,17 +329,23 @@ const styles = StyleSheet.create({
   sectionHeading: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: spacing[8] },
   sectionTitle: { ...t.section },
   meta: { ...t.caption },
-  article: { paddingVertical: spacing[14], borderBottomWidth: StyleSheet.hairlineWidth, gap: spacing[12] },
-  articleOpen: { gap: spacing[8], minHeight: l.smallControl },
-  feedTitle: { ...t.itemTitle, fontWeight: '600' },
+  article: { paddingTop: n.listItemTop, paddingBottom: n.listItemBottom, gap: spacing[12] },
+  articleOpen: { minHeight: l.smallControl },
+  feedTitle: { ...n.listTitle, fontWeight: '600', marginBottom: spacing[12] },
+  feedExcerpt: { ...n.listExcerpt, marginBottom: spacing[18] },
+  feedReason: { ...n.listReason, marginBottom: spacing[14] },
+  feedMeta: { ...t.caption },
   articleTitle: { ...t.itemTitle },
   excerpt: { ...t.detail },
-  reason: { ...t.status },
   actionRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing[8] },
-  detailHeading: { gap: spacing[12], paddingTop: spacing[8] },
-  detailTitle: { ...t.pageTitle },
-  reasonBox: { padding: spacing[14], borderRadius: r.field },
-  body: { ...t.message, lineHeight: 28 },
+  detailHeading: { gap: spacing[18], paddingTop: spacing[12] },
+  detailTitle: { ...n.detailTitle },
+  detailReason: { ...n.detailReason, marginTop: spacing[8] },
+  detailNote: { ...n.detailNote, marginTop: spacing[8] },
+  bodyOpen: { marginTop: spacing[8] },
+  body: { ...n.detailBody },
+  sourceHeading: { gap: spacing[12], paddingTop: spacing[8] },
+  sourceTitle: { ...t.pageTitle },
   sectionLine: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: spacing[20], gap: spacing[14] },
   comment: { paddingBottom: spacing[16], borderBottomWidth: StyleSheet.hairlineWidth, gap: spacing[8] },
   commentInput: { minHeight: 104 },
