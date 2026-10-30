@@ -56,10 +56,11 @@ for (const theme of availableThemes) {
   test(`${mode} 普通文字与表面保持可读对比`, () => {
     const c = theme.colors;
     for (const foreground of ['ink', 'muted', 'faint']) {
-      for (const background of ['canvas', 'surface']) {
+      for (const background of ['canvas', 'surface', 'newsCard']) {
         assert.ok(contrast(c[foreground], c[background]) >= 4.5, `${mode} ${foreground}/${background}`);
       }
     }
+    assert.ok(contrast(c.newsCard, c.surface) >= 1.1, `${mode} 新闻卡片须与内容区可辨`);
   });
   test(`${mode} 蓝色消息气泡使用独立白色前景`, () => {
     const c = theme.colors;

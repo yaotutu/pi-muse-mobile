@@ -142,24 +142,23 @@ test('会话动态按 OpenMuse 极简时间线展示真实状态，去除冗余�
   assert.doesNotMatch(execution, /查看活动历史|状态说明/);
 });
 
-test('会话和任务顶层导航复用受控分段，旧标签和切换语义保留', () => {
+test('会话复用整组分段，新闻使用紧凑受控文字Tab', () => {
   const control = read('src/ui/SegmentedControl.tsx');
   const session = read('src/workspace/SessionPanel.tsx');
-  const jobs = read('src/workspace/JobsPanel.tsx');
+  const news = read('src/workspace/NewsPage.tsx');
   assert.match(session, /<SegmentedControl value=\{tab\} options=\{TABS\}/);
-  assert.match(jobs, /<SegmentedControl value=\{tab\} options=\{tabs\}/);
+  assert.doesNotMatch(news, /<SegmentedControl/);
+  assert.match(news, /\(\['recommended', 'all'\] as const\)\.map/);
+  assert.match(news, /store\.setView\(view\)/);
+  assert.match(news, /aria-selected=\{snapshot\.view === view\}/);
   for (const [id, label] of [['activity', '动态'], ['approvals', '审批'], ['workspace', '工作区'], ['history', '历史']]) {
     assert.match(session, new RegExp(`label: '${label}'.*testID: 'workspace-session-tab-${id}'`));
-  }
-  for (const [id, label] of [['activity', '活动历史'], ['jobs', '定时任务'], ['monitors', '网页监控']]) {
-    assert.match(jobs, new RegExp(`label: '${label}'.*testID: 'tasks-tab-${id}'`));
   }
   assert.match(session, /next === 'history'\) setHistoryActivityId\(undefined\)/);
   assert.match(control, /accessibilityState=\{\{ selected, disabled: locked, busy \}\}/);
   assert.match(control, /if \(locked \|\| !options.length\) return/);
   for (const key of ['ArrowLeft', 'ArrowRight', 'Home', 'End']) assert.match(control, new RegExp(key));
   assert.doesNotMatch(session, /onKeyDown|tabSelected|tabLabelSelected/);
-  assert.doesNotMatch(jobs, /tabSelected|tabLabelSelected/);
 });
 
 test('共享分段仅用一块底板位移，初次和尺寸变化直定位，减少动画时静止', () => {
@@ -239,7 +238,7 @@ test('侧栏只切换或创建空间，不复制参考产品的功能导航；�
   assert.match(source, /accessibilityLabel="搜索空间"/);
   assert.match(source, /no-hide-descendants/);
   assert.doesNotMatch(source, /label: '点子'|label: '资源库'|label: '旁聊'/);
-  for (const page of ['chat', 'activity', 'goals', 'settings']) assert.match(source, new RegExp(`id: '${page}'`));
+  for (const page of ['chat', 'news', 'goals', 'settings']) assert.match(source, new RegExp(`id: '${page}'`));
 });
 
 test('放弃 failed 暂存须二次确认并回读权威历史，当前草稿保持独立', () => {
@@ -260,7 +259,7 @@ test('四个主页面始终显示图标与标题，并使用同一导航高度',
   assert.match(navigation, /accessibilityState=\{\{ selected: page === id \}\}/);
   assert.doesNotMatch(navigation, /page\s*[!=]==?\s*'chat'\s*&&\s*<Text|chatNavigation/);
   assert.doesNotMatch(source, /chatNavigation/);
-  for (const label of ['聊天', '任务', '目标', '设置']) assert.match(source, new RegExp(`label: '${label}'`));
+  for (const label of ['聊天', '新闻', '目标', '设置']) assert.match(source, new RegExp(`label: '${label}'`));
 });
 
 test('重置入口只在可用连接的设置页末组，会话面板从 Tab 开始且不再持有重置回调', () => {

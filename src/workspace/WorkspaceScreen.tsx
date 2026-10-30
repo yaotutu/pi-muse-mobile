@@ -1,11 +1,11 @@
 import { Card } from '../ui/Surfaces';
-import { BookOpen, Check, ChevronRight, Download, Menu, MessageCircle, Moon, PanelsTopLeft, RotateCcw, Search, Server, Settings, SquareCheck, SquarePen, UserRound, X, type LucideIcon } from 'lucide-react-native';
+import { BookOpen, Check, ChevronRight, Download, Menu, MessageCircle, Moon, Newspaper, RotateCcw, Search, Server, Settings, SquareCheck, SquarePen, UserRound, X, type LucideIcon } from 'lucide-react-native';
 import { BlurTargetView } from 'expo-blur';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ThemeStatusBar } from '../theme/ThemeStatusBar';
-import { Animated, BackHandler, Easing, Keyboard, KeyboardAvoidingView, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Animated, AppState, BackHandler, Easing, Keyboard, KeyboardAvoidingView, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ApiProvider } from '../api/ApiProvider';
+import { ApiProvider, useApi } from '../api/ApiProvider';
 import { ConnectionProvider, useServiceConnection } from '../connection/ConnectionProvider';
 import { useConnection } from '../connection/useConnection';
 import type { ConnectionManager } from '../connection/connection-manager';
@@ -19,7 +19,8 @@ import { useSpaces } from '../spaces/useSpaces';
 import { useAppUpdate } from '../update/UpdateProvider';
 import { spacing, sizing, workspaceTheme, type WorkspaceColors } from '../ui/tokens';
 import { ConnectionPanel } from './ConnectionPanel';
-import { TasksPage } from './JobsPanel';
+import { NewsPage } from './NewsPage';
+import { createNewsStore } from '../news/news-store';
 import { useJobs } from '../jobs/JobProvider';
 import { useMonitors } from '../monitors/MonitorProvider';
 import { GoalsPanel } from './GoalsPanel';
@@ -45,12 +46,12 @@ import { FrostedSurface } from '../ui/FrostedSurface';
 import { ActionButton } from '../ui/ActionButton';
 import { FormInput } from '../ui/FormInput';
 
-type WorkspacePage = 'chat' | 'activity' | 'goals' | 'settings';
+type WorkspacePage = 'chat' | 'news' | 'goals' | 'settings';
 type SettingsSubpage = 'memory' | 'profile' | 'dream' | null;
 type WorkspaceNotice = { text: string; tone: 'success' | 'error' };
 const { layout: l, radius: r, typography: t } = workspaceTheme;
 const NAV: { id: WorkspacePage; label: string; icon: LucideIcon }[] = [
-  { id: 'chat', label: '聊天', icon: MessageCircle }, { id: 'activity', label: '任务', icon: PanelsTopLeft },
+  { id: 'chat', label: '聊天', icon: MessageCircle }, { id: 'news', label: '新闻', icon: Newspaper },
   { id: 'goals', label: '目标', icon: SquareCheck }, { id: 'settings', label: '设置', icon: Settings },
 ];
 function useStyles() { const { colors } = useTheme(); return useMemo(() => createStyles(colors), [colors]); }
@@ -144,7 +145,7 @@ function DisconnectedWorkspace({ snapshot, openConnection }: WorkspaceConnection
 function Navigation({ page, onPage }: { page: WorkspacePage; onPage: (page: WorkspacePage) => void }) {
   const styles = useStyles(); const { colors } = useTheme();
   return <View accessibilityRole="tablist" accessibilityLabel="主要页面" style={styles.navigation}>
-    {NAV.map(({ id, label, icon: Icon }) => <Pressable key={id} accessibilityRole="tab" accessibilityLabel={label} accessibilityState={{ selected: page === id }} aria-selected={page === id} onPress={() => onPage(id)} style={({ pressed }) => [styles.navigationItem, pressed && styles.pressed]}>
+    {NAV.map(({ id, label, icon: Icon }) => <Pressable key={id} accessibilityRole="tab" accessibilityLabel={label} accessibilityState={{ selected: page === id }} aria-selected={page === id} testID={`workspace-tab-${id}`} onPress={() => onPage(id)} style={({ pressed }) => [styles.navigationItem, pressed && styles.pressed]}>
       <Icon size={l.navigationIconSize} strokeWidth={1.8} color={page === id ? colors.ink : colors.faint} fill={id === 'chat' && page === id ? colors.ink : 'none'} />
       <Text style={[styles.navigationLabel, page === id && styles.navigationLabelSelected]}>{label}</Text>
     </Pressable>)}
@@ -152,6 +153,9 @@ function Navigation({ page, onPage }: { page: WorkspacePage; onPage: (page: Work
 }
 
 function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
+  const api = useApi();
+  // 连接键改变会卸载整层；新闻 Store 在此持续挂载，切空间与重置会话不会丢草稿。
+  const [news] = useState(() => createNewsStore(api));
   const connection = useServiceConnection();
   const spaces = useSpaces(!!connection?.enabled, snapshot.refreshVersion);
   const session = useSpaceState(spaces.currentSpace);
@@ -163,6 +167,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
   const { store: goals } = useGoals();
   const runtime = useSpaceRuntime(spaces.currentSpace);
   const [page, setPage] = useState<WorkspacePage>('chat');
+  const [newsManaging, setNewsManaging] = useState(false);
   const [settingsSubpage, setSettingsSubpage] = useState<SettingsSubpage>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [sessionOpen, setSessionOpen] = useState(false);
@@ -194,6 +199,15 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
   const headerNames = headerSpaceNames(labels, spaces.currentSpace, keyboardVisible);
   const reloadSpaces = spaces.reload;
   const refresh = useCallback((spaceId = spaces.currentSpace) => { void reloadSpaces(); activities.invalidate(); jobs.invalidate(); monitors.invalidate(); goals.invalidate(); setHistoryRefresh((value) => ({ ...value, [spaceId]: (value[spaceId] ?? 0) + 1 })); }, [reloadSpaces, activities, jobs, monitors, goals, spaces.currentSpace]);
+  useEffect(() => {
+    news.setActive(AppState.currentState === 'active');
+    const subscription = AppState.addEventListener('change', (state) => news.setActive(state === 'active'));
+    return () => { subscription.remove(); news.dispose(); };
+  }, [news]);
+  useEffect(() => {
+    if (page === 'news') news.open();
+    else news.close();
+  }, [news, page]);
   useEffect(() => {
     // ready 不重放通知历史；空间绑定与当前聊天都要回到服务端权威事实。
     if (runtime.synchronized) void reloadSpaces();
@@ -227,16 +241,20 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
   }, [session.deleting, session.resetting]);
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      const action = workspaceBackAction({ keyboardVisible, sessionMounted, drawerOpen, page, settingsSubpage, goalCreating: !!goals.getSnapshot().creator });
+      const action = workspaceBackAction({ keyboardVisible, sessionMounted, drawerOpen, page, newsArticleOpen: !!news.getSnapshot().selectedArticleId,
+        newsManaging, settingsSubpage, goalCreating: !!goals.getSnapshot().creator });
       if (action === 'keyboard') { pendingSessionOpen.current = false; Keyboard.dismiss(); }
       else if (action === 'session') closeSession();
       else if (action === 'drawer') setDrawerOpen(false);
+      else if (action === 'news-article') news.closeArticle();
+      else if (action === 'news-sources') setNewsManaging(false);
+      else if (action === 'chat') setPage('chat');
       else if (action === 'settings') setSettingsSubpage(null);
       else if (action === 'goal' && !goals.getSnapshot().writing) goals.cancelCreate();
       return action !== 'none';
     });
     return () => subscription.remove();
-  }, [drawerOpen, keyboardVisible, sessionMounted, closeSession, page, settingsSubpage, goals]);
+  }, [drawerOpen, keyboardVisible, sessionMounted, closeSession, page, news, newsManaging, settingsSubpage, goals]);
   const openSession = useCallback(() => {
     setDrawerOpen(false);
     if (keyboardVisible) { pendingSessionOpen.current = true; Keyboard.dismiss(); return; }
@@ -276,7 +294,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
   }), [drawerOpen, openDrawer, sessionMounted]);
   const otherPage = page === 'chat' ? null : page === 'settings' ? <SettingsPage snapshot={snapshot} openConnection={openConnection} memoryAvailable profileAvailable dreamAvailable currentSpaceId={spaces.currentSpace}
     subpage={settingsSubpage} onSubpage={setSettingsSubpage}
-    onReset={connection?.enabled ? () => { setResetError(undefined); setResetTarget(spaces.currentSpace); } : undefined} /> : page === 'activity' ? !sessionOpen && <TasksPage spaceId={spaces.currentSpace} /> : !sessionOpen && <GoalsPanel />;
+    onReset={connection?.enabled ? () => { setResetError(undefined); setResetTarget(spaces.currentSpace); } : undefined} /> : page === 'news' ? <NewsPage store={news} managing={newsManaging} onManaging={setNewsManaging} /> : !sessionOpen && <GoalsPanel />;
   const sessionSettings = <>{deleteConfirm ? <Card style={styles.exampleCard} tone="danger"><Text style={styles.itemTitle}>确认删除当前空间？</Text><Text style={styles.mutedText}>空间的全部聊天历史及其消息反馈（喜欢/不喜欢/评论及操作记录）、工作区文件、规则、技能和绑定的定时任务、监控将被彻底删除，无法撤销。</Text>
         <View style={styles.confirmActions}>
           <ActionButton label="确认删除空间" text={session.deleting ? '正在删除…' : '确认删除'} tone="danger" busy={session.deleting} onPress={() => void remove()} />

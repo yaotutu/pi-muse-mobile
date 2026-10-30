@@ -177,3 +177,12 @@ test('目标创建态 Back 先由创建流程消费，不落到系统退出', ()
   assert.equal(workspaceBackAction(state), 'goal');
   assert.equal(workspaceBackAction({ ...state, goalCreating: false }), 'none');
 });
+
+test('新闻 Back 先关闭键盘和阅读子页，再回聊天', () => {
+  const state = { keyboardVisible: true, sessionMounted: false, drawerOpen: false, page: 'news',
+    newsArticleOpen: true, newsManaging: true, settingsSubpage: null, goalCreating: false };
+  assert.equal(workspaceBackAction(state), 'keyboard');
+  assert.equal(workspaceBackAction({ ...state, keyboardVisible: false }), 'news-article');
+  assert.equal(workspaceBackAction({ ...state, keyboardVisible: false, newsArticleOpen: false }), 'news-sources');
+  assert.equal(workspaceBackAction({ ...state, keyboardVisible: false, newsArticleOpen: false, newsManaging: false }), 'chat');
+});

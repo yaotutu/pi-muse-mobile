@@ -24,14 +24,14 @@ test('共享控件保留受控输入、选择语义及最小点击区', () => {
 
 test('各页面共用文字操作与输入，保留专用聊天输入和安全属性', () => {
   const pages = ['ActivityPanel', 'ApprovalPanel', 'ConnectionPanel', 'DreamPanel', 'FilesPanel',
-    'GoalsPanel', 'JobsPanel', 'MemoryPanel', 'MonitorsPanel', 'ProfilePanel', 'SpaceSettings', 'WorkspaceScreen'];
+    'GoalsPanel', 'MemoryPanel', 'NewsPage', 'ProfilePanel', 'SpaceSettings', 'WorkspaceScreen'];
   for (const page of pages) {
     const source = read(`workspace/${page}.tsx`);
     assert.match(source, /<ActionButton\b/, `${page} 使用共享文字操作`);
     assert.doesNotMatch(source, /function (?:Button|Action)\(/, `${page} 不保留页内按钮工厂`);
     assert.doesNotMatch(source, /<TextInput\b/, `${page} 不保留裸输入`);
   }
-  for (const page of ['ConnectionPanel', 'DreamPanel', 'FilesPanel', 'GoalsPanel', 'JobsPanel',
+  for (const page of ['ConnectionPanel', 'DreamPanel', 'FilesPanel', 'GoalsPanel', 'NewsPage',
     'MemoryPanel', 'ProfilePanel', 'SpaceSettings', 'WorkspaceScreen']) {
     assert.match(read(`workspace/${page}.tsx`), /<FormInput\b/, `${page} 使用共享输入`);
   }

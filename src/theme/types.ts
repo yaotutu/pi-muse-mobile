@@ -5,6 +5,7 @@ export type ThemeAppearance = 'light' | 'dark';
 export type ThemeColors = Readonly<{
   canvas: string;
   surface: string;
+  newsCard: string;
   control: string;
   floatingSurface: string;
   floatingLine: string;
