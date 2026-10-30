@@ -7,6 +7,7 @@ const { canOpenMeasuredNewsMenu, createArticlePressGuard, newsActionPresentation
   await import('../src/news/news-action-interaction.ts');
 const { newsFeedDateLabel, newsListExcerpt } = await import('../src/news/news-feed-display.ts');
 const { themeTokens } = await import('../src/theme/tokens.ts');
+const { themeRegistry } = await import('../src/theme/registry.ts');
 
 test('列表预览只去除独立的 RSS 链接行，详情原文仍由原字段显示（本地夹具）', () => {
   const linkOnly = 'Article URL: https://example.com/story\r\nComments URL: https://example.com/comments';
@@ -52,15 +53,34 @@ test('列表以标题和两行正文开篇，一行推荐理由与来源时间�
   assert.doesNotMatch(card, /查看内容|styles\.readMore|<Card\b/);
   assert.match(page, /viewTabs: \{ flex: 1, minWidth: 0/);
   assert.match(page, /textTab: \{ flex: 1, minWidth: 0, minHeight: l\.smallControl/);
-  assert.match(page, /articleOpen: \{ minHeight: l\.smallControl \}/);
-  assert.match(page, /article: \{ paddingTop: n\.listItemTop, paddingBottom: n\.listItemBottom/);
+  assert.match(page, /articleOpen: \{ minHeight: l\.smallControl, padding: n\.cardContentInset \}/);
   assert.match(page, /feedTitle: \{[^\n]*marginBottom: spacing\[12\]/);
   assert.match(page, /feedExcerpt: \{[^\n]*marginBottom: spacing\[18\]/);
   assert.match(page, /feedReason: \{[^\n]*marginBottom: spacing\[14\]/);
   assert.doesNotMatch(card, /borderBottomColor|styles\.reasonBox/);
-  assert.ok(themeTokens.newsReading.listItemTop + themeTokens.newsReading.listItemBottom >= 48);
   assert.ok(themeTokens.newsReading.listTitle.fontSize > themeTokens.newsReading.listExcerpt.fontSize);
   assert.ok(themeTokens.newsReading.listExcerpt.fontSize > themeTokens.newsReading.listReason.fontSize);
+});
+
+test('三主题新闻列表具有独立背景与浮起卡片，原阅读目标覆盖卡片内容', () => {
+  const page = read('workspace/NewsPage.tsx');
+  const card = page.split('function ArticleCard(')[1].split('function UncertainArticle(')[0];
+  for (const [id, theme] of Object.entries(themeRegistry)) {
+    assert.notEqual(theme.colors.newsCard, theme.colors.surface, `${id} 卡片需与内容区区分`);
+  }
+  assert.match(page, /style=\{\{ backgroundColor: colors\.surface \}\}[\s\S]*?contentContainerStyle=\{styles\.readerContent\}/);
+  assert.match(card, /backgroundColor: colors\.newsCard, borderColor: colors\.floatingLine/);
+  assert.match(card, /boxShadow: \[\{ offsetX: 0, offsetY: n\.cardShadowOffset, blurRadius: n\.cardShadowBlur, color: colors\.overlay \}\]/);
+  assert.match(page, /article: \{ marginTop: n\.cardGap, borderRadius: n\.cardRadius, borderWidth: 1 \}/);
+  assert.ok(themeTokens.newsReading.cardGap >= 16);
+  assert.ok(themeTokens.newsReading.cardSideInset < themeTokens.layout.sidePadding, '窄屏卡片应保留阅读宽度');
+  assert.ok(themeTokens.newsReading.cardContentInset >= 16);
+  assert.doesNotMatch(page, /overflow: 'hidden'/);
+  assert.match(card, /<Pressable ref=\{articleRef\}[\s\S]*?onPressIn=\{pressGuard\.begin\} onLongPress=/);
+  assert.match(card, /onOpenActions\(article\.id, articleRef\.current\)/);
+  assert.match(card, /\(hasBadge \|\| uncertain\) && <View style=\{styles\.articleExtras\}>/);
+  assert.match(card, /<NewsFeedbackBadge/);
+  assert.match(card, /<UncertainArticle/);
 });
 
 test('详情完整显示原始 RSS 正文与推荐理由，阅读行距不影响长按入口', () => {

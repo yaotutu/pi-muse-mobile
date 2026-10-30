@@ -10,7 +10,7 @@ import { IconControl } from '../ui/IconControl';
 import { Card } from '../ui/Surfaces';
 import { safeMessageUrl } from '../chat/message-links';
 import { NewsArticleActions, NewsFeedbackBadge } from '../news/NewsArticleActions';
-import { canOpenMeasuredNewsMenu, createArticlePressGuard, newsActionLocked } from '../news/news-action-interaction';
+import { canOpenMeasuredNewsMenu, createArticlePressGuard, newsActionLocked, newsActionPresentation } from '../news/news-action-interaction';
 import { newsFeedDateLabel, newsListExcerpt } from '../news/news-feed-display';
 import type { NewsStore } from '../news/news-store';
 import type { NewsArticle, NewsSnapshot } from '../news/types';
@@ -54,8 +54,11 @@ function ArticleCard({ article, store, snapshot, onOpenActions }: { article: New
   const [pressGuard] = useState(createArticlePressGuard);
   const work = snapshot.articleWork[article.id];
   const uncertain = !!work && (work.reactionUncertain || work.savedUncertain || work.commentUncertain);
+  const hasBadge = newsActionPresentation(article.feedback).hasBadge;
   const excerpt = newsListExcerpt(article.content);
-  return <View style={styles.article}>
+  return <View style={[styles.article, { backgroundColor: colors.newsCard, borderColor: colors.floatingLine,
+    boxShadow: [{ offsetX: 0, offsetY: n.cardShadowOffset, blurRadius: n.cardShadowBlur, color: colors.overlay }] }]}>
+    {/* 整篇阅读区仍是原 Pressable 和测量目标；卡片外观不裁剪阴影或改变菜单锚点。 */}
     <Pressable ref={articleRef} accessibilityRole="button" accessibilityLabel={`阅读文章，${article.title}`}
       accessibilityActions={[{ name: 'openNewsActions', label: '打开文章操作' }]}
       onAccessibilityAction={(event) => { if (event.nativeEvent.actionName === 'openNewsActions') onOpenActions(article.id, articleRef.current); }}
@@ -68,8 +71,10 @@ function ArticleCard({ article, store, snapshot, onOpenActions }: { article: New
         style={[styles.feedReason, { color: colors.muted }]}>推荐理由 · {article.recommendation.reason}</Text>}
       <Text style={[styles.feedMeta, { color: colors.faint }]}>{article.sourceTitle} · {newsFeedDateLabel(article.publishedAt)}</Text>
     </Pressable>
-    <NewsFeedbackBadge article={article} onOpen={(target) => onOpenActions(article.id, target)} />
-    {uncertain && <UncertainArticle articleId={article.id} snapshot={snapshot} store={store} />}
+    {(hasBadge || uncertain) && <View style={styles.articleExtras}>
+      {hasBadge && <NewsFeedbackBadge article={article} onOpen={(target) => onOpenActions(article.id, target)} />}
+      {uncertain && <UncertainArticle articleId={article.id} snapshot={snapshot} store={store} />}
+    </View>}
   </View>;
 }
 
@@ -270,7 +275,8 @@ export function NewsPage({ store, managing, onManaging }: { store: NewsStore; ma
     ? <ArticleDetail store={store} snapshot={snapshot} onOpenActions={openActions}
       focusComments={focusCommentsId === snapshot.selectedArticleId} onCommentsFocused={() => setFocusCommentsId(null)} />
     : managing ? <Sources store={store} snapshot={snapshot} onBack={() => onManaging(false)} />
-      : <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.readerContent} testID="news-page">
+      : <ScrollView keyboardShouldPersistTaps="handled" style={{ backgroundColor: colors.surface }}
+          contentContainerStyle={styles.readerContent} testID="news-page">
     {/* 首屏只保留一个受控导航与三个必要操作；抓取状态和时间留在来源管理。 */}
     <View style={styles.readerToolbar}>
       <View accessibilityRole="tablist" accessibilityLabel="新闻视图" style={styles.viewTabs}>
@@ -317,8 +323,9 @@ export function NewsPage({ store, managing, onManaging }: { store: NewsStore; ma
 
 const styles = StyleSheet.create({
   content: { paddingHorizontal: l.sidePadding, paddingTop: spacing[16], paddingBottom: spacing[34], gap: spacing[18] },
-  readerContent: { paddingHorizontal: l.sidePadding, paddingTop: spacing[4], paddingBottom: spacing[34], gap: spacing[4] },
-  readerToolbar: { minHeight: l.smallControl, flexDirection: 'row', alignItems: 'center', gap: spacing[4] },
+  readerContent: { paddingHorizontal: n.cardSideInset, paddingTop: spacing[4], paddingBottom: spacing[34], gap: spacing[4] },
+  readerToolbar: { minHeight: l.smallControl, marginHorizontal: l.sidePadding - n.cardSideInset,
+    flexDirection: 'row', alignItems: 'center', gap: spacing[4] },
   viewTabs: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'stretch', gap: spacing[2] },
   textTab: { flex: 1, minWidth: 0, minHeight: l.smallControl, paddingHorizontal: spacing[4], paddingVertical: spacing[8], borderRadius: r.field,
     alignItems: 'center', justifyContent: 'center' },
@@ -329,8 +336,9 @@ const styles = StyleSheet.create({
   sectionHeading: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: spacing[8] },
   sectionTitle: { ...t.section },
   meta: { ...t.caption },
-  article: { paddingTop: n.listItemTop, paddingBottom: n.listItemBottom, gap: spacing[12] },
-  articleOpen: { minHeight: l.smallControl },
+  article: { marginTop: n.cardGap, borderRadius: n.cardRadius, borderWidth: 1 },
+  articleOpen: { minHeight: l.smallControl, padding: n.cardContentInset },
+  articleExtras: { paddingHorizontal: n.cardContentInset, paddingBottom: n.cardContentInset, gap: spacing[12] },
   feedTitle: { ...n.listTitle, fontWeight: '600', marginBottom: spacing[12] },
   feedExcerpt: { ...n.listExcerpt, marginBottom: spacing[18] },
   feedReason: { ...n.listReason, marginBottom: spacing[14] },

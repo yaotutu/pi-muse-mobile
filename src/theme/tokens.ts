@@ -220,8 +220,12 @@ export const themeTokens = {
   },
   /** 新闻阅读流独有的文字层级与留白；来源管理仍使用通用组件规格。 */
   newsReading: {
-    listItemTop: 24,
-    listItemBottom: 28,
+    cardSideInset: 12,
+    cardContentInset: 16,
+    cardGap: 16,
+    cardRadius: 20,
+    cardShadowOffset: 2,
+    cardShadowBlur: 8,
     listTitle: { fontSize: 18, lineHeight: 27, letterSpacing: -0.2 },
     listExcerpt: { fontSize: 15, lineHeight: 24 },
     listReason: { fontSize: 13, lineHeight: 20 },
