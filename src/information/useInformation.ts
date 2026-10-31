@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApi } from '../api/ApiProvider';
 import { isRequestCancelled } from '../api/errors';
-import { addSmsListener, isSmsReceiverAvailable } from '../../modules/sms-receiver';
+import {
+  addSmsListener,
+  checkSmsPermission,
+  isSmsReceiverAvailable,
+  requestSmsPermission,
+} from '../../modules/sms-receiver';
 import type {
   InformationItem,
   InformationPreferences,
@@ -18,10 +23,37 @@ export function useInformation(spaceId: string) {
   const [saving, setSaving] = useState(false);
   const [ingesting, setIngesting] = useState(false);
   const [triggering, setTriggering] = useState(false);
+  const [hasSmsPermission, setHasSmsPermission] = useState<boolean | null>(null);
   const [error, setError] = useState<string | undefined>();
   const [notice, setNotice] = useState<string | undefined>();
 
   const abortRef = useRef<AbortController | null>(null);
+
+  const checkPermission = useCallback(async () => {
+    if (!isSmsReceiverAvailable()) {
+      setHasSmsPermission(false);
+      return false;
+    }
+    const granted = await checkSmsPermission();
+    setHasSmsPermission(granted);
+    return granted;
+  }, []);
+
+  const requestPermission = useCallback(async () => {
+    if (!isSmsReceiverAvailable()) {
+      setHasSmsPermission(false);
+      return false;
+    }
+    const granted = await requestSmsPermission();
+    setHasSmsPermission(granted);
+    if (granted) {
+      setNotice('已授予短信接收权限，自动监听已就绪');
+      setError(undefined);
+    } else {
+      setError('未授予短信权限，无法自动监听新短信');
+    }
+    return granted;
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -55,6 +87,21 @@ export function useInformation(spaceId: string) {
       controller.abort();
     };
   }, [api, spaceId]);
+
+  useEffect(() => {
+    if (!isSmsReceiverAvailable()) {
+      return;
+    }
+    let active = true;
+    void checkSmsPermission().then((granted) => {
+      if (active) {
+        setHasSmsPermission(granted);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const reload = useCallback(async () => {
     const controller = new AbortController();
@@ -156,7 +203,7 @@ export function useInformation(spaceId: string) {
   }, [api, spaceId, triggering]);
 
   useEffect(() => {
-    if (!settings?.enabled || !isSmsReceiverAvailable()) {
+    if (!settings?.enabled || !isSmsReceiverAvailable() || hasSmsPermission === false) {
       return;
     }
     const sub = addSmsListener((event) => {
@@ -167,7 +214,7 @@ export function useInformation(spaceId: string) {
     return () => {
       sub.remove();
     };
-  }, [settings?.enabled, ingestSms]);
+  }, [settings?.enabled, hasSmsPermission, ingestSms]);
 
   return {
     settings,
@@ -186,6 +233,9 @@ export function useInformation(spaceId: string) {
     ingestSms,
     triggerRun,
     isSmsAvailable: isSmsReceiverAvailable(),
+    hasSmsPermission,
+    checkPermission,
+    requestPermission,
     reload,
   };
 }

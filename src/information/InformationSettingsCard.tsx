@@ -2,7 +2,7 @@ import { FeedbackNotice } from '../ui/Feedback';
 import { Card } from '../ui/Surfaces';
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Check, Inbox, Play, Send } from 'lucide-react-native';
+import { Check, Inbox, Play, Send, ShieldAlert, ShieldCheck } from 'lucide-react-native';
 import { workspaceTheme, spacing } from '../ui/tokens';
 import { useTheme } from '../theme/ThemeProvider';
 import { ActionButton } from '../ui/ActionButton';
@@ -35,6 +35,20 @@ export function InformationSettingsCard({ spaceId }: { spaceId: string }) {
     sampleButton: { paddingHorizontal: spacing[10], paddingVertical: spacing[6], backgroundColor: colors.control, borderRadius: workspaceTheme.radius.card, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
     sampleButtonText: { ...workspaceTheme.typography.caption, color: colors.ink },
     subSection: { gap: spacing[8], marginTop: spacing[8], borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingTop: spacing[12] },
+    headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    statusBanner: { flexDirection: 'row', alignItems: 'center', gap: spacing[8], padding: spacing[10], borderRadius: workspaceTheme.radius.card, backgroundColor: colors.successSoft },
+    statusBannerText: { ...workspaceTheme.typography.caption, color: colors.ink, flex: 1 },
+    permissionBox: { gap: spacing[8], padding: spacing[10], borderRadius: workspaceTheme.radius.card, backgroundColor: colors.warningSoft },
+    permissionText: { ...workspaceTheme.typography.caption, color: colors.ink },
+    itemList: { gap: spacing[8], marginTop: spacing[4] },
+    itemCard: { padding: spacing[10], backgroundColor: colors.control, borderRadius: workspaceTheme.radius.card, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line, gap: spacing[4] },
+    itemHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing[8] },
+    statusTag: { paddingHorizontal: spacing[6], paddingVertical: spacing[2], borderRadius: workspaceTheme.radius.round },
+    statusPending: { backgroundColor: colors.warningSoft },
+    statusProcessed: { backgroundColor: colors.surface },
+    statusTagText: { ...workspaceTheme.typography.caption, fontSize: 11, fontWeight: '600' },
+    itemSource: { ...workspaceTheme.typography.caption, color: colors.muted, flex: 1 },
+    itemContent: { ...workspaceTheme.typography.detail, color: colors.ink },
     badge: { alignSelf: 'flex-start', paddingHorizontal: spacing[8], paddingVertical: spacing[4], backgroundColor: colors.control, borderRadius: workspaceTheme.radius.round },
     badgeText: { ...workspaceTheme.typography.caption, color: colors.muted },
   }), [colors]);
@@ -107,9 +121,33 @@ export function InformationSettingsCard({ spaceId }: { spaceId: string }) {
 
           <View style={styles.subSection}>
             <Text style={styles.text}>短信接入与测试</Text>
-            <Text style={styles.caption}>
-              {info.isSmsAvailable ? 'Android 原生短信监听已开启：收到新短信时将自动上报；也可手动输入测试：' : '点击下方样例或输入短信正文，上报到当前空间待处理队列：'}
-            </Text>
+            {info.isSmsAvailable ? (
+              info.hasSmsPermission === true ? (
+                <View style={styles.statusBanner}>
+                  <ShieldCheck size={16} strokeWidth={2} color={colors.success} />
+                  <Text style={styles.statusBannerText}>
+                    Android 原生短信监听已激活：新收到的短信将自动上报至待处理队列。
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.permissionBox}>
+                  <View style={styles.itemHeader}>
+                    <ShieldAlert size={16} strokeWidth={2} color={colors.warning} />
+                    <Text style={styles.permissionText}>尚未开启系统短信读取权限，无法自动监听新短信。</Text>
+                  </View>
+                  <ActionButton
+                    label="授权短信读取权限"
+                    text="授权短信读取权限"
+                    tone="secondary"
+                    onPress={() => void info.requestPermission()}
+                  />
+                </View>
+              )
+            ) : (
+              <Text style={styles.caption}>
+                当前环境不支持原生短信监听，可点击下方样例或手动输入短信文本上报测试：
+              </Text>
+            )}
             <View style={styles.buttonRow}>
               <Pressable
                 style={styles.sampleButton}
@@ -160,6 +198,44 @@ export function InformationSettingsCard({ spaceId }: { spaceId: string }) {
                 />
               )}
             </View>
+          </View>
+
+          <View style={styles.subSection}>
+            <View style={styles.headerRow}>
+              <Text style={styles.text}>待处理与历史信息</Text>
+              {info.items.length > 0 && (
+                <Text style={styles.caption}>{info.items.length} 条记录</Text>
+              )}
+            </View>
+            {info.items.length > 0 ? (
+              <View style={styles.itemList}>
+                {info.items.slice(0, 4).map((item) => (
+                  <View key={item.id} style={styles.itemCard}>
+                    <View style={styles.itemHeader}>
+                      <View style={[
+                        styles.statusTag,
+                        item.status === 'pending' ? styles.statusPending : styles.statusProcessed,
+                      ]}>
+                        <Text style={[
+                          styles.statusTagText,
+                          { color: item.status === 'pending' ? colors.warning : colors.muted },
+                        ]}>
+                          {item.status === 'pending' ? '待分析' : item.status === 'processed' ? '已分析' : item.status}
+                        </Text>
+                      </View>
+                      <Text style={styles.itemSource} numberOfLines={1}>
+                        {item.title || item.source}
+                      </Text>
+                    </View>
+                    <Text style={styles.itemContent} numberOfLines={2}>
+                      {item.content}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <Text style={styles.caption}>暂无上报信息。收到短信或手动上报后将在此列出。</Text>
+            )}
           </View>
         </>
       )}

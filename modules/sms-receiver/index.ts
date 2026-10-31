@@ -1,5 +1,5 @@
 import { requireNativeModule, type EventSubscription } from "expo-modules-core";
-import { Platform } from "react-native";
+import { PermissionsAndroid, Platform } from "react-native";
 
 export type SmsEvent = {
   sender: string;
@@ -26,6 +26,33 @@ export function isSmsReceiverAvailable(): boolean {
   return !!SmsReceiverNative;
 }
 
+export async function checkSmsPermission(): Promise<boolean> {
+  if (Platform.OS !== "android" || !SmsReceiverNative) return false;
+  try {
+    return await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.RECEIVE_SMS);
+  } catch {
+    return false;
+  }
+}
+
+export async function requestSmsPermission(): Promise<boolean> {
+  if (Platform.OS !== "android" || !SmsReceiverNative) return false;
+  try {
+    const granted = await PermissionsAndroid.request(
+      PermissionsAndroid.PERMISSIONS.RECEIVE_SMS,
+      {
+        title: "短信自动整理权限",
+        message: "Pi Muse 需要短信读取与接收权限，以自动整理快递码、验证码与账单等重要信息。",
+        buttonPositive: "允许",
+        buttonNegative: "拒绝",
+      }
+    );
+    return granted === PermissionsAndroid.RESULTS.GRANTED;
+  } catch {
+    return false;
+  }
+}
+
 export function addSmsListener(listener: (event: SmsEvent) => void): EventSubscription {
   if (!SmsReceiverNative) {
     return { remove: () => {} };
@@ -35,5 +62,7 @@ export function addSmsListener(listener: (event: SmsEvent) => void): EventSubscr
 
 export default {
   isAvailable: isSmsReceiverAvailable,
+  checkPermission: checkSmsPermission,
+  requestPermission: requestSmsPermission,
   addListener: addSmsListener,
 };

@@ -19,6 +19,12 @@ export const Platform = {
   OS: 'android',
   select: (obj) => obj.android ?? obj.default,
 };
+export const PermissionsAndroid = {
+  PERMISSIONS: { RECEIVE_SMS: 'android.permission.RECEIVE_SMS' },
+  RESULTS: { GRANTED: 'granted', DENIED: 'denied', NEVER_ASK_AGAIN: 'never_ask_again' },
+  check: async () => false,
+  request: async () => 'denied',
+};
 `;
       return { url: 'data:text/javascript,' + encodeURIComponent(stub), shortCircuit: true };
     }
