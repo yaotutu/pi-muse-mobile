@@ -113,6 +113,20 @@ import type {
 } from '../news/types';
 import { parseBrowserDesktopTicket, parseBrowserStatus } from '../browser/contracts';
 import type { BrowserDesktopTicket, BrowserStatus } from '../browser/types';
+import {
+  parseInformationSettings,
+  parseInformationPreferences,
+  parseInformationIngestResult,
+  parseInformationItemsPage,
+} from '../information/contracts';
+import type {
+  InformationSettings,
+  InformationPreferences,
+  InformationInputItem,
+  InformationItem,
+  InformationItemsQuery,
+  InformationItemsPage,
+} from '../information/types';
 
 export type TransportState = { kind: 'online' | 'offline'; token?: string; error?: string };
 export type HttpApiOptions = { onTransportState?: (state: TransportState) => void; timeoutMs?: number; headerTimeoutMs?: number };
@@ -1137,5 +1151,68 @@ export class HttpApiClient implements ApiClient {
         signal,
       }),
     );
+  }
+
+  // --- 信息后台与短信（/api/spaces/:spaceId/information/*） ---
+
+  async getInformationSettings(spaceId: string, signal?: AbortSignal): Promise<InformationSettings> {
+    return parseInformationSettings(
+      await this.request<unknown>(`/api/spaces/${encodeURIComponent(spaceId)}/information/settings`, { signal }),
+    );
+  }
+
+  async saveInformationSettings(spaceId: string, settings: InformationSettings, signal?: AbortSignal): Promise<InformationSettings> {
+    return parseInformationSettings(
+      await this.request<unknown>(`/api/spaces/${encodeURIComponent(spaceId)}/information/settings`, {
+        method: 'PUT',
+        body: settings,
+        signal,
+      }),
+    );
+  }
+
+  async getInformationPreferences(spaceId: string, signal?: AbortSignal): Promise<InformationPreferences> {
+    return parseInformationPreferences(
+      await this.request<unknown>(`/api/spaces/${encodeURIComponent(spaceId)}/information/preferences`, { signal }),
+    );
+  }
+
+  async saveInformationPreferences(spaceId: string, preferences: { notes: string }, signal?: AbortSignal): Promise<InformationPreferences> {
+    return parseInformationPreferences(
+      await this.request<unknown>(`/api/spaces/${encodeURIComponent(spaceId)}/information/preferences`, {
+        method: 'PUT',
+        body: preferences,
+        signal,
+      }),
+    );
+  }
+
+  async ingestInformationItems(spaceId: string, items: InformationInputItem[], signal?: AbortSignal): Promise<InformationItem[]> {
+    return parseInformationIngestResult(
+      await this.request<unknown>(`/api/spaces/${encodeURIComponent(spaceId)}/information/items`, {
+        method: 'POST',
+        body: { items },
+        signal,
+      }),
+    );
+  }
+
+  async listInformationItems(spaceId: string, query?: InformationItemsQuery, signal?: AbortSignal): Promise<InformationItemsPage> {
+    const params = new URLSearchParams();
+    if (query?.limit !== undefined) params.set('limit', String(query.limit));
+    if (query?.cursor) params.set('cursor', query.cursor);
+    if (query?.status) params.set('status', query.status);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    return parseInformationItemsPage(
+      await this.request<unknown>(`/api/spaces/${encodeURIComponent(spaceId)}/information/items${qs}`, { signal }),
+    );
+  }
+
+  async triggerInformationRun(spaceId: string, signal?: AbortSignal): Promise<void> {
+    await this.request<unknown>(`/api/spaces/${encodeURIComponent(spaceId)}/information/runs`, {
+      method: 'POST',
+      body: {},
+      signal,
+    });
   }
 }

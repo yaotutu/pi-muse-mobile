@@ -9,6 +9,7 @@ import { workspaceTheme, spacing } from '../ui/tokens';
 import { useTheme } from '../theme/ThemeProvider';
 import { ActionButton } from '../ui/ActionButton';
 import { FormInput } from '../ui/FormInput';
+import { InformationSettingsCard } from '../information/InformationSettingsCard';
 
 export function SpaceSettings({ spaceId, onSaved }: { spaceId: string; onSaved: () => void }) {
   const store = useSpaceStore();
@@ -64,5 +65,6 @@ export function SpaceSettings({ spaceId, onSaved }: { spaceId: string; onSaved: 
         <ActionButton label="保存空间技能" text="保存技能" tone="primary" disabled={locked || !session.skills.loaded} onPress={() => void saveSkills()} />
       </View>}
     </Card>
+    <InformationSettingsCard spaceId={spaceId} />
   </View>;
 }

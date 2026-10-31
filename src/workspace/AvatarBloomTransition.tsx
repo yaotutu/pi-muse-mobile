@@ -176,7 +176,7 @@ export function AvatarBloomTransition({
 }
 
 const styles = StyleSheet.create({
-  layer: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden' },
+  layer: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden', zIndex: 10, elevation: 10 },
   bloomDisk: { position: 'absolute' },
   surfaceWrap: { flex: 1 },
   header: { flexShrink: 0 },
