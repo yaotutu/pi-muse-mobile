@@ -2,13 +2,13 @@
   "expo": {
     "name": "Pi Muse",
     "slug": "pi-muse-mobile",
-    "version": "1.0.25",
+    "version": "1.0.26",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "buildNumber": "25"
+      "buildNumber": "26"
     },
     "android": {
       "adaptiveIcon": {
@@ -24,7 +24,7 @@
         "android.permission.RECEIVE_SMS"
       ],
       "package": "com.yaotutu.pimusemobile",
-      "versionCode": 25
+      "versionCode": 26
     },
     "web": {
       "favicon": "./assets/favicon.png"
