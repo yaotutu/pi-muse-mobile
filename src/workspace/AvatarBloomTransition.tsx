@@ -6,7 +6,7 @@
  * 使用 react-native-reanimated 驱动高性能原生过渡。
  */
 import { useEffect, type ReactNode } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, {
   Easing,
   Extrapolation,
@@ -35,6 +35,7 @@ export interface AvatarBloomTransitionProps {
   renderSurface?: (children: ReactNode) => ReactNode;
   children: ReactNode;
   onCloseComplete: () => void;
+  onBackdropPress?: () => void;
   testID?: string;
 }
 
@@ -59,6 +60,7 @@ export function AvatarBloomTransition({
   renderSurface,
   children,
   onCloseComplete,
+  onBackdropPress,
   testID = 'workspace-session-modal',
 }: AvatarBloomTransitionProps) {
   const progress = useSharedValue(0);
@@ -98,13 +100,23 @@ export function AvatarBloomTransition({
     const scale = interpolate(progress.value, [0, 1], [0.85, targetScale], Extrapolation.CLAMP);
     return {
       transform: [{ scale }],
+      opacity: 0,
+    };
+  });
+
+  const backdropStyle = useAnimatedStyle(() => {
+    const opacity = interpolate(progress.value, [0, 1], [0, 0.45], Extrapolation.CLAMP);
+    return {
+      opacity,
     };
   });
 
   const surfaceWrapStyle = useAnimatedStyle(() => {
-    const opacity = interpolate(progress.value, [0, 0.35, 1], [0, 0.5, 1], Extrapolation.CLAMP);
+    const opacity = interpolate(progress.value, [0, 0.15, 1], [0, 0.7, 1], Extrapolation.CLAMP);
+    const translateY = interpolate(progress.value, [0, 1], [360, 0], Extrapolation.CLAMP);
     return {
       opacity,
+      transform: [{ translateY }],
     };
   });
 
@@ -140,18 +152,22 @@ export function AvatarBloomTransition({
   const bloomDiameter = bloomRadius * 2;
 
   const innerContent = (
-    <>
+    <View style={styles.sheetInner}>
+      <View style={styles.grabber} />
       <View style={[styles.header, { height: headerHeight, marginTop: headerTop, marginHorizontal: sidePadding }]}>
         <Animated.View style={[styles.headerLeft, headerLeftStyle]}>{headerLeft}</Animated.View>
         <View style={styles.headerCenter}>{headerCenter}</View>
         <Animated.View style={[styles.headerRight, headerRightStyle]}>{headerRight}</Animated.View>
       </View>
       <Animated.View style={[styles.contentWrap, contentStyle]}>{children}</Animated.View>
-    </>
+    </View>
   );
 
   return (
     <Animated.View style={styles.layer} testID={testID}>
+      <Animated.View pointerEvents={open ? 'auto' : 'none'} style={[styles.backdrop, backdropStyle]}>
+        {onBackdropPress && <Pressable style={StyleSheet.absoluteFill} onPress={onBackdropPress} accessibilityLabel="关闭会话面板背景" />}
+      </Animated.View>
       {/* 虚拟形象中心向外优雅展开的全屏背景底色 */}
       <Animated.View
         pointerEvents="none"
@@ -178,7 +194,26 @@ export function AvatarBloomTransition({
 const styles = StyleSheet.create({
   layer: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden', zIndex: 10, elevation: 10 },
   bloomDisk: { position: 'absolute' },
-  surfaceWrap: { flex: 1 },
+  backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.5)' },
+  surfaceWrap: {
+    flex: 1,
+    marginTop: 40,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    overflow: 'hidden',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(128, 128, 128, 0.2)',
+  },
+  sheetInner: { flex: 1 },
+  grabber: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(128, 128, 128, 0.35)',
+    alignSelf: 'center',
+    marginTop: 8,
+    marginBottom: 2,
+  },
   header: { flexShrink: 0 },
   headerLeft: { position: 'absolute', top: 0, left: 0 },
   headerCenter: { alignSelf: 'center', alignItems: 'center' },

@@ -198,7 +198,7 @@ const createStyles = (colors: WorkspaceColors) => StyleSheet.create({
   centerAction: { alignSelf: "center" },
 
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing[8], alignItems: 'center' },
-  card: { borderRadius: workspaceTheme.radius.card, backgroundColor: colors.surface, padding: spacing[20], gap: spacing[12] },
+  card: { borderRadius: workspaceTheme.radius.card, backgroundColor: colors.surface, padding: spacing[16], gap: spacing[12], marginBottom: spacing[12] },
 
    pressed: { opacity: workspaceTheme.interaction.pressedOpacity },
 

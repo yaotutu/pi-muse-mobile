@@ -63,15 +63,15 @@ function createStyles(colors: WorkspaceColors) {
     },
 
     tablistWrap: {
-      paddingHorizontal: workspaceTheme.layout.sidePadding,
-      marginBottom: workspaceTheme.layout.sessionPanelTabsBottom,
+      paddingHorizontal: spacing[16],
+      marginBottom: spacing[12],
     },
     scroll: {
       flex: 1,
     },
     content: {
-      paddingHorizontal: workspaceTheme.layout.sidePadding,
-      paddingBottom: workspaceTheme.layout.sessionHeaderBottom,
+      paddingHorizontal: spacing[16],
+      paddingBottom: spacing[28],
     },
 
     rowTitle: {
@@ -87,8 +87,8 @@ function createStyles(colors: WorkspaceColors) {
     card: {
       backgroundColor: colors.surface,
       borderRadius: workspaceTheme.radius.card,
-      padding: workspaceTheme.layout.sidePadding,
-      marginBottom: workspaceTheme.layout.listItemGap,
+      padding: spacing[16],
+      marginBottom: spacing[12],
     },
   });
 }
@@ -111,7 +111,7 @@ export function SessionPanel({
     <View style={styles.root} testID="workspace-session-panel">
         <View style={styles.column}>
           <View style={styles.tablistWrap}>
-            <SegmentedControl value={tab} options={TABS} label="会话内容" iconOnly busy={!!(deleting || resetting)}
+            <SegmentedControl value={tab} options={TABS} label="会话内容" busy={!!(deleting || resetting)}
               onChange={(next) => { if (next === 'history') setHistoryActivityId(undefined); onTab(next); }} />
           </View>
 

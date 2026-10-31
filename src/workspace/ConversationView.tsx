@@ -4,13 +4,14 @@
  * 边界：单实例绑定单个空间的聊天代次（父级以 spaceId + epoch 隔离生命周期）；
  * assistant Markdown 与工具专用展示由独立组件负责，不猜测审批决定。
  */
-import { ArrowDown, ArrowUp, Square } from 'lucide-react-native';
+import { ArrowDown, ArrowUp, ShieldAlert, Square } from 'lucide-react-native';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type LayoutRectangle, type ScrollViewInstance, type TextStyle, type ViewInstance } from 'react-native';
 import { useApi } from '../api/ApiProvider';
 import { pickMessageAttachments } from '../attachments/picker';
 import { AttachmentAction, AttachmentStrip, MessageAttachments } from '../attachments/AttachmentViews';
 import type { MessageView } from '../chat/chat-state';
+import { useApprovals } from '../approvals/ApprovalProvider';
 import { useConversation } from '../chat/useConversation';
 import { useServiceConnection } from '../connection/ConnectionProvider';
 import { useSpaceRuntime } from '../runtime/RuntimeProvider';
@@ -38,6 +39,7 @@ export type ConversationViewProps = {
   refreshKey: string | number;
   onSettled: () => void;
   openConnection: () => void;
+  onOpenApprovals?: () => void;
 };
 
 export function ConversationView({
@@ -47,7 +49,12 @@ export function ConversationView({
   refreshKey,
   onSettled,
   openConnection,
+  onOpenApprovals,
 }: ConversationViewProps) {
+  const approvals = useApprovals();
+  const spacePendingApprovals = approvals.snapshot.pendingIds
+    .map((id) => approvals.snapshot.records[id])
+    .filter((record) => record && record.spaceId === spaceId);
   const api = useApi();
   const conversation = useConversation(spaceId, refreshKey);
   const sessions = useSpaceStore();
@@ -337,6 +344,22 @@ export function ConversationView({
         {showLatest && <Pressable accessibilityRole="button" accessibilityLabel="回到最新消息" onPress={() => { scrollFollow.current.returnLatest(); setShowLatest(false); scroll.current?.scrollToEnd({ animated: true }); }} style={styles.latestButton}><ArrowDown size={sizing[18]} color={colors.ink} /><Text style={styles.caption}>回到最新</Text></Pressable>}
       </View>
       {visible && <>
+        {spacePendingApprovals.length > 0 && onOpenApprovals && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="查看待处理审批"
+            onPress={onOpenApprovals}
+            style={({ pressed }) => [styles.approvalBanner, pressed && styles.pressed]}
+          >
+            <View style={styles.approvalBannerContent}>
+              <ShieldAlert size={16} color={colors.warning} />
+              <Text style={styles.approvalBannerText}>
+                模型发起了操作，等待你的审批（{spacePendingApprovals.length} 项）
+              </Text>
+            </View>
+            <Text style={styles.approvalBannerAction}>查看并决定 →</Text>
+          </Pressable>
+        )}
         {(session.draftAttachments.length > 0 || !!attachmentError) && <View style={styles.attachmentArea}>
           <AttachmentStrip items={session.draftAttachments} disabled={selecting || !!pending || busy || !sessions.canWrite(spaceId)} onRemove={(id) => {
             sessions.removeDraftAttachment(spaceId, session.epoch, id);
@@ -551,6 +574,37 @@ const createStyles = (c: WorkspaceColors) =>
       backgroundColor: c.surface,
     },
     composerFocused: { backgroundColor: c.control },
+    approvalBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginHorizontal: l.sidePadding,
+      marginBottom: spacing[8],
+      paddingHorizontal: spacing[14],
+      paddingVertical: spacing[10],
+      borderRadius: r.field,
+      backgroundColor: c.warningSoft,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: c.warning,
+    },
+    approvalBannerContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing[8],
+      flex: 1,
+    },
+    approvalBannerText: {
+      ...t.caption,
+      color: c.ink,
+      fontWeight: '500',
+      flex: 1,
+    },
+    approvalBannerAction: {
+      ...t.caption,
+      color: c.warning,
+      fontWeight: '600',
+    },
+    pressed: { opacity: workspaceTheme.interaction.pressedOpacity },
     attachmentArea: { marginHorizontal: l.sidePadding, marginBottom: spacing[8], gap: spacing[6] },
     input: {
       flex: 1,

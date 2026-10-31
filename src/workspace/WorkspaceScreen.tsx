@@ -1,5 +1,5 @@
 import { Card } from '../ui/Surfaces';
-import { BookOpen, Check, ChevronRight, Download, Menu, MessageCircle, Moon, Newspaper, RotateCcw, Search, Server, Settings, SquareCheck, SquarePen, UserRound, X, Globe, type LucideIcon } from 'lucide-react-native';
+import { BookOpen, Check, ChevronRight, Download, Menu, MessageCircle, Moon, Newspaper, RotateCcw, Search, Server, Settings, SlidersHorizontal, SquareCheck, SquarePen, UserRound, X, Globe, type LucideIcon } from 'lucide-react-native';
 import { BlurTargetView } from 'expo-blur';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ThemeStatusBar } from '../theme/ThemeStatusBar';
@@ -272,7 +272,8 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
     });
     return () => subscription.remove();
   }, [drawerOpen, keyboardVisible, browserOpen, closeBrowser, sessionMounted, closeSession, page, news, newsManaging, settingsSubpage, goals]);
-  const openSession = useCallback(() => {
+  const openSession = useCallback((tab?: unknown) => {
+    if (typeof tab === 'string') setSessionTab(tab as SessionTab);
     setDrawerOpen(false);
     if (keyboardVisible) { pendingSessionOpen.current = true; Keyboard.dismiss(); return; }
     setSessionMounted(true); setSessionOpen(true);
@@ -354,7 +355,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
                 <MuseAvatar size={keyboardVisible ? l.compactHeaderAvatar : l.headerAvatar} />
                 {headerNames.chat && <View style={[styles.identityLabel, styles.identityLabelSurface]}><Text numberOfLines={1} style={styles.identityName}>{headerNames.chat}</Text></View>}
               </Pressable>
-              <View style={styles.headerRight}><ThemeToggle testID="workspace-theme-toggle" /></View>
+              <View style={styles.headerRight}><IconControl icon={SlidersHorizontal} label="打开空间工作区" testID="workspace-open-console" onPress={() => openSession()} /><ThemeToggle testID="workspace-theme-toggle" /></View>
             </View>}
             <View style={styles.bodyStage}>
               <BlurTargetView ref={chatBlurTarget} style={styles.bodyStage}>
@@ -364,7 +365,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
                   {...(Platform.OS === 'web' && sessionMounted ? { inert: true } : {})}
                   accessibilityElementsHidden={sessionMounted} importantForAccessibility={sessionMounted ? 'no-hide-descendants' : 'auto'}>
                   <ConversationHost currentSpaceId={spaces.currentSpace} spaceIds={spaces.spaces.map((space) => space.id)} chatVisible={page === 'chat'} compactHeader={keyboardVisible} otherPage={otherPage}
-                    refreshVersions={historyRefresh} onSettled={refresh} onBindingMismatch={reloadSpaces} openConnection={openConnection} />
+                    refreshVersions={historyRefresh} onSettled={refresh} onBindingMismatch={reloadSpaces} openConnection={openConnection} onOpenApprovals={() => openSession('approvals')} />
                   {!!notice && <Text accessibilityRole="alert" style={[styles.notice, notice.tone === 'error' && styles.error]}>{notice.text}</Text>}
                   {!browserOpen && !(page === 'chat' && keyboardVisible) && <Navigation page={page} onPage={(next) => { setPage(next); setSessionOpen(false); }} />}
                 </View>
@@ -383,6 +384,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
                 headerTop={l.headerTop}
                 sidePadding={l.sidePadding}
                 onCloseComplete={onSessionCloseFinished}
+                onBackdropPress={closeSession}
                 headerLeft={
                   <IconControl
                     icon={X}

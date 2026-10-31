@@ -18,7 +18,7 @@ export function InformationSettingsCard({ spaceId }: { spaceId: string }) {
   const [customSms, setCustomSms] = useState('');
 
   const styles = useMemo(() => StyleSheet.create({
-    card: { padding: spacing[20], gap: spacing[16], marginTop: spacing[18], marginBottom: spacing[16], backgroundColor: colors.surface, borderRadius: workspaceTheme.radius.card },
+    card: { padding: spacing[16], gap: spacing[14], marginBottom: spacing[14], backgroundColor: colors.surface, borderRadius: workspaceTheme.radius.card },
     section: { ...workspaceTheme.typography.section, color: colors.ink },
     text: { ...workspaceTheme.typography.detail, color: colors.ink },
     caption: { ...workspaceTheme.typography.caption, color: colors.muted },
