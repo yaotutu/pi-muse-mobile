@@ -1,7 +1,7 @@
 import { Card } from '../ui/Surfaces';
 import { BookOpen, Check, ChevronRight, Download, Menu, MessageCircle, Moon, Newspaper, RotateCcw, Search, Server, Settings, SlidersHorizontal, SquareCheck, SquarePen, UserRound, X, Globe, type LucideIcon } from 'lucide-react-native';
 import { BlurTargetView } from 'expo-blur';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ThemeStatusBar } from '../theme/ThemeStatusBar';
 import { Animated, AppState, BackHandler, Easing, Keyboard, KeyboardAvoidingView, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, View, type ViewInstance, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -99,11 +99,42 @@ function SettingRow({ title, label, description, address, icon: Icon, onPress, d
     <ChevronRight size={sizing[18]} color={colors.faint} />
   </Pressable>;
 }
+function AnimatedSubpage({ children }: { children: ReactNode }) {
+  const [anim] = useState(() => new Animated.Value(0));
+  useEffect(() => {
+    Animated.timing(anim, {
+      toValue: 1,
+      duration: 240,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [anim]);
+
+  return (
+    <Animated.View
+      style={{
+        flex: 1,
+        opacity: anim,
+        transform: [
+          {
+            translateX: anim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [28, 0],
+            }),
+          },
+        ],
+      }}
+    >
+      {children}
+    </Animated.View>
+  );
+}
+
 function SettingsPage({ snapshot, openConnection, openBrowser, memoryAvailable = false, profileAvailable = false, dreamAvailable = false, currentSpaceId, onReset, subpage, onSubpage }: Pick<WorkspaceConnectionProps, 'snapshot' | 'openConnection'> & { openBrowser?: () => void; memoryAvailable?: boolean; profileAvailable?: boolean; dreamAvailable?: boolean; currentSpaceId?: string; onReset?: () => void; subpage: SettingsSubpage; onSubpage: (page: SettingsSubpage) => void }) {
   const styles = useStyles(); const update = useAppUpdate();
-  if (subpage === 'memory' && memoryAvailable) return <ScrollView key="memory" keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}><MemoryPanel onBack={() => onSubpage(null)} /></ScrollView>;
-  if (subpage === 'profile' && profileAvailable) return <ScrollView key="profile" keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}><ProfilePanel onBack={() => onSubpage(null)} /></ScrollView>;
-  if (subpage === 'dream' && dreamAvailable && currentSpaceId) return <ScrollView key="dream" keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}><DreamPanel currentSpaceId={currentSpaceId} onBack={() => onSubpage(null)} /></ScrollView>;
+  if (subpage === 'memory' && memoryAvailable) return <AnimatedSubpage key="memory"><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}><MemoryPanel onBack={() => onSubpage(null)} /></ScrollView></AnimatedSubpage>;
+  if (subpage === 'profile' && profileAvailable) return <AnimatedSubpage key="profile"><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}><ProfilePanel onBack={() => onSubpage(null)} /></ScrollView></AnimatedSubpage>;
+  if (subpage === 'dream' && dreamAvailable && currentSpaceId) return <AnimatedSubpage key="dream"><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}><DreamPanel currentSpaceId={currentSpaceId} onBack={() => onSubpage(null)} /></ScrollView></AnimatedSubpage>;
   return <ScrollView key="settings" contentContainerStyle={[styles.otherPage, styles.settingsPage]}>
     <View style={styles.appSection}><Text accessibilityRole="header" style={styles.appSectionTitle}>连接与设备</Text>
       <View style={styles.appSettingsGroup}>

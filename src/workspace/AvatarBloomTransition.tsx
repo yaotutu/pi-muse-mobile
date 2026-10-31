@@ -5,8 +5,8 @@
  * 点击关闭时，全部元素平滑收拢回虚拟形象中心。
  * 使用 react-native-reanimated 驱动高性能原生过渡。
  */
-import { useEffect, type ReactNode } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { useEffect, useMemo, type ReactNode } from 'react';
+import { PanResponder, Pressable, StyleSheet, View } from 'react-native';
 import Animated, {
   Easing,
   Extrapolation,
@@ -64,14 +64,41 @@ export function AvatarBloomTransition({
   testID = 'workspace-session-modal',
 }: AvatarBloomTransitionProps) {
   const progress = useSharedValue(0);
+  const dragY = useSharedValue(0);
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => false,
+        onMoveShouldSetPanResponder: (_, gesture) =>
+          gesture.dy > 6 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
+        onPanResponderMove: (_, gesture) => {
+          if (gesture.dy > 0) {
+            dragY.value = gesture.dy;
+          }
+        },
+        onPanResponderRelease: (_, gesture) => {
+          if (gesture.dy > 90 || gesture.vy > 0.8) {
+            onBackdropPress?.();
+          } else {
+            dragY.value = withTiming(0, { duration: 200, easing: appleFluidEaseOut });
+          }
+        },
+        onPanResponderTerminate: () => {
+          dragY.value = withTiming(0, { duration: 200, easing: appleFluidEaseOut });
+        },
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [onBackdropPress],
+  );
 
   useEffect(() => {
     if (open) {
+      dragY.value = 0;
       if (reducedMotion) {
         progress.value = 1;
       } else {
         progress.value = withTiming(1, {
-          duration: 480,
+          duration: 400,
           easing: appleFluidEaseOut,
         });
       }
@@ -83,7 +110,7 @@ export function AvatarBloomTransition({
         progress.value = withTiming(
           0,
           {
-            duration: 380,
+            duration: 320,
             easing: appleFluidEaseInOut,
           },
           (finished) => {
@@ -94,7 +121,7 @@ export function AvatarBloomTransition({
         );
       }
     }
-  }, [open, reducedMotion, onCloseComplete, progress]);
+  }, [open, reducedMotion, onCloseComplete, progress, dragY]);
 
   const bloomCircleStyle = useAnimatedStyle(() => {
     const scale = interpolate(progress.value, [0, 1], [0.85, targetScale], Extrapolation.CLAMP);
@@ -105,15 +132,17 @@ export function AvatarBloomTransition({
   });
 
   const backdropStyle = useAnimatedStyle(() => {
-    const opacity = interpolate(progress.value, [0, 1], [0, 0.45], Extrapolation.CLAMP);
+    const baseOpacity = interpolate(progress.value, [0, 1], [0, 0.45], Extrapolation.CLAMP);
+    const dragFade = interpolate(dragY.value, [0, 300], [1, 0.2], Extrapolation.CLAMP);
     return {
-      opacity,
+      opacity: baseOpacity * dragFade,
     };
   });
 
   const surfaceWrapStyle = useAnimatedStyle(() => {
     const opacity = interpolate(progress.value, [0, 0.15, 1], [0, 0.7, 1], Extrapolation.CLAMP);
-    const translateY = interpolate(progress.value, [0, 1], [360, 0], Extrapolation.CLAMP);
+    const baseTranslateY = interpolate(progress.value, [0, 1], [380, 0], Extrapolation.CLAMP);
+    const translateY = Math.max(0, baseTranslateY + dragY.value);
     return {
       opacity,
       transform: [{ translateY }],
@@ -153,8 +182,10 @@ export function AvatarBloomTransition({
 
   const innerContent = (
     <View style={styles.sheetInner}>
-      <View style={styles.grabber} />
-      <View style={[styles.header, { height: headerHeight, marginTop: headerTop, marginHorizontal: sidePadding }]}>
+      <View {...panResponder.panHandlers} style={styles.grabberArea}>
+        <View style={styles.grabber} />
+      </View>
+      <View {...panResponder.panHandlers} style={[styles.header, { height: headerHeight, marginTop: headerTop, marginHorizontal: sidePadding }]}>
         <Animated.View style={[styles.headerLeft, headerLeftStyle]}>{headerLeft}</Animated.View>
         <View style={styles.headerCenter}>{headerCenter}</View>
         <Animated.View style={[styles.headerRight, headerRightStyle]}>{headerRight}</Animated.View>
@@ -197,12 +228,18 @@ const styles = StyleSheet.create({
   backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.5)' },
   surfaceWrap: {
     flex: 1,
-    marginTop: 40,
+    marginTop: 44,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     overflow: 'hidden',
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(128, 128, 128, 0.2)',
+    borderColor: 'rgba(128, 128, 128, 0.25)',
+  },
+  grabberArea: {
+    paddingTop: 10,
+    paddingBottom: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   sheetInner: { flex: 1 },
   grabber: {
@@ -210,9 +247,6 @@ const styles = StyleSheet.create({
     height: 4,
     borderRadius: 2,
     backgroundColor: 'rgba(128, 128, 128, 0.35)',
-    alignSelf: 'center',
-    marginTop: 8,
-    marginBottom: 2,
   },
   header: { flexShrink: 0 },
   headerLeft: { position: 'absolute', top: 0, left: 0 },
