@@ -21,6 +21,7 @@ import { spacing, sizing, workspaceTheme, type WorkspaceColors } from '../ui/tok
 import { ConnectionPanel } from './ConnectionPanel';
 import { NewsPage } from './NewsPage';
 import { createNewsStore } from '../news/news-store';
+import { useNews } from '../news/useNews';
 import { useJobs } from '../jobs/JobProvider';
 import { useMonitors } from '../monitors/MonitorProvider';
 import { GoalsPanel } from './GoalsPanel';
@@ -163,16 +164,17 @@ function DisconnectedWorkspace({ snapshot, openConnection }: WorkspaceConnection
   const [page, setPage] = useState<WorkspacePage>('chat');
   const [settingsSubpage, setSettingsSubpage] = useState<SettingsSubpage>(null);
   const styles = useStyles();
+  const inSettingsSubpage = page === 'settings' && settingsSubpage !== null;
   return <View style={styles.root} testID="workspace-screen"><ThemeStatusBar />
     <SafeAreaView style={styles.disconnected}>
-      <View style={styles.disconnectedHeader}><Text style={styles.itemTitle}>Pi Muse</Text><ThemeToggle /></View>
+      {!inSettingsSubpage && <View style={styles.disconnectedHeader}><Text style={styles.itemTitle}>Pi Muse</Text><ThemeToggle /></View>}
       {page === 'settings' ? <SettingsPage snapshot={snapshot} openConnection={openConnection} subpage={settingsSubpage} onSubpage={setSettingsSubpage} /> : <View style={styles.welcome}>
         <MuseAvatar size={l.welcomeAvatar} /><Text style={styles.eyebrow}>HELLO, PI MUSE</Text><Text style={styles.emptyTitle}>{connectionLabel(snapshot)}</Text>
         <Text style={styles.mutedText}>{snapshot.error ?? '连接自己的 Pi Muse 服务器后即可恢复会话、聊天与真实执行状态。'}</Text>
         <ActionButton label="配置服务器连接" text="服务器连接" tone="primary" onPress={openConnection} />
         <Text style={styles.caption}>从一次连接开始。应用更新可独立使用。</Text>
       </View>}
-      <Navigation page={page} onPage={setPage} />
+      <Navigation page={page} onPage={(next) => { setPage(next); setSettingsSubpage(null); }} />
     </SafeAreaView>
   </View>;
 }
@@ -228,6 +230,11 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
   const targetScale = Math.max(25, Math.ceil((Math.hypot(contentWidth / 2, height - avatarCenterY) / bloomRadius) * 1.08));
   const drawerWidth = Math.min(contentWidth * l.drawerRatio, l.drawerMaxWidth);
   const [drawerProgress] = useState(() => new Animated.Value(0));
+  const { snapshot: newsSnapshot } = useNews(news);
+  const isNewsArticleOpen = !!newsSnapshot.selectedArticleId;
+  const inSettingsSubpage = page === 'settings' && settingsSubpage !== null;
+  const inNewsSubpage = page === 'news' && (newsManaging || isNewsArticleOpen);
+  const isSubpage = inSettingsSubpage || inNewsSubpage;
   const statusLabel = snapshot.status === 'authentication-required' || snapshot.status === 'reset-error' || snapshot.status === 'storage-error'
     ? connectionLabel(snapshot) : runtime.label;
   const labelIds = spaces.spaces.map((space) => space.id).sort().join('|');
@@ -377,7 +384,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
         <SafeAreaView style={styles.screen} edges={['top', 'bottom', 'left', 'right']} aria-hidden={drawerOpen} {...(Platform.OS === 'web' && drawerOpen ? { inert: true } : {})}>
           {/* 唯一键盘避让层：Android 按真实重叠缩小阅读区，iOS 保留 padding；不再另算键盘高度。 */}
           <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled={Platform.OS !== 'web'} accessibilityViewIsModal={sessionMounted}>
-            {page !== 'chat' && <View style={styles.pageHeader}><IconControl icon={Menu} label="打开空间侧栏" onPress={openDrawer} /><Text style={styles.pageTitle}>{NAV.find((item) => item.id === page)?.label}</Text><ThemeToggle /></View>}
+            {page !== 'chat' && !isSubpage && <View style={styles.pageHeader}><IconControl icon={Menu} label="打开空间侧栏" onPress={openDrawer} /><Text style={styles.pageTitle}>{NAV.find((item) => item.id === page)?.label}</Text><ThemeToggle /></View>}
             {/* 头像与左右操作浮在聊天层上方，不占正文高度；触控只落在实际控件。 */}
             {page === 'chat' && <View pointerEvents="box-none" style={[styles.chatHeader, keyboardVisible && styles.chatHeaderCompact]}>
               <View style={styles.headerLeft}><IconControl icon={Menu} label="打开空间侧栏" testID="workspace-open-drawer" onPress={openDrawer} /></View>
@@ -398,7 +405,15 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
                   <ConversationHost currentSpaceId={spaces.currentSpace} spaceIds={spaces.spaces.map((space) => space.id)} chatVisible={page === 'chat'} compactHeader={keyboardVisible} otherPage={otherPage}
                     refreshVersions={historyRefresh} onSettled={refresh} onBindingMismatch={reloadSpaces} openConnection={openConnection} onOpenApprovals={() => openSession('approvals')} />
                   {!!notice && <Text accessibilityRole="alert" style={[styles.notice, notice.tone === 'error' && styles.error]}>{notice.text}</Text>}
-                  {!browserOpen && !(page === 'chat' && keyboardVisible) && <Navigation page={page} onPage={(next) => { setPage(next); setSessionOpen(false); }} />}
+                  {!browserOpen && !(page === 'chat' && keyboardVisible) && <Navigation page={page} onPage={(next) => {
+                    setPage(next);
+                    setSettingsSubpage(null);
+                    setNewsManaging(false);
+                    if (news.getSnapshot().selectedArticleId) {
+                      news.closeArticle();
+                    }
+                    setSessionOpen(false);
+                  }} />}
                 </View>
               </BlurTargetView>
             </View>

@@ -328,27 +328,27 @@ const createStyles = (colors: WorkspaceColors) =>
   StyleSheet.create({
     page: {
       paddingHorizontal: workspaceTheme.layout.sidePadding,
-      paddingTop: spacing[12],
-      paddingBottom: spacing[24],
+      paddingTop: spacing[16],
+      paddingBottom: spacing[34],
     },
-    root: { gap: spacing[12], paddingBottom: spacing[24] },
+    root: { gap: spacing[16], paddingBottom: spacing[24] },
     row: {
       flexDirection: 'row',
       flexWrap: 'wrap',
       alignItems: 'center',
       gap: spacing[8],
     },
-    toolbar: { flexDirection: 'row', alignItems: 'center', gap: spacing[8] },
-    toolbarCount: { flex: 1, minWidth: 0 },
+    toolbar: { flexDirection: 'row', alignItems: 'center', gap: spacing[10], paddingBottom: spacing[2] },
+    toolbarCount: { flex: 1, minWidth: 0, ...workspaceTheme.typography.status, color: colors.muted, fontWeight: '500' },
     tablist: {
-      minHeight: workspaceTheme.layout.sessionTabsHeight,
+      minHeight: workspaceTheme.layout.smallControl + 6,
       flexDirection: 'row',
       alignItems: 'center',
-      padding: workspaceTheme.layout.sessionTabInset,
+      padding: spacing[3],
       backgroundColor: colors.surface,
       borderRadius: workspaceTheme.radius.tab,
     },
-    tab: { flex: 1, minWidth: 0, alignSelf: 'stretch', paddingHorizontal: spacing[4] },
+    tab: { flex: 1, minWidth: 0, alignSelf: 'stretch', paddingHorizontal: spacing[2] },
 
     sortRow: { flexDirection: 'row', alignItems: 'center', gap: spacing[8] },
     sortScroll: { flex: 1, minWidth: 0 },
@@ -356,7 +356,7 @@ const createStyles = (colors: WorkspaceColors) =>
     groupLabel: { ...workspaceTheme.typography.caption, color: colors.muted },
     titleRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing[8] },
     titleFlex: { flex: 1, minWidth: 0 },
-    cardFooter: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing[8] },
+    cardFooter: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: spacing[8], paddingTop: spacing[10], borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
     footerTime: { flex: 1, minWidth: 0 },
     statusScroll: { flex: 1, minWidth: 0 },
     flex: { flex: 1, gap: spacing[4], minWidth: 0 },
@@ -368,10 +368,10 @@ const createStyles = (colors: WorkspaceColors) =>
 
     confirmCard: { padding: spacing[20], borderRadius: workspaceTheme.radius.card, backgroundColor: colors.dangerSoft, gap: spacing[12] },
     card: {
-      padding: spacing[16],
+      padding: spacing[18],
       borderRadius: workspaceTheme.radius.card,
       backgroundColor: colors.surface,
-      gap: spacing[8],
+      gap: spacing[12],
     },
 
     pressed: { opacity: workspaceTheme.interaction.pressedOpacity },
