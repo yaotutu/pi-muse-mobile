@@ -39,6 +39,8 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+build/
+.cxx/
 
 # Android release keystore（敏感凭据；构建时通过 gh secrets 注入 release workflow，不入 git）
 /.keystore/

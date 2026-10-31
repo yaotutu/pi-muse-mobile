@@ -1,0 +1,7 @@
+{
+  "name": "sms-receiver",
+  "platforms": ["android"],
+  "android": {
+    "modules": ["com.yaotutu.pimusemobile.sms.SmsReceiverModule"]
+  }
+}

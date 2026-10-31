@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApi } from '../api/ApiProvider';
 import { isRequestCancelled } from '../api/errors';
+import { addSmsListener, isSmsReceiverAvailable } from '../../modules/sms-receiver';
 import type {
   InformationItem,
   InformationPreferences,
@@ -154,6 +155,20 @@ export function useInformation(spaceId: string) {
     }
   }, [api, spaceId, triggering]);
 
+  useEffect(() => {
+    if (!settings?.enabled || !isSmsReceiverAvailable()) {
+      return;
+    }
+    const sub = addSmsListener((event) => {
+      if (!event.body?.trim()) return;
+      const externalId = `sms-${event.timestamp}-${event.sender}`;
+      void ingestSms(event.body, `来自: ${event.sender}`, externalId);
+    });
+    return () => {
+      sub.remove();
+    };
+  }, [settings?.enabled, ingestSms]);
+
   return {
     settings,
     preferences,
@@ -170,6 +185,7 @@ export function useInformation(spaceId: string) {
     saveNotes,
     ingestSms,
     triggerRun,
+    isSmsAvailable: isSmsReceiverAvailable(),
     reload,
   };
 }

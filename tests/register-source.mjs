@@ -6,11 +6,31 @@ import ts from 'typescript';
 // 同时转译本项目 src 与测试 helper；其余严格项目范围。Expo fetch 保留为可注入的网络边界。
 const sourceRoots = [
   new URL('../src/', import.meta.url).href,
+  new URL('../modules/', import.meta.url).href,
   new URL('./helpers/', import.meta.url).href,
 ];
 
 registerHooks({
   resolve(specifier, context, nextResolve) {
+    if (specifier === 'react-native') {
+      const stub = `
+export const AppState = {
+  currentState: 'active',
+  addEventListener: () => ({ remove: () => {} }),
+};
+export const Platform = {
+  OS: 'android',
+  select: (obj) => obj.android ?? obj.default,
+};
+`;
+      return { url: 'data:text/javascript,' + encodeURIComponent(stub), shortCircuit: true };
+    }
+    if (specifier === 'expo-modules-core') {
+      return {
+        url: `data:text/javascript,${encodeURIComponent('export const requireNativeModule = () => null;')}`,
+        shortCircuit: true,
+      };
+    }
     if (specifier === 'expo/fetch') {
       return {
         url: `data:text/javascript,${encodeURIComponent('export const fetch = (...args) => globalThis.fetch(...args);')}`,
@@ -36,7 +56,7 @@ registerHooks({
     }
     if (specifier.startsWith('.') && context.parentURL && sourceRoots.some((root) => context.parentURL.startsWith(root))) {
       const url = new URL(specifier, context.parentURL);
-      for (const extension of ['.ts', '.tsx']) {
+      for (const extension of ['.ts', '.tsx', '/index.ts', '/index.tsx']) {
         const candidate = new URL(url.href + extension);
         if (existsSync(candidate)) return { url: candidate.href, shortCircuit: true };
       }

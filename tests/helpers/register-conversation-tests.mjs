@@ -15,6 +15,10 @@ export const AppState = {
   currentState: 'active',
   addEventListener: () => ({ remove: () => {} }),
 };
+export const Platform = {
+  OS: 'android',
+  select: (obj) => obj.android ?? obj.default,
+};
 `;
       return { url: 'data:text/javascript,' + encodeURIComponent(stub), shortCircuit: true };
     }

@@ -108,7 +108,7 @@ export function InformationSettingsCard({ spaceId }: { spaceId: string }) {
           <View style={styles.subSection}>
             <Text style={styles.text}>短信接入与测试</Text>
             <Text style={styles.caption}>
-              点击下方样例或输入短信正文，上报到当前空间待处理队列：
+              {info.isSmsAvailable ? 'Android 原生短信监听已开启：收到新短信时将自动上报；也可手动输入测试：' : '点击下方样例或输入短信正文，上报到当前空间待处理队列：'}
             </Text>
             <View style={styles.buttonRow}>
               <Pressable
