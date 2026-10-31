@@ -656,3 +656,74 @@ test('11) UI 入口契约：unconfirmed 待确认时“重新同步”按钮始�
     hook2.unmount();
   }
 });
+
+test('12) 实时打断并追问（Interrupt & Steer）：流式生成中优雅打断旧轮次并自动提交新指令', async () => {
+  let stopRunCalled = 0;
+  let stoppedRunId = '';
+  const runs = [];
+  let run1Resolve;
+  const run1Promise = new Promise((resolve) => { run1Resolve = resolve; });
+  let revCounter = 0;
+
+  const api = createMockApi({
+    getConversation: async () => {
+      revCounter++;
+      const msgs = runs.map((r) => userMessage(r.message.id, r.message.content));
+      return conversation(msgs, `rev-${revCounter}`);
+    },
+    runAgent: async (input, onEvent, signal) => {
+      runs.push(input);
+      if (runs.length === 1) {
+        // 第一轮：长流式输出，等待外部打断信号
+        onEvent({ type: 'TEXT_DELTA', text: '正在进行漫长输出…' });
+        await new Promise((resolve) => {
+          const onAbort = () => {
+            onEvent({ type: 'RUN_ERROR', code: 'STOPPED', message: '已停止' });
+            resolve();
+          };
+          if (signal?.aborted) onAbort();
+          else signal?.addEventListener('abort', onAbort, { once: true });
+        });
+        run1Resolve();
+        return;
+      }
+      // 第二轮（打断后追问）：正常完成
+      onEvent({ type: 'TEXT_DELTA', text: '按新指示直接总结。' });
+    },
+    stopRun: async (spaceId, runId) => {
+      stopRunCalled++;
+      stoppedRunId = runId;
+      return true;
+    },
+  });
+
+  const store = new SpaceStore(api);
+  const hook = await renderConversationHook('space-1', api, store);
+  try {
+    store.setDraft('space-1', '请长篇大论介绍各个功能');
+    // 发起第一轮长输出（不 await，模拟后台流式）
+    const firstSend = hook.result.current.send('请长篇大论介绍各个功能', () => store.setDraft('space-1', ''));
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.equal(hook.result.current.running, true, '第一轮处于流式输出中');
+    assert.equal(runs.length, 1);
+
+    // 用户在输出过程中输入新指令并调用打断追问
+    store.setDraft('space-1', '别说了，直接给我一句话总结');
+    let secondAccepted = false;
+    const steerSuccess = await hook.result.current.interruptAndSend(
+      '别说了，直接给我一句话总结',
+      () => { secondAccepted = true; store.setDraft('space-1', ''); },
+    );
+
+    await firstSend;
+    assert.equal(steerSuccess, true, '打断并追问成功放行');
+    assert.equal(stopRunCalled, 1, '调用了服务端 stopRun');
+    assert.equal(stoppedRunId, runs[0].runId, '停止了第一轮的准确 runId');
+    assert.equal(runs.length, 2, '第二轮新指令自动发送');
+    assert.equal(runs[1].message.content, '别说了，直接给我一句话总结');
+    assert.equal(secondAccepted, true, '第二轮已被受理');
+    assert.equal(store.get('space-1').draft, '', '草稿已清空');
+  } finally {
+    hook.unmount();
+  }
+});

@@ -118,10 +118,23 @@ export function ConversationView({
 
   const busy = conversation.running || runtime.running;
   const pending = session.pendingSubmission;
+  const [steering, setSteering] = useState(false);
+  const hasInput = !!session.draft.trim() || session.draftAttachments.length > 0;
   const canSend =
     !!connection?.enabled &&
     runtime.synchronized &&
     !busy &&
+    !selecting &&
+    !pending &&
+    !conversation.loading &&
+    !conversation.historyFailed &&
+    !session.deleted &&
+    !session.deleting && !session.resetting && !session.resetUncertain;
+  const canInterruptAndSend =
+    !!connection?.enabled &&
+    runtime.synchronized &&
+    busy &&
+    hasInput &&
     !selecting &&
     !pending &&
     !conversation.loading &&
@@ -148,7 +161,6 @@ export function ConversationView({
     }
   };
 
-  const hasInput = !!session.draft.trim() || session.draftAttachments.length > 0;
   const send = () => {
     if (pickerInFlight.current || !canSend || !hasInput) return;
     setStopError('');
@@ -166,6 +178,31 @@ export function ConversationView({
       },
       session.draftAttachments,
     );
+  };
+
+  const interruptAndSend = () => {
+    if (pickerInFlight.current || !canInterruptAndSend || steering) return;
+    setStopError('');
+    setSteering(true);
+    scrollFollow.current.beginSend();
+    setShowLatest(false);
+    anchorFrame.current?.schedule();
+    void conversation
+      .interruptAndSend(
+        session.draft,
+        () => {
+          sessions.setDraft(spaceId, '');
+          sessions.clearDraftAttachments(spaceId, session.epoch);
+          setAttachmentError('');
+        },
+        session.draftAttachments,
+      )
+      .catch((error) => {
+        setStopError(error instanceof Error ? error.message : '打断并发送失败');
+      })
+      .finally(() => {
+        setSteering(false);
+      });
   };
 
   const selectAttachments = async () => {
@@ -338,7 +375,11 @@ export function ConversationView({
                     };
                     if (key.key === 'Enter' && !key.shiftKey && !key.isComposing && key.keyCode !== 229) {
                       event.preventDefault();
-                      send();
+                      if (busy && hasInput) {
+                        interruptAndSend();
+                      } else {
+                        send();
+                      }
                     }
                   }
                 : undefined
@@ -349,14 +390,41 @@ export function ConversationView({
               Platform.OS === 'web' && ({ outlineStyle: 'none' } as unknown as TextStyle),
             ]}
           />
+          {busy && hasInput && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="仅停止当前运行"
+              disabled={!runtime.synchronized || session.deleting || steering}
+              style={[
+                styles.stopButton,
+                (!runtime.synchronized || session.deleting || steering) && styles.disabled,
+              ]}
+              onPress={() => void stop()}
+            >
+            <Square size={sizing[14]} color={colors.ink} fill={colors.ink} />
+            </Pressable>
+          )}
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={busy ? '停止当前运行' : '发送消息'}
-            disabled={busy ? !runtime.synchronized || session.deleting : !canSend || !hasInput}
-            style={[styles.sendButton, ((!canSend && !busy) || (!busy && !hasInput)) && styles.disabled]}
-            onPress={() => void (busy ? stop() : send())}
+            accessibilityLabel={busy ? (hasInput ? '打断并发送新消息' : '停止当前运行') : '发送消息'}
+            disabled={
+              busy
+                ? (hasInput ? !canInterruptAndSend || steering : !runtime.synchronized || session.deleting)
+                : !canSend || !hasInput
+            }
+            style={[
+              styles.sendButton,
+              (busy
+                ? hasInput && (!canInterruptAndSend || steering)
+                : !canSend || !hasInput) && styles.disabled,
+            ]}
+            onPress={() => void (busy ? (hasInput ? interruptAndSend() : stop()) : send())}
           >
-            {busy ? <Square size={sizing[16]} color={colors.onAccent} fill={colors.onAccent} /> : <ArrowUp size={l.iconSize} color={colors.onAccent} />}
+            {busy && !hasInput ? (
+              <Square size={sizing[16]} color={colors.onAccent} fill={colors.onAccent} />
+            ) : (
+              <ArrowUp size={l.iconSize} color={colors.onAccent} />
+            )}
           </Pressable>
         </View>
       </>}
@@ -504,6 +572,16 @@ const createStyles = (c: WorkspaceColors) =>
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: c.blue,
+    },
+    stopButton: {
+      width: l.smallControl,
+      height: l.smallControl,
+      borderRadius: r.round,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.control,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: c.line,
     },
     disabled: { opacity: workspaceTheme.interaction.disabledOpacity },
     // 空态只保留低对比短句；整块填满剩余视口，在不同屏高和键盘状态下自然居中。

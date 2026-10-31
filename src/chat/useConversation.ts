@@ -88,6 +88,7 @@ export function useConversation(spaceId: string, refreshKey: string | number = 0
   const revisionRef = useRef<string | null>(null);
   const aliveRef = useRef(false);
   const historyRequest = useRef<AbortController | null>(null);
+  const submissionPromiseRef = useRef<Promise<void> | null>(null);
   const current = () => aliveRef.current && sessions.isCurrent(spaceId, epoch);
   const authority = authorityState.api === api && authorityState.spaceId === spaceId && authorityState.epoch === epoch
     ? authorityState
@@ -260,6 +261,7 @@ export function useConversation(spaceId: string, refreshKey: string | number = 0
 
   /** 新发送与显式重试共用同一套终态对账；区别只在是否复用原 message/run 与附件身份。 */
   const executeSubmission = async (submission: PendingSubmission) => {
+    const runPromise = (async () => {
     const controller = new AbortController();
     abortRef.current = controller;
     runIdRef.current = submission.runId;
@@ -471,6 +473,15 @@ export function useConversation(spaceId: string, refreshKey: string | number = 0
         if (stale && sessions.canWrite(spaceId)) setHistoryVersion((value) => value + 1);
       }
     }
+    })();
+    submissionPromiseRef.current = runPromise;
+    try {
+      await runPromise;
+    } finally {
+      if (submissionPromiseRef.current === runPromise) {
+        submissionPromiseRef.current = null;
+      }
+    }
   };
 
   const send = async (
@@ -518,19 +529,64 @@ export function useConversation(spaceId: string, refreshKey: string | number = 0
     return true;
   };
 
-  const stop = async () => {
+  const stop = async (): Promise<boolean> => {
     const controller = abortRef.current;
     const runId = runIdRef.current;
-    if (!controller || !runId) return;
+    const inFlight = submissionPromiseRef.current;
+    if (!controller || !runId) return false;
     try {
       // 捕获本轮 controller：迟到的停止响应不能中断下一轮；false 也不能伪装停止成功。
       const stopped = await api.stopRun(spaceId, runId);
-      if (stopped && abortRef.current === controller) controller.abort();
+      if (stopped && abortRef.current === controller) {
+        controller.abort();
+      }
+      if (inFlight) {
+        await inFlight;
+      }
+      return stopped;
     } catch (e) {
       if (current() && abortRef.current === controller) {
         setError(`停止失败：${e instanceof Error ? e.message : String(e)}`);
       }
+      return false;
     }
+  };
+
+  /**
+   * 实时打断并追问/转向：优雅终止正在进行中的流式轮次，待会话版本对齐后无缝提交新指令。
+   */
+  const interruptAndSend = async (
+    raw: string,
+    onAccepted?: () => void,
+    attachments?: readonly AttachmentDraft[],
+  ): Promise<boolean> => {
+    const text = raw.trim();
+    const selectedAttachments = attachments ?? sessions.get(spaceId).draftAttachments;
+    const validated = validateOutgoingDraftMessage(text, selectedAttachments);
+    if (!validated.ok) {
+      setError(validated.error);
+      return false;
+    }
+
+    if (abortRef.current || submissionPromiseRef.current) {
+      await stop();
+    }
+
+    if (
+      !enabled ||
+      sessions.isDisposed() ||
+      !sessions.isCurrent(spaceId, epoch) ||
+      loading ||
+      historyFailed ||
+      abortRef.current ||
+      !revisionRef.current ||
+      sessions.get(spaceId).pendingSubmission
+    ) {
+      return false;
+    }
+
+    await send(raw, onAccepted, attachments);
+    return true;
   };
 
   const reload = () => {
@@ -566,6 +622,7 @@ export function useConversation(spaceId: string, refreshKey: string | number = 0
     send,
     retry,
     stop,
+    interruptAndSend,
     reload,
     pendingSubmission,
   };
