@@ -237,7 +237,7 @@ test('侧栏只切换或创建空间，不复制参考产品的功能导航；�
   assert.match(source, /accessibilityLabel="搜索空间"/);
   assert.match(source, /no-hide-descendants/);
   assert.doesNotMatch(source, /label: '点子'|label: '资源库'|label: '旁聊'/);
-  for (const page of ['chat', 'news', 'goals', 'settings']) assert.match(source, new RegExp(`id: '${page}'`));
+  for (const page of ['chat', 'news', 'settings']) assert.match(source, new RegExp(`id: '${page}'`));
 });
 
 test('放弃 failed 暂存须二次确认并回读权威历史，当前草稿保持独立', () => {
@@ -249,7 +249,7 @@ test('放弃 failed 暂存须二次确认并回读权威历史，当前草稿保
   assert.match(chat, /sessions\.restorePendingSubmissionToDraft\(spaceId\)/);
 });
 
-test('四个主页面始终显示图标与标题，并使用同一导航高度', () => {
+test('主页面导航始终显示图标与标题，并使用同一导航高度', () => {
   const source = read('src/workspace/WorkspaceScreen.tsx');
   const navigation = source.split('function Navigation(')[1].split('function LiveWorkspace(')[0];
   assert.match(navigation, /style=\{styles\.navigation\}/);
@@ -258,7 +258,7 @@ test('四个主页面始终显示图标与标题，并使用同一导航高度',
   assert.match(navigation, /accessibilityState=\{\{ selected: page === id \}\}/);
   assert.doesNotMatch(navigation, /page\s*[!=]==?\s*'chat'\s*&&\s*<Text|chatNavigation/);
   assert.doesNotMatch(source, /chatNavigation/);
-  for (const label of ['聊天', '新闻', '目标', '设置']) assert.match(source, new RegExp(`label: '${label}'`));
+  for (const label of ['聊天', '新闻', '设置']) assert.match(source, new RegExp(`label: '${label}'`));
 });
 
 test('重置入口只在可用连接的设置页末组，会话面板从 Tab 开始且不再持有重置回调', () => {

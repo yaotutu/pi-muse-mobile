@@ -1,5 +1,5 @@
 import { Card } from '../ui/Surfaces';
-import { BookOpen, Check, ChevronRight, Download, Menu, MessageCircle, Moon, Newspaper, RotateCcw, Search, Server, Settings, SlidersHorizontal, SquareCheck, SquarePen, UserRound, X, Globe, type LucideIcon } from 'lucide-react-native';
+import { BookOpen, Check, ChevronRight, Download, Menu, MessageCircle, Moon, Newspaper, RotateCcw, Search, Server, Settings, SlidersHorizontal, SquarePen, UserRound, X, Globe, type LucideIcon } from 'lucide-react-native';
 import { BlurTargetView } from 'expo-blur';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ThemeStatusBar } from '../theme/ThemeStatusBar';
@@ -53,8 +53,9 @@ type SettingsSubpage = 'memory' | 'profile' | 'dream' | null;
 type WorkspaceNotice = { text: string; tone: 'success' | 'error' };
 const { layout: l, radius: r, typography: t } = workspaceTheme;
 const NAV: { id: WorkspacePage; label: string; icon: LucideIcon }[] = [
-  { id: 'chat', label: '聊天', icon: MessageCircle }, { id: 'news', label: '新闻', icon: Newspaper },
-  { id: 'goals', label: '目标', icon: SquareCheck }, { id: 'settings', label: '设置', icon: Settings },
+  { id: 'chat', label: '聊天', icon: MessageCircle },
+  { id: 'news', label: '新闻', icon: Newspaper },
+  { id: 'settings', label: '设置', icon: Settings },
 ];
 function useStyles() { const { colors } = useTheme(); return useMemo(() => createStyles(colors), [colors]); }
 
