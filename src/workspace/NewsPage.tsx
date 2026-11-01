@@ -1,4 +1,5 @@
-import { Bookmark, Check, ChevronLeft, ExternalLink, Menu, Plus, Rss, X } from 'lucide-react-native';
+import { SubpageHeader } from '../ui/Subpage';
+import { Bookmark, Check, ExternalLink, Menu, Plus, Rss, X } from 'lucide-react-native';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Alert, Keyboard, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, type ScrollViewInstance, type ViewInstance } from 'react-native';
 import { useTheme } from '../theme/ThemeProvider';
@@ -21,10 +22,12 @@ const { typography: t, layout: l, radius: r, newsReading: n } = themeTokens;
 
 const PRESET_CHINESE_SOURCES = [
   { title: '少数派', url: 'https://sspai.com/feed', desc: '高效工作与数字生活' },
+  { title: '机核网', url: 'https://www.gcores.com/rss', desc: '次文化与游戏深度' },
+  { title: 'Solidot', url: 'https://www.solidot.org/index.rss', desc: '开源与极客前沿' },
   { title: '36氪', url: 'https://36kr.com/feed', desc: '科技创投与商业深度' },
   { title: '机器之心', url: 'https://www.jiqizhixin.com/rss', desc: '人工智能与前沿研究' },
-  { title: '阮一峰的网络日志', url: 'https://www.ruanyifeng.com/blog/atom.xml', desc: '科技爱好者周刊与技术杂谈' },
   { title: 'IT之家', url: 'https://www.ithome.com/rss/', desc: '前沿数码与IT科技资讯' },
+  { title: '极客公园', url: 'https://www.geekpark.net/rss', desc: '科技创新与前沿商业' },
 ] as const;
 
 /** Store 的 notice 含普通错误与成功文案；只把确知的成功提示移出阅读流。 */
@@ -119,11 +122,7 @@ function ArticleDetail({ store, snapshot, onOpenActions, focusComments, onCommen
     }
   }, [commentsY, focusComments, onCommentsFocused, snapshot.articleLoading]);
   return <View style={[styles.readerContainer, { backgroundColor: colors.surface }]}>
-    <View style={[styles.readerToolbar, { backgroundColor: colors.floatingSurface, borderBottomColor: colors.line }]}>
-      <IconControl transparent icon={ChevronLeft} label="返回新闻列表" onPress={() => store.closeArticle()} testID="news-detail-back" />
-      <Text accessibilityRole="header" style={[styles.subpageHeaderTitle, { color: colors.ink }]}>文章详情</Text>
-      <View style={styles.headerSideButtonSpacer} />
-    </View>
+    <SubpageHeader title="文章详情" backLabel="返回新闻列表" onBack={() => store.closeArticle()} backTestID="news-detail-back" />
     <ScrollView ref={scrollRef} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content} testID="news-detail">
     {snapshot.articleLoading && <Text style={[styles.meta, { color: colors.faint }]}>正在读取文章内容…</Text>}
     <FeedbackNotice tone="danger" text={snapshot.articleError} />
@@ -180,15 +179,11 @@ function ArticleDetail({ store, snapshot, onOpenActions, focusComments, onCommen
 function Sources({ store, snapshot, onBack }: { store: NewsStore; snapshot: NewsSnapshot; onBack: () => void }) {
   const { colors } = useTheme();
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const scrollRef = useRef<ScrollViewInstance | null>(null);
   return <View style={[styles.readerContainer, { backgroundColor: colors.surface }]}>
-    <View style={[styles.readerToolbar, { backgroundColor: colors.floatingSurface, borderBottomColor: colors.line }]}>
-      <IconControl transparent icon={ChevronLeft} label="返回新闻列表" onPress={onBack} testID="news-sources-back" />
-      <Text accessibilityRole="header" style={[styles.subpageHeaderTitle, { color: colors.ink }]}>RSS 来源</Text>
-      <View style={styles.headerSideButtonSpacer} />
-    </View>
-    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content} testID="news-sources">
-    <View style={styles.sourceHeading}><Text accessibilityRole="header" style={[styles.sourceTitle, { color: colors.ink }]}>RSS 来源</Text>
-      <Text style={[styles.excerpt, { color: colors.muted }]}>添加标准 RSS 地址，新闻会在服务端抓取并分析。</Text></View>
+    <SubpageHeader title="RSS 来源" backLabel="返回新闻列表" onBack={onBack} backTestID="news-sources-back" />
+    <ScrollView ref={scrollRef} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content} testID="news-sources">
+    <Text style={[styles.excerpt, { color: colors.muted }]}>添加标准 RSS 地址，新闻会在服务端抓取并分析。</Text>
     <Card style={styles.sourceStatus}>
       <Text style={[styles.sectionTitle, { color: colors.ink }]}>抓取与分析</Text>
       {snapshot.status ? <>
@@ -239,7 +234,10 @@ function Sources({ store, snapshot, onBack }: { store: NewsStore; snapshot: News
                   text="填入"
                   icon={Plus}
                   disabled={snapshot.sourceWriting || snapshot.sourceUncertain}
-                  onPress={() => store.setSourceDraft({ url: preset.url, title: preset.title })}
+                  onPress={() => {
+                    store.setSourceDraft({ url: preset.url, title: preset.title });
+                    scrollRef.current?.scrollTo({ y: 0, animated: true });
+                  }}
                   testID={`news-preset-select-${preset.title}`}
                 />
               )}
@@ -431,7 +429,6 @@ const styles = StyleSheet.create({
   viewTabs: { height: 36, borderRadius: r.round, borderWidth: 0, flexDirection: 'row', alignItems: 'center', padding: spacing[2], gap: spacing[2] },
   textTab: { paddingHorizontal: spacing[14], height: 30, borderRadius: r.round, alignItems: 'center', justifyContent: 'center' },
   tabText: { ...t.status, fontWeight: '600', textAlign: 'center' },
-  subpageHeaderTitle: { ...t.status, fontWeight: '600' },
   pressed: { opacity: themeTokens.interaction.pressedOpacity },
   noticeWrap: { gap: spacing[4] },
   sourceStatus: { gap: spacing[8] },
@@ -454,8 +451,6 @@ const styles = StyleSheet.create({
   detailNote: { ...n.detailNote, marginTop: spacing[8] },
   bodyOpen: { marginTop: spacing[8] },
   body: { ...n.detailBody },
-  sourceHeading: { gap: spacing[12], paddingTop: spacing[8] },
-  sourceTitle: { ...t.pageTitle },
   sectionLine: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: spacing[20], gap: spacing[14] },
   comment: { paddingBottom: spacing[16], borderBottomWidth: StyleSheet.hairlineWidth, gap: spacing[8] },
   commentInput: { minHeight: 104 },

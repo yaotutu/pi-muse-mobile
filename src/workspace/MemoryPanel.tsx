@@ -1,3 +1,5 @@
+import { Subpage } from '../ui/Subpage';
+import { IconControl } from '../ui/IconControl';
 import { FeedbackNotice } from '../ui/Feedback';
 import { Card } from '../ui/Surfaces';
 import { useEffect, useMemo, useState } from 'react';
@@ -12,19 +14,17 @@ import { ChoiceChip } from '../ui/ChoiceChip';
 import { FormInput } from '../ui/FormInput';
 
 /** 设置页内平级内容；四主 Tab 和会话面板结构不变，记忆属于服务全局而非当前空间。 */
-export function MemoryPanel({ onBack }: { onBack?: () => void } = {}) {
+export function MemoryPanel({ onBack }: { onBack: () => void }) {
   const { store, snapshot } = useMemories(); const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [query, setQuery] = useState(snapshot.query);
   useEffect(() => { store.open(); return () => store.close(); }, [store]);
   const submitSearch = () => { Keyboard.dismiss(); store.search(query); };
   const locked = !store.canWrite();
-  return <View style={styles.root} testID="memory-panel">
-    <View style={styles.topRow}>
-      <ActionButton label="刷新记忆" text="刷新" onPress={() => void store.refresh()} disabled={snapshot.loading || snapshot.writing} icon={RefreshCw} />
-    </View>
-    <View style={styles.heading}><Text accessibilityRole="header" style={styles.pageTitle}>长期记忆</Text>
-      <Text style={styles.intro}>所有空间共用，按需检索使用。</Text></View>
+  return <Subpage title="长期记忆" backLabel="返回设置" onBack={onBack} backTestID="settings-subpage-back"
+    testID="memory-panel" contentStyle={styles.root} action={<IconControl transparent icon={RefreshCw} label="刷新记忆"
+      onPress={() => void store.refresh()} busy={snapshot.loading} disabled={!!snapshot.writing} />}>
+    <Text style={styles.intro}>所有空间共用，按需检索使用。</Text>
     <View style={styles.search}><Search size={workspaceTheme.layout.iconSize} color={colors.faint} />
       <FormInput variant="search" accessibilityLabel="记忆搜索关键词" value={query} onChangeText={setQuery} placeholder="搜索记忆关键词" placeholderTextColor={colors.faint}
         editable={!snapshot.writing} maxLength={MEMORY_QUERY_LIMIT + 1} returnKeyType="search" onSubmitEditing={submitSearch} style={styles.searchInput} />
@@ -68,12 +68,11 @@ export function MemoryPanel({ onBack }: { onBack?: () => void } = {}) {
       <View style={styles.row}><ActionButton label={`编辑记忆 ${memory.id}`} text="编辑" icon={SquarePen} onPress={() => store.edit(memory.id)} disabled={locked} />
         <ActionButton label={`删除记忆 ${memory.id}`} text="删除" icon={Trash2} onPress={() => store.requestDelete(memory.id)} disabled={locked} tone="danger" /></View>
     </Card>)}
-  </View>;
+  </Subpage>;
 }
 const createStyles = (colors: WorkspaceColors) => StyleSheet.create({
   root: { gap: spacing[16], paddingBottom: spacing[24], minWidth: 0 },
-  topRow: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: spacing[8] },
-  heading: { gap: spacing[4] }, pageTitle: { ...workspaceTheme.typography.section, color: colors.ink }, intro: { ...workspaceTheme.typography.status, color: colors.muted },
+  intro: { ...workspaceTheme.typography.status, color: colors.muted },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing[8] },
   filterRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: spacing[8] },
   segments: { flexDirection: 'row', padding: spacing[4], borderRadius: workspaceTheme.radius.round, backgroundColor: colors.surface },

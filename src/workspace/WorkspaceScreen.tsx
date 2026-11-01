@@ -1,5 +1,5 @@
 import { Card } from '../ui/Surfaces';
-import { BookOpen, Check, ChevronLeft, ChevronRight, Download, Menu, MessageCircle, Moon, Newspaper, RotateCcw, Search, Server, Settings, SquarePen, UserRound, X, Globe, type LucideIcon } from 'lucide-react-native';
+import { BookOpen, Check, ChevronRight, Download, Menu, MessageCircle, Moon, Newspaper, RotateCcw, Search, Server, Settings, SquarePen, UserRound, X, Globe, type LucideIcon } from 'lucide-react-native';
 import { BlurTargetView } from 'expo-blur';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ThemeStatusBar } from '../theme/ThemeStatusBar';
@@ -133,9 +133,9 @@ function AnimatedSubpage({ children }: { children: ReactNode }) {
 
 function SettingsPage({ snapshot, openConnection, openBrowser, memoryAvailable = false, profileAvailable = false, dreamAvailable = false, currentSpaceId, onReset, subpage, onSubpage }: Pick<WorkspaceConnectionProps, 'snapshot' | 'openConnection'> & { openBrowser?: () => void; memoryAvailable?: boolean; profileAvailable?: boolean; dreamAvailable?: boolean; currentSpaceId?: string; onReset?: () => void; subpage: SettingsSubpage; onSubpage: (page: SettingsSubpage) => void }) {
   const styles = useStyles(); const update = useAppUpdate();
-  if (subpage === 'memory' && memoryAvailable) return <AnimatedSubpage key="memory"><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}><MemoryPanel onBack={() => onSubpage(null)} /></ScrollView></AnimatedSubpage>;
-  if (subpage === 'profile' && profileAvailable) return <AnimatedSubpage key="profile"><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}><ProfilePanel onBack={() => onSubpage(null)} /></ScrollView></AnimatedSubpage>;
-  if (subpage === 'dream' && dreamAvailable && currentSpaceId) return <AnimatedSubpage key="dream"><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}><DreamPanel currentSpaceId={currentSpaceId} onBack={() => onSubpage(null)} /></ScrollView></AnimatedSubpage>;
+  if (subpage === 'memory' && memoryAvailable) return <AnimatedSubpage key="memory"><MemoryPanel onBack={() => onSubpage(null)} /></AnimatedSubpage>;
+  if (subpage === 'profile' && profileAvailable) return <AnimatedSubpage key="profile"><ProfilePanel onBack={() => onSubpage(null)} /></AnimatedSubpage>;
+  if (subpage === 'dream' && dreamAvailable && currentSpaceId) return <AnimatedSubpage key="dream"><DreamPanel currentSpaceId={currentSpaceId} onBack={() => onSubpage(null)} /></AnimatedSubpage>;
   return <ScrollView key="settings" contentContainerStyle={[styles.otherPage, styles.settingsPage]}>
     <View style={styles.appSection}><Text accessibilityRole="header" style={styles.appSectionTitle}>连接与设备</Text>
       <View style={styles.appSettingsGroup}>
@@ -380,46 +380,26 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
         <SafeAreaView style={styles.screen} edges={['top', 'bottom', 'left', 'right']} aria-hidden={drawerOpen} {...(Platform.OS === 'web' && drawerOpen ? { inert: true } : {})}>
           {/* 唯一键盘避让层：Android 按真实重叠缩小阅读区，iOS 保留 padding；不再另算键盘高度。 */}
           <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled={Platform.OS !== 'web'} accessibilityViewIsModal={sessionMounted}>
-            {page !== 'chat' && page !== 'news' && page !== 'goals' && (
+            {page === 'settings' && !inSettingsSubpage && (
               <View style={styles.pageHeader}>
-                {inSettingsSubpage ? (
-                  <IconControl
-                    transparent
-                    icon={ChevronLeft}
-                    label="返回设置"
-                    onPress={() => setSettingsSubpage(null)}
-                    testID="settings-subpage-back"
+                <IconControl transparent icon={Menu} label="打开空间侧栏" onPress={openDrawer} />
+                <View style={styles.settingsCapsule}>
+                  <Settings size={16} strokeWidth={2} color={colors.ink} />
+                  <Text style={styles.capsuleLabel}>{NAV.find((item) => item.id === page)?.label ?? '设置'}</Text>
+                  <View
+                    style={[
+                      styles.capsuleDot,
+                      {
+                        backgroundColor:
+                          snapshot.status === 'online'
+                            ? colors.success
+                            : snapshot.status === 'connecting' || snapshot.status === 'loading'
+                            ? colors.warning
+                            : colors.danger,
+                      },
+                    ]}
                   />
-                ) : (
-                  <IconControl transparent icon={Menu} label="打开空间侧栏" onPress={openDrawer} />
-                )}
-                {inSettingsSubpage ? (
-                  <Text style={styles.subpageTitle}>
-                    {settingsSubpage === 'profile'
-                      ? '助手与用户资料'
-                      : settingsSubpage === 'memory'
-                      ? '长期记忆'
-                      : 'Dream 记忆整理'}
-                  </Text>
-                ) : (
-                  <View style={styles.settingsCapsule}>
-                    <Settings size={16} strokeWidth={2} color={colors.ink} />
-                    <Text style={styles.capsuleLabel}>{NAV.find((item) => item.id === page)?.label ?? '设置'}</Text>
-                    <View
-                      style={[
-                        styles.capsuleDot,
-                        {
-                          backgroundColor:
-                            snapshot.status === 'online'
-                              ? colors.success
-                              : snapshot.status === 'connecting' || snapshot.status === 'loading'
-                              ? colors.warning
-                              : colors.danger,
-                        },
-                      ]}
-                    />
-                  </View>
-                )}
+                </View>
                 <View style={styles.headerSideButtonSpacer} />
               </View>
             )}
@@ -567,7 +547,6 @@ const createStyles = (c: WorkspaceColors) => StyleSheet.create({
     paddingHorizontal: spacing[8], gap: spacing[6] },
   capsuleLabel: { ...t.status, fontSize: 13, fontWeight: '600', color: c.ink },
   capsuleDot: { width: 6, height: 6, borderRadius: 3 },
-  subpageTitle: { ...t.status, fontWeight: '600', color: c.ink },
   otherPage: { paddingTop: l.pageTop, paddingHorizontal: l.sidePadding, paddingBottom: spacing[24], gap: spacing[18] }, pageTitle: { ...t.heroName, color: c.ink }, itemTitle: { ...t.itemTitle, color: c.ink }, mutedText: { ...t.detail, color: c.muted }, caption: { ...t.caption, color: c.faint }, error: { ...t.caption, color: c.danger },
   exampleCard: { padding: spacing[20], borderRadius: r.card, backgroundColor: c.surface, gap: spacing[16], marginBottom: spacing[16] },
   confirmActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing[8] },

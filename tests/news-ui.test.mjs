@@ -93,8 +93,10 @@ test('详情完整显示原始 RSS 正文与推荐理由，阅读行距不影响
   assert.ok(themeTokens.newsReading.detailBody.lineHeight > themeTokens.newsReading.listExcerpt.lineHeight);
   assert.ok(themeTokens.newsReading.detailTitle.lineHeight > themeTokens.newsReading.listTitle.lineHeight);
   const sources = page.split('function Sources(')[1].split('export function NewsPage(')[0];
-  assert.match(sources, /style=\{styles\.sourceHeading\}.*style=\{\[styles\.sourceTitle/);
-  assert.match(page, /sourceHeading: \{ gap: spacing\[12\], paddingTop: spacing\[8\] \}/);
+  assert.match(sources, /<SubpageHeader title="RSS 来源"/);
+  assert.match(detail, /<SubpageHeader title="文章详情"/);
+  assert.doesNotMatch(sources, /styles\.sourceHeading|styles\.sourceTitle/);
+  assert.equal((sources.match(/>RSS 来源</g) ?? []).length, 0, '正文不重复顶栏标题');
 });
 
 test('新闻阅读页使用真实连接状态、共享控件和安全原文入口', () => {
@@ -212,11 +214,15 @@ test('新闻来源支持推荐中文精选 RSS 源并可一键填入', () => {
   assert.match(page, /少数派/);
   assert.match(page, /36氪/);
   assert.match(page, /机器之心/);
-  assert.match(page, /阮一峰的网络日志/);
+  for (const name of ['机核网', 'Solidot', '极客公园']) assert.ok(page.includes(name));
+  assert.doesNotMatch(page, /ruanyifeng\.com\/blog\/atom\.xml/, '当前服务端只解析 RSS2，不推荐 Atom');
   assert.match(page, /IT之家/);
   assert.match(page, /推荐中文精选源/);
   assert.match(page, /news-preset-select-/);
   assert.match(page, /store\.setSourceDraft\(\{ url: preset\.url, title: preset\.title \}\)/);
+  const presetAction = page.split('label={`快捷填入')[1].split('testID=')[0];
+  assert.match(presetAction, /scrollRef\.current\?\.scrollTo\(\{ y: 0, animated: true \}\)/);
+  assert.doesNotMatch(presetAction, /store\.addSource/, '填入不会隐式提交或吞掉手动草稿');
   assert.match(page, /已添加/);
 });
 
