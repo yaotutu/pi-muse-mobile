@@ -99,7 +99,6 @@ test('详情完整显示原始 RSS 正文与推荐理由，阅读行距不影响
   const sources = page.split('function Sources(')[1].split('export function NewsPage(')[0];
   assert.match(sources, /<SubpageHeader title="RSS 来源"/);
   assert.match(detail, /<SubpageHeader title="文章详情"/);
-  assert.doesNotMatch(sources, /styles\.sourceHeading|styles\.sourceTitle/);
   assert.equal((sources.match(/>RSS 来源</g) ?? []).length, 0, '正文不重复顶栏标题');
 });
 
@@ -228,6 +227,33 @@ test('新闻来源支持推荐中文精选 RSS 源并可一键填入', () => {
   assert.match(presetAction, /scrollRef\.current\?\.scrollTo\(\{ y: 0, animated: true \}\)/);
   assert.doesNotMatch(presetAction, /store\.addSource/, '填入不会隐式提交或吞掉手动草稿');
   assert.match(page, /已添加/);
+});
+
+test('RSS 管理以紧凑状态、两行表单和订阅列表为主，推荐辅助默认收起', () => {
+  const page = read('workspace/NewsPage.tsx');
+  const sources = page.split('function Sources(')[1].split('export function NewsPage(')[0];
+  assert.match(sources, /\[showPresets, setShowPresets\] = useState\(false\)/);
+  assert.match(sources, /accessibilityState=\{\{ expanded: showPresets \}\}/);
+  assert.match(sources, /onPress=\{\(\) => setShowPresets\(\(value\) => !value\)\}/);
+  assert.match(sources, /\{showPresets && <View>/);
+  assert.match(sources, /contentContainerStyle=\{styles\.sourcesContent\}/);
+  assert.doesNotMatch(sources, /<Card style=\{styles\.sourceStatus\}|styles\.presetCard|styles\.presetList/);
+  assert.match(sources, /<IconControl small transparent icon=\{RefreshCw\} label="回读新闻抓取与分析状态"/);
+  assert.match(sources, /<IconControl small transparent icon=\{RefreshCw\} label="刷新来源列表"/);
+  const formRow = sources.split('<View style={styles.sourceFormRow}>')[1].split('</View>')[0];
+  assert.match(formRow, /testID="news-source-title"/);
+  assert.match(formRow, /testID="news-source-add"/);
+  assert.match(page, /sourceHeadingText: \{ \.\.\.t\.itemTitle \}/);
+  assert.match(page, /presetToggle: \{ minHeight: l\.smallControl \}/);
+  assert.match(page, /presetRow: \{[^\n]*minHeight: l\.smallControl[^\n]*borderBottomWidth/);
+  assert.doesNotMatch(page.split('presetRow:')[1].split('\n')[0], /borderRadius|paddingHorizontal|borderWidth:/);
+  const row = sources.split('snapshot.sources.map((source) => {')[1];
+  assert.match(row, /styles\.sourceHeading[\s\S]*?source\.title[\s\S]*?testID=\{`news-source-delete-/);
+  assert.match(row, /<Text selectable[^\n]*source\.url/);
+  assert.match(row, /deleteId === source\.id \? <Card tone="danger"/);
+  assert.match(row, /已有文章和收藏不会删除/);
+  assert.match(sources, /snapshot\.sourceUncertain/);
+  assert.match(sources, /snapshot\.sourceWriteError/);
 });
 
 test('主导航以新闻替换任务根页，会话活动保留', () => {

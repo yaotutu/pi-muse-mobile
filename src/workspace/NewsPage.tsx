@@ -1,5 +1,5 @@
 import { SubpageHeader } from '../ui/Subpage';
-import { Bookmark, Check, ExternalLink, Menu, Plus, Rss, X } from 'lucide-react-native';
+import { Bookmark, Check, ChevronDown, ChevronRight, ExternalLink, Menu, Plus, RefreshCw, Rss, X } from 'lucide-react-native';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Alert, Keyboard, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, type ScrollViewInstance, type ViewInstance } from 'react-native';
 import { useTheme } from '../theme/ThemeProvider';
@@ -178,52 +178,67 @@ function ArticleDetail({ store, snapshot, onOpenActions, focusComments, onCommen
 function Sources({ store, snapshot, onBack }: { store: NewsStore; snapshot: NewsSnapshot; onBack: () => void }) {
   const { colors } = useTheme();
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [showPresets, setShowPresets] = useState(false);
   const scrollRef = useRef<ScrollViewInstance | null>(null);
   return <View style={[styles.readerContainer, { backgroundColor: colors.canvas }]}>
     <SubpageHeader title="RSS 来源" backLabel="返回新闻列表" onBack={onBack} backTestID="news-sources-back" />
-    <ScrollView ref={scrollRef} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content} testID="news-sources">
-    <Text style={[styles.excerpt, { color: colors.muted }]}>添加标准 RSS 地址，新闻会在服务端抓取并分析。</Text>
-    <Card style={styles.sourceStatus}>
-      <Text style={[styles.sectionTitle, { color: colors.ink }]}>抓取与分析</Text>
-      {snapshot.status ? <>
-        <Text style={[styles.excerpt, { color: colors.muted }]}>{snapshot.status.refreshing ? '正在抓取来源' : snapshot.status.processing || snapshot.status.pendingCount > 0 ? `正在分析 · ${snapshot.status.pendingCount} 篇等待处理` : '当前没有待处理文章'}</Text>
-        <Text style={[styles.meta, { color: colors.faint }]}>{snapshot.status.lastRefreshedAt ? `上次抓取 ${dateLabel(snapshot.status.lastRefreshedAt)}` : '尚未抓取'}</Text>
+    <ScrollView ref={scrollRef} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.sourcesContent} testID="news-sources">
+    <View style={styles.sourceStatus} testID="news-source-status">
+      <View style={styles.sourceHeading}>
+        <View style={styles.sourceInfo}>
+          <Text style={[styles.sourceHeadingText, { color: colors.ink }]}>抓取与分析</Text>
+          <Text style={[styles.meta, { color: colors.muted }]}>{snapshot.status
+            ? snapshot.status.refreshing ? '正在抓取来源' : snapshot.status.processing || snapshot.status.pendingCount > 0 ? `正在分析 · ${snapshot.status.pendingCount} 篇等待处理` : '当前没有待处理文章'
+            : snapshot.statusLoading ? '正在读取状态…' : '尚未读取状态'}</Text>
+          {snapshot.status && <Text style={[styles.meta, { color: colors.faint }]}>{snapshot.status.lastRefreshedAt ? `上次抓取 ${dateLabel(snapshot.status.lastRefreshedAt)}` : '尚未抓取'}</Text>}
+        </View>
+        <IconControl small transparent icon={RefreshCw} label="回读新闻抓取与分析状态" busy={snapshot.statusLoading}
+          onPress={() => void store.refreshStatus()} testID="news-status-retry" />
+      </View>
+      {snapshot.status && <>
         {snapshot.status.failedCount > 0 && <FeedbackNotice tone="warning" text={`${snapshot.status.failedCount} 篇分析失败；全部文章仍可阅读。手动抓取可重试已知失败分析。`} />}
         <FeedbackNotice tone="danger" text={snapshot.status.lastError ?? undefined} />
-      </> : <Text style={[styles.meta, { color: colors.faint }]}>{snapshot.statusLoading ? '正在读取状态…' : '尚未读取状态'}</Text>}
+      </>}
       <FeedbackNotice tone="danger" text={snapshot.statusError} />
-      <ActionButton label="回读新闻抓取与分析状态" text="核对状态" busy={snapshot.statusLoading} onPress={() => void store.refreshStatus()} testID="news-status-retry" />
-    </Card>
+    </View>
     <FeedFeedback snapshot={snapshot} store={store} />
     <NewsNotice notice={snapshot.notice} store={store} success={routineNotice(snapshot.notice)} />
-    <Card style={styles.sourceForm}>
-      <Text style={[styles.sectionTitle, { color: colors.ink }]}>添加来源</Text>
+    <Card style={styles.sourceForm} testID="news-source-form">
+      <Text accessibilityRole="header" style={[styles.sourceHeadingText, { color: colors.ink }]}>添加来源</Text>
       <FormInput accessibilityLabel="RSS 地址" placeholder="https://example.com/feed.xml" autoCapitalize="none" keyboardType="url" value={snapshot.sourceDraft.url}
         editable={!snapshot.sourceWriting && !snapshot.sourceUncertain} onChangeText={(url) => store.setSourceDraft({ url })} testID="news-source-url" />
-      <FormInput accessibilityLabel="来源标题，可选" placeholder="标题（可选）" value={snapshot.sourceDraft.title}
-        editable={!snapshot.sourceWriting && !snapshot.sourceUncertain} onChangeText={(title) => store.setSourceDraft({ title })} testID="news-source-title" />
+      <View style={styles.sourceFormRow}>
+        <FormInput accessibilityLabel="来源标题，可选" placeholder="标题（可选）" value={snapshot.sourceDraft.title} style={styles.sourceTitleInput}
+          editable={!snapshot.sourceWriting && !snapshot.sourceUncertain} onChangeText={(title) => store.setSourceDraft({ title })} testID="news-source-title" />
+        <ActionButton label="添加RSS来源" text="添加" tone="primary" busy={snapshot.sourceWriting} disabled={!snapshot.sourceDraft.url.trim() || snapshot.sourceUncertain}
+          onPress={() => void store.addSource()} testID="news-source-add" />
+      </View>
       <FeedbackNotice tone={snapshot.sourceUncertain ? 'warning' : 'danger'} text={snapshot.sourceWriteError} />
-      <ActionButton label="添加RSS来源" text="添加来源" tone="primary" busy={snapshot.sourceWriting} disabled={!snapshot.sourceDraft.url.trim() || snapshot.sourceUncertain}
-        onPress={() => void store.addSource()} testID="news-source-add" />
       {snapshot.sourceUncertain && <View style={styles.actionRow}>
         <ActionButton label="回读RSS来源以核对" text="回读核对" onPress={() => void store.refreshSources()} testID="news-source-readback" />
         {snapshot.sourceReviewed && <ActionButton label="确认已核对RSS来源并解锁添加" text="已核对，解锁" onPress={() => store.acknowledgeSourceCreateReadback()} testID="news-source-acknowledge" />}
       </View>}
     </Card>
-    <Card style={styles.presetCard}>
-      <Text style={[styles.sectionTitle, { color: colors.ink }]}>推荐中文精选源</Text>
-      <Text style={[styles.meta, { color: colors.muted }]}>精选常用中文科技与资讯 RSS，点击快捷填入：</Text>
-      <View style={styles.presetList}>
+    <View>
+      {/* 推荐是可选的添加辅助，默认收起，不能把已有订阅挤到多屏之后。展开不触发写请求。 */}
+      <Pressable accessibilityRole="button" accessibilityLabel="推荐中文精选源" accessibilityState={{ expanded: showPresets }}
+        onPress={() => setShowPresets((value) => !value)} testID="news-presets-toggle"
+        style={({ pressed }) => [styles.sourceHeading, styles.presetToggle, pressed && styles.pressed]}>
+        <Text style={[styles.sourceHeadingText, styles.sourceTitleInput, { color: colors.ink }]}>推荐中文精选源</Text>
+        <Text style={[styles.meta, { color: colors.faint }]}>{PRESET_CHINESE_SOURCES.length} 个</Text>
+        {showPresets ? <ChevronDown size={l.iconSize - spacing[4]} color={colors.muted} /> : <ChevronRight size={l.iconSize - spacing[4]} color={colors.muted} />}
+      </Pressable>
+      {showPresets && <View>
         {PRESET_CHINESE_SOURCES.map((preset) => {
           const added = snapshot.sources.some((s) => s.url === preset.url);
           return (
-            <View key={preset.url} style={[styles.presetRow, { borderColor: colors.line }]}>
+            <View key={preset.url} style={[styles.presetRow, { borderBottomColor: colors.line }]}>
               <View style={styles.presetInfo}>
-                <Text style={[styles.presetTitle, { color: colors.ink }]}>{preset.title}</Text>
-                <Text numberOfLines={1} style={[styles.meta, { color: colors.faint }]}>{preset.desc}</Text>
+                <Text style={[styles.sourceHeadingText, { color: colors.ink }]}>{preset.title}</Text>
+                <Text style={[styles.meta, { color: colors.faint }]}>{preset.desc}</Text>
               </View>
               {added ? (
-                <View style={[styles.presetBadge, { backgroundColor: colors.surface }]}>
+                <View style={styles.presetBadge}>
                   <Check size={14} color={colors.success} />
                   <Text style={[styles.meta, { color: colors.success }]}>已添加</Text>
                 </View>
@@ -243,19 +258,25 @@ function Sources({ store, snapshot, onBack }: { store: NewsStore; snapshot: News
             </View>
           );
         })}
-      </View>
-    </Card>
-    <View style={styles.sectionHeading}><Text accessibilityRole="header" style={[styles.sectionTitle, { color: colors.ink }]}>已有来源 · {snapshot.sources.length}</Text>
-      <ActionButton label="刷新来源列表" text="刷新列表" busy={snapshot.sourcesLoading} onPress={() => void store.refreshSources()} testID="news-sources-retry" /></View>
+      </View>}
+    </View>
+    <View style={styles.sectionHeading}><Text accessibilityRole="header" style={[styles.sourceHeadingText, { color: colors.ink }]}>已有来源 · {snapshot.sources.length}</Text>
+      <IconControl small transparent icon={RefreshCw} label="刷新来源列表" busy={snapshot.sourcesLoading} onPress={() => void store.refreshSources()} testID="news-sources-retry" /></View>
     <FeedbackNotice tone="danger" text={snapshot.sourceError} />
     {snapshot.sourcesLoading && !snapshot.sourcesLoaded && <Text style={[styles.meta, { color: colors.faint }]}>正在读取来源…</Text>}
     {snapshot.sourcesLoaded && !snapshot.sources.length && <Text style={[styles.excerpt, { color: colors.muted }]}>还没有 RSS 来源。添加后可回到新闻页手动抓取。</Text>}
-    {snapshot.sources.map((source) => {
+    <View>{snapshot.sources.map((source) => {
       const work = snapshot.sourceDeleteWork[source.id];
-      return <View key={source.id} style={[styles.sourceRow, { borderBottomColor: colors.line }]}>
-        <Text style={[styles.articleTitle, { color: colors.ink }]}>{source.title}</Text>
+      return <View key={source.id} style={[styles.sourceRow, { borderBottomColor: colors.line }]} testID={`news-source-row-${source.id}`}>
+        <View style={styles.sourceHeading}>
+          <View style={styles.sourceInfo}>
+            <Text style={[styles.sourceHeadingText, { color: colors.ink }]}>{source.title}</Text>
+            <Text style={[styles.meta, { color: colors.muted }]}>{source.lastFetchedAt ? `上次抓取 ${dateLabel(source.lastFetchedAt)}` : '尚未抓取'}</Text>
+          </View>
+          {deleteId !== source.id && <ActionButton label={`删除RSS来源，${source.title}`} text="删除" tone="danger" disabled={!!work?.uncertain || !!work?.writing}
+            onPress={() => setDeleteId(source.id)} testID={`news-source-delete-${source.id}`} />}
+        </View>
         <Text selectable style={[styles.meta, { color: colors.faint }]}>{source.url}</Text>
-        <Text style={[styles.meta, { color: colors.muted }]}>{source.lastFetchedAt ? `上次抓取 ${dateLabel(source.lastFetchedAt)}` : '尚未抓取'}</Text>
         <FeedbackNotice tone="danger" text={source.lastError ?? undefined} />
         {work?.uncertain && <><FeedbackNotice tone="warning" text="删除结果未明；请回读来源并核对，确认前不会重复删除。" />
           <View style={styles.actionRow}><ActionButton label="回读来源以核对删除" text="回读核对" onPress={() => void store.refreshSources()} />
@@ -265,10 +286,9 @@ function Sources({ store, snapshot, onBack }: { store: NewsStore; snapshot: News
           <View style={styles.actionRow}><ActionButton label="确认删除RSS来源" text="确认删除" tone="danger" busy={!!work?.writing} disabled={!!work?.uncertain}
             onPress={() => void store.deleteSource(source.id).then((ok) => { if (ok) setDeleteId(null); })} testID="news-source-confirm-delete" />
             <ActionButton label="取消删除RSS来源" text="取消" onPress={() => setDeleteId(null)} /></View>
-        </Card> : <ActionButton label={`删除RSS来源，${source.title}`} text="删除来源" tone="danger" disabled={!!work?.uncertain || !!work?.writing}
-          onPress={() => setDeleteId(source.id)} testID={`news-source-delete-${source.id}`} />}
+        </Card> : null}
       </View>;
-    })}
+    })}</View>
   </ScrollView>
   </View>;
 }
@@ -418,6 +438,7 @@ export function NewsPage({ store, managing, onManaging, openDrawer }: { store: N
 
 const styles = StyleSheet.create({
   content: { paddingHorizontal: l.sidePadding, paddingTop: spacing[16], paddingBottom: spacing[34], gap: spacing[18] },
+  sourcesContent: { paddingHorizontal: l.sidePadding, paddingTop: spacing[12], paddingBottom: spacing[24], gap: spacing[12] },
   readerContainer: { flex: 1, minHeight: 0 },
   headerSideButtonSpacer: { width: l.controlSize, height: l.controlSize },
   readerContent: { paddingHorizontal: n.cardSideInset, paddingTop: spacing[4], paddingBottom: spacing[34], gap: spacing[4] },
@@ -429,7 +450,10 @@ const styles = StyleSheet.create({
   tabText: { ...t.status, fontWeight: '600', textAlign: 'center' },
   pressed: { opacity: themeTokens.interaction.pressedOpacity },
   noticeWrap: { gap: spacing[4] },
-  sourceStatus: { gap: spacing[8] },
+  sourceStatus: { gap: spacing[4] },
+  sourceHeading: { flexDirection: 'row', alignItems: 'center', gap: spacing[8] },
+  sourceInfo: { flex: 1, minWidth: 0, gap: spacing[2] },
+  sourceHeadingText: { ...t.itemTitle },
   sectionHeading: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: spacing[8] },
   sectionTitle: { ...t.section },
   meta: { ...t.caption },
@@ -440,7 +464,6 @@ const styles = StyleSheet.create({
   feedExcerpt: { ...n.listExcerpt, marginBottom: spacing[18] },
   feedReason: { ...n.listReason, marginBottom: spacing[14] },
   feedMeta: { ...t.caption },
-  articleTitle: { ...t.itemTitle },
   excerpt: { ...t.detail },
   actionRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing[8] },
   detailHeading: { gap: spacing[18], paddingTop: spacing[12] },
@@ -452,18 +475,18 @@ const styles = StyleSheet.create({
   sectionLine: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: spacing[20], gap: spacing[14] },
   comment: { paddingBottom: spacing[16], borderBottomWidth: StyleSheet.hairlineWidth, gap: spacing[8] },
   commentInput: { minHeight: 104 },
-  sourceForm: { gap: spacing[12] },
-  sourceRow: { paddingVertical: spacing[18], borderBottomWidth: StyleSheet.hairlineWidth, gap: spacing[8] },
+  sourceForm: { gap: spacing[8] },
+  sourceFormRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing[8] },
+  sourceTitleInput: { flex: 1, minWidth: 0 },
+  sourceRow: { paddingVertical: spacing[8], borderBottomWidth: StyleSheet.hairlineWidth, gap: spacing[4] },
   confirm: { gap: spacing[12] },
   empty: { alignItems: 'center', justifyContent: 'center', paddingVertical: spacing[48], paddingHorizontal: spacing[24], gap: spacing[12] },
   emptyIconWrap: { width: 64, height: 64, borderRadius: r.round, borderWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center', marginBottom: spacing[4] },
   emptyTitle: { ...t.section, fontWeight: '600', textAlign: 'center' },
   emptyExcerpt: { ...t.detail, textAlign: 'center', maxWidth: 280, lineHeight: 20 },
   emptyAction: { alignSelf: 'center', marginTop: spacing[4] },
-  presetCard: { gap: spacing[12] },
-  presetList: { gap: spacing[8] },
-  presetRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacing[10], paddingHorizontal: spacing[12], borderRadius: r.field, borderWidth: StyleSheet.hairlineWidth },
+  presetToggle: { minHeight: l.smallControl },
+  presetRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: l.smallControl, paddingVertical: spacing[8], borderBottomWidth: StyleSheet.hairlineWidth },
   presetInfo: { flex: 1, minWidth: 0, gap: spacing[2], marginRight: spacing[8] },
-  presetTitle: { ...t.itemTitle, fontSize: 15 },
-  presetBadge: { flexDirection: 'row', alignItems: 'center', gap: spacing[4], paddingHorizontal: spacing[8], paddingVertical: spacing[4], borderRadius: r.round },
+  presetBadge: { flexDirection: 'row', alignItems: 'center', gap: spacing[4] },
 });
