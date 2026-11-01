@@ -7,18 +7,24 @@ import { Pressable, StyleSheet, type StyleProp, type ViewStyle } from 'react-nat
 import { useTheme } from '../theme/ThemeProvider';
 import { themeTokens, spacing } from '../theme/tokens';
 
-export function IconControl({ icon: Icon, label, onPress, testID, disabled = false, busy = false, selected = false, small = false, style }: {
+export function IconControl({ icon: Icon, label, onPress, testID, disabled = false, busy = false, selected = false, small = false, transparent = false, style }: {
   icon: LucideIcon; label: string; onPress: () => void; testID?: string;
-  disabled?: boolean; busy?: boolean; selected?: boolean; small?: boolean; style?: StyleProp<ViewStyle>;
+  disabled?: boolean; busy?: boolean; selected?: boolean; small?: boolean; transparent?: boolean; style?: StyleProp<ViewStyle>;
 }) {
   const { colors } = useTheme();
   const size = small ? themeTokens.layout.smallControl : themeTokens.layout.controlSize;
   return <Pressable accessibilityRole="button" accessibilityLabel={label}
     accessibilityState={{ disabled: disabled || busy, busy, selected }}
     disabled={disabled || busy} onPress={onPress} testID={testID}
-    style={({ pressed }) => [styles.control, { width: size, height: size, backgroundColor: selected ? colors.selected : colors.floatingSurface, borderColor: colors.floatingLine },
+    style={({ pressed }) => [styles.control, {
+      width: size,
+      height: size,
+      backgroundColor: transparent ? (pressed ? colors.control : 'transparent') : (selected ? colors.selected : colors.floatingSurface),
+      borderColor: transparent ? 'transparent' : colors.floatingLine,
+      borderWidth: transparent ? 0 : StyleSheet.hairlineWidth,
+    },
       pressed && styles.pressed, (disabled || busy) && styles.disabled, style]}>
-    <Icon size={small ? themeTokens.layout.iconSize - spacing[4] : themeTokens.layout.iconSize} strokeWidth={1.7} color={colors.ink} />
+    <Icon size={small ? themeTokens.layout.iconSize - spacing[4] : themeTokens.layout.iconSize} strokeWidth={1.8} color={colors.ink} />
   </Pressable>;
 }
 

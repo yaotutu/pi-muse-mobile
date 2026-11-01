@@ -320,7 +320,7 @@ export function NewsPage({ store, managing, onManaging, openDrawer }: { store: N
       : <View style={[styles.readerContainer, { backgroundColor: colors.surface }]}>
           {/* 统一顶栏：左侧抽屉菜单、居中胶囊药丸分段、右侧对称操作菜单 */}
           <View style={[styles.readerToolbar, { backgroundColor: colors.floatingSurface, borderBottomColor: colors.line }]}>
-            {openDrawer ? <IconControl icon={Menu} label="打开空间侧栏" onPress={openDrawer} /> : <View style={styles.headerSideButtonSpacer} />}
+            {openDrawer ? <IconControl transparent icon={Menu} label="打开空间侧栏" onPress={openDrawer} /> : <View style={styles.headerSideButtonSpacer} />}
             <View accessibilityRole="tablist" accessibilityLabel="新闻视图" style={[styles.viewTabs, { backgroundColor: colors.control }]}>
               {(['recommended', 'all'] as const).map((view) => <Pressable key={view} accessibilityRole="tab"
                 accessibilityLabel={view === 'recommended' ? '推荐' : '全部'} accessibilityState={{ selected: snapshot.view === view }}
@@ -331,6 +331,7 @@ export function NewsPage({ store, managing, onManaging, openDrawer }: { store: N
             </View>
             <IconControl
               icon={SlidersHorizontal}
+              transparent
               label="资讯操作与订阅管理"
               selected={snapshot.savedOnly}
               busy={snapshot.feedRefreshing}

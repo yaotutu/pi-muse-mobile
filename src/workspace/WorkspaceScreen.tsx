@@ -1,5 +1,5 @@
 import { Card } from '../ui/Surfaces';
-import { BookOpen, Check, ChevronRight, Download, Menu, MessageCircle, Moon, Newspaper, RotateCcw, Search, Server, Settings, SlidersHorizontal, SquarePen, UserRound, X, Globe, type LucideIcon } from 'lucide-react-native';
+import { BookOpen, Check, ChevronRight, Download, Menu, MessageCircle, Moon, Newspaper, RotateCcw, Search, Server, Settings, SquarePen, UserRound, X, Globe, type LucideIcon } from 'lucide-react-native';
 import { BlurTargetView } from 'expo-blur';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ThemeStatusBar } from '../theme/ThemeStatusBar';
@@ -387,7 +387,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
           <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled={Platform.OS !== 'web'} accessibilityViewIsModal={sessionMounted}>
             {page !== 'chat' && page !== 'news' && page !== 'goals' && !isSubpage && (
               <View style={styles.pageHeader}>
-                <IconControl icon={Menu} label="打开空间侧栏" onPress={openDrawer} />
+                <IconControl transparent icon={Menu} label="打开空间侧栏" onPress={openDrawer} />
                 <View style={styles.settingsCapsule}>
                   <Settings size={16} strokeWidth={2} color={colors.ink} />
                   <Text style={styles.capsuleLabel}>{NAV.find((item) => item.id === page)?.label ?? '设置'}</Text>
@@ -405,13 +405,13 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
                     ]}
                   />
                 </View>
-                <IconControl icon={Server} label="服务器连接与状态" testID="settings-open-connection" onPress={openConnection} />
+                <View style={styles.headerSideButtonSpacer} />
               </View>
             )}
             {/* 顶栏：实体/毛玻璃防穿透遮罩，左右功能键与中央灵动岛药丸 */}
             {page === 'chat' && (
               <View style={[styles.chatHeader, keyboardVisible && styles.chatHeaderCompact]}>
-                <IconControl icon={Menu} label="打开空间侧栏" testID="workspace-open-drawer" onPress={openDrawer} />
+                <IconControl transparent icon={Menu} label="打开空间侧栏" testID="workspace-open-drawer" onPress={openDrawer} />
                 <DynamicIsland
                   spaceId={spaces.currentSpace}
                   spaceTitle={labels.title(spaces.currentSpace)}
@@ -424,7 +424,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
                   accessibilityHint={`当前空间：${labels.title(spaces.currentSpace)}；当前状态：${statusLabel}。全屏显示当前会话的动态、审批、工作区和历史`}
                   onPress={openSession}
                 />
-                <IconControl icon={SlidersHorizontal} label="打开空间工作区" testID="workspace-open-console" onPress={() => openSession()} />
+                <View style={styles.headerSideButtonSpacer} />
               </View>
             )}
             <View style={styles.bodyStage}>

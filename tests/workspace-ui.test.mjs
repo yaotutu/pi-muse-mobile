@@ -100,7 +100,7 @@ test('聊天顶栏集成灵动岛感知形态，状态与声波呼吸联动，�
   const sessionHeader = screen.slice(screen.indexOf('headerCenter={'), screen.indexOf('headerRight=', screen.indexOf('headerCenter={')));
   assert.match(chatHeader, /<DynamicIsland/);
   assert.match(chatHeader, /testID="workspace-open-drawer"/);
-  assert.match(chatHeader, /testID="workspace-open-console"/);
+  assert.doesNotMatch(chatHeader, /testID="workspace-open-console"/);
   const island = read('src/workspace/DynamicIsland.tsx');
   assert.match(island, /testID=\{testID\}/);
   assert.match(island, /accessibilityRole="button"/);
