@@ -149,9 +149,9 @@ test('会话复用整组分段，新闻使用紧凑受控文字Tab', () => {
   const news = read('src/workspace/NewsPage.tsx');
   assert.match(session, /<SegmentedControl value=\{tab\} options=\{TABS\}/);
   assert.doesNotMatch(news, /<SegmentedControl/);
-  assert.match(news, /\(\['recommended', 'all'\] as const\)\.map/);
+  assert.match(news, /\(\['recommended', 'all', 'saved'\] as const\)\.map/);
   assert.match(news, /store\.setView\(view\)/);
-  assert.match(news, /aria-selected=\{snapshot\.view === view\}/);
+  assert.match(news, /aria-selected=\{selected\}/);
   for (const [id, label] of [['activity', '动态'], ['approvals', '审批'], ['workspace', '工作区'], ['history', '历史']]) {
     assert.match(session, new RegExp(`label: '${label}'.*testID: 'workspace-session-tab-${id}'`));
   }

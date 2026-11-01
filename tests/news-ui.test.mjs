@@ -52,7 +52,7 @@ test('列表以标题和两行正文开篇，一行推荐理由与来源时间�
   assert.match(card, /newsListExcerpt\(article\.content\)/);
   assert.doesNotMatch(card, /查看内容|styles\.readMore|<Card\b/);
   assert.match(page, /viewTabs: \{ height: 36, borderRadius: r\.round/);
-  assert.match(page, /textTab: \{ paddingHorizontal: spacing\[16\], height: 30/);
+  assert.match(page, /textTab: \{ paddingHorizontal: spacing\[14\], height: 30/);
   assert.match(page, /articleOpen: \{ minHeight: l\.smallControl, padding: n\.cardContentInset \}/);
   assert.match(page, /feedTitle: \{[^\n]*marginBottom: spacing\[12\]/);
   assert.match(page, /feedExcerpt: \{[^\n]*marginBottom: spacing\[18\]/);
@@ -106,7 +106,7 @@ test('新闻阅读页使用真实连接状态、共享控件和安全原文入�
   assert.match(page, /safeMessageUrl\(article\.url\)/);
   assert.match(page, /Linking\.openURL\(url\)/);
   assert.doesNotMatch(page, /WebView|dangerouslySetInnerHTML|chatQuery|spaceId/);
-  assert.match(page, /testID=\{`news-view-\$\{view\}`\}/);
+  assert.match(page, /testID=\{view === 'saved' \? 'news-saved-filter' : `news-view-\$\{view\}`\}/);
   for (const id of ['news-saved-filter', 'news-manage-sources', 'news-refresh-feeds',
     'news-source-url', 'news-source-add', 'news-source-confirm-delete', 'news-comment-input', 'news-comment-submit',
     'news-article-readback', 'news-source-readback', 'news-feed-readback']) assert.match(page, new RegExp(id));
@@ -173,14 +173,14 @@ test('新闻默认首屏从44dp文字筛选直接进入文章，状态详情留�
   const reader = page.split('export function NewsPage(')[1].split('const styles =')[0];
   const sources = page.split('function Sources(')[1].split('export function NewsPage(')[0];
   assert.match(reader, /accessibilityRole="tablist" accessibilityLabel="新闻视图"/);
-  assert.match(reader, /accessibilityRole="tab"[\s\S]*?accessibilityState=\{\{ selected: snapshot\.view === view \}\}/);
-  assert.match(page, /textTab: \{ paddingHorizontal: spacing\[16\], height: 30/);
+  assert.match(reader, /accessibilityRole="tab"/);
+  assert.match(page, /textTab: \{ paddingHorizontal: spacing\[14\], height: 30/);
   assert.match(page, /import \{ IconControl \} from '\.\.\/ui\/IconControl'/);
-  assert.match(reader, /<IconControl\s+icon=\{SlidersHorizontal\}/);
+  assert.match(reader, /<IconControl\s+icon=\{Rss\}/);
   assert.doesNotMatch(page, /ToolbarIcon|styles\.toolbarIcon/);
-  assert.match(reader, /selected=\{snapshot\.savedOnly\}[\s\S]*?style=\{snapshot\.savedOnly \? \{ borderColor: colors\.blue \} : undefined\}/);
+  assert.match(reader, /RefreshControl/);
   assert.match(reader, /busy=\{snapshot\.feedRefreshing\}/);
-  assert.match(reader, /<Sheet\b/);
+  assert.doesNotMatch(reader, /<Sheet\b/);
   assert.match(reader, /snapshot\.articles\.map\(\(article\) => <ArticleCard/);
   assert.doesNotMatch(reader, /今日阅读|从你订阅|<SegmentedControl|来源已就绪|上次抓取|为你推荐|styles\.sectionHeading/);
   assert.match(sources, /snapshot\.status\.failedCount/);
