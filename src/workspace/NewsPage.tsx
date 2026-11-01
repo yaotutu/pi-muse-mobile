@@ -1,4 +1,4 @@
-import { Bookmark, ChevronLeft, ExternalLink, Menu, RefreshCw, Rss, X } from 'lucide-react-native';
+import { Bookmark, Check, ChevronLeft, ExternalLink, Menu, Plus, RefreshCw, Rss, X } from 'lucide-react-native';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Alert, Keyboard, Linking, Pressable, ScrollView, StyleSheet, Text, View, type ScrollViewInstance, type ViewInstance } from 'react-native';
 import { useTheme } from '../theme/ThemeProvider';
@@ -18,6 +18,14 @@ import { useNews } from '../news/useNews';
 import type { MenuRect } from '../ui/menu-position';
 
 const { typography: t, layout: l, radius: r, newsReading: n } = themeTokens;
+
+const PRESET_CHINESE_SOURCES = [
+  { title: '少数派', url: 'https://sspai.com/feed', desc: '高效工作与数字生活' },
+  { title: '36氪', url: 'https://36kr.com/feed', desc: '科技创投与商业深度' },
+  { title: '机器之心', url: 'https://www.jiqizhixin.com/rss', desc: '人工智能与前沿研究' },
+  { title: '阮一峰的网络日志', url: 'https://www.ruanyifeng.com/blog/atom.xml', desc: '科技爱好者周刊与技术杂谈' },
+  { title: 'IT之家', url: 'https://www.ithome.com/rss/', desc: '前沿数码与IT科技资讯' },
+] as const;
 
 /** Store 的 notice 含普通错误与成功文案；只把确知的成功提示移出阅读流。 */
 function routineNotice(notice?: string): boolean {
@@ -197,6 +205,38 @@ function Sources({ store, snapshot, onBack }: { store: NewsStore; snapshot: News
         {snapshot.sourceReviewed && <ActionButton label="确认已核对RSS来源并解锁添加" text="已核对，解锁" onPress={() => store.acknowledgeSourceCreateReadback()} testID="news-source-acknowledge" />}
       </View>}
     </Card>
+    <Card style={styles.presetCard}>
+      <Text style={[styles.sectionTitle, { color: colors.ink }]}>推荐中文精选源</Text>
+      <Text style={[styles.meta, { color: colors.muted }]}>精选常用中文科技与资讯 RSS，点击快捷填入：</Text>
+      <View style={styles.presetList}>
+        {PRESET_CHINESE_SOURCES.map((preset) => {
+          const added = snapshot.sources.some((s) => s.url === preset.url);
+          return (
+            <View key={preset.url} style={[styles.presetRow, { borderColor: colors.line }]}>
+              <View style={styles.presetInfo}>
+                <Text style={[styles.presetTitle, { color: colors.ink }]}>{preset.title}</Text>
+                <Text numberOfLines={1} style={[styles.meta, { color: colors.faint }]}>{preset.desc}</Text>
+              </View>
+              {added ? (
+                <View style={[styles.presetBadge, { backgroundColor: colors.surface }]}>
+                  <Check size={14} color={colors.success} />
+                  <Text style={[styles.meta, { color: colors.success }]}>已添加</Text>
+                </View>
+              ) : (
+                <ActionButton
+                  label={`快捷填入 ${preset.title}`}
+                  text="填入"
+                  icon={Plus}
+                  disabled={snapshot.sourceWriting || snapshot.sourceUncertain}
+                  onPress={() => store.setSourceDraft({ url: preset.url, title: preset.title })}
+                  testID={`news-preset-select-${preset.title}`}
+                />
+              )}
+            </View>
+          );
+        })}
+      </View>
+    </Card>
     <View style={styles.sectionHeading}><Text accessibilityRole="header" style={[styles.sectionTitle, { color: colors.ink }]}>已有来源 · {snapshot.sources.length}</Text>
       <ActionButton label="刷新来源列表" text="刷新列表" busy={snapshot.sourcesLoading} onPress={() => void store.refreshSources()} testID="news-sources-retry" /></View>
     <FeedbackNotice tone="danger" text={snapshot.sourceError} />
@@ -375,4 +415,10 @@ const styles = StyleSheet.create({
   emptyTitle: { ...t.section, fontWeight: '600', textAlign: 'center' },
   emptyExcerpt: { ...t.detail, textAlign: 'center', maxWidth: 280, lineHeight: 20 },
   emptyAction: { alignSelf: 'center', marginTop: spacing[4] },
+  presetCard: { gap: spacing[12] },
+  presetList: { gap: spacing[8] },
+  presetRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacing[10], paddingHorizontal: spacing[12], borderRadius: r.field, borderWidth: StyleSheet.hairlineWidth },
+  presetInfo: { flex: 1, minWidth: 0, gap: spacing[2], marginRight: spacing[8] },
+  presetTitle: { ...t.itemTitle, fontSize: 15 },
+  presetBadge: { flexDirection: 'row', alignItems: 'center', gap: spacing[4], paddingHorizontal: spacing[8], paddingVertical: spacing[4], borderRadius: r.round },
 });

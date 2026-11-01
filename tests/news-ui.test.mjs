@@ -207,6 +207,20 @@ test('新闻空态、错误和未明状态保留各自操作入口', () => {
   assert.match(page, /!\(snapshot\.commentDrafts\[id\] \?\? ''\)\.trim\(\)/);
 });
 
+test('新闻来源支持推荐中文精选 RSS 源并可一键填入', () => {
+  const page = read('workspace/NewsPage.tsx');
+  assert.match(page, /PRESET_CHINESE_SOURCES/);
+  assert.match(page, /少数派/);
+  assert.match(page, /36氪/);
+  assert.match(page, /机器之心/);
+  assert.match(page, /阮一峰的网络日志/);
+  assert.match(page, /IT之家/);
+  assert.match(page, /推荐中文精选源/);
+  assert.match(page, /news-preset-select-/);
+  assert.match(page, /store\.setSourceDraft\(\{ url: preset\.url, title: preset\.title \}\)/);
+  assert.match(page, /已添加/);
+});
+
 test('主导航以新闻替换任务根页，会话活动保留', () => {
   const workspace = read('workspace/WorkspaceScreen.tsx');
   const session = read('workspace/SessionPanel.tsx');
