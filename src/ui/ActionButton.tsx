@@ -21,8 +21,8 @@ export function ActionButton({ label, text, accessibilityLabel, onPress, icon: I
 }) {
   const { colors } = useTheme();
   const locked = disabled || busy;
-  const foreground = tone === 'primary' ? colors.onAccent : tone === 'danger' ? colors.danger : colors.accentText;
-  const background = tone === 'primary' ? colors.blue : tone === 'danger' ? colors.dangerSoft : colors.blueSoft;
+  const foreground = tone === 'primary' ? colors.onAccent : tone === 'danger' ? colors.danger : colors.ink;
+  const background = tone === 'primary' ? colors.blue : tone === 'danger' ? colors.dangerSoft : colors.floatingSurface;
   const border = tone === 'primary' ? colors.blue : tone === 'danger' ? colors.danger : colors.floatingLine;
   return <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel ?? label}
     accessibilityState={{ disabled: locked, busy, ...(expanded === undefined ? {} : { expanded }) }}

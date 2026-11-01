@@ -1,8 +1,6 @@
-import { Subpage } from '../ui/Subpage';
-import { IconControl } from '../ui/IconControl';
 import { FeedbackNotice } from '../ui/Feedback';
 import { Card } from '../ui/Surfaces';
-import { ChevronDown, ChevronUp, RefreshCw } from 'lucide-react-native';
+import { ArrowLeft, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react-native';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Keyboard, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useDream } from '../dream/DreamProvider';
@@ -83,9 +81,12 @@ export function DreamPanel({ currentSpaceId, onBack }: { currentSpaceId: string;
     setDecision(undefined);
   };
 
-  return <Subpage title="Dream 记忆整理" backLabel="返回设置" onBack={onBack} backTestID="settings-subpage-back"
-    testID="dream-panel" contentStyle={styles.root} action={<IconControl transparent icon={RefreshCw} label="刷新Dream概览"
-      onPress={() => void store.refresh()} busy={snapshot.loading} disabled={!!snapshot.writing} />}>
+  return <View style={styles.root} testID="dream-panel">
+    <View style={styles.topRow}>
+      <ActionButton label="返回设置" text="返回设置" onPress={onBack} icon={ArrowLeft} />
+      <ActionButton label="刷新Dream概览" text="刷新" onPress={() => void store.refresh()} disabled={snapshot.loading || !!snapshot.writing} icon={RefreshCw} />
+    </View>
+    <Text accessibilityRole="header" style={styles.pageTitle}>Dream 记忆整理</Text>
     {snapshot.loading && <ActivityIndicator accessibilityLabel="正在读取Dream概览" color={colors.muted} />}
     {!!snapshot.error && <FeedbackNotice text={snapshot.error} tone="danger" />}
     {!!snapshot.notice && <FeedbackNotice text={snapshot.notice} tone="success" />}
@@ -194,7 +195,7 @@ export function DreamPanel({ currentSpaceId, onBack }: { currentSpaceId: string;
         </Card>
       </> : <Text style={styles.warning}>当前选择的空间不在服务端概览中。请选择上方已有空间，或刷新核对。</Text>}
     </>}
-  </Subpage>;
+  </View>;
 }
 
 function Choice({ label, title, detail, selected, onPress, disabled }: { label: string; title: string; detail: string; selected: boolean; onPress: () => void; disabled: boolean }) {
@@ -209,6 +210,8 @@ function Choice({ label, title, detail, selected, onPress, disabled }: { label: 
 
 const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   root: { gap: spacing[16], paddingBottom: spacing[24], minWidth: 0 },
+  topRow: { flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap', gap: spacing[8] },
+  pageTitle: { ...t.section, color: c.ink },
   card: { padding: spacing[16], gap: spacing[12], minWidth: 0, borderRadius: r.card, backgroundColor: c.surface },
   title: { ...t.itemTitle, color: c.ink }, body: { ...t.detail, color: c.ink }, caption: { ...t.caption, color: c.faint },
   overviewRow: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', gap: spacing[8] }, overviewLabel: { ...t.caption, color: c.muted },

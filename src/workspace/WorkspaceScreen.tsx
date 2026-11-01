@@ -1,5 +1,5 @@
 import { Card } from '../ui/Surfaces';
-import { BookOpen, Check, ChevronRight, Download, Menu, MessageCircle, Moon, Newspaper, RotateCcw, Search, Server, Settings, SquarePen, UserRound, X, Globe, type LucideIcon } from 'lucide-react-native';
+import { BookOpen, Check, ChevronRight, Download, Menu, MessageCircle, Moon, Newspaper, RotateCcw, Search, Server, Settings, SlidersHorizontal, SquarePen, UserRound, X, Globe, type LucideIcon } from 'lucide-react-native';
 import { BlurTargetView } from 'expo-blur';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ThemeStatusBar } from '../theme/ThemeStatusBar';
@@ -21,6 +21,7 @@ import { spacing, sizing, workspaceTheme, type WorkspaceColors } from '../ui/tok
 import { ConnectionPanel } from './ConnectionPanel';
 import { NewsPage } from './NewsPage';
 import { createNewsStore } from '../news/news-store';
+import { useNews } from '../news/useNews';
 import { useJobs } from '../jobs/JobProvider';
 import { useMonitors } from '../monitors/MonitorProvider';
 import { GoalsPanel } from './GoalsPanel';
@@ -37,7 +38,6 @@ import { workspaceBackAction } from './workspace-back';
 import { SessionPanel, type SessionTab } from './SessionPanel';
 import { ResetSessionDialog } from './ResetSessionDialog';
 import { AvatarBloomTransition } from './AvatarBloomTransition';
-import { DynamicIsland } from './DynamicIsland';
 import { SpaceSettings } from './SpaceSettings';
 import { useTheme } from '../theme/ThemeProvider';
 import { ThemePicker } from '../theme/ThemePicker';
@@ -87,13 +87,13 @@ function connectionLabel(snapshot: ConnectionSnapshot) {
   return { loading: '正在读取连接配置', unconfigured: '未连接服务器', connecting: '正在连接服务器', online: '已连接', offline: '服务器暂时不可用', 'authentication-required': '需要重新认证', resetting: '正在清理本地数据', 'reset-error': '本地数据清理未完成', 'storage-error': '连接配置读取失败' }[snapshot.status];
 }
 /** 设置页入口共用命中区和禁用态；只显示调用方提供的真实状态，不参与业务判断。 */
-function SettingRow({ title, label, description, address, icon: Icon, tone = 'blueSoft', onPress, disabled = false, testID }: {
-  title: string; label: string; description: string; address?: string; icon: LucideIcon; tone?: 'blueSoft' | 'lavender' | 'sand' | 'successSoft' | 'dangerSoft'; onPress: () => void; disabled?: boolean; testID?: string;
+function SettingRow({ title, label, description, address, icon: Icon, onPress, disabled = false, testID }: {
+  title: string; label: string; description: string; address?: string; icon: LucideIcon; onPress: () => void; disabled?: boolean; testID?: string;
 }) {
   const styles = useStyles(); const { colors } = useTheme();
   return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled }} disabled={disabled} onPress={onPress} testID={testID}
     style={({ pressed }) => [styles.appSettingsRow, disabled && styles.settingsDisabled, pressed && styles.pressed]}>
-    <View style={[styles.appRowIcon, { backgroundColor: colors[tone] }]}><Icon size={l.appSettingsIcon} strokeWidth={spacing[2]} color={tone === 'dangerSoft' ? colors.danger : tone === 'successSoft' ? colors.success : colors.accentText} /></View>
+    <View style={styles.appRowIcon}><Icon size={l.appSettingsIcon} strokeWidth={spacing[2]} color={colors.ink} /></View>
     <View style={styles.appRowText}><Text style={styles.itemTitle}>{title}</Text><Text style={styles.caption}>{description}</Text>
       {!!address && <Text numberOfLines={1} ellipsizeMode="middle" style={styles.appAddress}>{address}</Text>}
     </View>
@@ -133,30 +133,30 @@ function AnimatedSubpage({ children }: { children: ReactNode }) {
 
 function SettingsPage({ snapshot, openConnection, openBrowser, memoryAvailable = false, profileAvailable = false, dreamAvailable = false, currentSpaceId, onReset, subpage, onSubpage }: Pick<WorkspaceConnectionProps, 'snapshot' | 'openConnection'> & { openBrowser?: () => void; memoryAvailable?: boolean; profileAvailable?: boolean; dreamAvailable?: boolean; currentSpaceId?: string; onReset?: () => void; subpage: SettingsSubpage; onSubpage: (page: SettingsSubpage) => void }) {
   const styles = useStyles(); const update = useAppUpdate();
-  if (subpage === 'memory' && memoryAvailable) return <AnimatedSubpage key="memory"><MemoryPanel onBack={() => onSubpage(null)} /></AnimatedSubpage>;
-  if (subpage === 'profile' && profileAvailable) return <AnimatedSubpage key="profile"><ProfilePanel onBack={() => onSubpage(null)} /></AnimatedSubpage>;
-  if (subpage === 'dream' && dreamAvailable && currentSpaceId) return <AnimatedSubpage key="dream"><DreamPanel currentSpaceId={currentSpaceId} onBack={() => onSubpage(null)} /></AnimatedSubpage>;
+  if (subpage === 'memory' && memoryAvailable) return <AnimatedSubpage key="memory"><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}><MemoryPanel onBack={() => onSubpage(null)} /></ScrollView></AnimatedSubpage>;
+  if (subpage === 'profile' && profileAvailable) return <AnimatedSubpage key="profile"><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}><ProfilePanel onBack={() => onSubpage(null)} /></ScrollView></AnimatedSubpage>;
+  if (subpage === 'dream' && dreamAvailable && currentSpaceId) return <AnimatedSubpage key="dream"><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}><DreamPanel currentSpaceId={currentSpaceId} onBack={() => onSubpage(null)} /></ScrollView></AnimatedSubpage>;
   return <ScrollView key="settings" contentContainerStyle={[styles.otherPage, styles.settingsPage]}>
     <View style={styles.appSection}><Text accessibilityRole="header" style={styles.appSectionTitle}>连接与设备</Text>
       <View style={styles.appSettingsGroup}>
         <SettingRow title="服务器连接" label="服务器连接" description={connectionLabel(snapshot)} address={snapshot.serverUrl ?? undefined} icon={Server} onPress={openConnection} />
         {openBrowser && <SettingRow title="浏览器" label="打开浏览器" description="使用服务端同一 Chrome" icon={Globe} onPress={openBrowser} testID="viewer-open" />}
-        {update && <SettingRow title="应用更新" label="应用更新" description={update.snapshot.status === 'unsupported' ? '当前环境不支持自动安装' : '检查版本、下载与安装进度'} icon={Download} tone="sand" onPress={update.open} />}
+        {update && <SettingRow title="应用更新" label="应用更新" description={update.snapshot.status === 'unsupported' ? '当前环境不支持自动安装' : '检查版本、下载与安装进度'} icon={Download} onPress={update.open} />}
       </View>
     </View>
     <View style={styles.appSection}><Text accessibilityRole="header" style={styles.appSectionTitle}>助手与个人资料</Text>
-      <View style={styles.appSettingsGroup}><SettingRow title="助手与用户资料" label="打开助手与用户资料" description={profileAvailable ? '名字、语气、人设与用户资料' : '连接真实服务后可用'} icon={UserRound} tone="lavender" onPress={() => onSubpage('profile')} disabled={!profileAvailable} /></View>
+      <View style={styles.appSettingsGroup}><SettingRow title="助手与用户资料" label="打开助手与用户资料" description={profileAvailable ? '名字、语气、人设与用户资料' : '连接真实服务后可用'} icon={UserRound} onPress={() => onSubpage('profile')} disabled={!profileAvailable} /></View>
     </View>
     <View style={styles.appSection}><Text accessibilityRole="header" style={styles.appSectionTitle}>助手记忆</Text>
       <View style={styles.appSettingsGroup}>
-        <SettingRow title="长期记忆" label="打开长期记忆" description={memoryAvailable ? '查询、搜索与管理全局记忆' : '连接真实服务后管理全局记忆'} icon={BookOpen} tone="successSoft" onPress={() => onSubpage('memory')} disabled={!memoryAvailable} />
-        <SettingRow title="Dream 记忆整理" label="打开Dream记忆整理" description={dreamAvailable ? '整理状态、提示词与待决建议' : '连接真实服务后可用'} icon={Moon} tone="lavender" onPress={() => onSubpage('dream')} disabled={!dreamAvailable} />
+        <SettingRow title="长期记忆" label="打开长期记忆" description={memoryAvailable ? '查询、搜索与管理全局记忆' : '连接真实服务后管理全局记忆'} icon={BookOpen} onPress={() => onSubpage('memory')} disabled={!memoryAvailable} />
+        <SettingRow title="Dream 记忆整理" label="打开Dream记忆整理" description={dreamAvailable ? '整理状态、提示词与待决建议' : '连接真实服务后可用'} icon={Moon} onPress={() => onSubpage('dream')} disabled={!dreamAvailable} />
       </View>
     </View>
     <ThemePicker />
     {/* 维护入口留在末组，仅在真实连接提供会话能力时出现。 */}
     {currentSpaceId && onReset && <View style={styles.appSection}><Text accessibilityRole="header" style={styles.appSectionTitle}>会话维护</Text>
-      <View style={styles.appSettingsGroup}><SettingRow title="重置当前会话" label="重置当前会话" description={`目标：${currentSpaceId === MAIN_SPACE ? '主空间' : currentSpaceId}`} icon={RotateCcw} tone="dangerSoft" onPress={onReset} testID="workspace-reset-conversation" /></View>
+      <View style={styles.appSettingsGroup}><SettingRow title="重置当前会话" label="重置当前会话" description={`目标：${currentSpaceId === MAIN_SPACE ? '主空间' : currentSpaceId}`} icon={RotateCcw} onPress={onReset} testID="workspace-reset-conversation" /></View>
     </View>}
   </ScrollView>;
 }
@@ -182,7 +182,7 @@ function Navigation({ page, onPage }: { page: WorkspacePage; onPage: (page: Work
   const styles = useStyles(); const { colors } = useTheme();
   return <View accessibilityRole="tablist" accessibilityLabel="主要页面" style={styles.navigation}>
     {NAV.map(({ id, label, icon: Icon }) => <Pressable key={id} accessibilityRole="tab" accessibilityLabel={label} accessibilityState={{ selected: page === id }} aria-selected={page === id} testID={`workspace-tab-${id}`} onPress={() => onPage(id)} style={({ pressed }) => [styles.navigationItem, pressed && styles.pressed]}>
-      <Icon size={l.navigationIconSize} strokeWidth={1.8} color={page === id ? colors.accentText : colors.faint} fill={id === 'chat' && page === id ? colors.accentText : 'none'} />
+      <Icon size={l.navigationIconSize} strokeWidth={1.8} color={page === id ? colors.ink : colors.faint} fill={id === 'chat' && page === id ? colors.ink : 'none'} />
       <Text style={[styles.navigationLabel, page === id && styles.navigationLabelSelected]}>{label}</Text>
     </Pressable>)}
   </View>;
@@ -202,7 +202,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
   const activities = useActivityStore();
   const { store: jobs } = useJobs();
   const { store: monitors } = useMonitors();
-  const { store: approvals, snapshot: approvalSnapshot } = useApprovals();
+  const { store: approvals } = useApprovals();
   const { store: goals } = useGoals();
   const runtime = useSpaceRuntime(spaces.currentSpace);
   const [page, setPage] = useState<WorkspacePage>('chat');
@@ -225,12 +225,16 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const { colors } = useTheme(); const styles = useStyles();
   const { width, height } = useWindowDimensions(); const contentWidth = Math.min(width, l.maxWidth);
-  const avatarCenterY = l.headerTop + l.controlSize / 2;
+  const avatarCenterY = l.headerTop + l.headerAvatar / 2;
   const bloomRadius = 50;
   const targetScale = Math.max(25, Math.ceil((Math.hypot(contentWidth / 2, height - avatarCenterY) / bloomRadius) * 1.08));
   const drawerWidth = Math.min(contentWidth * l.drawerRatio, l.drawerMaxWidth);
   const [drawerProgress] = useState(() => new Animated.Value(0));
+  const { snapshot: newsSnapshot } = useNews(news);
+  const isNewsArticleOpen = !!newsSnapshot.selectedArticleId;
   const inSettingsSubpage = page === 'settings' && settingsSubpage !== null;
+  const inNewsSubpage = page === 'news' && (newsManaging || isNewsArticleOpen);
+  const isSubpage = inSettingsSubpage || inNewsSubpage;
   const statusLabel = snapshot.status === 'authentication-required' || snapshot.status === 'reset-error' || snapshot.status === 'storage-error'
     ? connectionLabel(snapshot) : runtime.label;
   const labelIds = spaces.spaces.map((space) => space.id).sort().join('|');
@@ -362,7 +366,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
       <View style={[styles.drawer, { width: drawerWidth }]} pointerEvents={drawerOpen ? 'auto' : 'none'} aria-hidden={!drawerOpen}
         {...(Platform.OS === 'web' && !drawerOpen ? { inert: true } : {})} accessibilityElementsHidden={!drawerOpen} importantForAccessibility={drawerOpen ? 'yes' : 'no-hide-descendants'}>
         <SafeAreaView style={styles.screen} edges={['top', 'bottom', 'left']}>
-        <View style={styles.drawerHeading}><Text style={styles.drawerTitle}>Pi Muse</Text><IconControl transparent icon={X} label="关闭空间侧栏" onPress={() => setDrawerOpen(false)} /></View>
+        <View style={styles.drawerHeading}><Text style={styles.drawerTitle}>Pi Muse</Text><IconControl icon={X} label="关闭空间侧栏" onPress={() => setDrawerOpen(false)} /></View>
         <View style={styles.drawerSectionRow}><Text style={styles.drawerSection}>你的空间</Text><Text style={styles.caption}>{spaces.spaces.length}</Text></View>
         {!!spaces.error && <Text style={styles.error}>{spaces.error}</Text>}
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.drawerList}>
@@ -380,48 +384,17 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
         <SafeAreaView style={styles.screen} edges={['top', 'bottom', 'left', 'right']} aria-hidden={drawerOpen} {...(Platform.OS === 'web' && drawerOpen ? { inert: true } : {})}>
           {/* 唯一键盘避让层：Android 按真实重叠缩小阅读区，iOS 保留 padding；不再另算键盘高度。 */}
           <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled={Platform.OS !== 'web'} accessibilityViewIsModal={sessionMounted}>
-            {page === 'settings' && !inSettingsSubpage && (
-              <View style={styles.pageHeader}>
-                <IconControl transparent icon={Menu} label="打开空间侧栏" onPress={openDrawer} />
-                <View style={styles.settingsCapsule}>
-                  <Settings size={16} strokeWidth={2} color={colors.ink} />
-                  <Text style={styles.capsuleLabel}>{NAV.find((item) => item.id === page)?.label ?? '设置'}</Text>
-                  <View
-                    style={[
-                      styles.capsuleDot,
-                      {
-                        backgroundColor:
-                          snapshot.status === 'online'
-                            ? colors.success
-                            : snapshot.status === 'connecting' || snapshot.status === 'loading'
-                            ? colors.warning
-                            : colors.danger,
-                      },
-                    ]}
-                  />
-                </View>
-                <View style={styles.headerSideButtonSpacer} />
-              </View>
-            )}
-            {/* 顶栏：实体/毛玻璃防穿透遮罩，左右功能键与中央灵动岛药丸 */}
-            {page === 'chat' && (
-              <View style={[styles.chatHeader, keyboardVisible && styles.chatHeaderCompact]}>
-                <IconControl transparent icon={Menu} label="打开空间侧栏" testID="workspace-open-drawer" onPress={openDrawer} />
-                <DynamicIsland
-                  spaceId={spaces.currentSpace}
-                  spaceTitle={labels.title(spaces.currentSpace)}
-                  running={runtime.running}
-                  synchronized={runtime.synchronized}
-                  runtimeLabel={runtime.label}
-                  pendingApprovals={approvalSnapshot.pendingIds.length}
-                  keyboardVisible={keyboardVisible}
-                  disabled={sessionMounted}
-                  accessibilityHint={`当前空间：${labels.title(spaces.currentSpace)}；当前状态：${statusLabel}。全屏显示当前会话的动态、审批、工作区和历史`}
-                  onPress={openSession}
-                />
-                <View style={styles.headerSideButtonSpacer} />
-              </View>
-            )}
+            {page !== 'chat' && page !== 'news' && page !== 'goals' && !isSubpage && <View style={styles.pageHeader}><IconControl icon={Menu} label="打开空间侧栏" onPress={openDrawer} /><Text style={styles.pageTitle}>{NAV.find((item) => item.id === page)?.label}</Text><View style={styles.headerSideButtonSpacer} /></View>}
+            {/* 头像与左右操作浮在聊天层上方，不占正文高度；触控只落在实际控件。 */}
+            {page === 'chat' && <View pointerEvents="box-none" style={[styles.chatHeader, keyboardVisible && styles.chatHeaderCompact]}>
+              <View style={styles.headerLeft}><IconControl icon={Menu} label="打开空间侧栏" testID="workspace-open-drawer" onPress={openDrawer} /></View>
+              <Pressable accessibilityRole="button" accessibilityLabel="打开当前会话面板" accessibilityHint={`当前空间：${labels.title(spaces.currentSpace)}；当前状态：${statusLabel}。全屏显示当前会话的动态、审批、工作区和历史`} accessibilityState={{ disabled: sessionMounted }} disabled={sessionMounted} testID="workspace-open-session" style={[styles.identity, keyboardVisible && styles.identityCompact]}
+                onPress={openSession}>
+                <MuseAvatar size={keyboardVisible ? l.compactHeaderAvatar : l.headerAvatar} />
+                {headerNames.chat && <View style={[styles.identityLabel, styles.identityLabelSurface]}><Text numberOfLines={1} style={styles.identityName}>{headerNames.chat}</Text></View>}
+              </Pressable>
+              <View style={styles.headerRight}><IconControl icon={SlidersHorizontal} label="打开空间工作区" testID="workspace-open-console" onPress={() => openSession()} /></View>
+            </View>}
             <View style={styles.bodyStage}>
               <BlurTargetView ref={chatBlurTarget} style={styles.bodyStage}>
                 {/* Expo 的原生 BlurTargetView 仅负责采样；普通 RN View 承担触控和读屏隔离。 */}
@@ -460,7 +433,6 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
                 onBackdropPress={closeSession}
                 headerLeft={
                   <IconControl
-                    transparent
                     icon={X}
                     label={sessionOpen ? '关闭会话面板' : '重新打开会话面板'}
                     testID="workspace-session-close"
@@ -514,9 +486,7 @@ function SpaceStatusCaption({ spaceId, updatedAt }: { spaceId: string; updatedAt
 const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: c.canvas }, viewport: { flex: 1, alignSelf: 'center', overflow: 'hidden', backgroundColor: c.canvas }, screen: { flex: 1 },
   foreground: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: c.canvas, overflow: 'hidden' }, foregroundRounded: { borderRadius: r.drawerForeground }, foregroundCover: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: c.overlay },
-  chatHeader: { position: 'absolute', zIndex: 2, top: 0, left: 0, right: 0, paddingTop: l.headerTop, paddingBottom: spacing[8], paddingHorizontal: l.sidePadding, height: l.headerTop + l.controlSize + spacing[8], backgroundColor: c.floatingSurface, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.line, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  chatHeaderCompact: { paddingTop: l.headerTop / 2, paddingBottom: spacing[4], height: l.headerTop / 2 + l.controlSize + spacing[4] },
-  headerLeft: { position: 'absolute', top: 0, left: 0 }, headerRight: { position: 'absolute', top: 0, right: 0, flexDirection: 'row', gap: spacing[4] },
+  chatHeader: { position: 'absolute', zIndex: 2, top: l.headerTop, left: l.sidePadding, right: l.sidePadding, height: l.headerHeight }, chatHeaderCompact: { height: l.controlSize }, headerLeft: { position: 'absolute', top: 0, left: 0 }, headerRight: { position: 'absolute', top: 0, right: 0, flexDirection: 'row', gap: spacing[4] },
   bodyStage: { flex: 1 },
   sessionLayer: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden' },
   frostedWrap: { flex: 1 },
@@ -533,24 +503,16 @@ const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   identityLabelSurface: { backgroundColor: c.floatingSurface, borderColor: c.floatingLine, borderWidth: StyleSheet.hairlineWidth, borderRadius: r.field, paddingBottom: spacing[6] },
   identityName: { ...t.name, color: c.ink, maxWidth: '100%', textAlign: 'center' },
   navigation: { flexDirection: 'row', height: l.navigationHeight, marginHorizontal: spacing[18], marginBottom: l.navigationBottom, alignItems: 'center' },
-  navigationItem: { flex: 1, minHeight: l.controlSize, gap: l.navigationLabelGap, alignItems: 'center', justifyContent: 'center' }, navigationLabel: { ...t.navigation, color: c.faint }, navigationLabelSelected: { color: c.accentText },
+  navigationItem: { flex: 1, minHeight: l.controlSize, gap: l.navigationLabelGap, alignItems: 'center', justifyContent: 'center' }, navigationLabel: { ...t.navigation, color: c.faint }, navigationLabelSelected: { color: c.ink },
   drawer: { position: 'absolute', top: 0, bottom: 0, left: 0, paddingHorizontal: l.sidePadding, paddingTop: l.drawerTop, backgroundColor: c.canvas }, drawerHeading: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: l.drawerTop, marginBottom: l.drawerTitleBottom }, drawerTitle: { ...t.drawerTitle, color: c.ink }, drawerSection: { ...t.caption, color: c.faint }, drawerSectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing[4], marginBottom: spacing[14] }, drawerList: { gap: spacing[6] },
   threadRow: { minHeight: l.drawerRowHeight, flexDirection: 'row', alignItems: 'center', gap: spacing[14], paddingHorizontal: spacing[14], paddingVertical: spacing[12], borderRadius: r.listItem }, threadSelected: { backgroundColor: c.surface }, threadText: { flex: 1, gap: spacing[4], minWidth: 0 }, drawerFooter: { height: l.drawerFooterHeight, flexDirection: 'row', alignItems: 'center', gap: spacing[12], borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.line },
   drawerSearch: { flex: 1, minWidth: 0, height: l.controlSize, borderRadius: r.round, backgroundColor: c.surface, flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing[14], gap: spacing[8] }, searchInput: { flex: 1, minWidth: 0, height: l.smallControl },
   headerSideButtonSpacer: { width: l.controlSize, height: l.controlSize },
-  pageHeader: { paddingTop: l.headerTop, paddingBottom: spacing[8], paddingHorizontal: l.sidePadding,
-    height: l.headerTop + l.controlSize + spacing[8], backgroundColor: c.floatingSurface,
-    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.line,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  settingsCapsule: { height: 36, borderRadius: r.round, borderWidth: 0,
-    backgroundColor: 'transparent', flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: spacing[8], gap: spacing[6] },
-  capsuleLabel: { ...t.status, fontSize: 13, fontWeight: '600', color: c.ink },
-  capsuleDot: { width: 6, height: 6, borderRadius: 3 },
+  pageHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: l.sidePadding, paddingTop: spacing[12], paddingBottom: spacing[8] },
   otherPage: { paddingTop: l.pageTop, paddingHorizontal: l.sidePadding, paddingBottom: spacing[24], gap: spacing[18] }, pageTitle: { ...t.heroName, color: c.ink }, itemTitle: { ...t.itemTitle, color: c.ink }, mutedText: { ...t.detail, color: c.muted }, caption: { ...t.caption, color: c.faint }, error: { ...t.caption, color: c.danger },
   exampleCard: { padding: spacing[20], borderRadius: r.card, backgroundColor: c.surface, gap: spacing[16], marginBottom: spacing[16] },
   confirmActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing[8] },
-  settingsPage: { gap: spacing[24], paddingTop: spacing[16] }, appSection: { gap: spacing[10] },
+  settingsPage: { gap: spacing[24] }, appSection: { gap: spacing[10] },
   appSectionTitle: { ...t.status, color: c.muted, marginLeft: spacing[6] },
   appSettingsGroup: { borderRadius: r.card, backgroundColor: c.surface, overflow: 'hidden' },
   appSettingsRow: { minHeight: l.appSettingsRowHeight, flexDirection: 'row', alignItems: 'center', gap: spacing[10], paddingHorizontal: spacing[14], paddingVertical: spacing[12] },

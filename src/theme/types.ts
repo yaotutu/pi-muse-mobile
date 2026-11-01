@@ -5,6 +5,7 @@ export type ThemeAppearance = 'light' | 'dark';
 export type ThemeColors = Readonly<{
   canvas: string;
   surface: string;
+  newsCard: string;
   control: string;
   floatingSurface: string;
   floatingLine: string;
@@ -18,12 +19,6 @@ export type ThemeColors = Readonly<{
   blueSoft: string;
   accentText: string;
   onAccent: string;
-  /** 消息浅蓝底使用深色文字，与蓝色主按钮的白字独立。 */
-  userBubble: string;
-  onUserBubble: string;
-  assistantBubble: string;
-  lavender: string;
-  sand: string;
   danger: string;
   dangerSoft: string;
   success: string;

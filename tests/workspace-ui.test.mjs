@@ -6,6 +6,18 @@ import ts from 'typescript';
 const root = new URL('../', import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), 'utf8');
 
+test('Muse 回滚基准保留大头像浮层和浏览器入口，不恢复灵动岛或底部目标入口', () => {
+  const screen = read('src/workspace/WorkspaceScreen.tsx');
+  assert.match(screen, /<MuseAvatar size=\{keyboardVisible \? l\.compactHeaderAvatar : l\.headerAvatar\}/);
+  assert.doesNotMatch(screen, /DynamicIsland|settingsCapsule|capsuleLabel/);
+  assert.equal(existsSync(new URL('src/workspace/DynamicIsland.tsx', root)), false);
+  assert.equal(existsSync(new URL('src/ui/Subpage.tsx', root)), false);
+  assert.match(screen, /<BrowserPanel store=\{browser\}/);
+  assert.match(screen, /createBrowserStore\(api, snapshot\.serverUrl/);
+  const nav = screen.slice(screen.indexOf('const NAV:'), screen.indexOf('function useStyles'));
+  assert.doesNotMatch(nav, /id: 'goals'/);
+});
+
 test('唯一主题由根级持有，聊天与独立更新弹层共享而不重建业务 Provider', () => {
   const source = read('src/app/AppRoot.tsx');
   assert.ok(source.indexOf('<ThemeProvider>') < source.indexOf('<UpdateProvider'));
@@ -84,31 +96,29 @@ test('聊天空态只留短句，本地头像与真实流动画均有稳定入�
   assert.doesNotMatch(primitives, /https?:\/\//);
 });
 
-test('聊天顶栏使用实体灵动岛保护层，首条消息避开顶栏，隐藏空间不重复挂载其他页面', () => {
+test('聊天浮层不占正文高度，首条消息避开头像，隐藏空间不重复挂载其他页面', () => {
   const source = read('src/workspace/WorkspaceScreen.tsx');
   assert.match(source, /chatHeader: \{ position: 'absolute', zIndex: 2/);
-  assert.match(source, /backgroundColor: c\.floatingSurface/);
-  assert.match(source, /borderBottomColor: c\.line/);
+  assert.match(source, /pointerEvents="box-none" style=\{\[styles\.chatHeader/);
   assert.match(read('src/workspace/ConversationView.tsx'), /paddingTop: l\.chatContentTop/);
   assert.match(read('src/workspace/ConversationHost.tsx'), /!chatVisible && <View style=\{styles\.owner\}>\{otherPage\}/);
   assert.match(read('src/workspace/SessionPanel.tsx'), /<ScrollView\s+key=\{tab\}/);
 });
 
-test('聊天顶栏集成灵动岛感知形态，状态与声波呼吸联动，详细状态留在可点击会话面板', () => {
+test('聊天只为非主空间非键盘名称挂小浮层，详细状态留在可点击头像的会话面板', () => {
   const screen = read('src/workspace/WorkspaceScreen.tsx');
-  const chatHeader = screen.slice(screen.indexOf("{page === 'chat' && ("), screen.indexOf('<View style={styles.bodyStage}>'));
+  const chatHeader = screen.slice(screen.indexOf("{page === 'chat' && <View"), screen.indexOf('<View style={styles.bodyStage}>'));
   const sessionHeader = screen.slice(screen.indexOf('headerCenter={'), screen.indexOf('headerRight=', screen.indexOf('headerCenter={')));
-  assert.match(chatHeader, /<DynamicIsland/);
-  assert.match(chatHeader, /testID="workspace-open-drawer"/);
-  assert.doesNotMatch(chatHeader, /testID="workspace-open-console"/);
-  const island = read('src/workspace/DynamicIsland.tsx');
-  assert.match(island, /testID=\{testID\}/);
-  assert.match(island, /accessibilityRole="button"/);
-  assert.match(island, /accessibilityLabel="打开当前会话面板"/);
-  assert.match(island, /<MuseAvatar/);
-  assert.match(island, /WaveBars/);
+  assert.match(chatHeader, /<Pressable accessibilityRole="button" accessibilityLabel="打开当前会话面板"/);
+  assert.match(chatHeader, /accessibilityHint=\{`当前空间：\$\{labels\.title\(spaces\.currentSpace\)\}；当前状态：\$\{statusLabel\}/);
+  assert.match(chatHeader, /<MuseAvatar size=\{keyboardVisible \? l\.compactHeaderAvatar : l\.headerAvatar\}/);
+  assert.match(chatHeader, /\{headerNames\.chat && <View style=\{\[styles\.identityLabel, styles\.identityLabelSurface\]\}>/);
+  assert.doesNotMatch(chatHeader, /<StatusPill|identityLabelCompact/);
   assert.match(sessionHeader, /\{headerNames\.session && <Text numberOfLines=\{1\}/);
   assert.match(sessionHeader, /<StatusPill label=\{statusLabel\} testID="workspace-session-status"/);
+  assert.match(screen, /identityLabelSurface: \{ backgroundColor: c\.floatingSurface, borderColor: c\.floatingLine, borderWidth: StyleSheet\.hairlineWidth, borderRadius: r\.field, paddingBottom: spacing\[6\] \}/);
+  assert.match(screen, /style=\{\[styles\.identityLabel, styles\.sessionIdentityLabel\]\}/);
+  assert.doesNotMatch(screen.match(/chatHeader: \{[^}]*\}/)?.[0] ?? '', /backgroundColor|borderWidth/);
   assert.match(screen, /accessibilityLabel=\{labels\.title\(space\.id\)\} accessibilityState=\{\{ selected: space\.id === spaces\.currentSpace \}\}/);
   const execution = read('src/workspace/CurrentExecution.tsx');
   assert.match(execution, /<Text accessibilityRole="alert" style=\{styles\.syncTitle\}>\{runtime\.label\}/);
@@ -149,9 +159,9 @@ test('会话复用整组分段，新闻使用紧凑受控文字Tab', () => {
   const news = read('src/workspace/NewsPage.tsx');
   assert.match(session, /<SegmentedControl value=\{tab\} options=\{TABS\}/);
   assert.doesNotMatch(news, /<SegmentedControl/);
-  assert.match(news, /\(\['recommended', 'all', 'saved'\] as const\)\.map/);
+  assert.match(news, /\(\['recommended', 'all'\] as const\)\.map/);
   assert.match(news, /store\.setView\(view\)/);
-  assert.match(news, /aria-selected=\{selected\}/);
+  assert.match(news, /aria-selected=\{snapshot\.view === view\}/);
   for (const [id, label] of [['activity', '动态'], ['approvals', '审批'], ['workspace', '工作区'], ['history', '历史']]) {
     assert.match(session, new RegExp(`label: '${label}'.*testID: 'workspace-session-tab-${id}'`));
   }

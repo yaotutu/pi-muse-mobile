@@ -1,10 +1,8 @@
-import { Subpage } from '../ui/Subpage';
-import { IconControl } from '../ui/IconControl';
 import { FeedbackNotice } from '../ui/Feedback';
 import { Card } from '../ui/Surfaces';
 import { useEffect, useMemo } from 'react';
 import { ActivityIndicator, Keyboard, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Check, RefreshCw, RotateCcw } from 'lucide-react-native';
+import { ArrowLeft, Check, RefreshCw, RotateCcw } from 'lucide-react-native';
 import { useProfile } from '../profile/ProfileProvider';
 import { useTheme } from '../theme/ThemeProvider';
 import { spacing, workspaceTheme, type WorkspaceColors } from '../ui/tokens';
@@ -39,10 +37,16 @@ export function ProfilePanel({ onBack }: { onBack: () => void }) {
   const canSaveProfile = canWrite && snapshot.dirtyProfile && snapshot.draftProfile.soul.length <= TEXT_LIMIT && snapshot.draftProfile.user.length <= TEXT_LIMIT;
   const canDiscard = snapshot.loaded && !snapshot.loading && !snapshot.stale && !snapshot.writing;
 
-  return <Subpage title="助手与用户资料" backLabel="返回设置" onBack={onBack} backTestID="settings-subpage-back"
-    testID="profile-panel" contentStyle={styles.root} action={<IconControl transparent icon={RefreshCw} label="刷新助手与用户资料"
-      onPress={() => void store.refresh()} busy={snapshot.loading} disabled={!!snapshot.writing} />}>
-    <Text style={styles.intro}>全部空间共用，保存后从下一轮对话生效。草稿仅保留在当前连接内；助手设置和人设资料分别提交。</Text>
+  return <View style={styles.root} testID="profile-panel">
+    <View style={styles.topRow}>
+      <ActionButton label="返回设置" text="返回设置" onPress={onBack} icon={ArrowLeft} />
+      <ActionButton label="刷新助手与用户资料" text="刷新" onPress={() => void store.refresh()} disabled={snapshot.loading || !!snapshot.writing} icon={RefreshCw} />
+    </View>
+    <View style={styles.heading}>
+      <Text accessibilityRole="header" style={styles.title}>助手与用户资料</Text>
+      <Text style={styles.intro}>全部空间共用，保存后从下一轮对话生效。草稿仅保留在当前连接内；助手设置和人设资料分别提交。</Text>
+    </View>
+
     {snapshot.loading && <View style={styles.statusRow}><ActivityIndicator accessibilityLabel="正在读取助手与用户资料" color={colors.muted} /><Text style={styles.caption}>正在读取服务端资料…</Text></View>}
     {!!snapshot.error && <FeedbackNotice text={snapshot.error} tone="danger" />}
     {!!snapshot.notice && <FeedbackNotice text={snapshot.notice} tone="success" />}
@@ -86,11 +90,13 @@ export function ProfilePanel({ onBack }: { onBack: () => void }) {
         <ActionButton label="取消人设与资料修改并采用最新服务端值" text="取消人设与资料修改" onPress={() => store.discardProfile()} disabled={!canDiscard || !snapshot.dirtyProfile} wide icon={RotateCcw} />
       </View>
     </Card>
-  </Subpage>;
+  </View>;
 }
 
 const createStyles = (colors: WorkspaceColors) => StyleSheet.create({
   root: { gap: spacing[16], paddingBottom: spacing[24] },
+  topRow: { flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap', gap: spacing[8] },
+  heading: { gap: spacing[6] }, title: { ...workspaceTheme.typography.section, color: colors.ink },
   intro: { ...workspaceTheme.typography.status, color: colors.muted },
   statusRow: { flexDirection: 'row', gap: spacing[10], alignItems: 'center' },
   card: { padding: spacing[16], gap: spacing[12], borderRadius: workspaceTheme.radius.card, backgroundColor: colors.surface },

@@ -53,7 +53,7 @@ export function SegmentedControl<T extends string>({ value, options, onChange, l
     item: { flex: 1, minWidth: 0, minHeight: themeTokens.layout.smallControl, paddingVertical: iconOnly ? 0 : themeTokens.layout.tabLabelGap,
       alignItems: 'center', justifyContent: 'center', borderRadius: themeTokens.radius.round, gap: themeTokens.layout.tabLabelGap },
     text: { ...themeTokens.typography.navigation, color: colors.faint, textAlign: 'center' },
-    selectedText: { color: colors.accentText },
+    selectedText: { color: colors.ink },
     pressed: { opacity: themeTokens.interaction.pressedOpacity },
     disabled: { opacity: themeTokens.interaction.disabledOpacity },
   }), [colors, inset, iconOnly]);
@@ -92,7 +92,7 @@ export function SegmentedControl<T extends string>({ value, options, onChange, l
         accessibilityState={{ selected, disabled: locked, busy }} aria-selected={selected}
         disabled={locked} onPress={() => onChange(optionValue)} testID={testID}
         style={({ pressed }) => [styles.item, pressed && styles.pressed, locked && styles.disabled]}>
-        <Icon size={iconOnly ? 21 : themeTokens.layout.iconSize - themeTokens.layout.tabLabelGap} color={selected ? colors.accentText : colors.faint} strokeWidth={selected ? 2 : 1.6} />
+        <Icon size={iconOnly ? 21 : themeTokens.layout.iconSize - themeTokens.layout.tabLabelGap} color={selected ? colors.ink : colors.faint} strokeWidth={selected ? 2 : 1.6} />
         {!iconOnly && <Text style={[styles.text, selected && styles.selectedText]}>{optionLabel}</Text>}
       </Pressable>;
     })}

@@ -50,9 +50,9 @@ test('列表以标题和两行正文开篇，一行推荐理由与来源时间�
     last = next;
   }
   assert.match(card, /newsListExcerpt\(article\.content\)/);
-  assert.doesNotMatch(card, /查看内容|styles\.readMore/);
-  assert.match(page, /viewTabs: \{ height: 36, borderRadius: r\.round/);
-  assert.match(page, /textTab: \{ paddingHorizontal: spacing\[14\], height: 30/);
+  assert.doesNotMatch(card, /查看内容|styles\.readMore|<Card\b/);
+  assert.match(page, /viewTabs: \{ flex: 1, minWidth: 0/);
+  assert.match(page, /textTab: \{ flex: 1, minWidth: 0, minHeight: l\.smallControl/);
   assert.match(page, /articleOpen: \{ minHeight: l\.smallControl, padding: n\.cardContentInset \}/);
   assert.match(page, /feedTitle: \{[^\n]*marginBottom: spacing\[12\]/);
   assert.match(page, /feedExcerpt: \{[^\n]*marginBottom: spacing\[18\]/);
@@ -62,20 +62,16 @@ test('列表以标题和两行正文开篇，一行推荐理由与来源时间�
   assert.ok(themeTokens.newsReading.listExcerpt.fontSize > themeTokens.newsReading.listReason.fontSize);
 });
 
-test('新闻各级页面共用全局画布与卡片，不再维护独立配色或阴影', () => {
+test('三主题新闻列表具有独立背景与浮起卡片，原阅读目标覆盖卡片内容', () => {
   const page = read('workspace/NewsPage.tsx');
   const card = page.split('function ArticleCard(')[1].split('function UncertainArticle(')[0];
   for (const [id, theme] of Object.entries(themeRegistry)) {
-    assert.notEqual(theme.colors.canvas, theme.colors.surface, `${id} 全局卡片与画布需区分`);
-    assert.equal('newsCard' in theme.colors, false, `${id} 不保留新闻专用表面色`);
+    assert.notEqual(theme.colors.newsCard, theme.colors.surface, `${id} 卡片需与内容区区分`);
   }
-  assert.equal((page.match(/styles\.readerContainer, \{ backgroundColor: colors\.canvas \}/g) ?? []).length, 3,
-    '列表、阅读、RSS 来源均使用全局画布，包含空态和未填满屏幕的区域');
-  assert.doesNotMatch(page, /backgroundColor: colors\.surface \}\][\s\S]*?<SubpageHeader/);
-  assert.match(card, /return <Card style=\{styles\.article\}>/);
-  assert.doesNotMatch(card, /newsCard|boxShadow|backgroundColor|borderColor/);
-  assert.match(read('ui/Surfaces.tsx'), /: colors\.surface/);
-  assert.match(page, /article: \{ marginTop: n\.cardGap, padding: 0 \}/);
+  assert.match(page, /style=\{\{ backgroundColor: colors\.surface \}\}[\s\S]*?contentContainerStyle=\{styles\.readerContent\}/);
+  assert.match(card, /backgroundColor: colors\.newsCard, borderColor: colors\.floatingLine/);
+  assert.match(card, /boxShadow: \[\{ offsetX: 0, offsetY: n\.cardShadowOffset, blurRadius: n\.cardShadowBlur, color: colors\.overlay \}\]/);
+  assert.match(page, /article: \{ marginTop: n\.cardGap, borderRadius: n\.cardRadius, borderWidth: 1 \}/);
   assert.ok(themeTokens.newsReading.cardGap >= 16);
   assert.ok(themeTokens.newsReading.cardSideInset < themeTokens.layout.sidePadding, '窄屏卡片应保留阅读宽度');
   assert.ok(themeTokens.newsReading.cardContentInset >= 16);
@@ -97,9 +93,8 @@ test('详情完整显示原始 RSS 正文与推荐理由，阅读行距不影响
   assert.ok(themeTokens.newsReading.detailBody.lineHeight > themeTokens.newsReading.listExcerpt.lineHeight);
   assert.ok(themeTokens.newsReading.detailTitle.lineHeight > themeTokens.newsReading.listTitle.lineHeight);
   const sources = page.split('function Sources(')[1].split('export function NewsPage(')[0];
-  assert.match(sources, /<SubpageHeader title="RSS 来源"/);
-  assert.match(detail, /<SubpageHeader title="文章详情"/);
-  assert.equal((sources.match(/>RSS 来源</g) ?? []).length, 0, '正文不重复顶栏标题');
+  assert.match(sources, /style=\{styles\.sourceHeading\}.*style=\{\[styles\.sourceTitle/);
+  assert.match(page, /sourceHeading: \{ gap: spacing\[12\], paddingTop: spacing\[8\] \}/);
 });
 
 test('新闻阅读页使用真实连接状态、共享控件和安全原文入口', () => {
@@ -111,7 +106,7 @@ test('新闻阅读页使用真实连接状态、共享控件和安全原文入�
   assert.match(page, /safeMessageUrl\(article\.url\)/);
   assert.match(page, /Linking\.openURL\(url\)/);
   assert.doesNotMatch(page, /WebView|dangerouslySetInnerHTML|chatQuery|spaceId/);
-  assert.match(page, /testID=\{view === 'saved' \? 'news-saved-filter' : `news-view-\$\{view\}`\}/);
+  assert.match(page, /testID=\{`news-view-\$\{view\}`\}/);
   for (const id of ['news-saved-filter', 'news-manage-sources', 'news-refresh-feeds',
     'news-source-url', 'news-source-add', 'news-source-confirm-delete', 'news-comment-input', 'news-comment-submit',
     'news-article-readback', 'news-source-readback', 'news-feed-readback']) assert.match(page, new RegExp(id));
@@ -178,14 +173,15 @@ test('新闻默认首屏从44dp文字筛选直接进入文章，状态详情留�
   const reader = page.split('export function NewsPage(')[1].split('const styles =')[0];
   const sources = page.split('function Sources(')[1].split('export function NewsPage(')[0];
   assert.match(reader, /accessibilityRole="tablist" accessibilityLabel="新闻视图"/);
-  assert.match(reader, /accessibilityRole="tab"/);
-  assert.match(page, /textTab: \{ paddingHorizontal: spacing\[14\], height: 30/);
+  assert.match(reader, /accessibilityRole="tab"[\s\S]*?accessibilityState=\{\{ selected: snapshot\.view === view \}\}/);
+  assert.match(page, /textTab: \{[\s\S]*?minHeight: l\.smallControl/);
   assert.match(page, /import \{ IconControl \} from '\.\.\/ui\/IconControl'/);
-  assert.match(reader, /<IconControl\s+icon=\{Rss\}/);
+  assert.equal((reader.match(/<IconControl small\b/g) ?? []).length, 3);
   assert.doesNotMatch(page, /ToolbarIcon|styles\.toolbarIcon/);
-  assert.match(reader, /RefreshControl/);
+  assert.match(iconControl, /small \? themeTokens\.layout\.smallControl : themeTokens\.layout\.controlSize/);
+  assert.match(iconControl, /accessibilityState=\{\{ disabled: disabled \|\| busy, busy, selected \}\}/);
+  assert.match(reader, /selected=\{snapshot\.savedOnly\}[\s\S]*?style=\{snapshot\.savedOnly \? \{ borderColor: colors\.blue \} : undefined\}/);
   assert.match(reader, /busy=\{snapshot\.feedRefreshing\}/);
-  assert.doesNotMatch(reader, /<Sheet\b/);
   assert.match(reader, /snapshot\.articles\.map\(\(article\) => <ArticleCard/);
   assert.doesNotMatch(reader, /今日阅读|从你订阅|<SegmentedControl|来源已就绪|上次抓取|为你推荐|styles\.sectionHeading/);
   assert.match(sources, /snapshot\.status\.failedCount/);
@@ -217,43 +213,12 @@ test('新闻来源支持推荐中文精选 RSS 源并可一键填入', () => {
   assert.match(page, /少数派/);
   assert.match(page, /36氪/);
   assert.match(page, /机器之心/);
-  for (const name of ['机核网', 'Solidot', '极客公园']) assert.ok(page.includes(name));
-  assert.doesNotMatch(page, /ruanyifeng\.com\/blog\/atom\.xml/, '当前服务端只解析 RSS2，不推荐 Atom');
+  assert.match(page, /阮一峰的网络日志/);
   assert.match(page, /IT之家/);
   assert.match(page, /推荐中文精选源/);
   assert.match(page, /news-preset-select-/);
   assert.match(page, /store\.setSourceDraft\(\{ url: preset\.url, title: preset\.title \}\)/);
-  const presetAction = page.split('label={`快捷填入')[1].split('testID=')[0];
-  assert.match(presetAction, /scrollRef\.current\?\.scrollTo\(\{ y: 0, animated: true \}\)/);
-  assert.doesNotMatch(presetAction, /store\.addSource/, '填入不会隐式提交或吞掉手动草稿');
   assert.match(page, /已添加/);
-});
-
-test('RSS 管理以紧凑状态、两行表单和订阅列表为主，推荐辅助默认收起', () => {
-  const page = read('workspace/NewsPage.tsx');
-  const sources = page.split('function Sources(')[1].split('export function NewsPage(')[0];
-  assert.match(sources, /\[showPresets, setShowPresets\] = useState\(false\)/);
-  assert.match(sources, /accessibilityState=\{\{ expanded: showPresets \}\}/);
-  assert.match(sources, /onPress=\{\(\) => setShowPresets\(\(value\) => !value\)\}/);
-  assert.match(sources, /\{showPresets && <View>/);
-  assert.match(sources, /contentContainerStyle=\{styles\.sourcesContent\}/);
-  assert.doesNotMatch(sources, /<Card style=\{styles\.sourceStatus\}|styles\.presetCard|styles\.presetList/);
-  assert.match(sources, /<IconControl small transparent icon=\{RefreshCw\} label="回读新闻抓取与分析状态"/);
-  assert.match(sources, /<IconControl small transparent icon=\{RefreshCw\} label="刷新来源列表"/);
-  const formRow = sources.split('<View style={styles.sourceFormRow}>')[1].split('</View>')[0];
-  assert.match(formRow, /testID="news-source-title"/);
-  assert.match(formRow, /testID="news-source-add"/);
-  assert.match(page, /sourceHeadingText: \{ \.\.\.t\.itemTitle \}/);
-  assert.match(page, /presetToggle: \{ minHeight: l\.smallControl \}/);
-  assert.match(page, /presetRow: \{[^\n]*minHeight: l\.smallControl[^\n]*borderBottomWidth/);
-  assert.doesNotMatch(page.split('presetRow:')[1].split('\n')[0], /borderRadius|paddingHorizontal|borderWidth:/);
-  const row = sources.split('snapshot.sources.map((source) => {')[1];
-  assert.match(row, /styles\.sourceHeading[\s\S]*?source\.title[\s\S]*?testID=\{`news-source-delete-/);
-  assert.match(row, /<Text selectable[^\n]*source\.url/);
-  assert.match(row, /deleteId === source\.id \? <Card tone="danger"/);
-  assert.match(row, /已有文章和收藏不会删除/);
-  assert.match(sources, /snapshot\.sourceUncertain/);
-  assert.match(sources, /snapshot\.sourceWriteError/);
 });
 
 test('主导航以新闻替换任务根页，会话活动保留', () => {

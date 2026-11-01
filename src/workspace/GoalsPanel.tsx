@@ -125,7 +125,7 @@ export function GoalsPanel({ openDrawer }: { openDrawer?: () => void } = {}) {
       {/* 顶部单栏导航：左侧侧栏抽屉、居中状态筛选分段、右侧快捷操作，彻底消除层叠工具条 */}
       <View style={styles.toolbar}>
         {openDrawer ? (
-          <IconControl transparent icon={Menu} label="打开空间侧栏" onPress={openDrawer} />
+          <IconControl icon={Menu} label="打开空间侧栏" onPress={openDrawer} />
         ) : (
           <View style={styles.headerSideButtonSpacer} />
         )}
