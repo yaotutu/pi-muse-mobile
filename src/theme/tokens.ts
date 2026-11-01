@@ -132,8 +132,8 @@ export const themeTokens = {
     navigationBottom: 4,
     sessionTabsHeight: 66,
     sessionTabInset: 6,
-    /** 首条消息避开浮动头像与可选空间名称，后续内容可从其下滚过。 */
-    chatContentTop: 124,
+    /** 首条消息避开实体灵动岛顶栏，后续内容可平滑从顶栏下方滚入。 */
+    chatContentTop: 78,
     chatContentTopCompact: 56,
     messageGap: 16,
     /** 聊天气泡独有的内边距，不波及连接页的通用消息容器。 */

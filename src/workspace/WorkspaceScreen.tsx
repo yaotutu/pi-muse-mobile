@@ -38,6 +38,7 @@ import { workspaceBackAction } from './workspace-back';
 import { SessionPanel, type SessionTab } from './SessionPanel';
 import { ResetSessionDialog } from './ResetSessionDialog';
 import { AvatarBloomTransition } from './AvatarBloomTransition';
+import { DynamicIsland } from './DynamicIsland';
 import { SpaceSettings } from './SpaceSettings';
 import { useTheme } from '../theme/ThemeProvider';
 import { ThemePicker } from '../theme/ThemePicker';
@@ -202,7 +203,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
   const activities = useActivityStore();
   const { store: jobs } = useJobs();
   const { store: monitors } = useMonitors();
-  const { store: approvals } = useApprovals();
+  const { store: approvals, snapshot: approvalSnapshot } = useApprovals();
   const { store: goals } = useGoals();
   const runtime = useSpaceRuntime(spaces.currentSpace);
   const [page, setPage] = useState<WorkspacePage>('chat');
@@ -225,7 +226,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const { colors } = useTheme(); const styles = useStyles();
   const { width, height } = useWindowDimensions(); const contentWidth = Math.min(width, l.maxWidth);
-  const avatarCenterY = l.headerTop + l.headerAvatar / 2;
+  const avatarCenterY = l.headerTop + l.controlSize / 2;
   const bloomRadius = 50;
   const targetScale = Math.max(25, Math.ceil((Math.hypot(contentWidth / 2, height - avatarCenterY) / bloomRadius) * 1.08));
   const drawerWidth = Math.min(contentWidth * l.drawerRatio, l.drawerMaxWidth);
@@ -385,16 +386,25 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
           {/* 唯一键盘避让层：Android 按真实重叠缩小阅读区，iOS 保留 padding；不再另算键盘高度。 */}
           <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled={Platform.OS !== 'web'} accessibilityViewIsModal={sessionMounted}>
             {page !== 'chat' && page !== 'news' && page !== 'goals' && !isSubpage && <View style={styles.pageHeader}><IconControl icon={Menu} label="打开空间侧栏" onPress={openDrawer} /><Text style={styles.pageTitle}>{NAV.find((item) => item.id === page)?.label}</Text><View style={styles.headerSideButtonSpacer} /></View>}
-            {/* 头像与左右操作浮在聊天层上方，不占正文高度；触控只落在实际控件。 */}
-            {page === 'chat' && <View pointerEvents="box-none" style={[styles.chatHeader, keyboardVisible && styles.chatHeaderCompact]}>
-              <View style={styles.headerLeft}><IconControl icon={Menu} label="打开空间侧栏" testID="workspace-open-drawer" onPress={openDrawer} /></View>
-              <Pressable accessibilityRole="button" accessibilityLabel="打开当前会话面板" accessibilityHint={`当前空间：${labels.title(spaces.currentSpace)}；当前状态：${statusLabel}。全屏显示当前会话的动态、审批、工作区和历史`} accessibilityState={{ disabled: sessionMounted }} disabled={sessionMounted} testID="workspace-open-session" style={[styles.identity, keyboardVisible && styles.identityCompact]}
-                onPress={openSession}>
-                <MuseAvatar size={keyboardVisible ? l.compactHeaderAvatar : l.headerAvatar} />
-                {headerNames.chat && <View style={[styles.identityLabel, styles.identityLabelSurface]}><Text numberOfLines={1} style={styles.identityName}>{headerNames.chat}</Text></View>}
-              </Pressable>
-              <View style={styles.headerRight}><IconControl icon={SlidersHorizontal} label="打开空间工作区" testID="workspace-open-console" onPress={() => openSession()} /></View>
-            </View>}
+            {/* 顶栏：实体/毛玻璃防穿透遮罩，左右功能键与中央灵动岛药丸 */}
+            {page === 'chat' && (
+              <View style={[styles.chatHeader, keyboardVisible && styles.chatHeaderCompact]}>
+                <IconControl icon={Menu} label="打开空间侧栏" testID="workspace-open-drawer" onPress={openDrawer} />
+                <DynamicIsland
+                  spaceId={spaces.currentSpace}
+                  spaceTitle={labels.title(spaces.currentSpace)}
+                  running={runtime.running}
+                  synchronized={runtime.synchronized}
+                  runtimeLabel={runtime.label}
+                  pendingApprovals={approvalSnapshot.pendingIds.length}
+                  keyboardVisible={keyboardVisible}
+                  disabled={sessionMounted}
+                  accessibilityHint={`当前空间：${labels.title(spaces.currentSpace)}；当前状态：${statusLabel}。全屏显示当前会话的动态、审批、工作区和历史`}
+                  onPress={openSession}
+                />
+                <IconControl icon={SlidersHorizontal} label="打开空间工作区" testID="workspace-open-console" onPress={() => openSession()} />
+              </View>
+            )}
             <View style={styles.bodyStage}>
               <BlurTargetView ref={chatBlurTarget} style={styles.bodyStage}>
                 {/* Expo 的原生 BlurTargetView 仅负责采样；普通 RN View 承担触控和读屏隔离。 */}
@@ -486,7 +496,9 @@ function SpaceStatusCaption({ spaceId, updatedAt }: { spaceId: string; updatedAt
 const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: c.canvas }, viewport: { flex: 1, alignSelf: 'center', overflow: 'hidden', backgroundColor: c.canvas }, screen: { flex: 1 },
   foreground: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: c.canvas, overflow: 'hidden' }, foregroundRounded: { borderRadius: r.drawerForeground }, foregroundCover: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: c.overlay },
-  chatHeader: { position: 'absolute', zIndex: 2, top: l.headerTop, left: l.sidePadding, right: l.sidePadding, height: l.headerHeight }, chatHeaderCompact: { height: l.controlSize }, headerLeft: { position: 'absolute', top: 0, left: 0 }, headerRight: { position: 'absolute', top: 0, right: 0, flexDirection: 'row', gap: spacing[4] },
+  chatHeader: { position: 'absolute', zIndex: 2, top: 0, left: 0, right: 0, paddingTop: l.headerTop, paddingBottom: spacing[8], paddingHorizontal: l.sidePadding, height: l.headerTop + l.controlSize + spacing[8], backgroundColor: c.floatingSurface, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.line, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  chatHeaderCompact: { paddingTop: l.headerTop / 2, paddingBottom: spacing[4], height: l.headerTop / 2 + l.controlSize + spacing[4] },
+  headerLeft: { position: 'absolute', top: 0, left: 0 }, headerRight: { position: 'absolute', top: 0, right: 0, flexDirection: 'row', gap: spacing[4] },
   bodyStage: { flex: 1 },
   sessionLayer: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden' },
   frostedWrap: { flex: 1 },

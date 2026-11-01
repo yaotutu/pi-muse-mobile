@@ -46,7 +46,7 @@ test('会话面板保留头像几何，聊天首条 inset 避开浮层且键盘�
   const { layout: l, typography: t } = workspaceTheme;
   const identityHeight = l.headerAvatar + 6 + t.name.lineHeight + 3 + t.caption.lineHeight + 8;
   assert.ok(l.headerHeight >= identityHeight, '会话面板信息区需完整显示');
-  assert.ok(l.chatContentTop >= identityHeight, '首条消息需避开浮动头像和状态');
+  assert.ok(l.chatContentTop >= l.headerTop + l.controlSize, '首条消息需避开实体灵动岛顶栏');
   assert.ok(l.chatContentTopCompact < l.chatContentTop, '键盘打开时减少顶部 inset');
   assert.equal(l.sessionHeaderBottom, 28, '不缩小连接页共用的标题间距');
 });
