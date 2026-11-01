@@ -11,7 +11,7 @@ export const darkTheme = {
     surface: '#1D1F20',
     newsCard: '#282B2C',
     control: '#2D3031',
-    floatingSurface: 'rgba(39,42,43,0.94)',
+    floatingSurface: '#1D1F20',
     floatingLine: 'rgba(210,220,217,0.13)',
     panelVeil: '#080909',
     selected: '#383C3D',

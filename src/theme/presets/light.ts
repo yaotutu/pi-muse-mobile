@@ -11,7 +11,7 @@ export const lightTheme = {
     surface: '#EDEEEA',
     newsCard: '#FAFAF7',
     control: '#E1E4DF',
-    floatingSurface: 'rgba(241,243,238,0.94)',
+    floatingSurface: '#FAFAF7',
     floatingLine: 'rgba(79,103,84,0.17)',
     panelVeil: '#FAFAF7',
     selected: '#D1D7D0',

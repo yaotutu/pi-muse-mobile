@@ -11,7 +11,7 @@ export const classicTheme = {
     surface: '#F2F3F5',
     newsCard: '#FFFFFF',
     control: '#E9EBEF',
-    floatingSurface: 'rgba(247,248,250,0.94)',
+    floatingSurface: '#FFFFFF',
     floatingLine: 'rgba(90,105,120,0.16)',
     panelVeil: '#FFFFFF',
     selected: '#DDE1E7',

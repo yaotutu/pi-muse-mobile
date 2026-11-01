@@ -26,8 +26,6 @@ export interface DynamicIslandProps {
   testID?: string;
 }
 
-const l = workspaceTheme.layout;
-
 /** 极轻量原生驱动微动效音波柱：AI 正在执行/抓取时动态律动。 */
 function WaveBars({ color }: { color: string }) {
   const [anim1] = useState(() => new Animated.Value(0.35));
@@ -196,12 +194,13 @@ const createStyles = (c: WorkspaceColors) =>
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing[8],
-      paddingLeft: spacing[5],
+      paddingLeft: spacing[6],
       paddingRight: spacing[12],
       height: 36,
       borderRadius: workspaceTheme.radius.round,
       borderWidth: 1.2,
-      maxWidth: l.identityMaxWidth,
+      minWidth: 120,
+      maxWidth: 240,
     },
     capsuleCompact: {
       height: 32,
@@ -243,13 +242,11 @@ const createStyles = (c: WorkspaceColors) =>
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing[6],
-      flexShrink: 1,
     },
     label: {
       ...workspaceTheme.typography.status,
       fontSize: 13,
       fontWeight: '600',
-      flexShrink: 1,
     },
     dot: {
       width: 6,
