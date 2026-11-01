@@ -55,7 +55,7 @@ test('主题由注册表生成单组单选项并保留本机状态提示', () =>
   assert.match(source, /selectTheme\(theme\.id\)/);
   assert.match(source, /theme\.colors\.canvas/);
   assert.match(source, /theme\.colors\.surface/);
-  assert.match(source, /theme\.colors\.blue/);
+  assert.match(source, /theme\.colors\.userBubble/);
   assert.match(source, /loading \? '正在恢复本机主题偏好/);
   assert.match(source, /saving \? '正在保存主题偏好/);
   assert.match(source, /error \?\? /);

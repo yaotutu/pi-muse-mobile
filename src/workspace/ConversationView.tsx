@@ -485,11 +485,11 @@ function Message({ message, pendingStatus, feedbackScope }: {
       ? <Text selectable={!feedbackScope} onLongPress={feedbackScope ? openFeedback : undefined}
         accessibilityActions={feedbackScope ? [{ name: 'openMessageActions', label: '打开消息操作' }] : undefined}
         onAccessibilityAction={feedbackScope ? (event) => { if (event.nativeEvent.actionName === 'openMessageActions') openFeedback(); } : undefined}
-        style={[styles.messageText, styles.userMessageText]}>{message.text}</Text>
+        style={[styles.messageText, styles.userMessageText, pendingStatus === 'failed' && styles.failedMessageText]}>{message.text}</Text>
       : <MessageContent text={message.text} onMessageLongPress={feedbackScope ? openFeedback : undefined} />)}
     {message.role === 'user' && !!message.attachments?.length && <MessageAttachments items={message.attachments} />}
     {pendingStatus === 'sending' && <Text style={styles.messageSubtext}>发送中…</Text>}
-    {pendingStatus === 'failed' && <Text style={styles.messageSubtext}>未发送</Text>}
+    {pendingStatus === 'failed' && <Text style={[styles.messageSubtext, styles.failedMessageText]}>未发送</Text>}
     {pendingStatus === 'unconfirmed' && <Text style={styles.messageSubtext}>待确认</Text>}
   </>;
   const bubbleStyle = [
@@ -548,21 +548,21 @@ const createStyles = (c: WorkspaceColors) =>
     bubbleWrap: { position: 'relative' },
     message: { padding: l.chatMessagePadding, borderRadius: r.message },
     assistantMessage: {
-      backgroundColor: c.surface,
+      backgroundColor: c.assistantBubble,
       alignSelf: 'flex-start',
       // Markdown 内部用百分比宽度布局代码块与表格，气泡给出明确宽度以免原生端压缩。
       width: l.assistantMessageWidth,
       maxWidth: l.assistantMessageWidth,
     },
     userMessage: {
-      backgroundColor: c.blue,
+      backgroundColor: c.userBubble,
       alignSelf: 'flex-end',
       maxWidth: l.userMessageWidth,
     },
     // 附件列表使用百分比宽度；明确气泡宽度，避免 Android 在内容固有尺寸计算时把附件信息压到零宽。
     userMessageWithAttachments: { width: l.userMessageWidth },
     messageText: { ...t.message, color: c.ink },
-    userMessageText: { color: c.onAccent },
+    userMessageText: { color: c.onUserBubble },
     composer: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -646,9 +646,10 @@ const createStyles = (c: WorkspaceColors) =>
     caption: { ...t.caption, color: c.faint },
     error: { ...t.caption, color: c.danger },
 
-    userMessageFailed: { backgroundColor: c.danger },
+    userMessageFailed: { backgroundColor: c.dangerSoft },
+    failedMessageText: { color: c.danger },
     userMessageUnconfirmed: { opacity: 0.75 },
-    messageSubtext: { ...t.caption, color: c.onAccent, marginTop: spacing[4], alignSelf: 'flex-end' },
+    messageSubtext: { ...t.caption, color: c.onUserBubble, marginTop: spacing[4], alignSelf: 'flex-end' },
     pendingBanner: {
       padding: spacing[12],
       borderRadius: r.card,

@@ -87,13 +87,13 @@ function connectionLabel(snapshot: ConnectionSnapshot) {
   return { loading: '正在读取连接配置', unconfigured: '未连接服务器', connecting: '正在连接服务器', online: '已连接', offline: '服务器暂时不可用', 'authentication-required': '需要重新认证', resetting: '正在清理本地数据', 'reset-error': '本地数据清理未完成', 'storage-error': '连接配置读取失败' }[snapshot.status];
 }
 /** 设置页入口共用命中区和禁用态；只显示调用方提供的真实状态，不参与业务判断。 */
-function SettingRow({ title, label, description, address, icon: Icon, onPress, disabled = false, testID }: {
-  title: string; label: string; description: string; address?: string; icon: LucideIcon; onPress: () => void; disabled?: boolean; testID?: string;
+function SettingRow({ title, label, description, address, icon: Icon, tone = 'blueSoft', onPress, disabled = false, testID }: {
+  title: string; label: string; description: string; address?: string; icon: LucideIcon; tone?: 'blueSoft' | 'lavender' | 'sand' | 'successSoft' | 'dangerSoft'; onPress: () => void; disabled?: boolean; testID?: string;
 }) {
   const styles = useStyles(); const { colors } = useTheme();
   return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled }} disabled={disabled} onPress={onPress} testID={testID}
     style={({ pressed }) => [styles.appSettingsRow, disabled && styles.settingsDisabled, pressed && styles.pressed]}>
-    <View style={styles.appRowIcon}><Icon size={l.appSettingsIcon} strokeWidth={spacing[2]} color={colors.ink} /></View>
+    <View style={[styles.appRowIcon, { backgroundColor: colors[tone] }]}><Icon size={l.appSettingsIcon} strokeWidth={spacing[2]} color={tone === 'dangerSoft' ? colors.danger : tone === 'successSoft' ? colors.success : colors.accentText} /></View>
     <View style={styles.appRowText}><Text style={styles.itemTitle}>{title}</Text><Text style={styles.caption}>{description}</Text>
       {!!address && <Text numberOfLines={1} ellipsizeMode="middle" style={styles.appAddress}>{address}</Text>}
     </View>
@@ -141,22 +141,22 @@ function SettingsPage({ snapshot, openConnection, openBrowser, memoryAvailable =
       <View style={styles.appSettingsGroup}>
         <SettingRow title="服务器连接" label="服务器连接" description={connectionLabel(snapshot)} address={snapshot.serverUrl ?? undefined} icon={Server} onPress={openConnection} />
         {openBrowser && <SettingRow title="浏览器" label="打开浏览器" description="使用服务端同一 Chrome" icon={Globe} onPress={openBrowser} testID="viewer-open" />}
-        {update && <SettingRow title="应用更新" label="应用更新" description={update.snapshot.status === 'unsupported' ? '当前环境不支持自动安装' : '检查版本、下载与安装进度'} icon={Download} onPress={update.open} />}
+        {update && <SettingRow title="应用更新" label="应用更新" description={update.snapshot.status === 'unsupported' ? '当前环境不支持自动安装' : '检查版本、下载与安装进度'} icon={Download} tone="sand" onPress={update.open} />}
       </View>
     </View>
     <View style={styles.appSection}><Text accessibilityRole="header" style={styles.appSectionTitle}>助手与个人资料</Text>
-      <View style={styles.appSettingsGroup}><SettingRow title="助手与用户资料" label="打开助手与用户资料" description={profileAvailable ? '名字、语气、人设与用户资料' : '连接真实服务后可用'} icon={UserRound} onPress={() => onSubpage('profile')} disabled={!profileAvailable} /></View>
+      <View style={styles.appSettingsGroup}><SettingRow title="助手与用户资料" label="打开助手与用户资料" description={profileAvailable ? '名字、语气、人设与用户资料' : '连接真实服务后可用'} icon={UserRound} tone="lavender" onPress={() => onSubpage('profile')} disabled={!profileAvailable} /></View>
     </View>
     <View style={styles.appSection}><Text accessibilityRole="header" style={styles.appSectionTitle}>助手记忆</Text>
       <View style={styles.appSettingsGroup}>
-        <SettingRow title="长期记忆" label="打开长期记忆" description={memoryAvailable ? '查询、搜索与管理全局记忆' : '连接真实服务后管理全局记忆'} icon={BookOpen} onPress={() => onSubpage('memory')} disabled={!memoryAvailable} />
-        <SettingRow title="Dream 记忆整理" label="打开Dream记忆整理" description={dreamAvailable ? '整理状态、提示词与待决建议' : '连接真实服务后可用'} icon={Moon} onPress={() => onSubpage('dream')} disabled={!dreamAvailable} />
+        <SettingRow title="长期记忆" label="打开长期记忆" description={memoryAvailable ? '查询、搜索与管理全局记忆' : '连接真实服务后管理全局记忆'} icon={BookOpen} tone="successSoft" onPress={() => onSubpage('memory')} disabled={!memoryAvailable} />
+        <SettingRow title="Dream 记忆整理" label="打开Dream记忆整理" description={dreamAvailable ? '整理状态、提示词与待决建议' : '连接真实服务后可用'} icon={Moon} tone="lavender" onPress={() => onSubpage('dream')} disabled={!dreamAvailable} />
       </View>
     </View>
     <ThemePicker />
     {/* 维护入口留在末组，仅在真实连接提供会话能力时出现。 */}
     {currentSpaceId && onReset && <View style={styles.appSection}><Text accessibilityRole="header" style={styles.appSectionTitle}>会话维护</Text>
-      <View style={styles.appSettingsGroup}><SettingRow title="重置当前会话" label="重置当前会话" description={`目标：${currentSpaceId === MAIN_SPACE ? '主空间' : currentSpaceId}`} icon={RotateCcw} onPress={onReset} testID="workspace-reset-conversation" /></View>
+      <View style={styles.appSettingsGroup}><SettingRow title="重置当前会话" label="重置当前会话" description={`目标：${currentSpaceId === MAIN_SPACE ? '主空间' : currentSpaceId}`} icon={RotateCcw} tone="dangerSoft" onPress={onReset} testID="workspace-reset-conversation" /></View>
     </View>}
   </ScrollView>;
 }
@@ -182,7 +182,7 @@ function Navigation({ page, onPage }: { page: WorkspacePage; onPage: (page: Work
   const styles = useStyles(); const { colors } = useTheme();
   return <View accessibilityRole="tablist" accessibilityLabel="主要页面" style={styles.navigation}>
     {NAV.map(({ id, label, icon: Icon }) => <Pressable key={id} accessibilityRole="tab" accessibilityLabel={label} accessibilityState={{ selected: page === id }} aria-selected={page === id} testID={`workspace-tab-${id}`} onPress={() => onPage(id)} style={({ pressed }) => [styles.navigationItem, pressed && styles.pressed]}>
-      <Icon size={l.navigationIconSize} strokeWidth={1.8} color={page === id ? colors.ink : colors.faint} fill={id === 'chat' && page === id ? colors.ink : 'none'} />
+      <Icon size={l.navigationIconSize} strokeWidth={1.8} color={page === id ? colors.accentText : colors.faint} fill={id === 'chat' && page === id ? colors.accentText : 'none'} />
       <Text style={[styles.navigationLabel, page === id && styles.navigationLabelSelected]}>{label}</Text>
     </Pressable>)}
   </View>;
@@ -533,7 +533,7 @@ const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   identityLabelSurface: { backgroundColor: c.floatingSurface, borderColor: c.floatingLine, borderWidth: StyleSheet.hairlineWidth, borderRadius: r.field, paddingBottom: spacing[6] },
   identityName: { ...t.name, color: c.ink, maxWidth: '100%', textAlign: 'center' },
   navigation: { flexDirection: 'row', height: l.navigationHeight, marginHorizontal: spacing[18], marginBottom: l.navigationBottom, alignItems: 'center' },
-  navigationItem: { flex: 1, minHeight: l.controlSize, gap: l.navigationLabelGap, alignItems: 'center', justifyContent: 'center' }, navigationLabel: { ...t.navigation, color: c.faint }, navigationLabelSelected: { color: c.ink },
+  navigationItem: { flex: 1, minHeight: l.controlSize, gap: l.navigationLabelGap, alignItems: 'center', justifyContent: 'center' }, navigationLabel: { ...t.navigation, color: c.faint }, navigationLabelSelected: { color: c.accentText },
   drawer: { position: 'absolute', top: 0, bottom: 0, left: 0, paddingHorizontal: l.sidePadding, paddingTop: l.drawerTop, backgroundColor: c.canvas }, drawerHeading: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: l.drawerTop, marginBottom: l.drawerTitleBottom }, drawerTitle: { ...t.drawerTitle, color: c.ink }, drawerSection: { ...t.caption, color: c.faint }, drawerSectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing[4], marginBottom: spacing[14] }, drawerList: { gap: spacing[6] },
   threadRow: { minHeight: l.drawerRowHeight, flexDirection: 'row', alignItems: 'center', gap: spacing[14], paddingHorizontal: spacing[14], paddingVertical: spacing[12], borderRadius: r.listItem }, threadSelected: { backgroundColor: c.surface }, threadText: { flex: 1, gap: spacing[4], minWidth: 0 }, drawerFooter: { height: l.drawerFooterHeight, flexDirection: 'row', alignItems: 'center', gap: spacing[12], borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.line },
   drawerSearch: { flex: 1, minWidth: 0, height: l.controlSize, borderRadius: r.round, backgroundColor: c.surface, flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing[14], gap: spacing[8] }, searchInput: { flex: 1, minWidth: 0, height: l.smallControl },

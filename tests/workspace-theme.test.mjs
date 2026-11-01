@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import { workspaceTheme } from '../src/ui/tokens.ts';
 import { availableThemes, DEFAULT_THEME_ID, themeRegistry } from '../src/theme/registry.ts';
 
@@ -27,19 +28,37 @@ test('三套主题拥有相同颜色语义，主题身份不再与明暗模式�
   }
 });
 
-test('经典蓝白恢复原有白底、冷灰及深色文字，不复用暖白主题', () => {
+test('经典蓝白恢复 Muse 原色板的浅蓝、淡紫和沙色，不改变白底或其他主题画布', () => {
   const c = themeRegistry.classic.colors;
   assert.equal(c.canvas, '#FFFFFF');
-  assert.equal(c.surface, '#F2F3F5');
-  assert.equal(c.control, '#E9EBEF');
-  assert.equal(c.selected, '#DDE1E7');
+  assert.equal(c.surface, '#EDF7FD');
+  assert.equal(c.control, '#ECF5FA');
+  assert.equal(c.selected, '#C8E7FF');
+  assert.equal(c.userBubble, '#C8E7FF');
+  assert.equal(c.assistantBubble, '#EEEEF0');
+  assert.equal(c.blue, '#1473C8');
+  assert.equal(c.lavender, '#F0EEFA');
+  assert.equal(c.sand, '#FAF0DF');
   assert.equal(c.ink, '#172027');
   assert.equal(c.muted, '#606A74');
-  assert.equal(c.line, '#E1E5EA');
-  assert.equal(c.avatar, '#F6F4F7');
+  assert.equal(c.line, '#DFEAF2');
+  assert.equal(c.avatar, '#ECF5FA');
   assert.notEqual(c.canvas, themeRegistry.light.colors.canvas);
   assert.equal(themeRegistry.light.colors.canvas, '#FAFAF7');
   assert.equal(themeRegistry.dark.colors.canvas, '#080909');
+});
+
+test('消息、辅助操作和设置图标实际消费恢复后的色板，不把按钮白字带入浅蓝气泡', () => {
+  const read = (name) => readFileSync(new URL(`../src/${name}`, import.meta.url), 'utf8');
+  const chat = read('workspace/ConversationView.tsx');
+  assert.match(chat, /userMessage:\s*\{\s*backgroundColor: c\.userBubble/);
+  assert.match(chat, /userMessageText: \{ color: c\.onUserBubble \}/);
+  assert.match(chat, /assistantMessage:\s*\{\s*backgroundColor: c\.assistantBubble/);
+  assert.match(chat, /pendingStatus === 'failed' && styles\.failedMessageText/);
+  assert.match(chat, /failedMessageText: \{ color: c\.danger \}/);
+  const settings = read('workspace/WorkspaceScreen.tsx');
+  for (const tone of ['lavender', 'sand', 'successSoft']) assert.ok(settings.includes(`tone="${tone}"`));
+  assert.match(read('ui/ActionButton.tsx'), /colors\.dangerSoft : colors\.blueSoft/);
 });
 
 test('会话面板保留头像几何，聊天首条 inset 避开浮层且键盘时缩小', () => {
@@ -56,16 +75,20 @@ for (const theme of availableThemes) {
   test(`${mode} 普通文字与表面保持可读对比`, () => {
     const c = theme.colors;
     for (const foreground of ['ink', 'muted', 'faint']) {
-      for (const background of ['canvas', 'surface']) {
+      for (const background of ['canvas', 'surface', 'assistantBubble']) {
         assert.ok(contrast(c[foreground], c[background]) >= 4.5, `${mode} ${foreground}/${background}`);
       }
     }
-    assert.ok(contrast(c.canvas, c.surface) >= 1.1, `${mode} 卡片须与页面画布可辨`);
+    assert.ok(contrast(c.canvas, c.surface) >= 1.05, `${mode} 淡色表面与画布保留层次`);
+    assert.ok(contrast(c.canvas, c.line) >= 1.1, `${mode} 细边界保留分组轮廓`);
   });
-  test(`${mode} 蓝色消息气泡使用独立白色前景`, () => {
+  test(`${mode} 主按钮和消息分别使用各自可读的前景色`, () => {
     const c = theme.colors;
     assert.equal(c.onAccent, '#FFFFFF');
     assert.ok(contrast(c.onAccent, c.blue) >= 4.5);
+    assert.ok(contrast(c.onUserBubble, c.userBubble) >= 4.5);
+    assert.ok(contrast(c.accentText, c.selected) >= 4.5);
+    for (const background of ['lavender', 'sand']) assert.ok(contrast(c.accentText, c[background]) >= 4.5);
     assert.notEqual(c.selected, c.surface);
   });
   test(`${mode} 语义状态胶囊具有可读前景，不复用按钮蓝作为小字`, () => {

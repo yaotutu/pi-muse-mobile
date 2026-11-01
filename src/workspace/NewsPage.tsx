@@ -370,11 +370,11 @@ export function NewsPage({ store, managing, onManaging, openDrawer }: { store: N
                     testID={view === 'saved' ? 'news-saved-filter' : `news-view-${view}`}
                     style={({ pressed }) => [
                       styles.textTab,
-                      selected && { backgroundColor: colors.floatingSurface },
+                      selected && { backgroundColor: colors.selected },
                       pressed && styles.pressed,
                     ]}
                   >
-                    <Text style={[styles.tabText, { color: selected ? colors.ink : colors.muted }]}>
+                    <Text style={[styles.tabText, { color: selected ? colors.accentText : colors.muted }]}>
                       {label}
                     </Text>
                   </Pressable>

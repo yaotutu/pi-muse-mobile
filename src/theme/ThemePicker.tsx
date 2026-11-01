@@ -21,7 +21,7 @@ export function ThemePicker() {
           onPress={() => selectTheme(theme.id)} style={({ pressed }) => [styles.choice, index < availableThemes.length - 1 && styles.choiceDivider, pressed && styles.pressed]}>
           <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[styles.preview, { backgroundColor: theme.colors.canvas, borderColor: theme.colors.line }]}>
             <View style={[styles.previewLine, { backgroundColor: theme.colors.surface }]} />
-            <View style={[styles.previewBubble, { backgroundColor: theme.colors.blue }]} />
+            <View style={[styles.previewBubble, { backgroundColor: theme.colors.userBubble }]} />
           </View>
           <View style={styles.copy}><Text style={styles.name}>{theme.name}</Text><Text style={styles.description}>{theme.description}</Text></View>
           <View style={[styles.radio, checked && styles.radioChecked]}>
