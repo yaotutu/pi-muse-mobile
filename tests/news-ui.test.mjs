@@ -51,8 +51,8 @@ test('列表以标题和两行正文开篇，一行推荐理由与来源时间�
   }
   assert.match(card, /newsListExcerpt\(article\.content\)/);
   assert.doesNotMatch(card, /查看内容|styles\.readMore|<Card\b/);
-  assert.match(page, /viewTabs: \{ flex: 1, minWidth: 0/);
-  assert.match(page, /textTab: \{ flex: 1, minWidth: 0, minHeight: l\.smallControl/);
+  assert.match(page, /viewTabs: \{ height: 36, borderRadius: r\.round/);
+  assert.match(page, /textTab: \{ paddingHorizontal: spacing\[16\], height: 30/);
   assert.match(page, /articleOpen: \{ minHeight: l\.smallControl, padding: n\.cardContentInset \}/);
   assert.match(page, /feedTitle: \{[^\n]*marginBottom: spacing\[12\]/);
   assert.match(page, /feedExcerpt: \{[^\n]*marginBottom: spacing\[18\]/);
@@ -174,14 +174,13 @@ test('新闻默认首屏从44dp文字筛选直接进入文章，状态详情留�
   const sources = page.split('function Sources(')[1].split('export function NewsPage(')[0];
   assert.match(reader, /accessibilityRole="tablist" accessibilityLabel="新闻视图"/);
   assert.match(reader, /accessibilityRole="tab"[\s\S]*?accessibilityState=\{\{ selected: snapshot\.view === view \}\}/);
-  assert.match(page, /textTab: \{[\s\S]*?minHeight: l\.smallControl/);
+  assert.match(page, /textTab: \{ paddingHorizontal: spacing\[16\], height: 30/);
   assert.match(page, /import \{ IconControl \} from '\.\.\/ui\/IconControl'/);
-  assert.equal((reader.match(/<IconControl small\b/g) ?? []).length, 3);
+  assert.match(reader, /<IconControl\s+icon=\{SlidersHorizontal\}/);
   assert.doesNotMatch(page, /ToolbarIcon|styles\.toolbarIcon/);
-  assert.match(iconControl, /small \? themeTokens\.layout\.smallControl : themeTokens\.layout\.controlSize/);
-  assert.match(iconControl, /accessibilityState=\{\{ disabled: disabled \|\| busy, busy, selected \}\}/);
   assert.match(reader, /selected=\{snapshot\.savedOnly\}[\s\S]*?style=\{snapshot\.savedOnly \? \{ borderColor: colors\.blue \} : undefined\}/);
   assert.match(reader, /busy=\{snapshot\.feedRefreshing\}/);
+  assert.match(reader, /<Sheet\b/);
   assert.match(reader, /snapshot\.articles\.map\(\(article\) => <ArticleCard/);
   assert.doesNotMatch(reader, /今日阅读|从你订阅|<SegmentedControl|来源已就绪|上次抓取|为你推荐|styles\.sectionHeading/);
   assert.match(sources, /snapshot\.status\.failedCount/);

@@ -1,4 +1,4 @@
-import { Bookmark, Check, ChevronLeft, ExternalLink, Menu, Plus, RefreshCw, Rss, X } from 'lucide-react-native';
+import { Bookmark, Check, ChevronLeft, ExternalLink, Menu, Plus, RefreshCw, Rss, SlidersHorizontal, X } from 'lucide-react-native';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Alert, Keyboard, Linking, Pressable, ScrollView, StyleSheet, Text, View, type ScrollViewInstance, type ViewInstance } from 'react-native';
 import { useTheme } from '../theme/ThemeProvider';
@@ -7,6 +7,7 @@ import { ActionButton } from '../ui/ActionButton';
 import { FeedbackNotice } from '../ui/Feedback';
 import { FormInput } from '../ui/FormInput';
 import { IconControl } from '../ui/IconControl';
+import { Sheet } from '../ui/Sheet';
 import { Card } from '../ui/Surfaces';
 import { safeMessageUrl } from '../chat/message-links';
 import { NewsArticleActions, NewsFeedbackBadge } from '../news/NewsArticleActions';
@@ -310,14 +311,15 @@ export function NewsPage({ store, managing, onManaging, openDrawer }: { store: N
     setFocusCommentsId(id);
     if (snapshot.selectedArticleId !== id) store.openArticle(id);
   };
+  const [actionsOpen, setActionsOpen] = useState(false);
   const pending = !!snapshot.status && (snapshot.status.pendingCount > 0 || snapshot.status.processing);
   const pageContent = snapshot.selectedArticleId
     ? <ArticleDetail store={store} snapshot={snapshot} onOpenActions={openActions}
       focusComments={focusCommentsId === snapshot.selectedArticleId} onCommentsFocused={() => setFocusCommentsId(null)} />
     : managing ? <Sources store={store} snapshot={snapshot} onBack={() => onManaging(false)} />
       : <View style={[styles.readerContainer, { backgroundColor: colors.surface }]}>
-          {/* 单顶栏：左侧抽屉菜单、居中推荐/全部分段、右侧页面操作，消除双层顶栏冗余。 */}
-          <View style={styles.readerToolbar}>
+          {/* 统一顶栏：左侧抽屉菜单、居中胶囊药丸分段、右侧对称操作菜单 */}
+          <View style={[styles.readerToolbar, { backgroundColor: colors.floatingSurface, borderBottomColor: colors.line }]}>
             {openDrawer ? <IconControl icon={Menu} label="打开空间侧栏" onPress={openDrawer} /> : <View style={styles.headerSideButtonSpacer} />}
             <View accessibilityRole="tablist" accessibilityLabel="新闻视图" style={[styles.viewTabs, { backgroundColor: colors.floatingSurface, borderColor: colors.floatingLine }]}>
               {(['recommended', 'all'] as const).map((view) => <Pressable key={view} accessibilityRole="tab"
@@ -327,15 +329,15 @@ export function NewsPage({ store, managing, onManaging, openDrawer }: { store: N
                 <Text style={[styles.tabText, { color: snapshot.view === view ? colors.accentText : colors.muted }]}>{view === 'recommended' ? '推荐' : '全部'}</Text>
               </Pressable>)}
             </View>
-            <View style={styles.toolbarActions}>
-              <IconControl small icon={Bookmark} label={snapshot.savedOnly ? '取消只看收藏' : '只看收藏'} selected={snapshot.savedOnly}
-                style={snapshot.savedOnly ? { borderColor: colors.blue } : undefined}
-                onPress={() => store.setSavedOnly(!snapshot.savedOnly)} testID="news-saved-filter" />
-              <IconControl small icon={Rss} label="管理RSS来源与抓取状态" onPress={() => onManaging(true)} testID="news-manage-sources" />
-              <IconControl small icon={RefreshCw} label="抓取新文章并重试失败分析" busy={snapshot.feedRefreshing}
-                disabled={snapshot.feedUncertain || !snapshot.sources.length}
-                onPress={() => void store.refreshFeeds()} testID="news-refresh-feeds" />
-            </View>
+            <IconControl
+              icon={SlidersHorizontal}
+              label="资讯操作与订阅管理"
+              selected={snapshot.savedOnly}
+              busy={snapshot.feedRefreshing}
+              style={snapshot.savedOnly ? { borderColor: colors.blue } : undefined}
+              onPress={() => setActionsOpen(true)}
+              testID="news-actions-trigger"
+            />
           </View>
           <ScrollView keyboardShouldPersistTaps="handled" style={{ backgroundColor: colors.surface }}
             contentContainerStyle={styles.readerContent} testID="news-page">
@@ -358,7 +360,29 @@ export function NewsPage({ store, managing, onManaging, openDrawer }: { store: N
     {snapshot.articles.map((article) => <ArticleCard key={article.id} article={article} store={store}
       snapshot={snapshot} onOpenActions={openActions} />)}
     {snapshot.hasMore && <ActionButton label="加载更多文章" text="加载更多" busy={snapshot.loading} onPress={() => store.loadMore()} testID="news-load-more" />}
-  </ScrollView></View>;
+  </ScrollView>
+          {actionsOpen && (
+            <Sheet
+              title="资讯与订阅"
+              subtitle={snapshot.view === 'recommended' ? '当前处于「推荐」流' : '当前处于「全部」流'}
+              onClose={() => setActionsOpen(false)}
+            >
+              <View style={styles.sheetActions}>
+                <ActionButton
+                  label="抓取新文章并重试失败分析"
+                  text={snapshot.feedRefreshing ? '正在抓取最新文章…' : '刷新抓取最新文章'}
+                  icon={RefreshCw}
+                  busy={snapshot.feedRefreshing}
+                  disabled={snapshot.feedUncertain || !snapshot.sources.length}
+                  onPress={() => { setActionsOpen(false); void store.refreshFeeds(); }}
+                  testID="news-refresh-feeds"
+                />
+                <ActionButton label="管理RSS来源与抓取状态" text={`管理 RSS 订阅来源 (${snapshot.sources.length})`} icon={Rss} onPress={() => { setActionsOpen(false); onManaging(true); }} testID="news-manage-sources" />
+                <ActionButton label={snapshot.savedOnly ? '取消只看收藏' : '只看收藏'} text={snapshot.savedOnly ? '已启用「只看收藏」· 点击显示全部' : '只看收藏文章'} icon={Bookmark} tone={snapshot.savedOnly ? 'primary' : undefined} onPress={() => { setActionsOpen(false); store.setSavedOnly(!snapshot.savedOnly); }} testID="news-saved-filter" />
+              </View>
+            </Sheet>
+          )}
+        </View>;
   return <>{pageContent}
     {menu && menuArticle && <NewsArticleActions key={menu.articleId} article={menuArticle}
       work={snapshot.articleWork[menu.articleId]} store={store} anchor={menu.anchor}
@@ -372,13 +396,12 @@ const styles = StyleSheet.create({
   readerContainer: { flex: 1, minHeight: 0 },
   headerSideButtonSpacer: { width: l.controlSize, height: l.controlSize },
   readerContent: { paddingHorizontal: n.cardSideInset, paddingTop: spacing[4], paddingBottom: spacing[34], gap: spacing[4] },
-  readerToolbar: { minHeight: l.controlSize, paddingHorizontal: l.sidePadding,
-    paddingTop: spacing[12], paddingBottom: spacing[8],
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing[8] },
-  viewTabs: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', padding: spacing[2], borderRadius: r.field, borderWidth: StyleSheet.hairlineWidth, gap: spacing[2] },
-  textTab: { flex: 1, minWidth: 0, minHeight: l.smallControl, paddingHorizontal: spacing[8], paddingVertical: spacing[6], borderRadius: r.field,
-    alignItems: 'center', justifyContent: 'center' },
-  toolbarActions: { flexDirection: 'row', alignItems: 'center', gap: spacing[4] },
+  readerToolbar: { height: l.headerTop + l.controlSize + spacing[8], paddingTop: l.headerTop,
+    paddingBottom: spacing[8], paddingHorizontal: l.sidePadding, borderBottomWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  viewTabs: { height: 36, borderRadius: r.round, borderWidth: 1.2, flexDirection: 'row', alignItems: 'center', padding: spacing[2], gap: spacing[2] },
+  textTab: { paddingHorizontal: spacing[16], height: 30, borderRadius: r.round, alignItems: 'center', justifyContent: 'center' },
+  sheetActions: { gap: spacing[12], paddingVertical: spacing[8] },
   tabText: { ...t.status, fontWeight: '600', textAlign: 'center' },
   pressed: { opacity: themeTokens.interaction.pressedOpacity },
   noticeWrap: { gap: spacing[4] },

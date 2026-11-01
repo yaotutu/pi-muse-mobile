@@ -385,7 +385,29 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
         <SafeAreaView style={styles.screen} edges={['top', 'bottom', 'left', 'right']} aria-hidden={drawerOpen} {...(Platform.OS === 'web' && drawerOpen ? { inert: true } : {})}>
           {/* 唯一键盘避让层：Android 按真实重叠缩小阅读区，iOS 保留 padding；不再另算键盘高度。 */}
           <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled={Platform.OS !== 'web'} accessibilityViewIsModal={sessionMounted}>
-            {page !== 'chat' && page !== 'news' && page !== 'goals' && !isSubpage && <View style={styles.pageHeader}><IconControl icon={Menu} label="打开空间侧栏" onPress={openDrawer} /><Text style={styles.pageTitle}>{NAV.find((item) => item.id === page)?.label}</Text><View style={styles.headerSideButtonSpacer} /></View>}
+            {page !== 'chat' && page !== 'news' && page !== 'goals' && !isSubpage && (
+              <View style={styles.pageHeader}>
+                <IconControl icon={Menu} label="打开空间侧栏" onPress={openDrawer} />
+                <View style={styles.settingsCapsule}>
+                  <Settings size={16} strokeWidth={2} color={colors.ink} />
+                  <Text style={styles.capsuleLabel}>{NAV.find((item) => item.id === page)?.label ?? '设置'}</Text>
+                  <View
+                    style={[
+                      styles.capsuleDot,
+                      {
+                        backgroundColor:
+                          snapshot.status === 'online'
+                            ? colors.success
+                            : snapshot.status === 'connecting' || snapshot.status === 'loading'
+                            ? colors.warning
+                            : colors.danger,
+                      },
+                    ]}
+                  />
+                </View>
+                <IconControl icon={Server} label="服务器连接与状态" testID="settings-open-connection" onPress={openConnection} />
+              </View>
+            )}
             {/* 顶栏：实体/毛玻璃防穿透遮罩，左右功能键与中央灵动岛药丸 */}
             {page === 'chat' && (
               <View style={[styles.chatHeader, keyboardVisible && styles.chatHeaderCompact]}>
@@ -520,11 +542,19 @@ const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   threadRow: { minHeight: l.drawerRowHeight, flexDirection: 'row', alignItems: 'center', gap: spacing[14], paddingHorizontal: spacing[14], paddingVertical: spacing[12], borderRadius: r.listItem }, threadSelected: { backgroundColor: c.surface }, threadText: { flex: 1, gap: spacing[4], minWidth: 0 }, drawerFooter: { height: l.drawerFooterHeight, flexDirection: 'row', alignItems: 'center', gap: spacing[12], borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.line },
   drawerSearch: { flex: 1, minWidth: 0, height: l.controlSize, borderRadius: r.round, backgroundColor: c.surface, flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing[14], gap: spacing[8] }, searchInput: { flex: 1, minWidth: 0, height: l.smallControl },
   headerSideButtonSpacer: { width: l.controlSize, height: l.controlSize },
-  pageHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: l.sidePadding, paddingTop: spacing[12], paddingBottom: spacing[8] },
+  pageHeader: { paddingTop: l.headerTop, paddingBottom: spacing[8], paddingHorizontal: l.sidePadding,
+    height: l.headerTop + l.controlSize + spacing[8], backgroundColor: c.floatingSurface,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.line,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  settingsCapsule: { height: 36, borderRadius: r.round, borderWidth: 1.2, borderColor: c.floatingLine,
+    backgroundColor: c.floatingSurface, flexDirection: 'row', alignItems: 'center',
+    paddingLeft: spacing[12], paddingRight: spacing[14], gap: spacing[6] },
+  capsuleLabel: { ...t.status, fontSize: 13, fontWeight: '600', color: c.ink },
+  capsuleDot: { width: 6, height: 6, borderRadius: 3 },
   otherPage: { paddingTop: l.pageTop, paddingHorizontal: l.sidePadding, paddingBottom: spacing[24], gap: spacing[18] }, pageTitle: { ...t.heroName, color: c.ink }, itemTitle: { ...t.itemTitle, color: c.ink }, mutedText: { ...t.detail, color: c.muted }, caption: { ...t.caption, color: c.faint }, error: { ...t.caption, color: c.danger },
   exampleCard: { padding: spacing[20], borderRadius: r.card, backgroundColor: c.surface, gap: spacing[16], marginBottom: spacing[16] },
   confirmActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing[8] },
-  settingsPage: { gap: spacing[24] }, appSection: { gap: spacing[10] },
+  settingsPage: { gap: spacing[24], paddingTop: spacing[16] }, appSection: { gap: spacing[10] },
   appSectionTitle: { ...t.status, color: c.muted, marginLeft: spacing[6] },
   appSettingsGroup: { borderRadius: r.card, backgroundColor: c.surface, overflow: 'hidden' },
   appSettingsRow: { minHeight: l.appSettingsRowHeight, flexDirection: 'row', alignItems: 'center', gap: spacing[10], paddingHorizontal: spacing[14], paddingVertical: spacing[12] },
