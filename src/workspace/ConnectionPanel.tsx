@@ -267,7 +267,7 @@ export function ConnectionPanel({ manager, snapshot, onClose }: ConnectionPanelP
       <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
         <View style={styles.column}>
           <View style={styles.header}>
-            <IconControl icon={X} label={isLocked ? '保存中，暂时无法关闭' : '关闭服务器连接'}
+            <IconControl transparent icon={X} label={isLocked ? '保存中，暂时无法关闭' : '关闭服务器连接'}
               disabled={isLocked} onPress={handleClose} testID="workspace-connection-close" />
             <Text accessibilityRole="header" style={styles.headerTitle}>服务器连接</Text>
             <View style={styles.headerSideButtonSpacer} />

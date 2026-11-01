@@ -2,7 +2,7 @@ import { FeedbackNotice } from '../ui/Feedback';
 import { Card } from '../ui/Surfaces';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Keyboard, StyleSheet, Text, View } from 'react-native';
-import { ArrowLeft, Plus, RefreshCw, Search, SquarePen, Trash2 } from 'lucide-react-native';
+import { Plus, RefreshCw, Search, SquarePen, Trash2 } from 'lucide-react-native';
 import { useMemories } from '../memories/MemoryProvider';
 import { MEMORY_QUERY_LIMIT, MEMORY_TEXT_LIMIT } from '../memories/memory-store';
 import { spacing, workspaceTheme, type WorkspaceColors } from '../ui/tokens';
@@ -12,7 +12,7 @@ import { ChoiceChip } from '../ui/ChoiceChip';
 import { FormInput } from '../ui/FormInput';
 
 /** 设置页内平级内容；四主 Tab 和会话面板结构不变，记忆属于服务全局而非当前空间。 */
-export function MemoryPanel({ onBack }: { onBack: () => void }) {
+export function MemoryPanel({ onBack }: { onBack?: () => void } = {}) {
   const { store, snapshot } = useMemories(); const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [query, setQuery] = useState(snapshot.query);
@@ -21,7 +21,6 @@ export function MemoryPanel({ onBack }: { onBack: () => void }) {
   const locked = !store.canWrite();
   return <View style={styles.root} testID="memory-panel">
     <View style={styles.topRow}>
-      <ActionButton label="返回设置" text="返回设置" onPress={onBack} icon={ArrowLeft} />
       <ActionButton label="刷新记忆" text="刷新" onPress={() => void store.refresh()} disabled={snapshot.loading || snapshot.writing} icon={RefreshCw} />
     </View>
     <View style={styles.heading}><Text accessibilityRole="header" style={styles.pageTitle}>长期记忆</Text>
@@ -73,7 +72,7 @@ export function MemoryPanel({ onBack }: { onBack: () => void }) {
 }
 const createStyles = (colors: WorkspaceColors) => StyleSheet.create({
   root: { gap: spacing[16], paddingBottom: spacing[24], minWidth: 0 },
-  topRow: { flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap', gap: spacing[8] },
+  topRow: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: spacing[8] },
   heading: { gap: spacing[4] }, pageTitle: { ...workspaceTheme.typography.section, color: colors.ink }, intro: { ...workspaceTheme.typography.status, color: colors.muted },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing[8] },
   filterRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: spacing[8] },

@@ -118,8 +118,13 @@ function ArticleDetail({ store, snapshot, onOpenActions, focusComments, onCommen
       onCommentsFocused();
     }
   }, [commentsY, focusComments, onCommentsFocused, snapshot.articleLoading]);
-  return <ScrollView ref={scrollRef} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content} testID="news-detail">
-    <ActionButton label="返回新闻列表" text="返回新闻" icon={ChevronLeft} onPress={() => store.closeArticle()} testID="news-detail-back" />
+  return <View style={[styles.readerContainer, { backgroundColor: colors.surface }]}>
+    <View style={[styles.readerToolbar, { backgroundColor: colors.floatingSurface, borderBottomColor: colors.line }]}>
+      <IconControl transparent icon={ChevronLeft} label="返回新闻列表" onPress={() => store.closeArticle()} testID="news-detail-back" />
+      <Text accessibilityRole="header" style={[styles.subpageHeaderTitle, { color: colors.ink }]}>文章详情</Text>
+      <View style={styles.headerSideButtonSpacer} />
+    </View>
+    <ScrollView ref={scrollRef} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content} testID="news-detail">
     {snapshot.articleLoading && <Text style={[styles.meta, { color: colors.faint }]}>正在读取文章内容…</Text>}
     <FeedbackNotice tone="danger" text={snapshot.articleError} />
     {!routineNotice(snapshot.notice) && <NewsNotice notice={snapshot.notice} store={store} />}
@@ -168,14 +173,20 @@ function ArticleDetail({ store, snapshot, onOpenActions, focusComments, onCommen
           onPress={() => void store.addComment(id)} testID="news-comment-submit" />
       </View>
     </>}
-  </ScrollView>;
+  </ScrollView>
+  </View>;
 }
 
 function Sources({ store, snapshot, onBack }: { store: NewsStore; snapshot: NewsSnapshot; onBack: () => void }) {
   const { colors } = useTheme();
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  return <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content} testID="news-sources">
-    <ActionButton label="返回新闻列表" text="返回新闻" icon={ChevronLeft} onPress={onBack} testID="news-sources-back" />
+  return <View style={[styles.readerContainer, { backgroundColor: colors.surface }]}>
+    <View style={[styles.readerToolbar, { backgroundColor: colors.floatingSurface, borderBottomColor: colors.line }]}>
+      <IconControl transparent icon={ChevronLeft} label="返回新闻列表" onPress={onBack} testID="news-sources-back" />
+      <Text accessibilityRole="header" style={[styles.subpageHeaderTitle, { color: colors.ink }]}>RSS 来源</Text>
+      <View style={styles.headerSideButtonSpacer} />
+    </View>
+    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content} testID="news-sources">
     <View style={styles.sourceHeading}><Text accessibilityRole="header" style={[styles.sourceTitle, { color: colors.ink }]}>RSS 来源</Text>
       <Text style={[styles.excerpt, { color: colors.muted }]}>添加标准 RSS 地址，新闻会在服务端抓取并分析。</Text></View>
     <Card style={styles.sourceStatus}>
@@ -261,7 +272,8 @@ function Sources({ store, snapshot, onBack }: { store: NewsStore; snapshot: News
           onPress={() => setDeleteId(source.id)} testID={`news-source-delete-${source.id}`} />}
       </View>;
     })}
-  </ScrollView>;
+  </ScrollView>
+  </View>;
 }
 
 /** 页面仅呈现连接级 NewsStore；切页与后台生命周期由根层统一驱动。 */
@@ -419,6 +431,7 @@ const styles = StyleSheet.create({
   viewTabs: { height: 36, borderRadius: r.round, borderWidth: 0, flexDirection: 'row', alignItems: 'center', padding: spacing[2], gap: spacing[2] },
   textTab: { paddingHorizontal: spacing[14], height: 30, borderRadius: r.round, alignItems: 'center', justifyContent: 'center' },
   tabText: { ...t.status, fontWeight: '600', textAlign: 'center' },
+  subpageHeaderTitle: { ...t.status, fontWeight: '600' },
   pressed: { opacity: themeTokens.interaction.pressedOpacity },
   noticeWrap: { gap: spacing[4] },
   sourceStatus: { gap: spacing[8] },

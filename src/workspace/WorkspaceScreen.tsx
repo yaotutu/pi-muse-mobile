@@ -1,5 +1,5 @@
 import { Card } from '../ui/Surfaces';
-import { BookOpen, Check, ChevronRight, Download, Menu, MessageCircle, Moon, Newspaper, RotateCcw, Search, Server, Settings, SquarePen, UserRound, X, Globe, type LucideIcon } from 'lucide-react-native';
+import { BookOpen, Check, ChevronLeft, ChevronRight, Download, Menu, MessageCircle, Moon, Newspaper, RotateCcw, Search, Server, Settings, SquarePen, UserRound, X, Globe, type LucideIcon } from 'lucide-react-native';
 import { BlurTargetView } from 'expo-blur';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ThemeStatusBar } from '../theme/ThemeStatusBar';
@@ -21,7 +21,6 @@ import { spacing, sizing, workspaceTheme, type WorkspaceColors } from '../ui/tok
 import { ConnectionPanel } from './ConnectionPanel';
 import { NewsPage } from './NewsPage';
 import { createNewsStore } from '../news/news-store';
-import { useNews } from '../news/useNews';
 import { useJobs } from '../jobs/JobProvider';
 import { useMonitors } from '../monitors/MonitorProvider';
 import { GoalsPanel } from './GoalsPanel';
@@ -231,11 +230,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
   const targetScale = Math.max(25, Math.ceil((Math.hypot(contentWidth / 2, height - avatarCenterY) / bloomRadius) * 1.08));
   const drawerWidth = Math.min(contentWidth * l.drawerRatio, l.drawerMaxWidth);
   const [drawerProgress] = useState(() => new Animated.Value(0));
-  const { snapshot: newsSnapshot } = useNews(news);
-  const isNewsArticleOpen = !!newsSnapshot.selectedArticleId;
   const inSettingsSubpage = page === 'settings' && settingsSubpage !== null;
-  const inNewsSubpage = page === 'news' && (newsManaging || isNewsArticleOpen);
-  const isSubpage = inSettingsSubpage || inNewsSubpage;
   const statusLabel = snapshot.status === 'authentication-required' || snapshot.status === 'reset-error' || snapshot.status === 'storage-error'
     ? connectionLabel(snapshot) : runtime.label;
   const labelIds = spaces.spaces.map((space) => space.id).sort().join('|');
@@ -367,7 +362,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
       <View style={[styles.drawer, { width: drawerWidth }]} pointerEvents={drawerOpen ? 'auto' : 'none'} aria-hidden={!drawerOpen}
         {...(Platform.OS === 'web' && !drawerOpen ? { inert: true } : {})} accessibilityElementsHidden={!drawerOpen} importantForAccessibility={drawerOpen ? 'yes' : 'no-hide-descendants'}>
         <SafeAreaView style={styles.screen} edges={['top', 'bottom', 'left']}>
-        <View style={styles.drawerHeading}><Text style={styles.drawerTitle}>Pi Muse</Text><IconControl icon={X} label="关闭空间侧栏" onPress={() => setDrawerOpen(false)} /></View>
+        <View style={styles.drawerHeading}><Text style={styles.drawerTitle}>Pi Muse</Text><IconControl transparent icon={X} label="关闭空间侧栏" onPress={() => setDrawerOpen(false)} /></View>
         <View style={styles.drawerSectionRow}><Text style={styles.drawerSection}>你的空间</Text><Text style={styles.caption}>{spaces.spaces.length}</Text></View>
         {!!spaces.error && <Text style={styles.error}>{spaces.error}</Text>}
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.drawerList}>
@@ -385,26 +380,46 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
         <SafeAreaView style={styles.screen} edges={['top', 'bottom', 'left', 'right']} aria-hidden={drawerOpen} {...(Platform.OS === 'web' && drawerOpen ? { inert: true } : {})}>
           {/* 唯一键盘避让层：Android 按真实重叠缩小阅读区，iOS 保留 padding；不再另算键盘高度。 */}
           <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled={Platform.OS !== 'web'} accessibilityViewIsModal={sessionMounted}>
-            {page !== 'chat' && page !== 'news' && page !== 'goals' && !isSubpage && (
+            {page !== 'chat' && page !== 'news' && page !== 'goals' && (
               <View style={styles.pageHeader}>
-                <IconControl transparent icon={Menu} label="打开空间侧栏" onPress={openDrawer} />
-                <View style={styles.settingsCapsule}>
-                  <Settings size={16} strokeWidth={2} color={colors.ink} />
-                  <Text style={styles.capsuleLabel}>{NAV.find((item) => item.id === page)?.label ?? '设置'}</Text>
-                  <View
-                    style={[
-                      styles.capsuleDot,
-                      {
-                        backgroundColor:
-                          snapshot.status === 'online'
-                            ? colors.success
-                            : snapshot.status === 'connecting' || snapshot.status === 'loading'
-                            ? colors.warning
-                            : colors.danger,
-                      },
-                    ]}
+                {inSettingsSubpage ? (
+                  <IconControl
+                    transparent
+                    icon={ChevronLeft}
+                    label="返回设置"
+                    onPress={() => setSettingsSubpage(null)}
+                    testID="settings-subpage-back"
                   />
-                </View>
+                ) : (
+                  <IconControl transparent icon={Menu} label="打开空间侧栏" onPress={openDrawer} />
+                )}
+                {inSettingsSubpage ? (
+                  <Text style={styles.subpageTitle}>
+                    {settingsSubpage === 'profile'
+                      ? '助手与用户资料'
+                      : settingsSubpage === 'memory'
+                      ? '长期记忆'
+                      : 'Dream 记忆整理'}
+                  </Text>
+                ) : (
+                  <View style={styles.settingsCapsule}>
+                    <Settings size={16} strokeWidth={2} color={colors.ink} />
+                    <Text style={styles.capsuleLabel}>{NAV.find((item) => item.id === page)?.label ?? '设置'}</Text>
+                    <View
+                      style={[
+                        styles.capsuleDot,
+                        {
+                          backgroundColor:
+                            snapshot.status === 'online'
+                              ? colors.success
+                              : snapshot.status === 'connecting' || snapshot.status === 'loading'
+                              ? colors.warning
+                              : colors.danger,
+                        },
+                      ]}
+                    />
+                  </View>
+                )}
                 <View style={styles.headerSideButtonSpacer} />
               </View>
             )}
@@ -465,6 +480,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
                 onBackdropPress={closeSession}
                 headerLeft={
                   <IconControl
+                    transparent
                     icon={X}
                     label={sessionOpen ? '关闭会话面板' : '重新打开会话面板'}
                     testID="workspace-session-close"
@@ -551,6 +567,7 @@ const createStyles = (c: WorkspaceColors) => StyleSheet.create({
     paddingHorizontal: spacing[8], gap: spacing[6] },
   capsuleLabel: { ...t.status, fontSize: 13, fontWeight: '600', color: c.ink },
   capsuleDot: { width: 6, height: 6, borderRadius: 3 },
+  subpageTitle: { ...t.status, fontWeight: '600', color: c.ink },
   otherPage: { paddingTop: l.pageTop, paddingHorizontal: l.sidePadding, paddingBottom: spacing[24], gap: spacing[18] }, pageTitle: { ...t.heroName, color: c.ink }, itemTitle: { ...t.itemTitle, color: c.ink }, mutedText: { ...t.detail, color: c.muted }, caption: { ...t.caption, color: c.faint }, error: { ...t.caption, color: c.danger },
   exampleCard: { padding: spacing[20], borderRadius: r.card, backgroundColor: c.surface, gap: spacing[16], marginBottom: spacing[16] },
   confirmActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing[8] },

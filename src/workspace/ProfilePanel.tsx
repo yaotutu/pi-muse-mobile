@@ -2,7 +2,7 @@ import { FeedbackNotice } from '../ui/Feedback';
 import { Card } from '../ui/Surfaces';
 import { useEffect, useMemo } from 'react';
 import { ActivityIndicator, Keyboard, Pressable, StyleSheet, Text, View } from 'react-native';
-import { ArrowLeft, Check, RefreshCw, RotateCcw } from 'lucide-react-native';
+import { Check, RefreshCw, RotateCcw } from 'lucide-react-native';
 import { useProfile } from '../profile/ProfileProvider';
 import { useTheme } from '../theme/ThemeProvider';
 import { spacing, workspaceTheme, type WorkspaceColors } from '../ui/tokens';
@@ -18,7 +18,7 @@ const TONES = [
 ] as const;
 
 /** 仅管理页面挂载与输入；请求、草稿保留及结果未明后的刷新核对由连接内 ProfileStore 决定。 */
-export function ProfilePanel({ onBack }: { onBack: () => void }) {
+export function ProfilePanel({ onBack }: { onBack?: () => void } = {}) {
   const { store, snapshot } = useProfile();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -39,7 +39,6 @@ export function ProfilePanel({ onBack }: { onBack: () => void }) {
 
   return <View style={styles.root} testID="profile-panel">
     <View style={styles.topRow}>
-      <ActionButton label="返回设置" text="返回设置" onPress={onBack} icon={ArrowLeft} />
       <ActionButton label="刷新助手与用户资料" text="刷新" onPress={() => void store.refresh()} disabled={snapshot.loading || !!snapshot.writing} icon={RefreshCw} />
     </View>
     <View style={styles.heading}>
@@ -95,7 +94,7 @@ export function ProfilePanel({ onBack }: { onBack: () => void }) {
 
 const createStyles = (colors: WorkspaceColors) => StyleSheet.create({
   root: { gap: spacing[16], paddingBottom: spacing[24] },
-  topRow: { flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap', gap: spacing[8] },
+  topRow: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: spacing[8] },
   heading: { gap: spacing[6] }, title: { ...workspaceTheme.typography.section, color: colors.ink },
   intro: { ...workspaceTheme.typography.status, color: colors.muted },
   statusRow: { flexDirection: 'row', gap: spacing[10], alignItems: 'center' },

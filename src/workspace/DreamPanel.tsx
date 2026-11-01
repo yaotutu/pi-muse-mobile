@@ -1,6 +1,6 @@
 import { FeedbackNotice } from '../ui/Feedback';
 import { Card } from '../ui/Surfaces';
-import { ArrowLeft, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react-native';
+import { ChevronDown, ChevronUp, RefreshCw } from 'lucide-react-native';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Keyboard, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useDream } from '../dream/DreamProvider';
@@ -38,7 +38,7 @@ function when(value?: string) {
  * Dream 页面只投影连接内 store 的服务端事实。切空间确认、待决项归属选择是临时 UI 意图；
  * 整理执行、草稿、写入回读和 AppState 由 DreamProvider 负责，页面不另建请求或重试循环。
  */
-export function DreamPanel({ currentSpaceId, onBack }: { currentSpaceId: string; onBack: () => void }) {
+export function DreamPanel({ currentSpaceId, onBack }: { currentSpaceId: string; onBack?: () => void }) {
   const { store, snapshot } = useDream();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -83,7 +83,6 @@ export function DreamPanel({ currentSpaceId, onBack }: { currentSpaceId: string;
 
   return <View style={styles.root} testID="dream-panel">
     <View style={styles.topRow}>
-      <ActionButton label="返回设置" text="返回设置" onPress={onBack} icon={ArrowLeft} />
       <ActionButton label="刷新Dream概览" text="刷新" onPress={() => void store.refresh()} disabled={snapshot.loading || !!snapshot.writing} icon={RefreshCw} />
     </View>
     <Text accessibilityRole="header" style={styles.pageTitle}>Dream 记忆整理</Text>
@@ -210,7 +209,7 @@ function Choice({ label, title, detail, selected, onPress, disabled }: { label: 
 
 const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   root: { gap: spacing[16], paddingBottom: spacing[24], minWidth: 0 },
-  topRow: { flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap', gap: spacing[8] },
+  topRow: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: spacing[8] },
   pageTitle: { ...t.section, color: c.ink },
   card: { padding: spacing[16], gap: spacing[12], minWidth: 0, borderRadius: r.card, backgroundColor: c.surface },
   title: { ...t.itemTitle, color: c.ink }, body: { ...t.detail, color: c.ink }, caption: { ...t.caption, color: c.faint },
