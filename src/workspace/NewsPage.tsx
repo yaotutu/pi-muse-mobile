@@ -321,12 +321,12 @@ export function NewsPage({ store, managing, onManaging, openDrawer }: { store: N
           {/* 统一顶栏：左侧抽屉菜单、居中胶囊药丸分段、右侧对称操作菜单 */}
           <View style={[styles.readerToolbar, { backgroundColor: colors.floatingSurface, borderBottomColor: colors.line }]}>
             {openDrawer ? <IconControl icon={Menu} label="打开空间侧栏" onPress={openDrawer} /> : <View style={styles.headerSideButtonSpacer} />}
-            <View accessibilityRole="tablist" accessibilityLabel="新闻视图" style={[styles.viewTabs, { backgroundColor: colors.floatingSurface, borderColor: colors.floatingLine }]}>
+            <View accessibilityRole="tablist" accessibilityLabel="新闻视图" style={[styles.viewTabs, { backgroundColor: colors.control }]}>
               {(['recommended', 'all'] as const).map((view) => <Pressable key={view} accessibilityRole="tab"
                 accessibilityLabel={view === 'recommended' ? '推荐' : '全部'} accessibilityState={{ selected: snapshot.view === view }}
                 aria-selected={snapshot.view === view} onPress={() => store.setView(view)} testID={`news-view-${view}`}
-                style={({ pressed }) => [styles.textTab, snapshot.view === view && { backgroundColor: colors.selected }, pressed && styles.pressed]}>
-                <Text style={[styles.tabText, { color: snapshot.view === view ? colors.accentText : colors.muted }]}>{view === 'recommended' ? '推荐' : '全部'}</Text>
+                style={({ pressed }) => [styles.textTab, snapshot.view === view && { backgroundColor: colors.floatingSurface }, pressed && styles.pressed]}>
+                <Text style={[styles.tabText, { color: snapshot.view === view ? colors.ink : colors.muted }]}>{view === 'recommended' ? '推荐' : '全部'}</Text>
               </Pressable>)}
             </View>
             <IconControl
@@ -399,7 +399,7 @@ const styles = StyleSheet.create({
   readerToolbar: { height: l.headerTop + l.controlSize + spacing[8], paddingTop: l.headerTop,
     paddingBottom: spacing[8], paddingHorizontal: l.sidePadding, borderBottomWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  viewTabs: { height: 36, borderRadius: r.round, borderWidth: 1.2, flexDirection: 'row', alignItems: 'center', padding: spacing[2], gap: spacing[2] },
+  viewTabs: { height: 36, borderRadius: r.round, borderWidth: 0, flexDirection: 'row', alignItems: 'center', padding: spacing[2], gap: spacing[2] },
   textTab: { paddingHorizontal: spacing[16], height: 30, borderRadius: r.round, alignItems: 'center', justifyContent: 'center' },
   sheetActions: { gap: spacing[12], paddingVertical: spacing[8] },
   tabText: { ...t.status, fontWeight: '600', textAlign: 'center' },
