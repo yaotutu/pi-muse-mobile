@@ -9,7 +9,6 @@ export const darkTheme = {
   colors: {
     canvas: '#080909',
     surface: '#1D1F20',
-    newsCard: '#282B2C',
     control: '#2D3031',
     floatingSurface: '#1D1F20',
     floatingLine: 'rgba(210,220,217,0.13)',

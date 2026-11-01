@@ -67,9 +67,8 @@ function ArticleCard({ article, store, snapshot, onOpenActions }: { article: New
   const uncertain = !!work && (work.reactionUncertain || work.savedUncertain || work.commentUncertain);
   const hasBadge = newsActionPresentation(article.feedback).hasBadge;
   const excerpt = newsListExcerpt(article.content);
-  return <View style={[styles.article, { backgroundColor: colors.newsCard, borderColor: colors.floatingLine,
-    boxShadow: [{ offsetX: 0, offsetY: n.cardShadowOffset, blurRadius: n.cardShadowBlur, color: colors.overlay }] }]}>
-    {/* 整篇阅读区仍是原 Pressable 和测量目标；卡片外观不裁剪阴影或改变菜单锚点。 */}
+  return <Card style={styles.article}>
+    {/* 复用全局卡片表面；阅读与长按仍测量内部 Pressable，不改变菜单锚点。 */}
     <Pressable ref={articleRef} accessibilityRole="button" accessibilityLabel={`阅读文章，${article.title}`}
       accessibilityActions={[{ name: 'openNewsActions', label: '打开文章操作' }]}
       onAccessibilityAction={(event) => { if (event.nativeEvent.actionName === 'openNewsActions') onOpenActions(article.id, articleRef.current); }}
@@ -86,7 +85,7 @@ function ArticleCard({ article, store, snapshot, onOpenActions }: { article: New
       {hasBadge && <NewsFeedbackBadge article={article} onOpen={(target) => onOpenActions(article.id, target)} />}
       {uncertain && <UncertainArticle articleId={article.id} snapshot={snapshot} store={store} />}
     </View>}
-  </View>;
+  </Card>;
 }
 
 function UncertainArticle({ articleId, snapshot, store }: { articleId: string; snapshot: NewsSnapshot; store: NewsStore }) {
@@ -121,7 +120,7 @@ function ArticleDetail({ store, snapshot, onOpenActions, focusComments, onCommen
       onCommentsFocused();
     }
   }, [commentsY, focusComments, onCommentsFocused, snapshot.articleLoading]);
-  return <View style={[styles.readerContainer, { backgroundColor: colors.surface }]}>
+  return <View style={[styles.readerContainer, { backgroundColor: colors.canvas }]}>
     <SubpageHeader title="文章详情" backLabel="返回新闻列表" onBack={() => store.closeArticle()} backTestID="news-detail-back" />
     <ScrollView ref={scrollRef} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content} testID="news-detail">
     {snapshot.articleLoading && <Text style={[styles.meta, { color: colors.faint }]}>正在读取文章内容…</Text>}
@@ -180,7 +179,7 @@ function Sources({ store, snapshot, onBack }: { store: NewsStore; snapshot: News
   const { colors } = useTheme();
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const scrollRef = useRef<ScrollViewInstance | null>(null);
-  return <View style={[styles.readerContainer, { backgroundColor: colors.surface }]}>
+  return <View style={[styles.readerContainer, { backgroundColor: colors.canvas }]}>
     <SubpageHeader title="RSS 来源" backLabel="返回新闻列表" onBack={onBack} backTestID="news-sources-back" />
     <ScrollView ref={scrollRef} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content} testID="news-sources">
     <Text style={[styles.excerpt, { color: colors.muted }]}>添加标准 RSS 地址，新闻会在服务端抓取并分析。</Text>
@@ -325,7 +324,7 @@ export function NewsPage({ store, managing, onManaging, openDrawer }: { store: N
     ? <ArticleDetail store={store} snapshot={snapshot} onOpenActions={openActions}
       focusComments={focusCommentsId === snapshot.selectedArticleId} onCommentsFocused={() => setFocusCommentsId(null)} />
     : managing ? <Sources store={store} snapshot={snapshot} onBack={() => onManaging(false)} />
-      : <View style={[styles.readerContainer, { backgroundColor: colors.surface }]}>
+      : <View style={[styles.readerContainer, { backgroundColor: colors.canvas }]}>
           {/* 统一顶栏：左侧抽屉菜单、居中三态分段(推荐/全部/收藏)、右侧直达RSS管理 */}
           <View style={[styles.readerToolbar, { backgroundColor: colors.floatingSurface, borderBottomColor: colors.line }]}>
             {openDrawer ? <IconControl transparent icon={Menu} label="打开空间侧栏" onPress={openDrawer} /> : <View style={styles.headerSideButtonSpacer} />}
@@ -373,7 +372,6 @@ export function NewsPage({ store, managing, onManaging, openDrawer }: { store: N
           </View>
           <ScrollView
             keyboardShouldPersistTaps="handled"
-            style={{ backgroundColor: colors.surface }}
             contentContainerStyle={styles.readerContent}
             testID="news-page"
             refreshControl={
@@ -435,7 +433,7 @@ const styles = StyleSheet.create({
   sectionHeading: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: spacing[8] },
   sectionTitle: { ...t.section },
   meta: { ...t.caption },
-  article: { marginTop: n.cardGap, borderRadius: n.cardRadius, borderWidth: 1 },
+  article: { marginTop: n.cardGap, padding: 0 },
   articleOpen: { minHeight: l.smallControl, padding: n.cardContentInset },
   articleExtras: { paddingHorizontal: n.cardContentInset, paddingBottom: n.cardContentInset, gap: spacing[12] },
   feedTitle: { ...n.listTitle, fontWeight: '600', marginBottom: spacing[12] },

@@ -9,7 +9,6 @@ export const classicTheme = {
   colors: {
     canvas: '#FFFFFF',
     surface: '#F2F3F5',
-    newsCard: '#FFFFFF',
     control: '#E9EBEF',
     floatingSurface: '#FFFFFF',
     floatingLine: 'rgba(90,105,120,0.16)',

@@ -50,7 +50,7 @@ test('列表以标题和两行正文开篇，一行推荐理由与来源时间�
     last = next;
   }
   assert.match(card, /newsListExcerpt\(article\.content\)/);
-  assert.doesNotMatch(card, /查看内容|styles\.readMore|<Card\b/);
+  assert.doesNotMatch(card, /查看内容|styles\.readMore/);
   assert.match(page, /viewTabs: \{ height: 36, borderRadius: r\.round/);
   assert.match(page, /textTab: \{ paddingHorizontal: spacing\[14\], height: 30/);
   assert.match(page, /articleOpen: \{ minHeight: l\.smallControl, padding: n\.cardContentInset \}/);
@@ -62,16 +62,20 @@ test('列表以标题和两行正文开篇，一行推荐理由与来源时间�
   assert.ok(themeTokens.newsReading.listExcerpt.fontSize > themeTokens.newsReading.listReason.fontSize);
 });
 
-test('三主题新闻列表具有独立背景与浮起卡片，原阅读目标覆盖卡片内容', () => {
+test('新闻各级页面共用全局画布与卡片，不再维护独立配色或阴影', () => {
   const page = read('workspace/NewsPage.tsx');
   const card = page.split('function ArticleCard(')[1].split('function UncertainArticle(')[0];
   for (const [id, theme] of Object.entries(themeRegistry)) {
-    assert.notEqual(theme.colors.newsCard, theme.colors.surface, `${id} 卡片需与内容区区分`);
+    assert.notEqual(theme.colors.canvas, theme.colors.surface, `${id} 全局卡片与画布需区分`);
+    assert.equal('newsCard' in theme.colors, false, `${id} 不保留新闻专用表面色`);
   }
-  assert.match(page, /style=\{\{ backgroundColor: colors\.surface \}\}[\s\S]*?contentContainerStyle=\{styles\.readerContent\}/);
-  assert.match(card, /backgroundColor: colors\.newsCard, borderColor: colors\.floatingLine/);
-  assert.match(card, /boxShadow: \[\{ offsetX: 0, offsetY: n\.cardShadowOffset, blurRadius: n\.cardShadowBlur, color: colors\.overlay \}\]/);
-  assert.match(page, /article: \{ marginTop: n\.cardGap, borderRadius: n\.cardRadius, borderWidth: 1 \}/);
+  assert.equal((page.match(/styles\.readerContainer, \{ backgroundColor: colors\.canvas \}/g) ?? []).length, 3,
+    '列表、阅读、RSS 来源均使用全局画布，包含空态和未填满屏幕的区域');
+  assert.doesNotMatch(page, /backgroundColor: colors\.surface \}\][\s\S]*?<SubpageHeader/);
+  assert.match(card, /return <Card style=\{styles\.article\}>/);
+  assert.doesNotMatch(card, /newsCard|boxShadow|backgroundColor|borderColor/);
+  assert.match(read('ui/Surfaces.tsx'), /: colors\.surface/);
+  assert.match(page, /article: \{ marginTop: n\.cardGap, padding: 0 \}/);
   assert.ok(themeTokens.newsReading.cardGap >= 16);
   assert.ok(themeTokens.newsReading.cardSideInset < themeTokens.layout.sidePadding, '窄屏卡片应保留阅读宽度');
   assert.ok(themeTokens.newsReading.cardContentInset >= 16);
