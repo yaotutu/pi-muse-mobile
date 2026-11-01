@@ -279,7 +279,7 @@ export function NewsPage({ store, managing, onManaging }: { store: NewsStore; ma
           contentContainerStyle={styles.readerContent} testID="news-page">
     {/* 首屏只保留一个受控导航与三个必要操作；抓取状态和时间留在来源管理。 */}
     <View style={styles.readerToolbar}>
-      <View accessibilityRole="tablist" accessibilityLabel="新闻视图" style={styles.viewTabs}>
+      <View accessibilityRole="tablist" accessibilityLabel="新闻视图" style={[styles.viewTabs, { backgroundColor: colors.floatingSurface, borderColor: colors.floatingLine }]}>
         {(['recommended', 'all'] as const).map((view) => <Pressable key={view} accessibilityRole="tab"
           accessibilityLabel={view === 'recommended' ? '推荐' : '全部'} accessibilityState={{ selected: snapshot.view === view }}
           aria-selected={snapshot.view === view} onPress={() => store.setView(view)} testID={`news-view-${view}`}
@@ -287,13 +287,15 @@ export function NewsPage({ store, managing, onManaging }: { store: NewsStore; ma
           <Text style={[styles.tabText, { color: snapshot.view === view ? colors.accentText : colors.muted }]}>{view === 'recommended' ? '推荐' : '全部'}</Text>
         </Pressable>)}
       </View>
-      <IconControl small icon={Bookmark} label={snapshot.savedOnly ? '取消只看收藏' : '只看收藏'} selected={snapshot.savedOnly}
-        style={snapshot.savedOnly ? { borderColor: colors.blue } : undefined}
-        onPress={() => store.setSavedOnly(!snapshot.savedOnly)} testID="news-saved-filter" />
-      <IconControl small icon={Rss} label="管理RSS来源与抓取状态" onPress={() => onManaging(true)} testID="news-manage-sources" />
-      <IconControl small icon={RefreshCw} label="抓取新文章并重试失败分析" busy={snapshot.feedRefreshing}
-        disabled={snapshot.feedUncertain || !snapshot.sources.length}
-        onPress={() => void store.refreshFeeds()} testID="news-refresh-feeds" />
+      <View style={styles.toolbarActions}>
+        <IconControl small icon={Bookmark} label={snapshot.savedOnly ? '取消只看收藏' : '只看收藏'} selected={snapshot.savedOnly}
+          style={snapshot.savedOnly ? { borderColor: colors.blue } : undefined}
+          onPress={() => store.setSavedOnly(!snapshot.savedOnly)} testID="news-saved-filter" />
+        <IconControl small icon={Rss} label="管理RSS来源与抓取状态" onPress={() => onManaging(true)} testID="news-manage-sources" />
+        <IconControl small icon={RefreshCw} label="抓取新文章并重试失败分析" busy={snapshot.feedRefreshing}
+          disabled={snapshot.feedUncertain || !snapshot.sources.length}
+          onPress={() => void store.refreshFeeds()} testID="news-refresh-feeds" />
+      </View>
     </View>
     {snapshot.feedRefreshing && <Text style={[styles.meta, { color: colors.muted }]}>正在抓取来源…</Text>}
     <FeedbackNotice tone="danger" text={snapshot.listError} />
@@ -304,10 +306,12 @@ export function NewsPage({ store, managing, onManaging }: { store: NewsStore; ma
     {!routineNotice(snapshot.notice) && <NewsNotice notice={snapshot.notice} store={store} />}
     {snapshot.loading && !snapshot.loaded && <Text style={[styles.meta, { color: colors.faint }]}>正在读取文章…</Text>}
     {snapshot.loaded && snapshot.articles.length === 0 && <View style={styles.empty}>
-      <Bookmark size={l.iconSize} color={colors.faint} />
-      <Text style={[styles.sectionTitle, { color: colors.ink }]}>{snapshot.savedOnly ? '暂无收藏文章' : snapshot.view === 'recommended' ? '还没有推荐文章' : '还没有文章'}</Text>
-      <Text style={[styles.excerpt, { color: colors.muted }]}>{snapshot.savedOnly ? '收藏的文章会出现在这里。' : snapshot.sourcesLoaded && !snapshot.sources.length ? '先添加一个 RSS 来源，再抓取新文章。' : pending ? '新文章正在分析，稍后回来看看。' : snapshot.view === 'recommended' ? '全部文章里可能已有新内容；分析状态可在来源查看。' : '抓取来源后，新文章会显示在这里。'}</Text>
-      {snapshot.sourcesLoaded && !snapshot.sources.length && <ActionButton label="添加RSS来源" text="添加来源" tone="primary" onPress={() => onManaging(true)} testID="news-empty-add-source" />}
+      <View style={[styles.emptyIconWrap, { backgroundColor: colors.floatingSurface, borderColor: colors.floatingLine }]}>
+        <Bookmark size={l.iconSize + spacing[6]} color={colors.faint} />
+      </View>
+      <Text style={[styles.emptyTitle, { color: colors.ink }]}>{snapshot.savedOnly ? '暂无收藏文章' : snapshot.view === 'recommended' ? '还没有推荐文章' : '还没有文章'}</Text>
+      <Text style={[styles.emptyExcerpt, { color: colors.muted }]}>{snapshot.savedOnly ? '收藏的文章会出现在这里。' : snapshot.sourcesLoaded && !snapshot.sources.length ? '先添加一个 RSS 来源，再抓取新文章。' : pending ? '新文章正在分析，稍后回来看看。' : snapshot.view === 'recommended' ? '全部文章里可能已有新内容；分析状态可在来源查看。' : '抓取来源后，新文章会显示在这里。'}</Text>
+      {snapshot.sourcesLoaded && !snapshot.sources.length && <ActionButton label="添加RSS来源" text="添加来源" tone="primary" style={styles.emptyAction} onPress={() => onManaging(true)} testID="news-empty-add-source" />}
     </View>}
     {snapshot.articles.map((article) => <ArticleCard key={article.id} article={article} store={store}
       snapshot={snapshot} onOpenActions={openActions} />)}
@@ -325,10 +329,11 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: l.sidePadding, paddingTop: spacing[16], paddingBottom: spacing[34], gap: spacing[18] },
   readerContent: { paddingHorizontal: n.cardSideInset, paddingTop: spacing[4], paddingBottom: spacing[34], gap: spacing[4] },
   readerToolbar: { minHeight: l.smallControl, marginHorizontal: l.sidePadding - n.cardSideInset,
-    flexDirection: 'row', alignItems: 'center', gap: spacing[4] },
-  viewTabs: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'stretch', gap: spacing[2] },
-  textTab: { flex: 1, minWidth: 0, minHeight: l.smallControl, paddingHorizontal: spacing[4], paddingVertical: spacing[8], borderRadius: r.field,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing[10] },
+  viewTabs: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', padding: spacing[2], borderRadius: r.field, borderWidth: StyleSheet.hairlineWidth, gap: spacing[2] },
+  textTab: { flex: 1, minWidth: 0, minHeight: l.smallControl, paddingHorizontal: spacing[8], paddingVertical: spacing[6], borderRadius: r.field,
     alignItems: 'center', justifyContent: 'center' },
+  toolbarActions: { flexDirection: 'row', alignItems: 'center', gap: spacing[4] },
   tabText: { ...t.status, fontWeight: '600', textAlign: 'center' },
   pressed: { opacity: themeTokens.interaction.pressedOpacity },
   noticeWrap: { gap: spacing[4] },
@@ -360,5 +365,9 @@ const styles = StyleSheet.create({
   sourceForm: { gap: spacing[12] },
   sourceRow: { paddingVertical: spacing[18], borderBottomWidth: StyleSheet.hairlineWidth, gap: spacing[8] },
   confirm: { gap: spacing[12] },
-  empty: { alignItems: 'flex-start', paddingVertical: spacing[24], gap: spacing[12] },
+  empty: { alignItems: 'center', justifyContent: 'center', paddingVertical: spacing[48], paddingHorizontal: spacing[24], gap: spacing[12] },
+  emptyIconWrap: { width: 64, height: 64, borderRadius: r.round, borderWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center', marginBottom: spacing[4] },
+  emptyTitle: { ...t.section, fontWeight: '600', textAlign: 'center' },
+  emptyExcerpt: { ...t.detail, textAlign: 'center', maxWidth: 280, lineHeight: 20 },
+  emptyAction: { alignSelf: 'center', marginTop: spacing[4] },
 });

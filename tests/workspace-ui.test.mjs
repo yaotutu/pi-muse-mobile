@@ -36,7 +36,6 @@ test('所有视觉消费者使用唯一语义主题，不恢复旧固定亮色�
 test('主题定义、选择器、快捷键与状态栏集中管理，不再散落在业务页面', () => {
   const source = read('src/workspace/WorkspaceScreen.tsx');
   assert.match(source, /<ThemePicker\s*\/>/);
-  assert.match(source, /<ThemeToggle/);
   assert.doesNotMatch(source, /setMode|selectTheme|晨光白|深夜黑|切换到暗色主题|切换到亮色主题/);
   const picker = read('src/theme/ThemePicker.tsx');
   assert.match(picker, /availableThemes\.map/);
@@ -97,7 +96,7 @@ test('聊天浮层不占正文高度，首条消息避开头像，隐藏空间�
 test('聊天只为非主空间非键盘名称挂小浮层，详细状态留在可点击头像的会话面板', () => {
   const screen = read('src/workspace/WorkspaceScreen.tsx');
   const chatHeader = screen.slice(screen.indexOf("{page === 'chat' && <View"), screen.indexOf('<View style={styles.bodyStage}>'));
-  const sessionHeader = screen.slice(screen.indexOf('headerCenter={'), screen.indexOf('headerRight={<ThemeToggle', screen.indexOf('headerCenter={')));
+  const sessionHeader = screen.slice(screen.indexOf('headerCenter={'), screen.indexOf('headerRight=', screen.indexOf('headerCenter={')));
   assert.match(chatHeader, /<Pressable accessibilityRole="button" accessibilityLabel="打开当前会话面板"/);
   assert.match(chatHeader, /accessibilityHint=\{`当前空间：\$\{labels\.title\(spaces\.currentSpace\)\}；当前状态：\$\{statusLabel\}/);
   assert.match(chatHeader, /<MuseAvatar size=\{keyboardVisible \? l\.compactHeaderAvatar : l\.headerAvatar\}/);

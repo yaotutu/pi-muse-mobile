@@ -37,7 +37,7 @@
 
 ## 切换与保存
 
-- 设置页直接挂载 `ThemePicker`，聊天与会话面板共用顶栏中的 `ThemeToggle`，原生根页面与独立 Modal 使用 `ThemeStatusBar`。它们都在主题模块内维护。
+- 主题切换集中在设置页直接挂载的 `ThemePicker`，顶栏不再放置显眼的主题切换按钮；原生根页面与独立 Modal 使用 `ThemeStatusBar`。它们都在主题模块内维护。
 - `ThemePicker` 将注册表选项放在同一个圆角分组中，使用色板和单选标记表达当前主题；本机恢复、保存和错误提示始终可见。连接页与应用更新 Sheet 也只使用当前主题的语义颜色和共享几何值。
 - `useTheme()` 提供当前 `themeId`、完整 `theme`、`appearance`、`colors`、`selectTheme()` 与 `toggleAppearance()`。按主题 ID 判断选中态，不按 `appearance` 判断。
 - 亮暗快捷键记住上次选择的浅色方案，因此经典蓝白切暗后切回仍是经典蓝白，不会被晨光白覆盖。
