@@ -1,4 +1,4 @@
-import { Bookmark, ChevronLeft, ExternalLink, RefreshCw, Rss, X } from 'lucide-react-native';
+import { Bookmark, ChevronLeft, ExternalLink, Menu, RefreshCw, Rss, X } from 'lucide-react-native';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Alert, Keyboard, Linking, Pressable, ScrollView, StyleSheet, Text, View, type ScrollViewInstance, type ViewInstance } from 'react-native';
 import { useTheme } from '../theme/ThemeProvider';
@@ -225,7 +225,7 @@ function Sources({ store, snapshot, onBack }: { store: NewsStore; snapshot: News
 }
 
 /** 页面仅呈现连接级 NewsStore；切页与后台生命周期由根层统一驱动。 */
-export function NewsPage({ store, managing, onManaging }: { store: NewsStore; managing: boolean; onManaging: (value: boolean) => void }) {
+export function NewsPage({ store, managing, onManaging, openDrawer }: { store: NewsStore; managing: boolean; onManaging: (value: boolean) => void; openDrawer?: () => void }) {
   const { colors } = useTheme();
   const { snapshot } = useNews(store);
   const scope = { store, articleId: snapshot.selectedArticleId, managing,
@@ -275,29 +275,31 @@ export function NewsPage({ store, managing, onManaging }: { store: NewsStore; ma
     ? <ArticleDetail store={store} snapshot={snapshot} onOpenActions={openActions}
       focusComments={focusCommentsId === snapshot.selectedArticleId} onCommentsFocused={() => setFocusCommentsId(null)} />
     : managing ? <Sources store={store} snapshot={snapshot} onBack={() => onManaging(false)} />
-      : <ScrollView keyboardShouldPersistTaps="handled" style={{ backgroundColor: colors.surface }}
-          contentContainerStyle={styles.readerContent} testID="news-page">
-    {/* 首屏只保留一个受控导航与三个必要操作；抓取状态和时间留在来源管理。 */}
-    <View style={styles.readerToolbar}>
-      <View accessibilityRole="tablist" accessibilityLabel="新闻视图" style={[styles.viewTabs, { backgroundColor: colors.floatingSurface, borderColor: colors.floatingLine }]}>
-        {(['recommended', 'all'] as const).map((view) => <Pressable key={view} accessibilityRole="tab"
-          accessibilityLabel={view === 'recommended' ? '推荐' : '全部'} accessibilityState={{ selected: snapshot.view === view }}
-          aria-selected={snapshot.view === view} onPress={() => store.setView(view)} testID={`news-view-${view}`}
-          style={({ pressed }) => [styles.textTab, snapshot.view === view && { backgroundColor: colors.selected }, pressed && styles.pressed]}>
-          <Text style={[styles.tabText, { color: snapshot.view === view ? colors.accentText : colors.muted }]}>{view === 'recommended' ? '推荐' : '全部'}</Text>
-        </Pressable>)}
-      </View>
-      <View style={styles.toolbarActions}>
-        <IconControl small icon={Bookmark} label={snapshot.savedOnly ? '取消只看收藏' : '只看收藏'} selected={snapshot.savedOnly}
-          style={snapshot.savedOnly ? { borderColor: colors.blue } : undefined}
-          onPress={() => store.setSavedOnly(!snapshot.savedOnly)} testID="news-saved-filter" />
-        <IconControl small icon={Rss} label="管理RSS来源与抓取状态" onPress={() => onManaging(true)} testID="news-manage-sources" />
-        <IconControl small icon={RefreshCw} label="抓取新文章并重试失败分析" busy={snapshot.feedRefreshing}
-          disabled={snapshot.feedUncertain || !snapshot.sources.length}
-          onPress={() => void store.refreshFeeds()} testID="news-refresh-feeds" />
-      </View>
-    </View>
-    {snapshot.feedRefreshing && <Text style={[styles.meta, { color: colors.muted }]}>正在抓取来源…</Text>}
+      : <View style={[styles.readerContainer, { backgroundColor: colors.surface }]}>
+          {/* 单顶栏：左侧抽屉菜单、居中推荐/全部分段、右侧页面操作，消除双层顶栏冗余。 */}
+          <View style={styles.readerToolbar}>
+            {openDrawer ? <IconControl icon={Menu} label="打开空间侧栏" onPress={openDrawer} /> : <View style={styles.headerSideButtonSpacer} />}
+            <View accessibilityRole="tablist" accessibilityLabel="新闻视图" style={[styles.viewTabs, { backgroundColor: colors.floatingSurface, borderColor: colors.floatingLine }]}>
+              {(['recommended', 'all'] as const).map((view) => <Pressable key={view} accessibilityRole="tab"
+                accessibilityLabel={view === 'recommended' ? '推荐' : '全部'} accessibilityState={{ selected: snapshot.view === view }}
+                aria-selected={snapshot.view === view} onPress={() => store.setView(view)} testID={`news-view-${view}`}
+                style={({ pressed }) => [styles.textTab, snapshot.view === view && { backgroundColor: colors.selected }, pressed && styles.pressed]}>
+                <Text style={[styles.tabText, { color: snapshot.view === view ? colors.accentText : colors.muted }]}>{view === 'recommended' ? '推荐' : '全部'}</Text>
+              </Pressable>)}
+            </View>
+            <View style={styles.toolbarActions}>
+              <IconControl small icon={Bookmark} label={snapshot.savedOnly ? '取消只看收藏' : '只看收藏'} selected={snapshot.savedOnly}
+                style={snapshot.savedOnly ? { borderColor: colors.blue } : undefined}
+                onPress={() => store.setSavedOnly(!snapshot.savedOnly)} testID="news-saved-filter" />
+              <IconControl small icon={Rss} label="管理RSS来源与抓取状态" onPress={() => onManaging(true)} testID="news-manage-sources" />
+              <IconControl small icon={RefreshCw} label="抓取新文章并重试失败分析" busy={snapshot.feedRefreshing}
+                disabled={snapshot.feedUncertain || !snapshot.sources.length}
+                onPress={() => void store.refreshFeeds()} testID="news-refresh-feeds" />
+            </View>
+          </View>
+          <ScrollView keyboardShouldPersistTaps="handled" style={{ backgroundColor: colors.surface }}
+            contentContainerStyle={styles.readerContent} testID="news-page">
+            {snapshot.feedRefreshing && <Text style={[styles.meta, { color: colors.muted }]}>正在抓取来源…</Text>}
     <FeedbackNotice tone="danger" text={snapshot.listError} />
     {snapshot.listError && <ActionButton label="重试读取新闻列表" text="重试列表" busy={snapshot.loading} onPress={() => void store.refresh()} testID="news-retry" />}
     <FeedbackNotice tone="danger" text={snapshot.statusError} />
@@ -316,7 +318,7 @@ export function NewsPage({ store, managing, onManaging }: { store: NewsStore; ma
     {snapshot.articles.map((article) => <ArticleCard key={article.id} article={article} store={store}
       snapshot={snapshot} onOpenActions={openActions} />)}
     {snapshot.hasMore && <ActionButton label="加载更多文章" text="加载更多" busy={snapshot.loading} onPress={() => store.loadMore()} testID="news-load-more" />}
-  </ScrollView>;
+  </ScrollView></View>;
   return <>{pageContent}
     {menu && menuArticle && <NewsArticleActions key={menu.articleId} article={menuArticle}
       work={snapshot.articleWork[menu.articleId]} store={store} anchor={menu.anchor}
@@ -327,9 +329,12 @@ export function NewsPage({ store, managing, onManaging }: { store: NewsStore; ma
 
 const styles = StyleSheet.create({
   content: { paddingHorizontal: l.sidePadding, paddingTop: spacing[16], paddingBottom: spacing[34], gap: spacing[18] },
+  readerContainer: { flex: 1, minHeight: 0 },
+  headerSideButtonSpacer: { width: l.controlSize, height: l.controlSize },
   readerContent: { paddingHorizontal: n.cardSideInset, paddingTop: spacing[4], paddingBottom: spacing[34], gap: spacing[4] },
-  readerToolbar: { minHeight: l.smallControl, marginHorizontal: l.sidePadding - n.cardSideInset,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing[10] },
+  readerToolbar: { minHeight: l.controlSize, paddingHorizontal: l.sidePadding,
+    paddingTop: spacing[12], paddingBottom: spacing[8],
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing[8] },
   viewTabs: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', padding: spacing[2], borderRadius: r.field, borderWidth: StyleSheet.hairlineWidth, gap: spacing[2] },
   textTab: { flex: 1, minWidth: 0, minHeight: l.smallControl, paddingHorizontal: spacing[8], paddingVertical: spacing[6], borderRadius: r.field,
     alignItems: 'center', justifyContent: 'center' },
