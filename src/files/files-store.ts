@@ -448,10 +448,24 @@ export class FilesStore {
     this.publish({ editor: { ...this.state.editor, content }, savePreview: undefined, error: undefined, notice: undefined });
   };
 
+  /** 原文件直接编辑：第一次实际修改才建立草稿，单纯打开文件不阻塞返回或切空间。 */
+  editFileContent = (content: string) => {
+    if (!this.canWrite() || this.state.savePreview || this.state.deleteTarget) return;
+    if (!this.state.editor) {
+      if (this.state.detail?.kind !== 'text' || this.state.detail.content === content) return;
+      this.beginEdit();
+    }
+    if (this.state.editor?.mode !== 'update') return;
+    this.setDraftContent(content);
+    if (this.state.editor.content === content && content === this.state.editor.before) this.cancelEditor();
+  };
+
   cancelEditor = () => {
     if (this.state.writing !== false || this.state.uncertain) return;
     this.publish({ editor: undefined, savePreview: undefined, error: undefined });
-    this.releasePendingSpace();
+    if (this.releasePendingSpace()) return;
+    // 系统目录选择器等前后台切换会使已保存详情失效；放弃草稿后重新读取，不能留下空白编辑页。
+    if (this.active && this.visible && this.state.selectedPath && this.state.detailStale) void this.refresh();
   };
 
   requestSave = (): boolean => {

@@ -47,11 +47,12 @@ test('目录返回不清空列表，编辑/未明状态不能被 closeFile 绕�
   store.dispose();
 });
 
-test('Markdown 文件阅读不清理 think，聊天清理留在消息包装层', () => {
+test('文件只展示和编辑完整原文，Markdown 渲染与聊天清理不进入文件页', () => {
   assert.doesNotMatch(read('ui/MarkdownContent.tsx'), /text\.replace|<think>/);
   assert.match(read('ui/MarkdownContent.tsx'), /marked\.lexer\(text,/);
   assert.match(read('workspace/MessageContent.tsx'), /text\.replace\(/);
-  assert.match(read('workspace/FilesScreen.tsx'), /<MarkdownContent text=\{detail\.content\}/);
+  assert.doesNotMatch(read('workspace/FilesScreen.tsx'), /MarkdownContent|marked|<WebView/);
+  assert.match(read('workspace/FilesScreen.tsx'), /onChangeText=\{store.editFileContent\}/);
   assert.doesNotMatch(read('workspace/FilesScreen.tsx'), /selectShared|共享文件"|查看全部空间/);
 });
 
@@ -74,22 +75,23 @@ test('丢弃规则或技能只影响所选字段，不丢其他设置草稿', as
 
 test('文件未明回读保持原文，不使用 Markdown 渲染替代完整核对', () => {
   const source = read('workspace/FilesScreen.tsx');
-  assert.match(source, /detail=\{verification\} label="回读结果全文" styles=\{styles\} sourceOnly/);
-  assert.match(source, /sourceOnly && detail.kind === 'text'\) return <TextBlock/);
+  assert.match(source, /detail=\{verification\} label="回读结果全文" styles=\{styles\}/);
+  assert.match(source, /if \(detail.kind === 'text'\) return <TextBlock/);
 });
 
-test('文件默认阅读从内容开始，路径归顶栏，信息与操作仅在详情菜单', () => {
+test('文件默认直接编辑原文，路径归顶栏，信息与非编辑操作仅在详情菜单', () => {
   const source = read('workspace/FilesScreen.tsx');
-  const reading = source.slice(source.indexOf('{!!snapshot.selectedPath && <View'), source.indexOf('</ScrollView>\n    {info'));
+  const start = source.indexOf('{!!snapshot.selectedPath && <View');
+  const reading = source.slice(start, source.indexOf('</ScrollView>', start));
   assert.match(source, /<SpaceHeader title=\{title\} caption=\{caption\}/);
   assert.match(source, /const caption = parent === '\.' \? spaceName :/);
   assert.doesNotMatch(reading, /路径：|formatSize|formatTime|mimeType|ActionButton|FeedbackMenuRow/);
   assert.doesNotMatch(source, /ChoiceChip|阅读 Markdown|查看 Markdown 原文/);
   const menu = source.slice(source.indexOf('{info &&'));
-  for (const text of ['文件详情', 'detail.path', 'detail.size', 'detail.updatedAt', 'detail.mimeType', '下载到设备', '编辑原文', '删除文件…']) assert.ok(menu.includes(text), text);
+  for (const text of ['文件详情', 'detail.path', 'detail.size', 'detail.updatedAt', 'detail.mimeType', '下载到设备', '删除文件…']) assert.ok(menu.includes(text), text);
   assert.match(menu, /onRequestClose=\{closeInfo\}/);
   assert.match(menu, /dismissLabel="关闭文件详情" onDismiss=\{closeInfo\}/);
-  assert.match(menu, /closeInfo\(\); store.beginEdit\(\)/);
+  assert.doesNotMatch(menu, /store.beginEdit|编辑原文/);
   assert.match(menu, /closeInfo\(\); store.requestDelete\(detail.path\)/);
   assert.doesNotMatch(menu, /store.confirmSave\(|store.confirmDelete\(/);
 });
@@ -99,13 +101,57 @@ test('文件菜单不跨空间、文件或编辑状态复活；测量在页面�
   assert.match(source, /infoState.store !== store \|\| infoState.owner !== menuOwner/);
   assert.match(source, /\[store, selectedKey, viewKey, currentSpaceId\]/);
   assert.match(source, /sequence !== measureSequence.current/);
-  assert.match(source, /info.key === detailKey && detail && reading && canNavigate/);
+  assert.match(source, /info.key === detailKey && detail && fileOpen && !wrongSpace/);
   assert.match(source, /label="查看文件详情与操作"/);
   assert.match(read('workspace/SpaceHeader.tsx'), /ellipsizeMode="middle"/);
   assert.match(source, /width=\{l.fileInformationWidth\}/);
   const menu = read('ui/AnchoredFeedbackMenu.tsx');
   assert.match(menu, /Math.min\(width, viewport.width - m.screenMargin \* 2\)/);
   assert.match(menu, /anchor, \{ width: menuWidth, height: menuHeight \}/);
+});
+
+test('原文直编首次修改才建草稿，确认前不写入，恢复原文解除草稿保护', async () => {
+  const selector = { scope: 'space', spaceId: 'source-space' };
+  const content = '# 原文\n\n**未渲染**\n\n```text\nhello\n```\n<think>保留</think>';
+  const entry = { path: 'source.md', name: 'source.md', kind: 'file', size: Buffer.byteLength(content), updatedAt: '2026-11-02T00:00:00.000Z' };
+  let writes = 0;
+  const store = new FilesStore({
+    listWorkspaceFiles: async () => ({ ...selector, path: '.', entries: [entry] }),
+    readWorkspaceFile: async () => ({ ...selector, ...entry, kind: 'text', content, mimeType: 'text/plain' }),
+    updateWorkspaceTextFile: async (_, next) => { writes++; return { ...selector, ...entry, kind: 'text', content: next, size: Buffer.byteLength(next), mimeType: 'text/plain' }; },
+  });
+  store.selectSpace(selector.spaceId); store.setActive(true); store.open(); await store.refresh(); await store.openFile(entry.path);
+  assert.equal(store.getSnapshot().editor, undefined);
+  store.editFileContent(content); assert.equal(hasFileWork(store.getSnapshot()), false);
+  store.editFileContent(content + '\nchanged');
+  assert.equal(store.getSnapshot().editor.before, content);
+  assert.equal(store.getSnapshot().editor.content, content + '\nchanged');
+  assert.equal(store.closeFile(), false); assert.equal(writes, 0);
+  store.editFileContent(content); assert.equal(hasFileWork(store.getSnapshot()), false);
+  store.editFileContent(content + '\nbackground draft');
+  store.setActive(false); store.setActive(true); await store.refresh();
+  assert.equal(store.getSnapshot().editor.content, content + '\nbackground draft');
+  assert.equal(store.getSnapshot().detailStale, true);
+  store.cancelEditor(); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(store.getSnapshot().editor, undefined);
+  assert.equal(store.getSnapshot().detailStale, false);
+  assert.equal(store.getSnapshot().detail.content, content);
+  store.editFileContent(content + '\nsaved'); assert.equal(store.requestSave(), true); assert.equal(writes, 0);
+  store.editFileContent('must not change pending confirmation');
+  assert.equal(store.getSnapshot().savePreview.after, content + '\nsaved');
+  assert.equal(await store.confirmSave(), true); assert.equal(writes, 1);
+  assert.equal(store.getSnapshot().detail.content, content + '\nsaved');
+  assert.equal(store.getSnapshot().editor, undefined);
+  store.dispose();
+});
+
+test('原文直编保持输入节点，只有草稿出现保存栏，元信息不回流到正文', () => {
+  const source = read('workspace/FilesScreen.tsx');
+  assert.match(source, /snapshot.editor\?\.mode === 'create' \? 'editor'/);
+  assert.match(source, /value=\{sourceDraft\?\.content \?\? \(detail\?\.kind === 'text' \? detail.content : ''\)\}/);
+  assert.match(source, /sourceDraft && !snapshot.savePreview && !snapshot.deleteTarget && !snapshot.uncertain/);
+  assert.match(source, /disabled=\{!canWrite \|\| !!sourceDraft/);
+  assert.match(source, /scrollEnabled=\{false\}/);
 });
 
 // 维护页每次重新进入都要重新确认，不能复用上次离开前的删除确认。

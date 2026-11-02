@@ -251,13 +251,20 @@ test('foreground reopen and refresh restore selected detail without replacing dr
   assert.equal(fixture.store.getSnapshot().editor.content, 'draft survives reopen');
 
   fixture.store.cancelEditor();
+  assert.equal(fixture.calls.read.length, 3);
+  fixture.calls.list[3].resolve(list());
+  fixture.calls.read[2].resolve(detail({ content: 'cancel restored' }));
+  await tick();
+  assert.equal(fixture.store.getSnapshot().detailStale, false);
+  assert.equal(fixture.store.getSnapshot().detail.content, 'cancel restored');
+
   const failed = fixture.store.refresh();
-  fixture.calls.list[3].resolve(list({ entries: [entry({ name: 'b.txt', path: 'b.txt' })] }));
-  fixture.calls.read[2].reject(new ApiError(500, 'offline'));
+  fixture.calls.list[4].resolve(list({ entries: [entry({ name: 'b.txt', path: 'b.txt' })] }));
+  fixture.calls.read[3].reject(new ApiError(500, 'offline'));
   assert.equal(await failed, false);
   const snapshot = fixture.store.getSnapshot();
   assert.deepEqual(snapshot.entries.map((item) => item.path), ['b.txt']);
-  assert.equal(snapshot.detail.content, 'foreground restored');
+  assert.equal(snapshot.detail.content, 'cancel restored');
   assert.equal(snapshot.detailStale, true);
   fixture.store.dispose();
 });

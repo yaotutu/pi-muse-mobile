@@ -83,7 +83,7 @@ test('设备下载反馈按当前范围和路径保留，详情回读不吞掉�
   assert.match(files, /download\.key === selectedKey/);
   assert.match(files, /current\.selectedPath !== undefined/);
   assert.match(files, /current\.scope.*current\.selectedSpaceId.*current\.selectedPath/);
-  assert.ok(files.indexOf('{!!shownDownload') < files.indexOf('{detail && <>'));
+  assert.ok(files.indexOf('{!!shownDownload') < files.indexOf('{(sourceDraft || detail?.kind'));
   assert.match(files, /设备保存结果（下载时读取的内容，不代表服务端当前版本）/);
   assert.doesNotMatch(files, /current\.detail === detail|!current\.detailStale && current\.selectedPath/);
 });

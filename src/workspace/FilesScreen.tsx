@@ -1,8 +1,8 @@
 import { Card } from '../ui/Surfaces';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Image as RNImage, Keyboard, Modal, Pressable, ScrollView, StyleSheet, Text, View, type ScrollViewInstance, type ViewInstance } from 'react-native';
-import { ChevronLeft, Download, File, Folder, Info, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react-native';
-import { MAX_WORKSPACE_TEXT_BYTES, utf8ByteLength } from '../files/contracts';
+import { ChevronLeft, Download, File, Folder, Info, Plus, RefreshCw, Trash2 } from 'lucide-react-native';
+import { MAX_WORKSPACE_TEXT_BYTES, utf8ByteLength, validateWorkspaceWritePath } from '../files/contracts';
 import { useFiles } from '../files/FilesProvider';
 import { saveWorkspaceFileToDevice, type NativeDownloadResult } from '../files/native-download';
 import type { WorkspaceFileDetail } from '../files/types';
@@ -10,7 +10,6 @@ import { useTheme } from '../theme/ThemeProvider';
 import { ThemeStatusBar } from '../theme/ThemeStatusBar';
 import { sizing, spacing, workspaceTheme, type WorkspaceColors } from '../ui/tokens';
 import { ActionButton } from '../ui/ActionButton';
-import { MarkdownContent } from '../ui/MarkdownContent';
 import { FormInput } from '../ui/FormInput';
 import { IconControl } from '../ui/IconControl';
 import { AnchoredFeedbackMenu, FeedbackMenuRow, FeedbackMenuRows } from '../ui/AnchoredFeedbackMenu';
@@ -19,6 +18,10 @@ import { SpaceHeader } from './SpaceHeader';
 
 const { layout: l, radius: r, typography: t } = workspaceTheme;
 const IMAGE_MIME = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+
+function writablePath(path: string): boolean {
+  try { validateWorkspaceWritePath(path); return true; } catch { return false; }
+}
 
 function formatSize(bytes: number): string {
   return bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024
@@ -52,7 +55,9 @@ export function FilesScreen({ currentSpaceId, spaceName, onBack }: { currentSpac
   const offsets = useRef<Record<string, number>>({});
   const infoButton = useRef<ViewInstance>(null);
   const measureSequence = useRef(0);
-  const viewKey = snapshot.uncertain ? 'verification' : snapshot.savePreview ? 'confirmation' : snapshot.editor ? 'editor' : snapshot.deleteTarget ? 'delete' : snapshot.selectedPath ? `file:${snapshot.selectedPath}` : `directory:${snapshot.directoryPath}`;
+  const sourceDraft = snapshot.editor?.mode === 'update' ? snapshot.editor : undefined;
+  // 原文开始修改时保持同一输入节点，不能因建立草稿而重挂载、丢失光标和键盘焦点。
+  const viewKey = snapshot.uncertain ? 'verification' : snapshot.savePreview ? 'confirmation' : snapshot.editor?.mode === 'create' ? 'editor' : snapshot.deleteTarget ? 'delete' : snapshot.selectedPath ? `file:${snapshot.selectedPath}` : `directory:${snapshot.directoryPath}`;
 
   useEffect(() => { store.open(); return () => store.close(); }, [store]);
 
@@ -76,8 +81,8 @@ export function FilesScreen({ currentSpaceId, spaceName, onBack }: { currentSpac
   const [infoState, setInfoState] = useState<{ store: typeof store; owner: string; info?: { key: string; anchor: MenuRect } }>({ store, owner: menuOwner });
   if (infoState.store !== store || infoState.owner !== menuOwner) setInfoState({ store, owner: menuOwner });
   const info = infoState.info;
-  const reading = !!snapshot.selectedPath && !locked;
-  const title = snapshot.uncertain ? '核对文件操作' : snapshot.savePreview ? '确认保存' : snapshot.editor ? '编辑文件' : snapshot.deleteTarget ? '确认删除' : snapshot.selectedPath?.split('/').pop() ?? '文件';
+  const fileOpen = !!snapshot.selectedPath && snapshot.writing === false && !snapshot.uncertain && !snapshot.savePreview && !snapshot.deleteTarget && snapshot.editor?.mode !== 'create';
+  const title = snapshot.uncertain ? '核对文件操作' : snapshot.savePreview ? '确认保存' : snapshot.editor?.mode === 'create' ? '新建文件' : snapshot.deleteTarget ? '确认删除' : snapshot.selectedPath?.split('/').pop() ?? '文件';
   const parent = snapshot.selectedPath?.split('/').slice(0, -1).join('/') || snapshot.directoryPath;
   const caption = parent === '.' ? spaceName : `${spaceName} · ${parent}`;
   const closeInfo = () => { measureSequence.current += 1; setInfoState({ store, owner: menuOwner }); };
@@ -87,7 +92,8 @@ export function FilesScreen({ currentSpaceId, spaceName, onBack }: { currentSpac
     return () => { measureSequence.current += 1; };
   }, [store, selectedKey, viewKey, currentSpaceId]);
   const openInfo = () => {
-    if (!detailKey || !reading || !canNavigate) return;
+    if (!detailKey || !fileOpen || wrongSpace) return;
+    Keyboard.dismiss();
     const sequence = ++measureSequence.current;
     infoButton.current?.measureInWindow((x, y, width, height) => {
       if (sequence !== measureSequence.current || width <= 0 || height <= 0) return;
@@ -114,8 +120,8 @@ export function FilesScreen({ currentSpaceId, spaceName, onBack }: { currentSpac
   };
 
   return <View style={styles.screen}>
-    <SpaceHeader title={title} caption={caption} onBack={onBack} action={reading && <View ref={infoButton} collapsable={false}>
-      <IconControl icon={Info} label="查看文件详情与操作" onPress={openInfo} disabled={!detail || !canNavigate} testID="file-information" />
+    <SpaceHeader title={title} caption={caption} onBack={onBack} action={fileOpen && <View ref={infoButton} collapsable={false}>
+      <IconControl icon={Info} label="查看文件详情与操作" onPress={openInfo} disabled={!detail || wrongSpace} testID="file-information" />
     </View>} />
     <ScrollView ref={scroll} key={viewKey} style={styles.screen} contentContainerStyle={styles.root}
     keyboardShouldPersistTaps="handled" testID="workspace-files-screen"
@@ -136,7 +142,7 @@ export function FilesScreen({ currentSpaceId, spaceName, onBack }: { currentSpac
         {snapshot.verificationMissing ? <Text style={styles.warning}>回读结果：目标文件不存在。请与原操作预期核对。</Text>
           : verification ? <>
             <Text style={styles.caption}>回读文件：{formatSize(verification.size)} · {formatTime(verification.updatedAt)} · {verification.mimeType}</Text>
-            <FileContent detail={verification} label="回读结果全文" styles={styles} sourceOnly />
+            <FileContent detail={verification} label="回读结果全文" styles={styles} />
             {verification.kind !== 'text' && verificationKey && <>
               <ActionButton label="下载未明操作回读文件到设备" text={downloading === verificationKey ? '正在保存到设备…' : '下载回读文件'} icon={Download} disabled={downloading === verificationKey}
                 onPress={() => void saveToDevice(verification, verificationKey, () => {
@@ -164,15 +170,15 @@ export function FilesScreen({ currentSpaceId, spaceName, onBack }: { currentSpac
         <ActionButton label="确认保存工作区文件" text={snapshot.writing ? '正在保存…' : '确认保存'} onPress={() => void store.confirmSave()} disabled={!canWrite} tone="primary" />
         <ActionButton label="取消保存预览并保留文件草稿" text="返回草稿" onPress={store.cancelSavePreview} disabled={snapshot.writing !== false} />
       </View>
-    </Card> : snapshot.editor ? <Card style={styles.card}>
-      <Text accessibilityRole="header" style={styles.cardTitle}>{snapshot.editor.mode === 'create' ? '新建文本文件' : '编辑文本文件'}</Text>
+    </Card> : snapshot.editor?.mode === 'create' ? <Card style={styles.card}>
+      <Text accessibilityRole="header" style={styles.cardTitle}>新建文本文件</Text>
       <Text selectable style={styles.body}>归属：{scopeLabel}</Text>
-      {snapshot.editor.mode === 'create' ? <>
+      <>
         <Text style={styles.fieldLabel}>相对当前范围根目录的完整路径</Text>
         <FormInput accessibilityLabel="新建文件相对路径" value={snapshot.editor.path} onChangeText={store.setDraftPath} editable={snapshot.writing === false && !snapshot.uncertain}
           autoCapitalize="none" autoCorrect={false} placeholder="例如 notes/today.txt" placeholderTextColor={colors.faint} style={styles.input} />
         <Text style={styles.caption}>路径每段仅可用 ASCII 字母、数字、点、连字符、下划线；可用 / 分隔已有目录。</Text>
-      </> : <Text selectable style={styles.path}>路径：{snapshot.editor.path}</Text>}
+      </>
       <Text style={styles.fieldLabel}>文本全文</Text>
       <FormInput variant="code" accessibilityLabel="编辑文件完整文本" multiline textAlignVertical="top" value={snapshot.editor.content} onChangeText={store.setDraftContent}
         editable={snapshot.writing === false && !snapshot.uncertain} autoCapitalize="none" autoCorrect={false} scrollEnabled
@@ -220,13 +226,19 @@ export function FilesScreen({ currentSpaceId, spaceName, onBack }: { currentSpac
         {snapshot.detailLoading && <View style={styles.loading}><ActivityIndicator accessibilityLabel="正在完整读取文件" color={colors.blue} /><Text style={styles.caption}>正在完整读取文件…</Text></View>}
         {snapshot.missing && <Text style={styles.warning}>文件已不存在，请刷新目录核对。</Text>}
         {!!shownDownload && <Text selectable accessibilityLiveRegion="polite" style={styles.body}>设备保存结果（下载时读取的内容，不代表服务端当前版本）：{shownDownload}</Text>}
-        {detail && <>
-          <FileContent detail={detail} label="文件完整内容" styles={styles} />
-        </>}
+        {(sourceDraft || detail?.kind === 'text') ? <FormInput variant="code" accessibilityLabel="编辑文件完整文本" testID="workspace-file-source"
+          multiline textAlignVertical="top" value={sourceDraft?.content ?? (detail?.kind === 'text' ? detail.content : '')}
+          onChangeText={store.editFileContent} editable={canWrite && writablePath(snapshot.selectedPath)}
+          autoCapitalize="none" autoCorrect={false} scrollEnabled={false} placeholder="文件内容为空" style={styles.sourceInput} />
+          : detail && <FileContent detail={detail} label="文件完整内容" styles={styles} />}
       </View>}
     </>}
     </ScrollView>
-    {info && info.key === detailKey && detail && reading && canNavigate && <Modal transparent animationType="none" statusBarTranslucent navigationBarTranslucent onRequestClose={closeInfo}>
+    {sourceDraft && !snapshot.savePreview && !snapshot.deleteTarget && !snapshot.uncertain && <View style={styles.editorActions}>
+      <ActionButton label="预览工作区文件保存前后全文" text={snapshot.writing ? '正在保存…' : '预览保存'} onPress={() => { Keyboard.dismiss(); store.requestSave(); }} disabled={!canWrite || utf8ByteLength(sourceDraft.content) > MAX_WORKSPACE_TEXT_BYTES} tone="primary" />
+      <ActionButton label="取消编辑并丢弃文件草稿" text="放弃修改" onPress={() => { Keyboard.dismiss(); store.cancelEditor(); }} disabled={snapshot.writing !== false} />
+    </View>}
+    {info && info.key === detailKey && detail && fileOpen && !wrongSpace && <Modal transparent animationType="none" statusBarTranslucent navigationBarTranslucent onRequestClose={closeInfo}>
       <ThemeStatusBar />
       <AnchoredFeedbackMenu anchor={info.anchor} align="right" width={l.fileInformationWidth} dismissLabel="关闭文件详情" onDismiss={closeInfo} testID="file-information-menu">
         <ScrollView style={styles.menuScroll} keyboardShouldPersistTaps="handled"><FeedbackMenuRows>
@@ -237,6 +249,7 @@ export function FilesScreen({ currentSpaceId, spaceName, onBack }: { currentSpac
             <Text selectable style={styles.caption}>大小：{formatSize(detail.size)}</Text>
             <Text selectable style={styles.caption}>修改时间：{formatTime(detail.updatedAt)}</Text>
             <Text selectable style={styles.caption}>类型：{detail.mimeType}</Text>
+            {!!sourceDraft && <Text style={styles.caption}>下载的是已保存版本，不包含当前未保存的修改。</Text>}
           </View>
             <FeedbackMenuRow label={`下载工作区文件 ${detail.path}`} text={busyDownload ? '正在保存到设备…' : '下载到设备'} icon={Download} onPress={() => {
               closeInfo();
@@ -246,9 +259,8 @@ export function FilesScreen({ currentSpaceId, spaceName, onBack }: { currentSpac
                 return current.selectedPath !== undefined &&
                   `${current.scope}:${current.selectedSpaceId ?? ''}:${current.selectedPath}` === detailKey;
               });
-            }} disabled={busyDownload || !canNavigate} />
-            {detail.kind === 'text' && <FeedbackMenuRow icon={Pencil} label={`编辑工作区文本文件 ${detail.path}`} text="编辑原文" onPress={() => { closeInfo(); store.beginEdit(); }} disabled={!canWrite} />}
-            <FeedbackMenuRow icon={Trash2} label={`准备删除工作区文件 ${detail.path}`} text="删除文件…" onPress={() => { closeInfo(); store.requestDelete(detail.path); }} disabled={!canWrite || !snapshot.entries.some((entry) => entry.kind === 'file' && entry.path === detail.path)} />
+            }} disabled={busyDownload} />
+            <FeedbackMenuRow icon={Trash2} label={`准备删除工作区文件 ${detail.path}`} text="删除文件…" onPress={() => { closeInfo(); store.requestDelete(detail.path); }} disabled={!canWrite || !!sourceDraft || !snapshot.entries.some((entry) => entry.kind === 'file' && entry.path === detail.path)} />
         </FeedbackMenuRows></ScrollView>
       </AnchoredFeedbackMenu>
     </Modal>}
@@ -259,16 +271,8 @@ function TextBlock({ label, value, styles }: { label: string; value: string; sty
   return <View style={styles.textBlock}><Text style={styles.fieldLabel}>{label}</Text><Text selectable style={styles.fullText}>{value || '（空）'}</Text></View>;
 }
 
-function FileTextContent({ detail, styles }: { detail: WorkspaceFileDetail & { kind: 'text' }; styles: ReturnType<typeof createStyles> }) {
-  const markdown = /\.(md|markdown)$/i.test(detail.path);
-  return <View style={styles.textBlock}>
-    {markdown ? <MarkdownContent text={detail.content} /> : <Text selectable style={styles.plainText}>{detail.content || '（空）'}</Text>}
-  </View>;
-}
-
-function FileContent({ detail, label, styles, sourceOnly = false }: { detail: WorkspaceFileDetail; label: string; styles: ReturnType<typeof createStyles>; sourceOnly?: boolean }) {
-  if (sourceOnly && detail.kind === 'text') return <TextBlock label={label} value={detail.content} styles={styles} />;
-  if (detail.kind === 'text') return <FileTextContent detail={detail} styles={styles} />;
+function FileContent({ detail, label, styles }: { detail: WorkspaceFileDetail; label: string; styles: ReturnType<typeof createStyles> }) {
+  if (detail.kind === 'text') return <TextBlock label={label} value={detail.content} styles={styles} />;
   if (detail.kind === 'image' && IMAGE_MIME.has(detail.mimeType)) {
     return <View style={styles.textBlock}><Text style={styles.fieldLabel}>{label} · 图片预览</Text>
       <RNImage accessibilityLabel={`本地图片预览 ${detail.path}`} source={{ uri: `data:${detail.mimeType};base64,${detail.dataBase64}` }} resizeMode="contain" style={styles.image} />
@@ -279,7 +283,7 @@ function FileContent({ detail, label, styles, sourceOnly = false }: { detail: Wo
 
 const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   screen: { flex: 1 },
-  root: { gap: spacing.md, minWidth: 0, padding: l.sidePadding, paddingBottom: spacing.section },
+  root: { flexGrow: 1, gap: spacing.md, minWidth: 0, padding: l.sidePadding, paddingBottom: spacing.section },
   flexText: { flex: 1, minWidth: 0 },
   cardTitle: { ...t.itemTitle, color: c.ink, fontWeight: '600' },
   body: { ...t.detail, color: c.ink }, caption: { ...t.caption, color: c.faint },
@@ -290,10 +294,11 @@ const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   loading: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   fileRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md, minWidth: 0, padding: spacing.md, borderRadius: r.field, backgroundColor: c.surface },
   fileName: { ...t.status, color: c.ink, flexShrink: 1 },
-  detail: { gap: spacing.md, minWidth: 0 },
+  detail: { flexGrow: 1, gap: spacing.md, minWidth: 0 },
   information: { padding: spacing.lg, gap: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.line },
   menuScroll: { flexShrink: 1, borderRadius: r.field },
-  plainText: { ...t.mono, color: c.ink },
+  sourceInput: { flexGrow: 1, minHeight: l.profileTextHeight, paddingHorizontal: 0, paddingVertical: 0, borderWidth: 0, borderRadius: 0 },
+  editorActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingHorizontal: l.sidePadding, paddingVertical: spacing.md },
   card: { padding: spacing.lg, gap: spacing.md, minWidth: 0, backgroundColor: c.surface, borderRadius: r.card },
   warningCard: { padding: spacing.lg, gap: spacing.md, minWidth: 0, backgroundColor: c.warningSoft, borderRadius: r.card },
   path: { ...t.mono, color: c.ink, flexShrink: 1 }, fieldLabel: { ...t.status, color: c.ink },
