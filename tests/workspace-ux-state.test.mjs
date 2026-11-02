@@ -171,26 +171,25 @@ test('浏览器覆盖时 Back 先收键盘再关闭 viewer，不触发底层会�
   assert.equal(workspaceBackAction({ ...state, keyboardVisible: false, browserOpen: false }), 'session');
 });
 
-test('Android Back 优先关闭键盘、会话面板和侧栏，然后返回设置子页', () => {
-  const state = { keyboardVisible: true, sessionMounted: true, drawerOpen: true, page: 'settings', settingsSubpage: 'profile', goalCreating: false };
+test('Android Back 优先关闭键盘、会话面板，然后返回设置子页', () => {
+  const state = { keyboardVisible: true, sessionMounted: true, page: 'settings', settingsSubpage: 'profile', goalCreating: false };
   assert.equal(workspaceBackAction(state), 'keyboard');
   assert.equal(workspaceBackAction({ ...state, keyboardVisible: false }), 'session');
   assert.equal(workspaceBackAction({ ...state, keyboardVisible: false, sessionMounted: false }), 'settings');
-  assert.equal(workspaceBackAction({ ...state, keyboardVisible: false, sessionMounted: false, drawerOpen: false }), 'settings');
-  assert.equal(workspaceBackAction({ ...state, keyboardVisible: false, sessionMounted: false, drawerOpen: false, settingsSubpage: null }), 'inbox');
+  assert.equal(workspaceBackAction({ ...state, keyboardVisible: false, sessionMounted: false, settingsSubpage: null }), 'inbox');
 });
 
 test('目标创建态 Back 先由创建流程消费，不落到系统退出', () => {
-  const state = { keyboardVisible: false, sessionMounted: false, drawerOpen: false, page: 'goals', settingsSubpage: null, goalCreating: true };
+  const state = { keyboardVisible: false, sessionMounted: false, page: 'goals', settingsSubpage: null, goalCreating: true };
   assert.equal(workspaceBackAction(state), 'goal');
   assert.equal(workspaceBackAction({ ...state, goalCreating: false }), 'none');
 });
 
 test('新闻 Back 先关闭键盘和阅读子页，再回聊天', () => {
-  const state = { keyboardVisible: true, sessionMounted: false, drawerOpen: false, page: 'news',
+  const state = { keyboardVisible: true, sessionMounted: false, page: 'news',
     newsArticleOpen: true, newsManaging: true, settingsSubpage: null, goalCreating: false };
   assert.equal(workspaceBackAction(state), 'keyboard');
   assert.equal(workspaceBackAction({ ...state, keyboardVisible: false }), 'news-article');
   assert.equal(workspaceBackAction({ ...state, keyboardVisible: false, newsArticleOpen: false }), 'news-sources');
-  assert.equal(workspaceBackAction({ ...state, keyboardVisible: false, newsArticleOpen: false, newsManaging: false }), 'inbox');
+  assert.equal(workspaceBackAction({ ...state, keyboardVisible: false, newsArticleOpen: false, newsManaging: false }), 'news-owner');
 });

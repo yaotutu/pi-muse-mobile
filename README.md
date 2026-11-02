@@ -157,7 +157,7 @@ These are local development gates. `npm test` uses local protocol and state fixt
 
 ## Architecture notes
 
-- Messages, News, and Members are the primary bottom tabs; global Settings opens from the list’s top-right gear and Goals remains hidden. Navigation uses in-app state; the project does not use React Navigation or Expo Router.
+- Cold launch opens Muse chat directly, without bottom tabs. One conversation list provides member chats, profiles, a bottom-right Muse shortcut, and global Settings at the top right. News reading lives inside the News member; Goals remains hidden. Navigation uses in-app state; the project does not use React Navigation or Expo Router.
 - The chat stream uses AG-UI SSE through `expo/fetch`, with custom framing and aggregation implemented in the client.
 - Runtime status, approvals, activities, and job invalidation share the server's notification SSE. Spaces, files, memory, goals, jobs, monitors, profiles, and Dream use documented REST endpoints.
 - Business state is kept in focused providers and stores around React context. The UI renders native React Native components rather than embedding a web app.

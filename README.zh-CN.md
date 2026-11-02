@@ -157,7 +157,7 @@ npm test
 
 ## 架构要点
 
-- 消息、新闻、成员为底部主入口，全局设置从列表右上角进入，目标入口暂时隐藏；导航由应用内状态切换；项目不使用 React Navigation 或 Expo Router。
+- 冷启动直达 Muse 聊天，没有底栏；唯一会话列表提供成员私聊、头像主页、右下角 Muse 快捷入口及右上角全局设置。新闻阅读位于新闻成员内部，目标入口暂时隐藏；导航由应用内状态切换；项目不使用 React Navigation 或 Expo Router。
 - 聊天执行流通过 `expo/fetch` 消费 AG-UI SSE，分帧解析与事件聚合在客户端自研实现。
 - 运行状态、审批、活动和任务失效提示共用服务端通知 SSE；空间、文件、记忆、目标、任务、监控、资料和 Dream 使用公开 REST 端点。
 - 业务状态围绕 React Context 组织在职责清晰的 Provider 与 store 中。界面使用原生 React Native 组件渲染，而不是嵌入 Web 应用。

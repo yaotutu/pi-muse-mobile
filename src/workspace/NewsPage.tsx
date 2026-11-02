@@ -277,7 +277,7 @@ function Sources({ store, snapshot, onBack, backToSettings = false }: { store: N
 }
 
 /** 页面仅呈现连接级 NewsStore；切页与后台生命周期由根层统一驱动。 */
-export function NewsPage({ store, managing, onManaging, onInbox, ...discussion }: { store: NewsStore; managing: boolean; onManaging: (value: boolean) => void; onInbox?: () => void } & DiscussionProps) {
+export function NewsPage({ store, managing, onManaging, onBack, backLabel, ...discussion }: { store: NewsStore; managing: boolean; onManaging: (value: boolean) => void; onBack: () => void; backLabel: string } & DiscussionProps) {
   const { colors } = useTheme();
   const { snapshot } = useNews(store);
   const scope = { store, articleId: snapshot.selectedArticleId, managing,
@@ -328,9 +328,9 @@ export function NewsPage({ store, managing, onManaging, onInbox, ...discussion }
       focusComments={focusCommentsId === snapshot.selectedArticleId} onCommentsFocused={() => setFocusCommentsId(null)} />
     : managing ? <Sources store={store} snapshot={snapshot} onBack={() => onManaging(false)} />
       : <View style={[styles.readerContainer, { backgroundColor: colors.surface }]}>
-          {/* 单顶栏：返回消息、推荐/全部分段与阅读操作；不恢复侧栏或第二层按钮区。 */}
+          {/* 单顶栏：返回阅读入口、推荐/全部分段与阅读操作；不恢复侧栏或第二层按钮区。 */}
           <View style={styles.readerToolbar}>
-            {onInbox ? <IconControl icon={ArrowLeft} label="返回消息列表" onPress={onInbox} /> : <View style={styles.headerSideButtonSpacer} />}
+            <IconControl icon={ArrowLeft} label={backLabel} onPress={onBack} />
             <View accessibilityRole="tablist" accessibilityLabel="新闻视图" style={[styles.viewTabs, { backgroundColor: colors.floatingSurface, borderColor: colors.floatingLine }]}>
               {(['recommended', 'all'] as const).map((view) => <Pressable key={view} accessibilityRole="tab"
                 accessibilityLabel={view === 'recommended' ? '推荐' : '全部'} accessibilityState={{ selected: snapshot.view === view }}

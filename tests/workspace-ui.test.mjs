@@ -14,8 +14,7 @@ test('Muse 回滚基准保留大头像浮层和浏览器入口，不恢复灵动
   assert.equal(existsSync(new URL('src/ui/Subpage.tsx', root)), false);
   assert.match(screen, /<BrowserPanel store=\{browser\}/);
   assert.match(screen, /createBrowserStore\(api, snapshot\.serverUrl/);
-  const nav = screen.slice(screen.indexOf('const NAV:'), screen.indexOf('function useStyles'));
-  assert.doesNotMatch(nav, /id: 'goals'/);
+  assert.doesNotMatch(screen, /const NAV:|workspace-tab-/);
 });
 
 test('唯一主题由根级持有，聊天与独立更新弹层共享而不重建业务 Provider', () => {
@@ -213,10 +212,10 @@ test('会话文字操作共用点击区与状态，重置由独立确认承载',
   assert.doesNotMatch(screen, /styles\.secondaryButton/);
 });
 
-test('原生输入时压缩会话信息区并隐藏主导航，键盘事件监听随宿主卸载清理', () => {
+test('原生输入时压缩会话信息区且不挂载底栏，键盘事件监听随宿主卸载清理', () => {
   const source = read('src/workspace/WorkspaceScreen.tsx');
   assert.match(source, /keyboardVisible && styles\.chatHeaderCompact/);
-  assert.match(source, /!browserOpen && \(page === 'inbox'.*<Navigation/);
+  assert.doesNotMatch(source, /<Navigation/);
   assert.match(source, /return \(\) => \{ show\.remove\(\); hide\.remove\(\); \}/);
   const chat = read('src/workspace/ConversationView.tsx');
   assert.match(chat, /onLayout=\{followLatest\}/);
@@ -249,12 +248,13 @@ test('成员目录取代侧栏，头像进主页、消息行进私聊，低频�
   const screen = read('src/workspace/WorkspaceScreen.tsx');
   const directory = read('src/workspace/MemberDirectory.tsx');
   assert.doesNotMatch(screen, /SpaceDrawer|PanResponder|drawerOpen|打开空间侧栏/);
-  for (const page of ['inbox', 'news', 'members']) assert.match(screen, new RegExp(`id: '${page}'`));
+  assert.match(screen, /if \(page === 'inbox'\) \{/);
+  assert.doesNotMatch(screen, /page === 'members'/);
   assert.match(directory, /label="打开全局设置"/);
   assert.match(directory, /label="添加成员"/);
   assert.match(directory, /accessibilityLabel={`查看/);
   assert.match(directory, /onPress={onProfile}/);
-  assert.match(directory, /mode === 'members' \? onProfile/);
+  assert.match(directory, /onPress={\(\) => onChat\(item.id\)}/);
   assert.match(screen, /onCreate={\(\) => changeSpace/);
 });
 
@@ -267,22 +267,36 @@ test('放弃 failed 暂存须二次确认并回读权威历史，当前草稿保
   assert.match(chat, /sessions\.restorePendingSubmissionToDraft\(spaceId\)/);
 });
 
-test('主页面导航始终显示图标与标题，并使用同一导航高度', () => {
+test('启动直达聊天，唯一会话列表的 Muse 快捷入口显式选择 main', () => {
   const source = read('src/workspace/WorkspaceScreen.tsx');
-  const navigation = source.split('function Navigation(')[1].split('function LiveWorkspace(')[0];
-  assert.match(navigation, /style=\{styles\.navigation\}/);
-  assert.match(navigation, /<Text style=\{\[styles\.navigationLabel, page === id && styles\.navigationLabelSelected\]\}>\{label\}<\/Text>/);
-  assert.match(navigation, /accessibilityLabel=\{label\}/);
-  assert.match(navigation, /accessibilityState=\{\{ selected: page === id \}\}/);
-  assert.doesNotMatch(navigation, /page\s*[!=]==?\s*'chat'\s*&&\s*<Text|chatNavigation/);
-  assert.doesNotMatch(source, /chatNavigation/);
-  for (const label of ['消息', '新闻', '成员']) assert.match(source, new RegExp(`label: '${label}'`));
+  const directory = read('src/workspace/MemberDirectory.tsx');
+  assert.doesNotMatch(source, /function Navigation|const NAV:|workspace-tab-/);
+  assert.match(source.split('function WorkspaceContent')[1], /useState<WorkspacePage>\('chat'\)/);
+  assert.match(source, /onMainChat={\(\) => select\(MAIN_SPACE\)}/);
+  assert.match(directory, /testID="conversation-list"/);
+  assert.match(directory, /accessibilityLabel="回到Muse聊天".*onPress={onMainChat}/);
+  assert.doesNotMatch(directory, /mode ===|mode:/);
+  assert.match(source, /const select = .*changeSpace/);
 });
 
-test('空间维护归空间子页，全局设置来自抽屉，会话面板只处理当前执行', () => {
+test('新闻在成员内部阅读并返回真实入口，保留动态与审批入口', () => {
+  const source = read('src/workspace/WorkspaceScreen.tsx');
+  const profile = read('src/workspace/SpacePage.tsx');
+  const reader = read('src/workspace/NewsPage.tsx');
+  assert.match(source, /useState<'chat' \| 'space'>\('chat'\)/);
+  assert.match(source, /onPress={\(\) => openNews\('chat'\)}/);
+  assert.match(source, /onReadNews={\(\) => openNews\('space'\)}/);
+  assert.match(source, /action === 'news-owner'\) setPage\(newsReturn\)/);
+  assert.match(source, /onBack={\(\) => setPage\(newsReturn\)}/);
+  assert.match(profile, /spaceId === 'news-internal'.*<View style={styles.group}>/);
+  assert.match(profile, /accessibilityLabel="查看成员动态与审批"/);
+  assert.match(reader, /label={backLabel} onPress={onBack}/);
+});
+
+test('空间维护归空间子页，全局设置来自列表顶部，会话面板只处理当前执行', () => {
   const screen = read('src/workspace/WorkspaceScreen.tsx');
   const panel = read('src/workspace/SessionPanel.tsx');
-  assert.match(screen, /id: 'members', label: '成员', icon: UsersRound/);
+  assert.match(screen, /onSettings={\(\) => \{ setPage\('settings'\)/);
   assert.match(read('src/workspace/MemberDirectory.tsx'), /label="打开全局设置"/);
   assert.match(screen, /page === 'space'\) \{\s*otherPage = <SpacePage/);
   assert.match(screen, /const maintenance =/);

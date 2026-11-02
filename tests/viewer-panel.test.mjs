@@ -64,7 +64,8 @@ test('关闭再打开取得新票据；UI 不向 WebView 传鉴权头或重载�
   assert.doesNotMatch(panel, /Linking|\.reload\(|Authorization|Bearer|onMessage=/);
   assert.match(workspace, /chatVisible=\{page === 'chat'\}/);
   assert.match(workspace, /\{browserOpen && <BrowserPanel/);
-  assert.match(workspace, /!browserOpen && \(page === 'inbox'/);
+  assert.doesNotMatch(workspace, /<Navigation/);
+  assert.match(workspace, /pointerEvents=\{browserOpen \? 'none' : 'auto'\}/);
   assert.match(workspace, /browser\.close\(\);\s*setBrowserOpen\(false\)/);
   assert.match(workspace, /browser\.dispose\(\)/);
 });

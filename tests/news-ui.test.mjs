@@ -221,10 +221,11 @@ test('新闻来源支持推荐中文精选 RSS 源并可一键填入', () => {
   assert.match(page, /已添加/);
 });
 
-test('主导航以新闻替换任务根页，会话活动保留', () => {
+test('新闻阅读归属新闻成员，不再有底栏，会话活动保留', () => {
   const workspace = read('workspace/WorkspaceScreen.tsx');
   const session = read('workspace/SessionPanel.tsx');
-  assert.match(workspace, /\{ id: 'news', label: '新闻'/);
+  assert.match(workspace, /label="阅读新闻"/);
+  assert.doesNotMatch(workspace, /const NAV:|<Navigation/);
   assert.doesNotMatch(workspace, /\{ id: 'activity', label: '任务'/);
   assert.match(workspace, /<NewsPage\b/);
   assert.match(session, /tab === 'history'.*ActivityPanel/);

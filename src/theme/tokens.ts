@@ -124,13 +124,10 @@ export const themeTokens = {
     controlSize: 48,
     smallControl: 44,
     iconSize: 25,
-    navigationIconSize: 25,
     composerHeight: 56,
     composerMaxHeight: 128,
     composerPadding: 6,
     composerBottom: 12,
-    navigationHeight: 66,
-    navigationBottom: 4,
     sessionTabsHeight: 66,
     sessionTabInset: 6,
     /** 首条消息避开浮动头像与可选空间名称，后续内容可从其下滚过。 */
@@ -164,7 +161,6 @@ export const themeTokens = {
     appSettingsIcon: 20,
     appSettingsRowHeight: 72,
     tabLabelGap: 4,
-    navigationLabelGap: 5,
     statusMaxWidth: 200,
     inputMinHeight: 54,
     /** 资料页文本输入固定可读高度，长文本在输入框内滚动。 */

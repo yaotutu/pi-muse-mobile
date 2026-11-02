@@ -76,11 +76,11 @@ for (const theme of availableThemes) {
   });
 }
 
-test('胶囊按钮、导航与会话 Tab 保留至少 44 点触控区', () => {
+test('胶囊按钮与会话 Tab 保留至少 44 点触控区', () => {
   const l = workspaceTheme.layout;
   assert.ok(l.controlSize >= 44 && l.smallControl >= 44);
   assert.ok(l.sessionTabsHeight - l.sessionTabInset * 2 >= 44);
-  assert.equal(l.navigationHeight, 66, '四个主页面共用导航高度');
+  assert.equal('navigationHeight' in l, false, '底部导航已移除，不保留失效几何');
   assert.equal('chatNavigationHeight' in l, false, '不为聊天页保留独立导航高度');
   assert.ok(l.composerHeight >= l.smallControl + l.composerPadding * 2);
 });
