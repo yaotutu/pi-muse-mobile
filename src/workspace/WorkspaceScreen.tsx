@@ -441,12 +441,13 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
               </Pressable>
               <View style={styles.headerRight}><IconControl icon={Settings} label={`打开${labels.title(spaces.currentSpace)}的空间设置`} testID="workspace-open-space-settings" onPress={() => openProfile(spaces.currentSpace, 'settings')} /></View>
             </View>}
-            {page === 'group' && <View pointerEvents="box-none" style={[styles.chatHeader, keyboardVisible && styles.chatHeaderCompact]}>
-              <View style={styles.headerLeft}><IconControl icon={ArrowLeft} label="返回消息列表" onPress={openInbox} /></View>
-              <Pressable accessibilityRole="button" accessibilityLabel="查看群组信息" style={[styles.identity, styles.groupIdentity]} onPress={() => { Keyboard.dismiss(); setPage('group-info'); }}>
-                <Users size={keyboardVisible ? l.compactHeaderAvatar : l.headerAvatar * 0.6} color={colors.accentText} /><Text style={styles.identityName}>群聊</Text>
+            {/* 群聊顶栏占据正常文档流；历史再长也不会穿过标题和操作按钮。 */}
+            {page === 'group' && <View style={styles.groupHeader}>
+              <IconControl icon={ArrowLeft} label="返回消息列表" onPress={openInbox} />
+              <Pressable accessibilityRole="button" accessibilityLabel="查看群组信息" style={styles.groupIdentity} onPress={() => { Keyboard.dismiss(); setPage('group-info'); }}>
+                <Users size={22} color={colors.accentText} /><Text style={styles.identityName}>群聊</Text>
               </Pressable>
-              <View style={styles.headerRight}><IconControl icon={Ellipsis} label="打开群组信息" onPress={() => { Keyboard.dismiss(); setPage('group-info'); }} /></View>
+              <IconControl icon={Ellipsis} label="打开群组信息" onPress={() => { Keyboard.dismiss(); setPage('group-info'); }} />
             </View>}
             <View style={styles.bodyStage}>
               <BlurTargetView ref={chatBlurTarget} style={styles.bodyStage}>
@@ -457,7 +458,7 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
                   accessibilityElementsHidden={sessionMounted} importantForAccessibility={sessionMounted ? 'no-hide-descendants' : 'auto'}>
                   <View style={[styles.bodyStage, page === 'group' && { display: 'none' }]}><ConversationHost currentSpaceId={spaces.currentSpace} spaceIds={spaces.spaces.map((space) => space.id)} chatVisible={page === 'chat'} compactHeader={keyboardVisible} otherPage={otherPage}
                     refreshVersions={historyRefresh} onSettled={refresh} onBindingMismatch={reloadSpaces} openConnection={openConnection} onOpenApprovals={() => openSession('approvals')} /></View>
-                  <GroupChat visible={page === 'group'} compactHeader={keyboardVisible} members={groupMembers} onProfile={openProfile} onApprovals={(spaceId) => { spaces.selectSpace(spaceId); openSession('approvals'); }} />
+                  <GroupChat visible={page === 'group'} members={groupMembers} onProfile={openProfile} onApprovals={(spaceId) => { spaces.selectSpace(spaceId); openSession('approvals'); }} />
                   {!!notice && <Text accessibilityRole="alert" style={[styles.notice, notice.tone === 'error' && styles.error]}>{notice.text}</Text>}
                 </View>
               </BlurTargetView>
@@ -533,7 +534,8 @@ const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   sessionIdentityLabel: { maxWidth: l.identityMaxWidth },
   pressed: { opacity: workspaceTheme.interaction.pressedOpacity },
   identity: { alignSelf: 'center', alignItems: 'center', maxWidth: l.identityMaxWidth },
-  groupIdentity: { minWidth: l.controlSize, minHeight: l.controlSize },
+  groupHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: l.sidePadding, paddingVertical: spacing[8], backgroundColor: c.canvas },
+  groupIdentity: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing[8], minHeight: l.controlSize, flexShrink: 1 },
   identityCompact: { height: l.controlSize, flexDirection: 'row', gap: spacing[8] },
   identityLabel: { paddingHorizontal: spacing[8], paddingTop: spacing[6], gap: spacing[3], alignItems: 'center', maxWidth: '100%' },
   // 只覆盖非主空间聊天名称自身，不给透明顶栏增加整条背景或正文占位。

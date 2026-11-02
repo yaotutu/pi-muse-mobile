@@ -110,11 +110,14 @@ export const themeTokens = {
     resetDialogMaxWidth: 420,
     fileInformationWidth: 280,
     sidePadding: 20,
-    /** 会话面板保留完整信息区几何；聊天页使用绝对浮层。 */
+    /** 会话面板保留完整信息区几何；私聊页使用绝对浮层。 */
     headerHeight: 124,
     headerTop: 12,
     headerAvatar: 64,
     compactHeaderAvatar: 36,
+    groupAvatar: 34,
+    groupMessageRadius: 20,
+    groupMessagePadding: 12,
     welcomeAvatar: 80,
     sessionHeaderBottom: 28,
     /** 面板内容在持续挂载的会话信息区下方展开。 */

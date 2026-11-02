@@ -47,15 +47,17 @@ export function parseGroupEvent(value: unknown): GroupEvent {
 
 /** 只按可靠发送者显示；正文中的 @ 不会被当成成员发言或路由事实。 */
 export function groupRows(turns: GroupTurn[]) {
-  const rows: { key: string; sender: string | null; target?: string; at: string; message: MessageView }[] = [];
+  const rows: { key: string; sender: string | null; target?: string; at: string; status?: 'failed' | 'cancelled'; message: MessageView }[] = [];
   for (const item of turns) {
     const user = item.messages.find((message) => message.role === 'user');
     if (user) rows.push({ key: item.id, sender: item.sourceSpaceId, target: item.targetSpaceId, at: item.createdAt,
       message: { id: user.id, role: item.sourceSpaceId ? 'assistant' : 'user', text: user.content, toolCalls: [], feedbackAvailable: false } });
     const assistant = item.messages.find((message) => message.role === 'assistant');
-    if (assistant) rows.push({ key: `reply-${item.id}`, sender: item.targetSpaceId, at: item.finishedAt ?? item.createdAt,
-      message: { id: assistant.id, role: 'assistant', text: assistant.content, feedbackAvailable: false,
-        toolCalls: (assistant.toolCalls ?? []).map((call) => { const result = item.messages.find((message) => message.toolCallId === call.id); return {
+    const status = item.status === 'failed' || item.status === 'cancelled' ? item.status : undefined;
+    // 中止或失败属于这一轮回复，即使没有正文也保留原位置，不堆到整份历史末尾。
+    if (assistant || status) rows.push({ key: `reply-${item.id}`, sender: item.targetSpaceId, at: item.finishedAt ?? item.createdAt, status,
+      message: { id: assistant?.id ?? `reply-${item.id}`, role: 'assistant', text: assistant?.content ?? '', feedbackAvailable: false,
+        toolCalls: (assistant?.toolCalls ?? []).map((call) => { const result = item.messages.find((message) => message.toolCallId === call.id); return {
           id: call.id, name: call.function.name, args: call.function.arguments, ...(result ? { result: result.content, isError: result.isError } : {}),
         }; }) } });
   }

@@ -455,12 +455,15 @@ export function ConversationView({
   );
 }
 
-export function Message({ message, pendingStatus, feedbackScope }: {
+export function Message({ message, pendingStatus, feedbackScope, layout = 'private', recipient }: {
   message: MessageView;
+  layout?: 'private' | 'group';
+  recipient?: string;
   pendingStatus?: 'sending' | 'failed' | 'unconfirmed';
   feedbackScope?: { spaceId: string; sessionId: string; initialFeedback: NonNullable<MessageView['feedback']> };
 }) {
   const styles = useStyles();
+  const hasText = layout === 'group' ? !!message.text.trim() : !!message.text;
   const bubbleRef = useRef<ViewInstance>(null);
   const [bubbleLayout, setBubbleLayout] = useState<LayoutRectangle | null>(null);
   const [anchor, setAnchor] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
@@ -481,6 +484,7 @@ export function Message({ message, pendingStatus, feedbackScope }: {
     });
   };
   const bubbleContent = <>
+    {!!recipient && <Text style={[styles.recipient, message.role === 'user' && styles.userRecipient]}>{recipient}</Text>}
     {message.featureSource && <Text style={styles.featureSourceLabel}>来自{message.featureSource.featureId === 'news' ? '新闻' : '短信'}</Text>}
     {!!message.text && (message.role === 'user'
       ? <Text selectable={!feedbackScope} onLongPress={feedbackScope ? openFeedback : undefined}
@@ -496,13 +500,15 @@ export function Message({ message, pendingStatus, feedbackScope }: {
   const bubbleStyle = [
     styles.message,
     message.role === 'user' ? styles.userMessage : styles.assistantMessage,
+    layout === 'group' && styles.groupMessage,
+    layout === 'group' && message.role === 'assistant' && styles.groupAssistantMessage,
     message.role === 'user' && !!message.attachments?.length && styles.userMessageWithAttachments,
     pendingStatus === 'failed' && styles.userMessageFailed,
     pendingStatus === 'unconfirmed' && styles.userMessageUnconfirmed,
   ];
   return (
     <View style={styles.messageBlock}>
-      {(!!message.text || (message.role === 'user' && !!message.attachments?.length)) && (
+      {(hasText || (message.role === 'user' && !!message.attachments?.length)) && (
         <View style={styles.bubbleWrap}>
         <Pressable ref={bubbleRef} style={bubbleStyle} disabled={!feedbackScope}
           onLayout={(event) => setBubbleLayout(event.nativeEvent.layout)}
@@ -526,7 +532,7 @@ export function Message({ message, pendingStatus, feedbackScope }: {
         />}
         </View>
       )}
-      {message.toolCalls.map((tool) => <ToolResultCard key={tool.id} tool={tool} />)}
+      {message.toolCalls.map((tool) => <ToolResultCard key={tool.id} tool={tool} compact={layout === 'group'} />)}
     </View>
   );
 }
@@ -548,6 +554,10 @@ const createStyles = (c: WorkspaceColors) =>
     messageBlock: { gap: spacing[8] },
     bubbleWrap: { position: 'relative' },
     message: { padding: l.chatMessagePadding, borderRadius: r.message },
+    groupMessage: { padding: l.groupMessagePadding, borderRadius: l.groupMessageRadius, gap: spacing[4] },
+    groupAssistantMessage: { width: '100%', maxWidth: '100%' },
+    recipient: { ...t.caption, color: c.accentText },
+    userRecipient: { color: c.onAccent },
     assistantMessage: {
       backgroundColor: c.surface,
       alignSelf: 'flex-start',

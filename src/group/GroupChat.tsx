@@ -14,8 +14,8 @@ import { groupRows, resolveGroupTarget, type GroupSnapshot, type GroupTurn } fro
 let groupSequence = 0;
 const { layout: l, typography: t, radius: r } = workspaceTheme;
 /** 连接内只挂一份群聊所有者；换页面不重发、不把私聊草稿或历史带进群里。 */
-export function GroupChat({ visible, compactHeader, members, onProfile, onApprovals }: {
-  visible: boolean; compactHeader: boolean; members: { id: string; name: string }[];
+export function GroupChat({ visible, members, onProfile, onApprovals }: {
+  visible: boolean; members: { id: string; name: string }[];
   onProfile: (id: string) => void; onApprovals: (spaceId: string) => void;
 }) {
   const api = useApi(); const { colors: c } = useTheme(); const approvals = useApprovals();
@@ -79,17 +79,19 @@ export function GroupChat({ visible, compactHeader, members, onProfile, onApprov
   return <View style={{ flex: 1, minHeight: 0, display: visible ? 'flex' : 'none' }} accessibilityElementsHidden={!visible} importantForAccessibility={visible ? 'auto' : 'no-hide-descendants'}>
     <ScrollView ref={scroll} keyboardShouldPersistTaps="handled" onContentSizeChange={anchor} onLayout={anchor} scrollEventThrottle={16}
       onScroll={(event) => { const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent; following.current = contentSize.height - contentOffset.y - layoutMeasurement.height < l.scrollThreshold; }}
-      contentContainerStyle={{ flexGrow: 1, paddingTop: compactHeader ? l.chatContentTopCompact : l.chatContentTop, paddingHorizontal: l.sidePadding, paddingBottom: spacing[24], gap: l.messageGap }}>
+      contentContainerStyle={{ flexGrow: 1, paddingTop: spacing[12], paddingHorizontal: l.sidePadding, paddingBottom: spacing[24], gap: spacing[20] }}>
       {!snapshot && loading && <Text style={{ ...t.caption, color: c.muted }}>正在读取群聊…</Text>}
       {snapshot && !rows.length && !busy && <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}><Text style={{ ...t.detail, color: c.muted }}>有什么想聊的？</Text></View>}
-      {rows.map((row) => <View key={row.key} style={{ gap: spacing[8] }}>
-        {row.sender && <Pressable accessibilityRole="button" accessibilityLabel={`查看${title(row.sender)}的主页`} onPress={() => { Keyboard.dismiss(); onProfile(row.sender!); }} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[8], alignSelf: 'flex-start', minHeight: 44 }}>
-          <MemberAvatar spaceId={row.sender} size={36} /><Text style={{ ...t.caption, color: c.muted }}>{title(row.sender)}</Text>
+      {rows.map((row) => <View key={row.key} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing[8] }}>
+        {row.sender && <Pressable accessibilityRole="button" accessibilityLabel={`查看${title(row.sender)}的主页`} onPress={() => { Keyboard.dismiss(); onProfile(row.sender!); }} style={{ width: l.smallControl, minHeight: l.smallControl, alignItems: 'center', justifyContent: 'center' }}>
+          <MemberAvatar spaceId={row.sender} size={l.groupAvatar} />
         </Pressable>}
-        {row.target && row.target !== 'local-main' && <Text style={{ ...t.caption, color: c.accentText, alignSelf: row.sender ? 'flex-start' : 'flex-end' }}>@{title(row.target)}</Text>}
-        <Message message={row.message} />
+        <View style={{ flex: 1, minWidth: 0, gap: spacing[4] }}>
+          {row.sender && <Text style={{ ...t.caption, color: c.muted }}>{title(row.sender)}</Text>}
+          <Message message={row.message} layout="group" recipient={row.target && row.target !== 'local-main' ? `@${title(row.target)}` : undefined} />
+          {row.status && <Text style={{ ...t.caption, color: row.status === 'failed' ? c.danger : c.muted }}>{row.status === 'cancelled' ? '已停止' : '处理失败，不会自动重试'}</Text>}
+        </View>
       </View>)}
-      {combined.filter((turn) => turn.status === 'failed' || turn.status === 'cancelled').map((turn) => <Text key={`status-${turn.id}`} style={{ ...t.caption, color: c.muted }}>{title(turn.targetSpaceId)}：{turn.status === 'cancelled' ? '已停止' : '处理失败'}，不会自动重试。</Text>)}
       {busy && <Text accessibilityLabel="群聊正在回复" style={{ ...t.caption, color: c.muted }}>正在回复…</Text>}
       {!!error && <Text accessibilityRole="alert" style={{ ...t.caption, color: c.danger }}>{error}</Text>}
       {(!!error || uncertain || (!!snapshot?.running && !running)) && <ActionButton label="重新同步群聊" text="同步核对" onPress={() => void reload()} />}

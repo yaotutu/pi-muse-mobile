@@ -29,6 +29,33 @@ test('群聊按真实发送/回复时序排列，成员请求与回复使用不�
   assert.deepEqual(rows.map((row) => row.sender), [null, 'local-main', 'sms-internal', 'local-main']);
   assert.deepEqual(rows.map((row) => row.message.text), ['hello', '查一下', '@新闻 取件码1234', 'hello back']);
 });
+test('停止和失败贴在原回复位置，无正文也保留成员身份；后续成功不重复旧状态', () => {
+  const stopped = { ...turn, id: 'stopped', status: 'cancelled', messages: [turn.messages[0]] };
+  const failed = { ...turn, id: 'failed', targetSpaceId: 'sms-internal', status: 'failed', createdAt: '2026-11-02T00:01:00.000Z', finishedAt: '2026-11-02T00:01:02.000Z' };
+  const later = { ...turn, id: 'later', createdAt: '2026-11-02T00:02:00.000Z', finishedAt: '2026-11-02T00:02:02.000Z' };
+  const rows = groupRows([later, stopped, failed]);
+  assert.deepEqual(rows.map((row) => row.key), ['stopped', 'reply-stopped', 'failed', 'reply-failed', 'later', 'reply-later']);
+  assert.equal(rows[1].sender, 'local-main');
+  assert.equal(rows[1].message.text, '');
+  assert.equal(rows[1].status, 'cancelled');
+  assert.equal(rows[3].sender, 'sms-internal');
+  assert.equal(rows[3].message.text, 'hello back');
+  assert.equal(rows[3].status, 'failed');
+  assert.equal(rows[5].status, undefined);
+  assert.equal(groupRows([{ ...stopped, status: 'running', messages: [] }]).length, 0);
+});
+test('群聊布局与私聊分离：顶栏不悬浮，收件人与紧凑工具跟随消息', () => {
+  const read = (file) => readFileSync(new URL('../src/' + file, import.meta.url), 'utf8');
+  const root = read('workspace/WorkspaceScreen.tsx');
+  assert.match(root, /page === 'group' && <View style={styles.groupHeader}>/);
+  assert.match(root, /page === 'chat' && <View pointerEvents="box-none" style={\[styles.chatHeader/);
+  const group = read('group/GroupChat.tsx');
+  assert.doesNotMatch(group, /compactHeader|chatContentTop|combined.filter\(\(turn\) => turn.status/);
+  assert.match(group, /<Message message={row.message} layout="group" recipient=/);
+  assert.match(group, /row.status === 'cancelled'/);
+  assert.match(read('workspace/ConversationView.tsx'), /compact={layout === 'group'}/);
+  assert.match(read('workspace/ToolResultCard.tsx'), /const collapsible = compact \|\| generic/);
+});
 test('群信息返回群聊，群聊返回列表；群所有者持续挂载，私聊设置保持独立', () => {
   const state = { keyboardVisible: false, sessionMounted: false, settingsSubpage: null, goalCreating: false };
   assert.equal(workspaceBackAction({ ...state, page: 'group-info' }), 'group');
