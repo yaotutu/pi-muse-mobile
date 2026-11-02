@@ -150,6 +150,29 @@ def phase(wanted):
     raise AssertionError('Timed out waiting for '+wanted)
 
 
+def return_to_chat():
+    # 全局设置与空间子页不再显示主导航，先按真实页面层级返回。
+    for _ in range(5):
+        refresh()
+        if find('消息输入框') is not None:
+            return
+        if find('返回当前会话') is not None:
+            tap('返回当前会话')
+        elif find('返回空间上一级') is not None:
+            tap('返回空间上一级')
+        elif find('聊天') is not None:
+            tap('聊天')
+        else:
+            raise AssertionError('No visible path back to current conversation')
+    raise AssertionError('Current conversation not reached')
+
+
+def open_global_settings():
+    return_to_chat()
+    tap('打开空间侧栏')
+    tap('打开全局设置')
+
+
 try:
     width, height = map(int, re.findall(r'(\d+)x(\d+)', sh('shell', 'wm', 'size').decode())[-1])
     context = phase('start')
@@ -170,7 +193,7 @@ try:
         sh('shell', 'input', 'swipe', str((x1+x2)//2), str((y1+y2)//2), str(int(width*.96)), str(int(height*.65)), '1000')
     if find('切换到亮色主题') is not None:
         tap('切换到亮色主题')
-    tap('设置')
+    open_global_settings()
     seek(context['base'])
     tap('打开长期记忆', scroll=True)
     seek('所有空间共用')
@@ -251,7 +274,7 @@ try:
     signal('deleted')
     phase('done')
     tap('返回设置', scroll=True, down=True)
-    tap('聊天')
+    return_to_chat()
     pid = sh('shell', 'pidof', 'host.exp.exponent').decode().strip().split()[0]
     logs = sh('logcat', '-d', '--pid='+pid, 'ReactNativeJS:E', 'AndroidRuntime:E', '*:S').decode()
     (root/'native-errors.log').write_text(logs)

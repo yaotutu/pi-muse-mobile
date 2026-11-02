@@ -76,7 +76,7 @@ test('structured and projected server errors are failed', () => {
 });
 
 test('message markdown uses native nodes, safe links, literal HTML, and copyable code', () => {
-  const source = read('../src/workspace/MessageContent.tsx');
+  const source = read('../src/ui/MarkdownContent.tsx');
   assert.match(source, /marked\.lexer\(/);
   assert.match(source, /safeMessageUrl\(/);
   assert.match(source, /case 'link':/);

@@ -212,6 +212,29 @@ def control(action):
     seek(action+'已提交', scroll=True, down=True)
 
 
+def return_to_chat():
+    # 全局设置与空间子页不再显示主导航，先按真实页面层级返回。
+    for _ in range(5):
+        refresh()
+        if find('消息输入框') is not None:
+            return
+        if find('返回当前会话') is not None:
+            tap('返回当前会话')
+        elif find('返回空间上一级') is not None:
+            tap('返回空间上一级')
+        elif find('聊天') is not None:
+            tap('聊天')
+        else:
+            raise AssertionError('No visible path back to current conversation')
+    raise AssertionError('Current conversation not reached')
+
+
+def open_global_settings():
+    return_to_chat()
+    tap('打开空间侧栏')
+    tap('打开全局设置')
+
+
 try:
     width, height = map(int, re.findall(r'(\d+)x(\d+)', sh('shell', 'wm', 'size').decode())[-1])
     density = int(re.findall(r'density:\s*(\d+)', sh('shell', 'wm', 'density').decode())[-1])/160
@@ -235,10 +258,10 @@ try:
     if tools is not None:
         x1, y1, x2, y2 = bounds(tools)
         sh('shell', 'input', 'swipe', str((x1+x2)//2), str((y1+y2)//2), str(int(width*.96)), str(int(height*.65)), '1000')
-    tap('设置')
+    open_global_settings()
     seek(context['base'])
     tap('选择经典蓝白主题', scroll=True)
-    tap('聊天')
+    return_to_chat()
     tap('打开空间侧栏')
     tap(context['spaceId'], scroll=True)
     tasks()
@@ -285,10 +308,10 @@ try:
     passed('native pause/resume/cancel use explicit confirmations and show authoritative readback')
     tap('编辑定时任务', scroll=True)
     enter('定时任务内容', context['texts']['draft'], down=True)
-    tap('聊天')
+    return_to_chat()
     tasks()
     seek(context['texts']['draft'], scroll=True)
-    tap('设置')
+    open_global_settings()
     tap('选择晨光白主题', scroll=True)
     tasks()
     seek(context['texts']['draft'], scroll=True)
@@ -348,9 +371,9 @@ try:
     screenshot('deleted')
     signal('deleted')
     phase('done')
-    tap('设置')
+    open_global_settings()
     tap('选择经典蓝白主题', scroll=True)
-    tap('聊天')
+    return_to_chat()
     tap('打开空间侧栏')
     tap('主空间', scroll=True)
     pid = sh('shell', 'pidof', 'host.exp.exponent').decode().strip().split()[0]

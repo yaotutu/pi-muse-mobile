@@ -63,12 +63,13 @@ test('会话面板当前执行与文件入口消费真实连接，不消费示�
   assert.match(source, /<CurrentExecution spaceId=\{spaceId\}/);
   assert.match(source, /<ApprovalPanel key=\{spaceId\} spaceId=\{spaceId\}/);
   assert.doesNotMatch(source, /审批尚未接入/);
-  assert.match(source, /<FilesPanel currentSpaceId=\{spaceId\} \/>/);
+  assert.doesNotMatch(source, /FilesScreen|工作区|onDelete|settings=/);
+  assert.match(read('src/workspace/SpacePage.tsx'), /<FilesScreen currentSpaceId=\{spaceId\} \/>/);
   assert.doesNotMatch(source, /工作区文件尚未接入/);
   const screen = read('src/workspace/WorkspaceScreen.tsx');
   assert.match(screen, /<FilesProvider currentSpaceId=\{spaces\.currentSpace\}>/);
   assert.ok(screen.indexOf('<FilesProvider currentSpaceId=') < screen.indexOf('<SessionPanel spaceId='));
-  const files = read('src/workspace/FilesPanel.tsx');
+  const files = read('src/workspace/FilesScreen.tsx');
   assert.match(files, /store\.open\(\); return \(\) => store\.close\(\)/);
   assert.match(files, /saveWorkspaceFileToDevice\(file\)/);
   assert.match(files, /snapshot\.savePreview\.before/);
@@ -77,7 +78,7 @@ test('会话面板当前执行与文件入口消费真实连接，不消费示�
 });
 
 test('设备下载反馈按当前范围和路径保留，详情回读不吞掉系统选择器结果', () => {
-  const files = read('src/workspace/FilesPanel.tsx');
+  const files = read('src/workspace/FilesScreen.tsx');
   assert.match(files, /const selectedKey = snapshot\.selectedPath/);
   assert.match(files, /download\.key === selectedKey/);
   assert.match(files, /current\.selectedPath !== undefined/);

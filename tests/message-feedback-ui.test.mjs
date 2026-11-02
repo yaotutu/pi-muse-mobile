@@ -87,7 +87,7 @@ test('反应成功收起菜单，失败保留核对；评论和复制入口保�
 });
 
 test('正文链接、代码复制、附件及原生写入前记账保持', () => {
-  const content = read('src/workspace/MessageContent.tsx');
+  const content = read('src/ui/MarkdownContent.tsx');
   const view = read('src/workspace/ConversationView.tsx');
   const native = read('tools/e2e-message-feedback-native.py');
   assert.match(content, /accessibilityRole="link"[^>]*onLongPress=\{onMessageLongPress\}[\s\S]*?onPress=/);

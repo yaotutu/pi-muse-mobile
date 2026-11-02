@@ -303,6 +303,14 @@ export class FilesStore {
 
   goUp = (): boolean => this.openDirectory(parentWorkspacePath(this.state.directoryPath));
 
+  /** 详情返回目录不重置目录或列表，且不能绕过未完成的编辑/确认。 */
+  closeFile = (): boolean => {
+    if (this.disposed || this.state.editor || this.state.savePreview || this.state.deleteTarget || this.state.writing !== false || this.state.uncertain) return false;
+    this.cancelDetail();
+    this.publish({ selectedPath: undefined, detail: undefined, detailLoading: false, detailStale: true, missing: false, error: undefined, notice: undefined });
+    return true;
+  };
+
   refresh = async (): Promise<boolean> => {
     const listRefresh = this.refreshDirectory();
     // 前台恢复/重开/手动刷新时同步回读当前文件；编辑与确认态保持用户输入优先。

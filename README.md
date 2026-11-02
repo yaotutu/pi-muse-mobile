@@ -67,20 +67,14 @@ The release workflow builds a signed Android APK and an unsigned iOS IPA for use
 
 ### Session panel, approvals, and workspace files
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/yaotutu/pi-muse/main/docs/assets/session-preview.png" width="88%" alt="Session panel with activity, approvals, workspace rules, and history">
-</p>
-
-- **One full-screen session center.** Tap the session information area at the top of the chat to open the current session panel. Its Activity, Approvals, Workspace, and History tabs switch in place while the chat remains mounted behind it.
+- **One full-screen session center.** Tap the session information area at the top of the chat to open the current session panel. Its Activity, Approvals, and execution History switch in place while the chat remains mounted behind it.
 - **Current execution and activity history.** Follow the current run, tool work, model-registered activities, progress, results, and related steps. Activity is not hidden model reasoning and is not represented as an archive of every chat run.
 - **Human-in-the-loop approvals.** Agent-initiated file writes and edits require full before/after review and explicit confirmation. A stale approval cannot overwrite content that changed after the approval was created.
-- **Workspace file management.** Browse current-space private files and all-space shared files, read complete text, preview supported images, and download files to a chosen Android directory without overwriting same-name files. Manual text saves require complete-content review and confirmation.
+- **Space files.** Open bottom Space → Files to browse the current space's private directories and files, read complete text, preview supported images, and download files to a chosen Android directory without overwriting same-name files. Manual text saves require complete-content review and confirmation.
 
-### Settings, memory, Dream, and themes
+Space is a full-screen home for private files, Markdown reading/source editing, rules, skill switches, existing information processing, and maintenance. Child pages hide bottom navigation and protect file drafts. Global settings live in the left drawer.
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/yaotutu/pi-muse/main/docs/assets/settings-preview.png" width="52%" alt="Settings, profiles, memory, Dream, and themes">
-</p>
+### Global settings, memory, Dream, and themes
 
 - **Server connection management.** Save one reachable Pi Muse address, authenticate with the server AccessKey, and keep the resulting session token on the device. The plaintext AccessKey is not persisted by the client.
 - **Assistant and user profiles.** Edit the assistant name and tone plus global SOUL and USER profiles. Profile changes take effect on later conversations.
@@ -163,7 +157,7 @@ These are local development gates. `npm test` uses local protocol and state fixt
 
 ## Architecture notes
 
-- Four main tabs—Chat, Tasks, Goals, and Settings—are switched with an in-app state machine; the project does not use React Navigation or Expo Router.
+- Chat, News, and Space are the primary bottom tabs; global Settings opens from the left space drawer and Goals remains hidden. Navigation uses in-app state; the project does not use React Navigation or Expo Router.
 - The chat stream uses AG-UI SSE through `expo/fetch`, with custom framing and aggregation implemented in the client.
 - Runtime status, approvals, activities, and job invalidation share the server's notification SSE. Spaces, files, memory, goals, jobs, monitors, profiles, and Dream use documented REST endpoints.
 - Business state is kept in focused providers and stores around React context. The UI renders native React Native components rather than embedding a web app.

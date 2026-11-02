@@ -1,9 +1,9 @@
 import { Card } from '../ui/Surfaces';
-import { BookOpen, Check, ChevronRight, Download, Menu, MessageCircle, Moon, Newspaper, RotateCcw, Search, Server, Settings, SlidersHorizontal, SquarePen, UserRound, X, Globe, type LucideIcon } from 'lucide-react-native';
+import { BookOpen, Check, ChevronRight, Download, FolderOpen, ArrowLeft, Menu, MessageCircle, Moon, Newspaper, RotateCcw, Search, Server, Settings, SlidersHorizontal, SquarePen, UserRound, X, Globe, type LucideIcon } from 'lucide-react-native';
 import { BlurTargetView } from 'expo-blur';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ThemeStatusBar } from '../theme/ThemeStatusBar';
-import { Animated, AppState, BackHandler, Easing, Keyboard, KeyboardAvoidingView, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, View, type ViewInstance, useWindowDimensions } from 'react-native';
+import { Alert, Animated, AppState, BackHandler, Easing, Keyboard, KeyboardAvoidingView, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, View, type ViewInstance, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ApiProvider, useApi } from '../api/ApiProvider';
 import { ConnectionProvider, useServiceConnection } from '../connection/ConnectionProvider';
@@ -14,6 +14,7 @@ import { RuntimeProvider, useRuntimeStore, useSpaceRuntime } from '../runtime/Ru
 import { useActivityStore } from '../activities/ActivityProvider';
 import { useApprovals } from '../approvals/ApprovalProvider';
 import { SpaceProvider, useSpaceState, useSpaceStore } from '../spaces/SpaceProvider';
+import { equalSwitches } from '../spaces/space-store';
 import { MAIN_SPACE } from '../spaces/space-state';
 import { useSpaces } from '../spaces/useSpaces';
 import { useAppUpdate } from '../update/UpdateProvider';
@@ -26,7 +27,7 @@ import { useJobs } from '../jobs/JobProvider';
 import { useMonitors } from '../monitors/MonitorProvider';
 import { GoalsPanel } from './GoalsPanel';
 import { useGoals } from '../goals/GoalProvider';
-import { FilesProvider } from '../files/FilesProvider';
+import { FilesProvider, useFiles } from '../files/FilesProvider';
 import { MemoryPanel } from './MemoryPanel';
 import { ProfilePanel } from './ProfilePanel';
 import { ProfileProvider } from '../profile/ProfileProvider';
@@ -38,7 +39,8 @@ import { workspaceBackAction } from './workspace-back';
 import { SessionPanel, type SessionTab } from './SessionPanel';
 import { ResetSessionDialog } from './ResetSessionDialog';
 import { AvatarBloomTransition } from './AvatarBloomTransition';
-import { SpaceSettings } from './SpaceSettings';
+import { SpacePage } from './SpacePage';
+import { filesBackAction, hasFileWork, type SpaceSection } from './space-navigation';
 import { useTheme } from '../theme/ThemeProvider';
 import { ThemePicker } from '../theme/ThemePicker';
 import { IconControl, MuseAvatar, StatusPill, useReducedMotion } from './primitives';
@@ -48,14 +50,14 @@ import { FormInput } from '../ui/FormInput';
 import { BrowserPanel } from '../browser/BrowserPanel';
 import { createBrowserStore } from '../browser/browser-store';
 
-type WorkspacePage = 'chat' | 'news' | 'goals' | 'settings';
+type WorkspacePage = 'chat' | 'news' | 'goals' | 'settings' | 'space';
 type SettingsSubpage = 'memory' | 'profile' | 'dream' | null;
 type WorkspaceNotice = { text: string; tone: 'success' | 'error' };
 const { layout: l, radius: r, typography: t } = workspaceTheme;
 const NAV: { id: WorkspacePage; label: string; icon: LucideIcon }[] = [
   { id: 'chat', label: '聊天', icon: MessageCircle },
   { id: 'news', label: '新闻', icon: Newspaper },
-  { id: 'settings', label: '设置', icon: Settings },
+  { id: 'space', label: '空间', icon: FolderOpen },
 ];
 function useStyles() { const { colors } = useTheme(); return useMemo(() => createStyles(colors), [colors]); }
 
@@ -131,7 +133,7 @@ function AnimatedSubpage({ children }: { children: ReactNode }) {
   );
 }
 
-function SettingsPage({ snapshot, openConnection, openBrowser, memoryAvailable = false, profileAvailable = false, dreamAvailable = false, currentSpaceId, onReset, subpage, onSubpage }: Pick<WorkspaceConnectionProps, 'snapshot' | 'openConnection'> & { openBrowser?: () => void; memoryAvailable?: boolean; profileAvailable?: boolean; dreamAvailable?: boolean; currentSpaceId?: string; onReset?: () => void; subpage: SettingsSubpage; onSubpage: (page: SettingsSubpage) => void }) {
+function SettingsPage({ snapshot, openConnection, openBrowser, memoryAvailable = false, profileAvailable = false, dreamAvailable = false, currentSpaceId, subpage, onSubpage }: Pick<WorkspaceConnectionProps, 'snapshot' | 'openConnection'> & { openBrowser?: () => void; memoryAvailable?: boolean; profileAvailable?: boolean; dreamAvailable?: boolean; currentSpaceId?: string; subpage: SettingsSubpage; onSubpage: (page: SettingsSubpage) => void }) {
   const styles = useStyles(); const update = useAppUpdate();
   if (subpage === 'memory' && memoryAvailable) return <AnimatedSubpage key="memory"><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}><MemoryPanel onBack={() => onSubpage(null)} /></ScrollView></AnimatedSubpage>;
   if (subpage === 'profile' && profileAvailable) return <AnimatedSubpage key="profile"><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}><ProfilePanel onBack={() => onSubpage(null)} /></ScrollView></AnimatedSubpage>;
@@ -154,10 +156,6 @@ function SettingsPage({ snapshot, openConnection, openBrowser, memoryAvailable =
       </View>
     </View>
     <ThemePicker />
-    {/* 维护入口留在末组，仅在真实连接提供会话能力时出现。 */}
-    {currentSpaceId && onReset && <View style={styles.appSection}><Text accessibilityRole="header" style={styles.appSectionTitle}>会话维护</Text>
-      <View style={styles.appSettingsGroup}><SettingRow title="重置当前会话" label="重置当前会话" description={`目标：${currentSpaceId === MAIN_SPACE ? '主空间' : currentSpaceId}`} icon={RotateCcw} onPress={onReset} testID="workspace-reset-conversation" /></View>
-    </View>}
   </ScrollView>;
 }
 function DisconnectedWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
@@ -167,7 +165,7 @@ function DisconnectedWorkspace({ snapshot, openConnection }: WorkspaceConnection
   const inSettingsSubpage = page === 'settings' && settingsSubpage !== null;
   return <View style={styles.root} testID="workspace-screen"><ThemeStatusBar />
     <SafeAreaView style={styles.disconnected}>
-      {!inSettingsSubpage && <View style={styles.disconnectedHeader}><Text style={styles.itemTitle}>Pi Muse</Text></View>}
+      {!inSettingsSubpage && <View style={styles.disconnectedHeader}><Text style={styles.itemTitle}>Pi Muse</Text><IconControl icon={Settings} label="全局设置" onPress={() => setPage(page === 'settings' ? 'chat' : 'settings')} /></View>}
       {page === 'settings' ? <SettingsPage snapshot={snapshot} openConnection={openConnection} subpage={settingsSubpage} onSubpage={setSettingsSubpage} /> : <View style={styles.welcome}>
         <MuseAvatar size={l.welcomeAvatar} /><Text style={styles.eyebrow}>HELLO, PI MUSE</Text><Text style={styles.emptyTitle}>{connectionLabel(snapshot)}</Text>
         <Text style={styles.mutedText}>{snapshot.error ?? '连接自己的 Pi Muse 服务器后即可恢复会话、聊天与真实执行状态。'}</Text>
@@ -188,7 +186,13 @@ function Navigation({ page, onPage }: { page: WorkspacePage; onPage: (page: Work
   </View>;
 }
 
-function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
+function LiveWorkspace(props: WorkspaceConnectionProps) {
+  const connection = useServiceConnection();
+  const spaces = useSpaces(!!connection?.enabled, props.snapshot.refreshVersion);
+  return <FilesProvider currentSpaceId={spaces.currentSpace}><WorkspaceContent {...props} spaces={spaces} /></FilesProvider>;
+}
+
+function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnectionProps & { spaces: ReturnType<typeof useSpaces> }) {
   const api = useApi();
   // 连接键改变会卸载整层；新闻 Store 在此持续挂载，切空间与重置会话不会丢草稿。
   const [news] = useState(() => createNewsStore(api));
@@ -196,7 +200,8 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
   const [browser] = useState(() => createBrowserStore(api, snapshot.serverUrl ?? ''));
   const [browserOpen, setBrowserOpen] = useState(false);
   const connection = useServiceConnection();
-  const spaces = useSpaces(!!connection?.enabled, snapshot.refreshVersion);
+  const { store: files } = useFiles();
+  const [spaceSection, setSpaceSection] = useState<SpaceSection>('home');
   const session = useSpaceState(spaces.currentSpace);
   const sessions = useSpaceStore(); const runtimeStore = useRuntimeStore();
   const activities = useActivityStore();
@@ -291,8 +296,35 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
   const closeSession = useCallback(() => {
     if (session.deleting || session.resetting) return;
     pendingSessionOpen.current = false;
-    setSessionOpen(false); setDeleteConfirm(false);
+    setSessionOpen(false);
   }, [session.deleting, session.resetting]);
+  const leaveSpaceChild = useCallback(() => {
+    if (sessions.hasSettingsWrite(spaces.currentSpace)) return;
+    if ((spaceSection === 'rules' && session.instructions.draft !== session.instructions.saved) || (spaceSection === 'skills' && !equalSwitches(session.skills.draft, session.skills.saved))) {
+      Alert.alert('有未保存的空间设置', '草稿只保留在本次连接中。', [
+        { text: '继续编辑', style: 'cancel' },
+        { text: '保留草稿并返回', onPress: () => setSpaceSection('home') },
+        { text: '丢弃并返回', style: 'destructive', onPress: () => { sessions.discardSettings(spaces.currentSpace, spaceSection === 'rules' ? 'instructions' : 'skills'); setSpaceSection('home'); } },
+      ]);
+    } else setSpaceSection('home');
+  }, [sessions, spaces.currentSpace, spaceSection, session.instructions.draft, session.instructions.saved, session.skills.draft, session.skills.saved]);
+  const backSpace = useCallback(() => {
+    if (spaceSection === 'home') { setPage('chat'); return; }
+    if (spaceSection !== 'files') { leaveSpaceChild(); return; }
+    const action = filesBackAction(files.getSnapshot());
+    if (action === 'locked') {
+      Alert.alert('文件操作尚未收口', '写入期间请等待；结果未明时请先回读核对，不会自动重发。');
+    } else if (action === 'preview') files.cancelSavePreview();
+    else if (action === 'delete') files.cancelDelete();
+    else if (action === 'draft') Alert.alert('保留文件草稿？', '草稿属于当前空间，只保留在本次连接中。', [
+      { text: '继续编辑', style: 'cancel' },
+      { text: '保留草稿并返回', onPress: () => setSpaceSection('home') },
+      { text: '丢弃草稿', style: 'destructive', onPress: () => files.cancelEditor() },
+    ]);
+    else if (action === 'detail') files.closeFile();
+    else if (action === 'directory') files.goUp();
+    else setSpaceSection('home');
+  }, [files, leaveSpaceChild, spaceSection]);
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
       const action = workspaceBackAction({ keyboardVisible, browserOpen, sessionMounted, drawerOpen, page, newsArticleOpen: !!news.getSnapshot().selectedArticleId,
@@ -305,11 +337,12 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
       else if (action === 'news-sources') setNewsManaging(false);
       else if (action === 'chat') setPage('chat');
       else if (action === 'settings') setSettingsSubpage(null);
+      else if (action === 'space') backSpace();
       else if (action === 'goal' && !goals.getSnapshot().writing) goals.cancelCreate();
       return action !== 'none';
     });
     return () => subscription.remove();
-  }, [drawerOpen, keyboardVisible, browserOpen, closeBrowser, sessionMounted, closeSession, page, news, newsManaging, settingsSubpage, goals]);
+  }, [drawerOpen, keyboardVisible, browserOpen, closeBrowser, sessionMounted, closeSession, page, news, newsManaging, settingsSubpage, goals, backSpace]);
   const openSession = useCallback((tab?: unknown) => {
     if (typeof tab === 'string') setSessionTab(tab as SessionTab);
     setDrawerOpen(false);
@@ -317,7 +350,17 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
     setSessionMounted(true); setSessionOpen(true);
   }, [keyboardVisible]);
   const openDrawer = useCallback(() => { Keyboard.dismiss(); setDrawerOpen(true); void reloadSpaces(); }, [reloadSpaces]);
-  const select = (id: string) => { spaces.selectSpace(id); setSessionOpen(false); setDrawerOpen(false); setPage('chat'); setDeleteConfirm(false); setNotice(undefined); };
+  const changeSpace = (action: () => void) => {
+    const state = files.getSnapshot();
+    if (!hasFileWork(state)) { action(); return; }
+    const busy = state.writing !== false || state.uncertain;
+    Alert.alert('请先处理当前空间文件', busy ? '文件操作进行中或结果未明，请进入文件页核对后再切换。' : '切换空间前请保存或丢弃文件草稿，避免混淆文件归属。', [
+      { text: '取消', style: 'cancel' },
+      { text: '返回文件', onPress: () => { setPage('space'); setSpaceSection('files'); setDrawerOpen(false); } },
+      ...(!busy ? [{ text: '丢弃并继续', style: 'destructive' as const, onPress: () => { files.cancelSavePreview(); files.cancelDelete(); files.cancelEditor(); action(); } }] : []),
+    ]);
+  };
+  const select = (id: string) => changeSpace(() => { spaces.selectSpace(id); setSessionOpen(false); setDrawerOpen(false); setPage('chat'); setSpaceSection('home'); setDeleteConfirm(false); setNotice(undefined); });
   const remove = async () => {
     const id = spaces.currentSpace;
     try {
@@ -348,19 +391,24 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
     onMoveShouldSetPanResponder: (event, gesture) => !browserOpen && !sessionMounted && Math.abs(gesture.dx) > l.gestureThreshold && Math.abs(gesture.dx) > Math.abs(gesture.dy) * l.gestureAxisRatio && (drawerOpen ? gesture.dx < 0 : event.nativeEvent.pageX - gesture.dx < l.edgeGestureWidth && gesture.dx > 0),
     onPanResponderRelease: (_event, gesture) => { if (sessionMounted) return; if (gesture.dx < -l.gestureThreshold) setDrawerOpen(false); if (gesture.dx > l.gestureThreshold) openDrawer(); },
   }), [browserOpen, drawerOpen, openDrawer, sessionMounted]);
-  const otherPage = page === 'chat' ? null : page === 'settings' ? <SettingsPage snapshot={snapshot} openConnection={openConnection} memoryAvailable profileAvailable dreamAvailable currentSpaceId={spaces.currentSpace}
-    openBrowser={openBrowser}
-    subpage={settingsSubpage} onSubpage={setSettingsSubpage}
-    onReset={connection?.enabled ? () => { setResetError(undefined); setResetTarget(spaces.currentSpace); } : undefined} /> : page === 'news' ? <NewsPage store={news} managing={newsManaging} onManaging={setNewsManaging} openDrawer={openDrawer} /> : !sessionOpen && <GoalsPanel openDrawer={openDrawer} />;
-  const sessionSettings = <>{deleteConfirm ? <Card style={styles.exampleCard} tone="danger"><Text style={styles.itemTitle}>确认删除当前空间？</Text><Text style={styles.mutedText}>空间的全部聊天历史及其消息反馈（喜欢/不喜欢/评论及操作记录）、工作区文件、规则、技能和绑定的定时任务、监控将被彻底删除，无法撤销。</Text>
-        <View style={styles.confirmActions}>
-          <ActionButton label="确认删除空间" text={session.deleting ? '正在删除…' : '确认删除'} tone="danger" busy={session.deleting} onPress={() => void remove()} />
-          <ActionButton label="取消删除空间" text="取消" disabled={session.deleting} onPress={() => setDeleteConfirm(false)} />
-        </View>
-        {notice?.tone === 'error' && <Text accessibilityRole="alert" style={styles.error}>{notice.text}</Text>}
-      </Card> : <SpaceSettings spaceId={spaces.currentSpace} onSaved={refresh} />}</>;
-  // 文件状态留在当前真实连接内；会话面板关闭时只卸载可见 UI，不销毁草稿。
-  return <FilesProvider currentSpaceId={spaces.currentSpace}><View style={styles.root} testID="workspace-screen"><ThemeStatusBar />
+  const maintenance = <>
+    <Card style={styles.exampleCard}><Text style={styles.itemTitle}>重置当前会话</Text><Text style={styles.mutedText}>开启全新对话，保留这个空间的文件、规则与技能。</Text>
+      <ActionButton label="重置当前会话" text="重置会话" icon={RotateCcw} disabled={!connection?.enabled || hasFileWork(files.getSnapshot())} onPress={() => { setResetError(undefined); setResetTarget(spaces.currentSpace); }} />
+    </Card>
+    {spaces.currentSpace !== MAIN_SPACE && <Card style={styles.exampleCard} tone="danger">
+      <Text style={styles.itemTitle}>{deleteConfirm ? '确认删除当前空间？' : '删除当前空间'}</Text>
+      <Text style={styles.mutedText}>空间的聊天历史、消息反馈、工作区文件、规则、技能及绑定任务将被彻底删除，无法撤销。</Text>
+      <View style={styles.confirmActions}>
+        <ActionButton label={deleteConfirm ? '确认删除空间' : '删除当前空间'} text={deleteConfirm ? '确认删除' : '删除空间'} tone="danger" busy={session.deleting} disabled={hasFileWork(files.getSnapshot())} onPress={() => deleteConfirm ? void remove() : setDeleteConfirm(true)} />
+        {deleteConfirm && <ActionButton label="取消删除空间" text="取消" disabled={session.deleting} onPress={() => setDeleteConfirm(false)} />}
+      </View>
+    </Card>}
+  </>;
+  const otherPage = page === 'chat' ? null : page === 'space' ? <SpacePage spaceId={spaces.currentSpace} name={labels.title(spaces.currentSpace)} section={spaceSection}
+    onSection={(next) => { setDeleteConfirm(false); setSpaceSection(next); }} onBack={backSpace} openDrawer={openDrawer} onSaved={refresh} maintenance={maintenance} /> : page === 'settings' ? <SettingsPage snapshot={snapshot} openConnection={openConnection} memoryAvailable profileAvailable dreamAvailable currentSpaceId={spaces.currentSpace}
+    openBrowser={openBrowser} subpage={settingsSubpage} onSubpage={setSettingsSubpage} /> : page === 'news' ? <NewsPage store={news} managing={newsManaging} onManaging={setNewsManaging} openDrawer={openDrawer} /> : !sessionOpen && <GoalsPanel openDrawer={openDrawer} />;
+  // 文件 Provider 与聊天所有者随连接持有；页面切换不销毁草稿或运行。
+  return <View style={styles.root} testID="workspace-screen"><ThemeStatusBar />
     <View style={[styles.viewport, { width: contentWidth }]} {...pan.panHandlers}
       pointerEvents={browserOpen ? 'none' : 'auto'} accessibilityElementsHidden={browserOpen} importantForAccessibility={browserOpen ? 'no-hide-descendants' : 'auto'}>
       <View style={[styles.drawer, { width: drawerWidth }]} pointerEvents={drawerOpen ? 'auto' : 'none'} aria-hidden={!drawerOpen}
@@ -377,23 +425,24 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
             </View>{space.id === spaces.currentSpace && <Check size={sizing[18]} color={colors.muted} />}
           </Pressable>)}
         </ScrollView>
-        <View style={styles.drawerFooter}><View style={styles.drawerSearch}><Search size={sizing[18]} color={colors.faint} /><FormInput variant="search" accessibilityLabel="搜索空间" placeholder="搜索空间" placeholderTextColor={colors.faint} value={spaceQuery} onChangeText={setSpaceQuery} style={styles.searchInput} /></View><IconControl icon={SquarePen} label="新建空间" testID="workspace-create-space" onPress={() => { spaces.createSpace(); setSpaceQuery(''); setDrawerOpen(false); setSessionOpen(false); setPage('chat'); setNotice(undefined); }} /></View>
+        <View style={styles.drawerFooter}><View style={styles.drawerSearch}><Search size={sizing[18]} color={colors.faint} /><FormInput variant="search" accessibilityLabel="搜索空间" placeholder="搜索空间" placeholderTextColor={colors.faint} value={spaceQuery} onChangeText={setSpaceQuery} style={styles.searchInput} /></View><IconControl icon={SquarePen} label="新建空间" testID="workspace-create-space" onPress={() => { changeSpace(() => { spaces.createSpace(); setSpaceQuery(''); setDrawerOpen(false); setSessionOpen(false); setPage('chat'); setSpaceSection('home'); setNotice(undefined); }); }} /></View>
+        <SettingRow title="全局设置" label="打开全局设置" description="连接、资料、记忆与本机外观" icon={Settings} onPress={() => { setDrawerOpen(false); setPage('settings'); setSettingsSubpage(null); }} testID="workspace-global-settings" />
         </SafeAreaView>
       </View>
       <Animated.View style={[styles.foreground, drawerOpen && styles.foregroundRounded, { transform: [{ translateX: drawerProgress.interpolate({ inputRange: [0, 1], outputRange: [0, drawerWidth] }) }] }]} accessibilityElementsHidden={drawerOpen} importantForAccessibility={drawerOpen ? 'no-hide-descendants' : 'auto'}>
         <SafeAreaView style={styles.screen} edges={['top', 'bottom', 'left', 'right']} aria-hidden={drawerOpen} {...(Platform.OS === 'web' && drawerOpen ? { inert: true } : {})}>
           {/* 唯一键盘避让层：Android 按真实重叠缩小阅读区，iOS 保留 padding；不再另算键盘高度。 */}
           <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled={Platform.OS !== 'web'} accessibilityViewIsModal={sessionMounted}>
-            {page !== 'chat' && page !== 'news' && page !== 'goals' && !isSubpage && <View style={styles.pageHeader}><IconControl icon={Menu} label="打开空间侧栏" onPress={openDrawer} /><Text style={styles.pageTitle}>{NAV.find((item) => item.id === page)?.label}</Text><View style={styles.headerSideButtonSpacer} /></View>}
+            {page !== 'chat' && page !== 'news' && page !== 'goals' && page !== 'space' && !isSubpage && <View style={styles.pageHeader}><IconControl icon={ArrowLeft} label="返回当前会话" onPress={() => setPage('chat')} /><Text style={styles.pageTitle}>全局设置</Text><View style={styles.headerSideButtonSpacer} /></View>}
             {/* 头像与左右操作浮在聊天层上方，不占正文高度；触控只落在实际控件。 */}
             {page === 'chat' && <View pointerEvents="box-none" style={[styles.chatHeader, keyboardVisible && styles.chatHeaderCompact]}>
               <View style={styles.headerLeft}><IconControl icon={Menu} label="打开空间侧栏" testID="workspace-open-drawer" onPress={openDrawer} /></View>
-              <Pressable accessibilityRole="button" accessibilityLabel="打开当前会话面板" accessibilityHint={`当前空间：${labels.title(spaces.currentSpace)}；当前状态：${statusLabel}。全屏显示当前会话的动态、审批、工作区和历史`} accessibilityState={{ disabled: sessionMounted }} disabled={sessionMounted} testID="workspace-open-session" style={[styles.identity, keyboardVisible && styles.identityCompact]}
+              <Pressable accessibilityRole="button" accessibilityLabel="打开当前会话面板" accessibilityHint={`当前空间：${labels.title(spaces.currentSpace)}；当前状态：${statusLabel}。全屏显示当前会话的动态、审批和执行历史`} accessibilityState={{ disabled: sessionMounted }} disabled={sessionMounted} testID="workspace-open-session" style={[styles.identity, keyboardVisible && styles.identityCompact]}
                 onPress={openSession}>
                 <MuseAvatar size={keyboardVisible ? l.compactHeaderAvatar : l.headerAvatar} />
                 {headerNames.chat && <View style={[styles.identityLabel, styles.identityLabelSurface]}><Text numberOfLines={1} style={styles.identityName}>{headerNames.chat}</Text></View>}
               </Pressable>
-              <View style={styles.headerRight}><IconControl icon={SlidersHorizontal} label="打开空间工作区" testID="workspace-open-console" onPress={() => openSession()} /></View>
+              <View style={styles.headerRight}><IconControl icon={SlidersHorizontal} label="打开当前空间" testID="workspace-open-console" onPress={() => { setPage('space'); setSpaceSection('home'); }} /></View>
             </View>}
             <View style={styles.bodyStage}>
               <BlurTargetView ref={chatBlurTarget} style={styles.bodyStage}>
@@ -405,8 +454,9 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
                   <ConversationHost currentSpaceId={spaces.currentSpace} spaceIds={spaces.spaces.map((space) => space.id)} chatVisible={page === 'chat'} compactHeader={keyboardVisible} otherPage={otherPage}
                     refreshVersions={historyRefresh} onSettled={refresh} onBindingMismatch={reloadSpaces} openConnection={openConnection} onOpenApprovals={() => openSession('approvals')} />
                   {!!notice && <Text accessibilityRole="alert" style={[styles.notice, notice.tone === 'error' && styles.error]}>{notice.text}</Text>}
-                  {!browserOpen && !(page === 'chat' && keyboardVisible) && <Navigation page={page} onPage={(next) => {
+                  {!browserOpen && !(page === 'chat' && keyboardVisible) && !(page === 'space' && spaceSection !== 'home') && page !== 'settings' && <Navigation page={page} onPage={(next) => {
                     setPage(next);
+                    setSpaceSection('home');
                     setSettingsSubpage(null);
                     setNewsManaging(false);
                     if (news.getSnapshot().selectedArticleId) {
@@ -458,13 +508,10 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
                   onTab={(next) => {
                     if (session.resetting || session.deleting) return;
                     setSessionTab(next);
-                    setDeleteConfirm(false);
                   }}
-                  onDelete={() => setDeleteConfirm(true)}
                   deleting={session.deleting}
                   resetting={session.resetting}
                   onSettled={refresh}
-                  settings={sessionSettings}
                 />
               </AvatarBloomTransition>
             )}
@@ -476,7 +523,7 @@ function LiveWorkspace({ snapshot, openConnection }: WorkspaceConnectionProps) {
     {browserOpen && <BrowserPanel store={browser} baseUrl={snapshot.serverUrl ?? ''} onClose={closeBrowser} />}
     {resetTarget && <ResetSessionDialog key={resetTarget} spaceId={resetTarget} available={!!connection?.enabled} error={resetError}
       onCancel={() => { setResetTarget(undefined); setResetError(undefined); }} onConfirm={reset} />}
-  </View></FilesProvider>;
+  </View>;
 }
 function SpaceStatusCaption({ spaceId, updatedAt }: { spaceId: string; updatedAt: string }) {
   const runtime = useSpaceRuntime(spaceId); const styles = useStyles();

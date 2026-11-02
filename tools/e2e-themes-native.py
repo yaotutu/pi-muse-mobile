@@ -379,17 +379,13 @@ session_tab_panels = {
     # 动态是 CurrentExecution 底板，没有独立 testID；状态说明入口在空态与最近结果下都存在。
     '动态': (None, '状态说明'),
     '审批': ('approval-panel', '每一次授权，都由你决定'),
-    # 工作区顶部是真实 SpaceSettings；FilesPanel 在长技能列表后，不作分段到达条件。
-    '工作区': (None, '空间规则'),
     '历史': ('activity-panel', '活动历史'),
 }
-session_tab_evidence = {'动态': 'activity', '审批': 'approvals', '工作区': 'workspace', '历史': 'history'}
+session_tab_evidence = {'动态': 'activity', '审批': 'approvals', '历史': 'history'}
 
 
 def select_session_tab(tab):
-    hidden = {'activity-panel', 'approval-panel', 'workspace-files-panel'}
-    if tab == '工作区':
-        hidden.remove('workspace-files-panel')
+    hidden = {'activity-panel', 'approval-panel'}
     select_segment_tab(tab, session_tab_panels, hidden, down=False)
 
 
@@ -434,7 +430,8 @@ def check_reset_confirmation(theme, evidence_prefix):
     checkbox_label = '同时清理定时任务与网页监控'
     assert find('重置当前会话') is None, 'Session panel still exposes reset'
     tap('关闭会话面板')
-    tap('设置')
+    tap('空间')
+    tap('打开空间维护')
     tap_node(reveal_label('重置当前会话', down=False, scrolls=6))
     refresh()
     # 窄屏下标题、长风险、复选框与按钮可能互相离屏；逐项寻找，不要求同视口。
@@ -486,7 +483,7 @@ def check_reset_confirmation(theme, evidence_prefix):
 
 
 def check_delete_confirmation(theme, space_id, evidence_prefix):
-    risk = '空间的全部聊天历史、工作区文件、规则、技能和绑定的定时任务、监控将被彻底删除，无法撤销。'
+    risk = '空间的聊天历史、消息反馈、工作区文件、规则、技能及绑定任务将被彻底删除，无法撤销。'
     delete_entry = reveal_label('删除当前空间', down=False, scrolls=15, fast_scroll=width == 840)
     tap_node(delete_entry)
     refresh()
@@ -505,7 +502,7 @@ def check_delete_confirmation(theme, space_id, evidence_prefix):
 
 
 def check_session_controls(theme, space_id, chat_header, evidence_prefix=''):
-    # 每主题都实际切换四项；完整状态/复选框矩阵只在 classic 深度执行一次。
+    # 每主题都实际切换三项；完整状态/复选框矩阵只在 classic 深度执行一次。
     for tab in session_tab_panels:
         select_session_tab(tab)
         capture_current(f'{evidence_prefix}{theme}-session-tab-{session_tab_evidence[tab]}')
@@ -514,15 +511,37 @@ def check_session_controls(theme, space_id, chat_header, evidence_prefix=''):
         assert_status_help(theme, evidence_prefix)
         tap_node(find('查看活动历史'))
         refresh()
-        assert_segment_tab('历史', session_tab_panels, {'activity-panel', 'approval-panel', 'workspace-files-panel'}, down=False)
+        assert_segment_tab('历史', session_tab_panels, {'activity-panel', 'approval-panel'}, down=False)
     check_reset_confirmation(theme, evidence_prefix)
-    tap('聊天')
-    tap('打开当前会话面板')
-    select_session_tab('工作区')
     check_delete_confirmation(theme, space_id, evidence_prefix)
+    return_to_chat()
+    tap('打开当前会话面板')
     assert header_bounds(space_id) == chat_header, 'Session controls moved session header'
     capture_current(evidence_prefix+theme+'-session-controls')
     passed(evidence_prefix+theme+' session segmented navigation, help and confirmation controls')
+
+
+def return_to_chat():
+    # 全局设置与空间子页不再显示主导航，先按真实页面层级返回。
+    for _ in range(5):
+        refresh()
+        if find('消息输入框') is not None:
+            return
+        if find('返回当前会话') is not None:
+            tap('返回当前会话')
+        elif find('返回空间上一级') is not None:
+            tap('返回空间上一级')
+        elif find('聊天') is not None:
+            tap('聊天')
+        else:
+            raise AssertionError('No visible path back to current conversation')
+    raise AssertionError('Current conversation not reached')
+
+
+def open_global_settings():
+    return_to_chat()
+    tap('打开空间侧栏')
+    tap('打开全局设置')
 
 
 try:
@@ -533,14 +552,14 @@ try:
     select_space(context['spaceId'], context['spaceId'], context['spaceId'])
     enter('消息输入框', context['draft'])
     for theme in themes:
-        tap('设置')
+        open_global_settings()
         choose_theme(theme)
         capture(theme+'-picker')
         tap('服务器连接', scrolling=True, down=True)
         wait(context['base'])
         capture(theme+'-connection')
         tap('关闭服务器连接')
-        tap('聊天')
+        return_to_chat()
         assert wait('消息输入框').get('text') == context['draft'], 'Theme switch lost unsent draft'
         wait(context['spaceId'])
         capture(theme+'-chat')
@@ -548,7 +567,7 @@ try:
         tap('打开当前会话面板')
         assert header_bounds(context['spaceId']) == chat_header, 'Session avatar, name or status moved after opening panel'
         refresh()
-        assert find('消息输入框') is None and find('设置') is None, 'Panel exposes background chat or main navigation'
+        assert find('消息输入框') is None and find('空间') is None, 'Panel exposes background chat or main navigation'
         if theme == 'classic':
             # 系统返回先关闭面板，不能离开应用；再次打开后侧栏边缘手势不得拉出抽屉。
             sh('shell', 'input', 'keyevent', 'KEYCODE_BACK')
@@ -606,9 +625,9 @@ try:
         assert wait('消息输入框').get('text') == context['draft']
         assert header_bounds(context['spaceId']) == chat_header, 'Session avatar, name or status moved after closing panel'
         passed(theme+' selection, real connection modal, stable header, isolated panel, preserved space/draft/filter and quick-toggle roundtrip')
-    tap('设置')
+    open_global_settings()
     choose_theme('classic')
-    tap('聊天')
+    return_to_chat()
     enter('消息输入框', context['prompt'])
     tap('发送消息')
     wait(context['response'], seconds=150)
@@ -617,22 +636,22 @@ try:
     passed('real UI sends one dedicated message and renders actual streamed assistant reply')
     # 三套主题逐一跨进程恢复；同时恢复连接并回读专用空间历史，不能只核对设置页。
     for theme in ['light', 'dark', 'classic']:
-        tap('设置')
+        open_global_settings()
         choose_theme(theme)
         launch()
         select_space(context['spaceId'], context['spaceId'], context['spaceId'])
         wait(context['response'], seconds=80)
-        tap('设置')
+        open_global_settings()
         theme_checked(theme)
         capture(theme+'-cold-restored')
-        tap('聊天')
+        return_to_chat()
         passed(theme+' preference survives process restart alongside real connection/history restore')
     # 仅覆写模拟器尺寸复核 320dp 窄屏；finally 恢复原尺寸，不冒充物理设备。
     sh('shell', 'wm', 'size', '840x1491')
     size_changed = True
     width, height = 840, 1491
     time.sleep(1)
-    tap('设置')
+    open_global_settings()
     for theme in ['light', 'dark', 'classic']:
         choose_theme(theme)
     capture('narrow-classic-picker')
@@ -643,7 +662,7 @@ try:
         sh('shell', 'wm', 'size', 'reset')
     size_changed = False
     width, height = map(int, re.findall(r'(\d+)x(\d+)', original_size)[-1])
-    tap('聊天')
+    return_to_chat()
     select_space('主空间', 'main')
     pid = sh('shell', 'pidof', 'host.exp.exponent').decode().strip().split()[0]
     logs = sh('logcat', '-d', '--pid='+pid, 'ReactNativeJS:E', 'AndroidRuntime:E', '*:S').decode()

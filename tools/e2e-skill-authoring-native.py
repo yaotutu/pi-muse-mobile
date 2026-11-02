@@ -348,18 +348,20 @@ def create_approve():
 
 def enable_use():
     selected_space()
-    open_panel('workspace-session-tab-workspace')
-    scroll_to('技能 ' + name, 'workspace-session-panel')
+    tap('空间')
+    tap('打开空间技能')
+    scroll_to('技能 ' + name, 'workspace-space-page')
     refresh()
     switch = find('技能 ' + name)
     if switch is None or switch.get('checked') != 'false':
         raise AssertionError('new skill is not visible and disabled before enable')
     attempt('skill-toggled', lambda: tap('技能 ' + name),
             lambda: (lambda node: node is not None and node.get('checked') == 'true')(find('技能 ' + name)))
-    scroll_to('保存空间技能', 'workspace-session-panel')
+    scroll_to('保存空间技能', 'workspace-space-page')
     attempt('skill-save', lambda: tap('保存空间技能'),
             lambda: find('保存空间技能') is None and (lambda node: node is not None and node.get('checked') == 'true')(find('技能 ' + name)), 90)
-    tap('关闭会话面板')
+    tap('返回空间上一级')
+    tap('聊天')
     observed('chat-after-enable', lambda: find('消息输入框', kind='android.widget.EditText') is not None)
     enter_prompt()
     user_id, prior_bubbles = send_message()

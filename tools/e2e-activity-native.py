@@ -169,6 +169,29 @@ def timeline(filename):
     passed('complete native timeline matches real HTTP order: '+filename, stepCount=len(observed))
 
 
+def return_to_chat():
+    # 全局设置与空间子页不再显示主导航，先按真实页面层级返回。
+    for _ in range(5):
+        refresh()
+        if find('消息输入框') is not None:
+            return
+        if find('返回当前会话') is not None:
+            tap('返回当前会话')
+        elif find('返回空间上一级') is not None:
+            tap('返回空间上一级')
+        elif find('聊天') is not None:
+            tap('聊天')
+        else:
+            raise AssertionError('No visible path back to current conversation')
+    raise AssertionError('Current conversation not reached')
+
+
+def open_global_settings():
+    return_to_chat()
+    tap('打开空间侧栏')
+    tap('打开全局设置')
+
+
 try:
     size = sh('shell', 'wm', 'size').decode()
     width, height = map(int, re.findall(r'(\d+)x(\d+)', size)[-1])
@@ -197,10 +220,10 @@ try:
         tap('关闭空间侧栏')
     if find('切换到亮色主题') is not None:
         tap('切换到亮色主题')
-    tap('设置')
+    open_global_settings()
     seek(context['base'])
     passed('native application is configured for the exact confirmed real service')
-    tap('聊天')
+    return_to_chat()
     tap('打开空间侧栏')
     tap(context['spaceId'], scroll=True)
     tap('打开当前会话面板')
@@ -267,7 +290,7 @@ try:
     screenshot('main-task-entry-detail')
     passed('main task entry consumes same actual activity detail')
     # 返回原主空间与聊天页，不替用户清除设备已保存连接信息。
-    tap('聊天')
+    return_to_chat()
     tap('打开空间侧栏')
     tap('主空间', scroll=True, down=True)
     pid = sh('shell', 'pidof', 'host.exp.exponent').decode().strip().split()[0]

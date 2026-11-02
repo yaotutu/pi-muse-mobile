@@ -162,7 +162,7 @@ test('会话复用整组分段，新闻使用紧凑受控文字Tab', () => {
   assert.match(news, /\(\['recommended', 'all'\] as const\)\.map/);
   assert.match(news, /store\.setView\(view\)/);
   assert.match(news, /aria-selected=\{snapshot\.view === view\}/);
-  for (const [id, label] of [['activity', '动态'], ['approvals', '审批'], ['workspace', '工作区'], ['history', '历史']]) {
+  for (const [id, label] of [['activity', '动态'], ['approvals', '审批'], ['history', '历史']]) {
     assert.match(session, new RegExp(`label: '${label}'.*testID: 'workspace-session-tab-${id}'`));
   }
   assert.match(session, /next === 'history'\) setHistoryActivityId\(undefined\)/);
@@ -198,14 +198,15 @@ test('会话文字操作共用点击区与状态，重置由独立确认承载',
   }
   assert.doesNotMatch(execution, /查看活动历史|状态说明|查看关联活动/);
   for (const label of ['确认重置会话', '取消重置会话']) assert.match(dialog, new RegExp(`<ActionButton label="${label}"`));
-  for (const label of ['确认删除空间', '取消删除空间']) assert.match(screen, new RegExp(`<ActionButton label="${label}"`));
+  assert.match(screen, /deleteConfirm \? '确认删除空间' : '删除当前空间'/);
+  assert.match(screen, /<ActionButton label="取消删除空间"/);
   assert.match(button, /minHeight: themeTokens\.layout\.smallControl/);
   assert.match(button, /maxWidth: '100%'/);
   assert.match(button, /minWidth: 0, flexShrink: 1/);
   assert.match(button, /accessibilityState=\{\{ disabled: locked, busy, .*expanded/);
   assert.match(screen, /tone="danger" busy=\{session\.deleting\}/);
   assert.match(dialog, /!available \|\| session\.resetUncertain \|\| !sessions\.canWrite\(spaceId\) \|\| sessions\.hasSettingsWrite\(spaceId\)/);
-  assert.match(screen, /deleteConfirm \? <Card style=\{styles\.exampleCard\} tone="danger">/);
+  assert.match(screen, /spaces\.currentSpace !== MAIN_SPACE && <Card style=\{styles\.exampleCard\} tone="danger">/);
   assert.match(screen, /confirmActions: \{ flexDirection: 'row', flexWrap: 'wrap'/);
   assert.doesNotMatch(execution, /styles\.button|styles\.buttonText/);
   assert.doesNotMatch(screen, /styles\.secondaryButton/);
@@ -214,7 +215,7 @@ test('会话文字操作共用点击区与状态，重置由独立确认承载',
 test('原生输入时压缩会话信息区并隐藏主导航，键盘事件监听随宿主卸载清理', () => {
   const source = read('src/workspace/WorkspaceScreen.tsx');
   assert.match(source, /keyboardVisible && styles\.chatHeaderCompact/);
-  assert.match(source, /!\(page === 'chat' && keyboardVisible\) && <Navigation/);
+  assert.match(source, /!\(page === 'chat' && keyboardVisible\).*<Navigation/);
   assert.match(source, /return \(\) => \{ show\.remove\(\); hide\.remove\(\); \}/);
   const chat = read('src/workspace/ConversationView.tsx');
   assert.match(chat, /onLayout=\{followLatest\}/);
@@ -249,7 +250,7 @@ test('侧栏只切换或创建空间，不复制参考产品的功能导航；�
   assert.match(source, /accessibilityLabel="搜索空间"/);
   assert.match(source, /no-hide-descendants/);
   assert.doesNotMatch(source, /label: '点子'|label: '资源库'|label: '旁聊'/);
-  for (const page of ['chat', 'news', 'settings']) assert.match(source, new RegExp(`id: '${page}'`));
+  for (const page of ['chat', 'news', 'space']) assert.match(source, new RegExp(`id: '${page}'`));
 });
 
 test('放弃 failed 暂存须二次确认并回读权威历史，当前草稿保持独立', () => {
@@ -270,20 +271,19 @@ test('主页面导航始终显示图标与标题，并使用同一导航高度',
   assert.match(navigation, /accessibilityState=\{\{ selected: page === id \}\}/);
   assert.doesNotMatch(navigation, /page\s*[!=]==?\s*'chat'\s*&&\s*<Text|chatNavigation/);
   assert.doesNotMatch(source, /chatNavigation/);
-  for (const label of ['聊天', '新闻', '设置']) assert.match(source, new RegExp(`label: '${label}'`));
+  for (const label of ['聊天', '新闻', '空间']) assert.match(source, new RegExp(`label: '${label}'`));
 });
 
-test('重置入口只在可用连接的设置页末组，会话面板从 Tab 开始且不再持有重置回调', () => {
+test('空间维护归空间子页，全局设置来自抽屉，会话面板只处理当前执行', () => {
   const screen = read('src/workspace/WorkspaceScreen.tsx');
   const panel = read('src/workspace/SessionPanel.tsx');
-  assert.match(screen, /\{ id: 'settings', label: '设置', icon: Settings \}/);
-  assert.match(screen, /page === 'settings' \? <SettingsPage/);
-  assert.ok(screen.indexOf('<ThemePicker />') < screen.indexOf('testID="workspace-reset-conversation"'));
-  assert.match(screen, /currentSpaceId && onReset && <View style=\{styles\.appSection\}>/);
-  assert.match(screen, /description=\{`目标：\$\{currentSpaceId === MAIN_SPACE \? '主空间' : currentSpaceId\}`\}/);
-  assert.match(screen, /onReset=\{connection\?\.enabled \? \(\) =>/);
-  assert.doesNotMatch(screen, /page === 'apps'|<AppsPage|其他应用能力尚未接入/);
-  assert.doesNotMatch(panel, /onReset|RotateCcw|actionRow|workspace-reset-conversation|重置当前会话/);
+  assert.match(screen, /id: 'space', label: '空间', icon: FolderOpen/);
+  assert.match(screen, /title="全局设置" label="打开全局设置"/);
+  assert.match(screen, /page === 'space' \? <SpacePage/);
+  assert.match(screen, /const maintenance =/);
+  const settings = screen.slice(screen.indexOf('function SettingsPage'), screen.indexOf('function DisconnectedWorkspace'));
+  assert.doesNotMatch(settings, /onReset|RotateCcw|重置当前会话/);
+  assert.doesNotMatch(panel, /onReset|onDelete|FilesScreen|工作区/);
   assert.match(panel, /<View style=\{styles\.column\}>\s*<View style=\{styles\.tablistWrap\}>/);
 });
 

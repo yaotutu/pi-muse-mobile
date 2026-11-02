@@ -177,7 +177,7 @@ test('Android Back 优先关闭键盘、会话面板和侧栏，然后返回设�
   assert.equal(workspaceBackAction({ ...state, keyboardVisible: false }), 'session');
   assert.equal(workspaceBackAction({ ...state, keyboardVisible: false, sessionMounted: false }), 'drawer');
   assert.equal(workspaceBackAction({ ...state, keyboardVisible: false, sessionMounted: false, drawerOpen: false }), 'settings');
-  assert.equal(workspaceBackAction({ ...state, keyboardVisible: false, sessionMounted: false, drawerOpen: false, settingsSubpage: null }), 'none');
+  assert.equal(workspaceBackAction({ ...state, keyboardVisible: false, sessionMounted: false, drawerOpen: false, settingsSubpage: null }), 'chat');
 });
 
 test('目标创建态 Back 先由创建流程消费，不落到系统退出', () => {

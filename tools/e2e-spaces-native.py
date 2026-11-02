@@ -122,13 +122,38 @@ def select_space():
 
 
 def reset_dialog():
-    tap('设置')
+    return_to_chat()
+    tap('空间')
+    tap('打开空间维护')
     tap('重置当前会话', scroll=True)
     wait(lambda: '重置当前会话？' in text(), 'confirmation text')
     assert find('聊天') is None, 'reset confirmation did not isolate the underlying settings navigation'
     assert context['spaceId'] in text(), 'reset confirmation did not identify its target space'
     assert '空间规则、技能开关与已保存的工作区文件都会保留' in text()
     assert find('同时清理定时任务与网页监控').get('checked') == 'false'
+
+
+def return_to_chat():
+    # 全局设置与空间子页不再显示主导航，先按真实页面层级返回。
+    for _ in range(5):
+        refresh()
+        if find('消息输入框') is not None:
+            return
+        if find('返回当前会话') is not None:
+            tap('返回当前会话')
+        elif find('返回空间上一级') is not None:
+            tap('返回空间上一级')
+        elif find('聊天') is not None:
+            tap('聊天')
+        else:
+            raise AssertionError('No visible path back to current conversation')
+    raise AssertionError('Current conversation not reached')
+
+
+def open_global_settings():
+    return_to_chat()
+    tap('打开空间侧栏')
+    tap('打开全局设置')
 
 
 try:
@@ -164,9 +189,9 @@ try:
         tap('workspace-connection-save', scroll=True)
         # 保存成功会自动关闭连接面板，不能再按其旧关闭按钮。
         wait(lambda: find('打开空间侧栏') is not None, 'connection saved and panel closed')
-    tap('设置')
+    open_global_settings()
     wait(lambda: context['base'] in text(), 'the exact confirmed real server')
-    tap('聊天')
+    return_to_chat()
     select_space()
     tap('消息输入框')
     sh('shell', 'input', 'text', f'Reply%swith%sexactly%s{context["firstMarker"]}.%sDo%snot%suse%stools.')
@@ -188,7 +213,7 @@ try:
     reset_dialog()
     screenshot('reset-confirm-default')
     sh('shell', 'input', 'keyevent', 'KEYCODE_BACK')
-    wait(lambda: find('设置') is not None and find('确认重置会话') is None, 'system Back cancels reset confirmation')
+    wait(lambda: find('重置当前会话') is not None and find('确认重置会话') is None, 'system Back cancels reset confirmation')
     reset_dialog()
     tap('取消重置会话')
     flag('native-cancelled')
@@ -212,11 +237,11 @@ try:
     flag('native-reset-cleared')
     wait(lambda: (root / 'api-clear-verified').exists(), 'opt-in reset deletes the owned monitor and preserves settings')
     passed('explicit checkbox changes the actual reset request and removes the owned monitor')
-    tap('打开当前会话面板')
-    tap('workspace-session-tab-workspace')
+    tap('空间')
+    tap('打开空间规则')
     wait(lambda: '空间规则' in text() and 'Dedicated mobile space/session migration acceptance' in text(), 'rules remain on actual space settings UI')
     screenshot('preserved-space-settings')
-    tap('关闭会话面板')
+    return_to_chat()
     tap('打开空间侧栏')
     tap('主空间')
     (root / 'native-results.json').write_text(json.dumps({'passed': True, 'checks': checks}, ensure_ascii=False, indent=2))

@@ -204,12 +204,11 @@ export class SpaceStore {
       this.changed();
     }
   }
-  discardSettings(id: string) {
+  discardSettings(id: string, kind: ReadKind) {
     if (!this.canWrite(id) || this.hasSettingsWrite(id)) return;
     const entry = this.get(id);
-    entry.instructions.draft = entry.instructions.saved;
-    entry.skills.draft = { ...entry.skills.saved };
-    entry.skills.notice = undefined;
+    if (kind === 'instructions') entry.instructions.draft = entry.instructions.saved;
+    else { entry.skills.draft = { ...entry.skills.saved }; entry.skills.notice = undefined; }
     this.changed();
   }
 
