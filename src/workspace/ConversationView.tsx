@@ -455,7 +455,7 @@ export function ConversationView({
   );
 }
 
-function Message({ message, pendingStatus, feedbackScope }: {
+export function Message({ message, pendingStatus, feedbackScope }: {
   message: MessageView;
   pendingStatus?: 'sending' | 'failed' | 'unconfirmed';
   feedbackScope?: { spaceId: string; sessionId: string; initialFeedback: NonNullable<MessageView['feedback']> };

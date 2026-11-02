@@ -268,14 +268,14 @@ test('放弃 failed 暂存须二次确认并回读权威历史，当前草稿保
   assert.match(chat, /sessions\.restorePendingSubmissionToDraft\(spaceId\)/);
 });
 
-test('启动直达聊天，唯一会话列表的 Muse 快捷入口显式选择 main', () => {
+test('启动直达群聊，唯一会话列表提供默认群聊和私聊入口', () => {
   const source = read('src/workspace/WorkspaceScreen.tsx');
   const directory = read('src/workspace/MemberDirectory.tsx');
   assert.doesNotMatch(source, /function Navigation|const NAV:|workspace-tab-/);
-  assert.match(source.split('function WorkspaceContent')[1], /useState<WorkspacePage>\('chat'\)/);
-  assert.match(source, /onMainChat={\(\) => select\(MAIN_SPACE\)}/);
+  assert.match(source.split('function WorkspaceContent')[1], /useState<WorkspacePage>\('group'\)/);
+  assert.match(source, /onGroup={openGroup}/);
   assert.match(directory, /testID="conversation-list"/);
-  assert.match(directory, /accessibilityLabel="回到Muse聊天".*onPress={onMainChat}/);
+  assert.match(directory, /accessibilityLabel="回到群聊".*onPress={onGroup}/);
   assert.doesNotMatch(directory, /mode ===|mode:/);
   assert.match(source, /const select = .*changeSpace/);
 });

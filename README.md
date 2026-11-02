@@ -72,7 +72,7 @@ The release workflow builds a signed Android APK and an unsigned iOS IPA for use
 - **Human-in-the-loop approvals.** Agent-initiated file writes and edits require full before/after review and explicit confirmation. A stale approval cannot overwrite content that changed after the approval was created.
 - **Space files.** Open a member profile → Files to browse the current space's private directories and files, read complete text, preview supported images, and download files to a chosen Android directory without overwriting same-name files. Manual text saves require complete-content review and confirmation.
 
-Current source uses member profiles for private files, direct Markdown/text editing, rules, skills, and maintenance. Tap an avatar to open its profile, then Send Message for a separate private chat. News and SMS own their settings; background notifications default to main and can be explicitly rebound. Global settings open from the message list’s top-right gear. A shared multi-member timeline is not implemented yet.
+Current source uses member profiles for private files, direct Markdown/text editing, rules, skills, and maintenance. Tap an avatar to open its profile, then Send Message for a separate private chat. News and SMS own their settings; background notifications default to main and can be explicitly rebound. Global settings open from the message list’s top-right gear. Cold launch opens the shared group timeline: no `@` routes only to main, while an explicit `@` sends only to that member. Group and private contexts stay separate; the group top-right opens group information. The current group is text-only, without message feedback or background-notification delivery; those remain in private chats.
 
 ### Global settings, memory, Dream, and themes
 
@@ -157,7 +157,7 @@ These are local development gates. `npm test` uses local protocol and state fixt
 
 ## Architecture notes
 
-- Cold launch opens Muse chat directly, without bottom tabs. One conversation list provides member chats, profiles, a bottom-right Muse shortcut, and global Settings at the top right. News reading lives inside the News member; Goals remains hidden. Navigation uses in-app state; the project does not use React Navigation or Expo Router.
+- Cold launch opens group chat directly, without bottom tabs. One conversation list provides the default group, member private chats, avatar profiles, a bottom-right group shortcut, and top-right global settings. News reading lives inside the News member; Goals remains hidden. Navigation uses in-app state; the project does not use React Navigation or Expo Router.
 - The chat stream uses AG-UI SSE through `expo/fetch`, with custom framing and aggregation implemented in the client.
 - Runtime status, approvals, activities, and job invalidation share the server's notification SSE. Spaces, files, memory, goals, jobs, monitors, profiles, and Dream use documented REST endpoints.
 - Business state is kept in focused providers and stores around React context. The UI renders native React Native components rather than embedding a web app.

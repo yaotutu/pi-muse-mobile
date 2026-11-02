@@ -1,3 +1,4 @@
+import { parseGroup, parseGroupEvent, type GroupInput, type GroupEvent } from '../group/contracts';
 import { parseFeatures, parseFeature, parseDiscussion, type FeatureId } from "../features/contracts";
 /**
  * 真实 HTTP 客户端：expo/fetch（原生流式支持）+ Bearer token + SSE 分帧消费。
@@ -277,6 +278,49 @@ export class HttpApiClient implements ApiClient {
     } finally {
       control.finish();
     }
+  }
+
+  async getGroup(signal?: AbortSignal) { return parseGroup(await this.request('/api/group', { signal })); }
+  async stopGroup(id: string, signal?: AbortSignal) {
+    const result = await this.request<{ stopped: boolean }>(`/api/group/messages/${encodeURIComponent(id)}/stop`, { method: 'POST', body: {}, signal });
+    if (typeof result?.stopped !== 'boolean') throw new ApiError(502, '停止结果不正确，请同步核对');
+  }
+  async sendGroup(input: GroupInput, onEvent: (event: GroupEvent) => void, signal?: AbortSignal) {
+    if (this.retired || this.paused) throw requestCancelled();
+    const token = this.getToken();
+    const control = this.control(this.options.headerTimeoutMs ?? 15_000, signal);
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+    const cancel = () => { void reader?.cancel().catch(() => {}); };
+    try {
+      const response = await expoFetch(`${this.baseUrl}/api/group/messages`, {
+        method: 'POST', headers: { 'content-type': 'application/json', accept: 'text/event-stream', ...(token ? { authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify(input), signal: control.controller.signal, redirect: 'error',
+      });
+      control.assertActive();
+      if (response.status === 401) { this.onUnauthorized(token); throw new ApiError(401, '请重新认证'); }
+      if (!response.ok) throw responseError(response.status, await response.json().catch(() => undefined));
+      if (!response.body) throw new ApiError(502, '群聊未返回数据流');
+      control.stopTimeout();
+      reader = response.body.getReader();
+      control.controller.signal.addEventListener('abort', cancel, { once: true });
+      const decoder = new TextDecoder(); let buffer = ''; let terminal = false;
+      for (;;) {
+        const result = await reader.read(); control.assertActive();
+        buffer += decoder.decode(result.value, { stream: !result.done });
+        const frames = parseSseFrames(buffer); buffer = frames.rest;
+        for (const raw of frames.events) {
+          if (terminal) throw new ApiError(502, '群聊终态后出现额外事件');
+          const event = parseGroupEvent(raw);
+          terminal = event.type === 'settled' || event.type === 'error';
+          onEvent(event);
+          if (event.type === 'error') throw new ApiError(409, event.message);
+        }
+        if (result.done) break;
+      }
+      if (!terminal || buffer.trim()) throw new ApiError(502, '群聊连接中断，请同步核对，勿重复发送');
+      this.notify(control, { kind: 'online', token });
+    } catch (error) { throw this.failure(error, control, token); }
+    finally { control.controller.signal.removeEventListener('abort', cancel); await reader?.cancel().catch(() => {}); control.finish(); }
   }
 
   async createSession(accessKey?: string): Promise<{ token: string; mode: string }> {

@@ -43,7 +43,7 @@ export function ResetSessionDialog({ spaceId, available, error, onCancel, onConf
         <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <Text accessibilityRole="header" style={styles.title}>重置当前会话？</Text>
           <Text selectable style={styles.target}>目标空间：{spaceId === MAIN_SPACE ? '主空间' : spaceId}</Text>
-          <Text style={styles.detail}>重置将停止当前运行，清空聊天历史及其消息反馈（喜欢/不喜欢/评论及操作记录）与未完成的审批，开启全新对话。空间规则、技能开关与已保存的工作区文件都会保留。</Text>
+          <Text style={styles.detail}>重置将停止当前运行，清空本成员的私聊历史、群聊讨论与显示记录、消息反馈（喜欢/不喜欢/评论及操作记录）及未完成的审批，开启全新对话。其他成员的历史不受影响；空间规则、技能开关与已保存的工作区文件都会保留。</Text>
           <Pressable accessibilityRole="checkbox" accessibilityLabel="同时清理定时任务与网页监控"
             accessibilityState={{ checked: clearSchedules, disabled: busy }} disabled={busy}
             onPress={() => setClearSchedules((value) => !value)} style={styles.option}>

@@ -1,11 +1,11 @@
 /** Android Back 由工作区根层统一判定优先级，避免父子监听器互相抢先。 */
-export type WorkspaceBackAction = 'keyboard' | 'browser' | 'session' | 'inbox' | 'feature' | 'news-owner' | 'news-article' | 'news-sources' | 'settings' | 'goal' | 'space' | 'none';
+export type WorkspaceBackAction = 'group' | 'keyboard' | 'browser' | 'session' | 'inbox' | 'feature' | 'news-owner' | 'news-article' | 'news-sources' | 'settings' | 'goal' | 'space' | 'none';
 
 export function workspaceBackAction(state: {
   keyboardVisible: boolean;
   browserOpen?: boolean;
   sessionMounted: boolean;
-  page: 'inbox' | 'chat' | 'news' | 'goals' | 'settings' | 'space' | 'feature';
+  page: 'group' | 'group-info' | 'inbox' | 'chat' | 'news' | 'goals' | 'settings' | 'space' | 'feature';
   newsArticleOpen?: boolean;
   newsManaging?: boolean;
   settingsSubpage: string | null;
@@ -20,6 +20,8 @@ export function workspaceBackAction(state: {
   if (state.page === 'settings' && state.settingsSubpage) return 'settings';
   if (state.page === 'settings') return 'inbox';
   if (state.page === 'feature') return 'feature';
+  if (state.page === 'group-info') return 'group';
+  if (state.page === 'group') return 'inbox';
   if (state.page === 'chat') return 'inbox';
   if (state.page === 'space') return 'space';
   if (state.page === 'goals' && state.goalCreating) return 'goal';

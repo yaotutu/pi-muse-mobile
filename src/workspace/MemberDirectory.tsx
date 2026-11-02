@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { FlatList, Keyboard, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Plus, Search, Settings, X } from 'lucide-react-native';
+import { Plus, Search, Settings, Users, X } from 'lucide-react-native';
 import type { SpaceEntry } from '../api/types';
 import { useSpaceRuntime } from '../runtime/RuntimeProvider';
 import { useTheme } from '../theme/ThemeProvider';
@@ -9,16 +9,15 @@ import { FeedbackNotice } from '../ui/Feedback';
 import { FormInput } from '../ui/FormInput';
 import { IconControl } from '../ui/IconControl';
 import { spacing, sizing, workspaceTheme } from '../ui/tokens';
-import { MAIN_SPACE } from '../spaces/space-state';
 import { MemberAvatar } from './MemberAvatar';
 import { memberDescription, type SpaceLabels } from './space-labels';
 
 const mainShortcutSize = 56;
 
 /** 列表不另建聊天存储；点头像看主页，点消息行才进入对应 Space 的真实私聊。 */
-export function MemberDirectory({ spaces, labels, error, onReload, onChat, onProfile, onCreate, onSettings, onMainChat }: {
+export function MemberDirectory({ spaces, labels, error, onReload, onChat, onProfile, onCreate, onSettings, onGroup }: {
   spaces: SpaceEntry[]; labels: SpaceLabels; error?: string;
-  onReload: () => void; onChat: (id: string) => void; onProfile: (id: string) => void; onCreate: () => void; onSettings: () => void; onMainChat: () => void;
+  onReload: () => void; onChat: (id: string) => void; onProfile: (id: string) => void; onCreate: () => void; onSettings: () => void; onGroup: () => void;
 }) {
   const { colors } = useTheme();
   const [query, setQuery] = useState<string | null>(null);
@@ -44,14 +43,14 @@ export function MemberDirectory({ spaces, labels, error, onReload, onChat, onPro
     {query !== null && <FormInput autoFocus accessibilityLabel="搜索成员名称" placeholder="搜索成员" value={query} onChangeText={setQuery} style={styles.search} />}
     <View style={styles.intro}>
       <Text style={styles.eyebrow}>YOUR DAILY COMPANY</Text>
-      <Text style={styles.caption}>找谁聊，就点开谁。点头像了解这位成员。</Text>
+      <Text style={styles.caption}>一起聊，或找一位成员单独聊聊。</Text>
     </View>
     {!!error && <View style={styles.search}><FeedbackNotice tone="danger" text={error} /><ActionButton label="重新读取成员" text="重试" onPress={onReload} /></View>}
-    <FlatList data={filtered} keyExtractor={(space) => space.id} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={styles.content}
+    <FlatList ListHeaderComponent={!query || '群聊'.includes(query.trim()) ? <Pressable accessibilityRole="button" accessibilityLabel="打开默认群聊" onPress={onGroup} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[14], paddingVertical: spacing[16], minHeight: 80 }}><Users size={44} color={colors.accentText} /><View style={{ gap: spacing[6] }}><Text style={{ ...workspaceTheme.typography.itemTitle, color: colors.ink }}>群聊</Text><Text style={styles.caption}>默认 Muse 回复，@ 成员定向聊天</Text></View></Pressable> : undefined} data={filtered} keyExtractor={(space) => space.id} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={styles.content}
       renderItem={({ item }) => <MemberRow space={item} name={labels.title(item.id)} onProfile={() => onProfile(item.id)} onPress={() => onChat(item.id)} />}
       ListEmptyComponent={<Text style={styles.caption}>没有找到成员</Text>} />
-    <Pressable accessibilityRole="button" accessibilityLabel="回到Muse聊天" testID="conversation-main-shortcut" onPress={onMainChat} style={styles.shortcut}>
-      <MemberAvatar spaceId={MAIN_SPACE} size={mainShortcutSize} />
+    <Pressable accessibilityRole="button" accessibilityLabel="回到群聊" testID="conversation-main-shortcut" onPress={onGroup} style={styles.shortcut}>
+      <View style={{ width: mainShortcutSize, height: mainShortcutSize, alignItems: 'center', justifyContent: 'center' }}><Users size={30} color={colors.accentText} /></View>
     </Pressable>
   </View>;
 }
