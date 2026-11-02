@@ -15,9 +15,9 @@ import { useReducedMotion } from './use-reduced-motion';
 
 const { messageFeedback: m, radius: r, typography: t } = themeTokens;
 
-export function AnchoredFeedbackMenu({ anchor, align, dismissLabel, onDismiss, testID, children }: {
+export function AnchoredFeedbackMenu({ anchor, align, dismissLabel, onDismiss, testID, children, width = m.menuWidth }: {
   anchor: MenuRect | null; align: 'left' | 'right'; dismissLabel: string;
-  onDismiss: () => void; testID: string; children: ReactNode;
+  onDismiss: () => void; testID: string; children: ReactNode; width?: number;
 }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -35,8 +35,9 @@ export function AnchoredFeedbackMenu({ anchor, align, dismissLabel, onDismiss, t
     opacity: reveal.value,
     transform: [{ scale: m.revealScale + (1 - m.revealScale) * reveal.value }],
   }));
+  const menuWidth = Math.min(width, viewport.width - m.screenMargin * 2);
   const position = anchor ? positionFeedbackMenu(
-    anchor, { width: m.menuWidth, height: menuHeight }, viewport, insets,
+    anchor, { width: menuWidth, height: menuHeight }, viewport, insets,
     align, m.anchorGap, m.screenMargin,
     // Android Fabric 测得应用窗口坐标；透明全屏 Modal 从状态栏上方开始。
     Platform.OS === 'android' ? insets.top : 0,
@@ -53,7 +54,7 @@ export function AnchoredFeedbackMenu({ anchor, align, dismissLabel, onDismiss, t
         const height = event.nativeEvent.layout.height;
         if (height !== menuHeight) setMenuHeight(height);
       }}
-      style={[styles.context, revealStyle, { left: position.x, top: position.y,
+      style={[styles.context, revealStyle, { width: menuWidth, left: position.x, top: position.y,
         maxHeight: viewport.height - insets.top - insets.bottom - m.screenMargin * 2 }]}>
       {children}
     </Animated.View>
@@ -106,7 +107,7 @@ const createStyles = (c: ThemeColors) => StyleSheet.create({
   disabled: { opacity: themeTokens.interaction.disabledOpacity },
   selected: { backgroundColor: c.blueSoft },
   overlay: { flex: 1, backgroundColor: c.scrim },
-  context: { position: 'absolute', width: m.menuWidth, gap: spacing[8], elevation: m.elevation },
+  context: { position: 'absolute', gap: spacing[8], elevation: m.elevation },
   reactionPill: { alignSelf: 'flex-start', flexDirection: 'row', padding: spacing[4],
     borderRadius: r.round, borderWidth: StyleSheet.hairlineWidth, borderColor: c.line, backgroundColor: c.canvas },
   reactionPillRight: { alignSelf: 'flex-end' },

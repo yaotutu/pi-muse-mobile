@@ -108,6 +108,7 @@ export const themeTokens = {
   layout: {
     maxWidth: 720,
     resetDialogMaxWidth: 420,
+    fileInformationWidth: 280,
     sidePadding: 20,
     /** 会话面板保留完整信息区几何；聊天页使用绝对浮层。 */
     headerHeight: 124,

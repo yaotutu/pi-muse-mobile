@@ -1,17 +1,21 @@
 import { Card } from '../ui/Surfaces';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Image as RNImage, Keyboard, Pressable, ScrollView, StyleSheet, Text, View, type ScrollViewInstance } from 'react-native';
-import { ChevronLeft, Download, File, Folder, Plus, RefreshCw } from 'lucide-react-native';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Image as RNImage, Keyboard, Modal, Pressable, ScrollView, StyleSheet, Text, View, type ScrollViewInstance, type ViewInstance } from 'react-native';
+import { ChevronLeft, Download, File, Folder, Info, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react-native';
 import { MAX_WORKSPACE_TEXT_BYTES, utf8ByteLength } from '../files/contracts';
 import { useFiles } from '../files/FilesProvider';
 import { saveWorkspaceFileToDevice, type NativeDownloadResult } from '../files/native-download';
 import type { WorkspaceFileDetail } from '../files/types';
 import { useTheme } from '../theme/ThemeProvider';
+import { ThemeStatusBar } from '../theme/ThemeStatusBar';
 import { sizing, spacing, workspaceTheme, type WorkspaceColors } from '../ui/tokens';
 import { ActionButton } from '../ui/ActionButton';
 import { MarkdownContent } from '../ui/MarkdownContent';
-import { ChoiceChip } from '../ui/ChoiceChip';
 import { FormInput } from '../ui/FormInput';
+import { IconControl } from '../ui/IconControl';
+import { AnchoredFeedbackMenu, FeedbackMenuRow, FeedbackMenuRows } from '../ui/AnchoredFeedbackMenu';
+import type { MenuRect } from '../ui/menu-position';
+import { SpaceHeader } from './SpaceHeader';
 
 const { layout: l, radius: r, typography: t } = workspaceTheme;
 const IMAGE_MIME = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
@@ -38,7 +42,7 @@ function downloadMessage(result: NativeDownloadResult, originalName: string): st
  * 文件子页消费连接内 FilesStore；目录、详情、编辑和确认分屏展示。
  * 页面离开只取消读取，草稿仍在连接内；图片仅允许受支持的本地 data URI。
  */
-export function FilesScreen({ currentSpaceId }: { currentSpaceId: string }) {
+export function FilesScreen({ currentSpaceId, spaceName, onBack }: { currentSpaceId: string; spaceName: string; onBack: () => void }) {
   const { store, snapshot } = useFiles();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -46,6 +50,8 @@ export function FilesScreen({ currentSpaceId }: { currentSpaceId: string }) {
   const [downloading, setDownloading] = useState<string>();
   const scroll = useRef<ScrollViewInstance>(null);
   const offsets = useRef<Record<string, number>>({});
+  const infoButton = useRef<ViewInstance>(null);
+  const measureSequence = useRef(0);
   const viewKey = snapshot.uncertain ? 'verification' : snapshot.savePreview ? 'confirmation' : snapshot.editor ? 'editor' : snapshot.deleteTarget ? 'delete' : snapshot.selectedPath ? `file:${snapshot.selectedPath}` : `directory:${snapshot.directoryPath}`;
 
   useEffect(() => { store.open(); return () => store.close(); }, [store]);
@@ -66,6 +72,28 @@ export function FilesScreen({ currentSpaceId }: { currentSpaceId: string }) {
   const detailKey = detail ? selectedKey : undefined;
   const shownDownload = download && download.key === selectedKey ? download.message : undefined;
   const busyDownload = !!detailKey && downloading === detailKey;
+  const menuOwner = `${currentSpaceId}:${selectedKey ?? ''}:${viewKey}`;
+  const [infoState, setInfoState] = useState<{ store: typeof store; owner: string; info?: { key: string; anchor: MenuRect } }>({ store, owner: menuOwner });
+  if (infoState.store !== store || infoState.owner !== menuOwner) setInfoState({ store, owner: menuOwner });
+  const info = infoState.info;
+  const reading = !!snapshot.selectedPath && !locked;
+  const title = snapshot.uncertain ? '核对文件操作' : snapshot.savePreview ? '确认保存' : snapshot.editor ? '编辑文件' : snapshot.deleteTarget ? '确认删除' : snapshot.selectedPath?.split('/').pop() ?? '文件';
+  const parent = snapshot.selectedPath?.split('/').slice(0, -1).join('/') || snapshot.directoryPath;
+  const caption = parent === '.' ? spaceName : `${spaceName} · ${parent}`;
+  const closeInfo = () => { measureSequence.current += 1; setInfoState({ store, owner: menuOwner }); };
+  // 切文件、切空间或进入编辑/确认后关闭菜单，并废弃异步测量，不能带回旧文件操作。
+  useLayoutEffect(() => {
+    measureSequence.current += 1;
+    return () => { measureSequence.current += 1; };
+  }, [store, selectedKey, viewKey, currentSpaceId]);
+  const openInfo = () => {
+    if (!detailKey || !reading || !canNavigate) return;
+    const sequence = ++measureSequence.current;
+    infoButton.current?.measureInWindow((x, y, width, height) => {
+      if (sequence !== measureSequence.current || width <= 0 || height <= 0) return;
+      setInfoState({ store, owner: menuOwner, info: { key: detailKey, anchor: { x, y, width, height } } });
+    });
+  };
   const verification = snapshot.verificationDetail;
   const verificationKey = snapshot.uncertainOperation
     ? `verification:${snapshot.uncertainOperation.scope}:${snapshot.uncertainOperation.spaceId ?? ''}:${snapshot.uncertainOperation.path}` : undefined;
@@ -85,7 +113,11 @@ export function FilesScreen({ currentSpaceId }: { currentSpaceId: string }) {
     }
   };
 
-  return <ScrollView ref={scroll} key={viewKey} style={styles.screen} contentContainerStyle={styles.root}
+  return <View style={styles.screen}>
+    <SpaceHeader title={title} caption={caption} onBack={onBack} action={reading && <View ref={infoButton} collapsable={false}>
+      <IconControl icon={Info} label="查看文件详情与操作" onPress={openInfo} disabled={!detail || !canNavigate} testID="file-information" />
+    </View>} />
+    <ScrollView ref={scroll} key={viewKey} style={styles.screen} contentContainerStyle={styles.root}
     keyboardShouldPersistTaps="handled" testID="workspace-files-screen"
     onContentSizeChange={() => { if (viewKey.startsWith('directory:')) scroll.current?.scrollTo({ y: offsets.current[viewKey] ?? 0, animated: false }); }}
     onScroll={(event) => { if (viewKey.startsWith('directory:')) offsets.current[viewKey] = event.nativeEvent.contentOffset.y; }} scrollEventThrottle={100}>
@@ -185,15 +217,29 @@ export function FilesScreen({ currentSpaceId }: { currentSpaceId: string }) {
       })}
       </>}
       {!!snapshot.selectedPath && <View style={styles.detail}>
-        <Text selectable style={styles.path}>路径：{snapshot.selectedPath}</Text>
         {snapshot.detailLoading && <View style={styles.loading}><ActivityIndicator accessibilityLabel="正在完整读取文件" color={colors.blue} /><Text style={styles.caption}>正在完整读取文件…</Text></View>}
         {snapshot.missing && <Text style={styles.warning}>文件已不存在，请刷新目录核对。</Text>}
         {!!shownDownload && <Text selectable accessibilityLiveRegion="polite" style={styles.body}>设备保存结果（下载时读取的内容，不代表服务端当前版本）：{shownDownload}</Text>}
         {detail && <>
-          <Text style={styles.caption}>{formatSize(detail.size)} · {formatTime(detail.updatedAt)} · {detail.mimeType}</Text>
           <FileContent detail={detail} label="文件完整内容" styles={styles} />
-          <View style={styles.actions}>
-            <ActionButton label={`下载工作区文件 ${detail.path}`} text={busyDownload ? '正在保存到设备…' : '下载到设备'} icon={Download} onPress={() => {
+        </>}
+      </View>}
+    </>}
+    </ScrollView>
+    {info && info.key === detailKey && detail && reading && canNavigate && <Modal transparent animationType="none" statusBarTranslucent navigationBarTranslucent onRequestClose={closeInfo}>
+      <ThemeStatusBar />
+      <AnchoredFeedbackMenu anchor={info.anchor} align="right" width={l.fileInformationWidth} dismissLabel="关闭文件详情" onDismiss={closeInfo} testID="file-information-menu">
+        <ScrollView style={styles.menuScroll} keyboardShouldPersistTaps="handled"><FeedbackMenuRows>
+          <View style={styles.information}>
+            <Text accessibilityRole="header" style={styles.cardTitle}>文件详情</Text>
+            <Text selectable style={styles.body}>{spaceName}</Text>
+            <Text selectable style={styles.path}>{detail.path}</Text>
+            <Text selectable style={styles.caption}>大小：{formatSize(detail.size)}</Text>
+            <Text selectable style={styles.caption}>修改时间：{formatTime(detail.updatedAt)}</Text>
+            <Text selectable style={styles.caption}>类型：{detail.mimeType}</Text>
+          </View>
+            <FeedbackMenuRow label={`下载工作区文件 ${detail.path}`} text={busyDownload ? '正在保存到设备…' : '下载到设备'} icon={Download} onPress={() => {
+              closeInfo();
               if (!detailKey) return;
               void saveToDevice(detail, detailKey, () => {
                 const current = store.getSnapshot();
@@ -201,34 +247,28 @@ export function FilesScreen({ currentSpaceId }: { currentSpaceId: string }) {
                   `${current.scope}:${current.selectedSpaceId ?? ''}:${current.selectedPath}` === detailKey;
               });
             }} disabled={busyDownload || !canNavigate} />
-            {detail.kind === 'text' && <ActionButton label={`编辑工作区文本文件 ${detail.path}`} text="编辑文本" onPress={store.beginEdit} disabled={!canWrite} />}
-            <ActionButton label={`准备删除工作区文件 ${detail.path}`} text="删除文件" onPress={() => store.requestDelete(detail.path)} disabled={!canWrite || !snapshot.entries.some((entry) => entry.kind === 'file' && entry.path === detail.path)} tone="danger" />
-          </View>
-        </>}
-      </View>}
-    </>}
-  </ScrollView>;
+            {detail.kind === 'text' && <FeedbackMenuRow icon={Pencil} label={`编辑工作区文本文件 ${detail.path}`} text="编辑原文" onPress={() => { closeInfo(); store.beginEdit(); }} disabled={!canWrite} />}
+            <FeedbackMenuRow icon={Trash2} label={`准备删除工作区文件 ${detail.path}`} text="删除文件…" onPress={() => { closeInfo(); store.requestDelete(detail.path); }} disabled={!canWrite || !snapshot.entries.some((entry) => entry.kind === 'file' && entry.path === detail.path)} />
+        </FeedbackMenuRows></ScrollView>
+      </AnchoredFeedbackMenu>
+    </Modal>}
+  </View>;
 }
 
 function TextBlock({ label, value, styles }: { label: string; value: string; styles: ReturnType<typeof createStyles> }) {
   return <View style={styles.textBlock}><Text style={styles.fieldLabel}>{label}</Text><Text selectable style={styles.fullText}>{value || '（空）'}</Text></View>;
 }
 
-function FileTextContent({ detail, label, styles }: { detail: WorkspaceFileDetail & { kind: 'text' }; label: string; styles: ReturnType<typeof createStyles> }) {
-  const [source, setSource] = useState(false);
+function FileTextContent({ detail, styles }: { detail: WorkspaceFileDetail & { kind: 'text' }; styles: ReturnType<typeof createStyles> }) {
   const markdown = /\.(md|markdown)$/i.test(detail.path);
   return <View style={styles.textBlock}>
-    {markdown && <View style={styles.actions}>
-      <ChoiceChip label="阅读 Markdown" text="阅读" selected={!source} onPress={() => setSource(false)} />
-      <ChoiceChip label="查看 Markdown 原文" text="原文" selected={source} onPress={() => setSource(true)} />
-    </View>}
-    {markdown && !source ? <MarkdownContent text={detail.content} /> : <TextBlock label={label} value={detail.content} styles={styles} />}
+    {markdown ? <MarkdownContent text={detail.content} /> : <Text selectable style={styles.plainText}>{detail.content || '（空）'}</Text>}
   </View>;
 }
 
 function FileContent({ detail, label, styles, sourceOnly = false }: { detail: WorkspaceFileDetail; label: string; styles: ReturnType<typeof createStyles>; sourceOnly?: boolean }) {
   if (sourceOnly && detail.kind === 'text') return <TextBlock label={label} value={detail.content} styles={styles} />;
-  if (detail.kind === 'text') return <FileTextContent detail={detail} label={label} styles={styles} />;
+  if (detail.kind === 'text') return <FileTextContent detail={detail} styles={styles} />;
   if (detail.kind === 'image' && IMAGE_MIME.has(detail.mimeType)) {
     return <View style={styles.textBlock}><Text style={styles.fieldLabel}>{label} · 图片预览</Text>
       <RNImage accessibilityLabel={`本地图片预览 ${detail.path}`} source={{ uri: `data:${detail.mimeType};base64,${detail.dataBase64}` }} resizeMode="contain" style={styles.image} />
@@ -251,6 +291,9 @@ const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   fileRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md, minWidth: 0, padding: spacing.md, borderRadius: r.field, backgroundColor: c.surface },
   fileName: { ...t.status, color: c.ink, flexShrink: 1 },
   detail: { gap: spacing.md, minWidth: 0 },
+  information: { padding: spacing.lg, gap: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.line },
+  menuScroll: { flexShrink: 1, borderRadius: r.field },
+  plainText: { ...t.mono, color: c.ink },
   card: { padding: spacing.lg, gap: spacing.md, minWidth: 0, backgroundColor: c.surface, borderRadius: r.card },
   warningCard: { padding: spacing.lg, gap: spacing.md, minWidth: 0, backgroundColor: c.warningSoft, borderRadius: r.card },
   path: { ...t.mono, color: c.ink, flexShrink: 1 }, fieldLabel: { ...t.status, color: c.ink },

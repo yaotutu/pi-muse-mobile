@@ -78,6 +78,36 @@ test('文件未明回读保持原文，不使用 Markdown 渲染替代完整核�
   assert.match(source, /sourceOnly && detail.kind === 'text'\) return <TextBlock/);
 });
 
+test('文件默认阅读从内容开始，路径归顶栏，信息与操作仅在详情菜单', () => {
+  const source = read('workspace/FilesScreen.tsx');
+  const reading = source.slice(source.indexOf('{!!snapshot.selectedPath && <View'), source.indexOf('</ScrollView>\n    {info'));
+  assert.match(source, /<SpaceHeader title=\{title\} caption=\{caption\}/);
+  assert.match(source, /const caption = parent === '\.' \? spaceName :/);
+  assert.doesNotMatch(reading, /路径：|formatSize|formatTime|mimeType|ActionButton|FeedbackMenuRow/);
+  assert.doesNotMatch(source, /ChoiceChip|阅读 Markdown|查看 Markdown 原文/);
+  const menu = source.slice(source.indexOf('{info &&'));
+  for (const text of ['文件详情', 'detail.path', 'detail.size', 'detail.updatedAt', 'detail.mimeType', '下载到设备', '编辑原文', '删除文件…']) assert.ok(menu.includes(text), text);
+  assert.match(menu, /onRequestClose=\{closeInfo\}/);
+  assert.match(menu, /dismissLabel="关闭文件详情" onDismiss=\{closeInfo\}/);
+  assert.match(menu, /closeInfo\(\); store.beginEdit\(\)/);
+  assert.match(menu, /closeInfo\(\); store.requestDelete\(detail.path\)/);
+  assert.doesNotMatch(menu, /store.confirmSave\(|store.confirmDelete\(/);
+});
+
+test('文件菜单不跨空间、文件或编辑状态复活；测量在页面变化后失效', () => {
+  const source = read('workspace/FilesScreen.tsx');
+  assert.match(source, /infoState.store !== store \|\| infoState.owner !== menuOwner/);
+  assert.match(source, /\[store, selectedKey, viewKey, currentSpaceId\]/);
+  assert.match(source, /sequence !== measureSequence.current/);
+  assert.match(source, /info.key === detailKey && detail && reading && canNavigate/);
+  assert.match(source, /label="查看文件详情与操作"/);
+  assert.match(read('workspace/SpaceHeader.tsx'), /ellipsizeMode="middle"/);
+  assert.match(source, /width=\{l.fileInformationWidth\}/);
+  const menu = read('ui/AnchoredFeedbackMenu.tsx');
+  assert.match(menu, /Math.min\(width, viewport.width - m.screenMargin \* 2\)/);
+  assert.match(menu, /anchor, \{ width: menuWidth, height: menuHeight \}/);
+});
+
 // 维护页每次重新进入都要重新确认，不能复用上次离开前的删除确认。
 test('重新进入空间维护会清除先前删除确认', () => {
   assert.match(read('workspace/WorkspaceScreen.tsx'), /onSection=\{\(next\) => \{ setDeleteConfirm\(false\); setSpaceSection\(next\); \}\}/);

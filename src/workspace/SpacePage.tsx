@@ -1,11 +1,10 @@
 import { useMemo, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { ArrowLeft, ChevronRight, FileText, FolderOpen, Inbox, Menu, Settings2, Sparkles, type LucideIcon } from 'lucide-react-native';
+import { ChevronRight, FileText, FolderOpen, Inbox, Settings2, Sparkles, type LucideIcon } from 'lucide-react-native';
 import { useTheme } from '../theme/ThemeProvider';
-import { useFiles } from '../files/FilesProvider';
 import { workspaceTheme, spacing, sizing } from '../ui/tokens';
-import { IconControl } from '../ui/IconControl';
 import { FilesScreen } from './FilesScreen';
+import { SpaceHeader } from './SpaceHeader';
 import { SpaceSettings } from './SpaceSettings';
 import { InformationSettingsCard } from '../information/InformationSettingsCard';
 import type { SpaceSection } from './space-navigation';
@@ -25,26 +24,19 @@ export function SpacePage({ spaceId, name, section, onSection, onBack, openDrawe
   onBack: () => void; openDrawer: () => void; onSaved: () => void; maintenance: ReactNode;
 }) {
   const { colors } = useTheme();
-  const { snapshot: files } = useFiles();
   const styles = useMemo(() => StyleSheet.create({
-    root: { flex: 1 }, header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: workspaceTheme.layout.sidePadding, paddingVertical: spacing[12], gap: spacing[12] },
-    heading: { flex: 1, minWidth: 0, alignItems: 'center' }, title: { ...workspaceTheme.typography.heroName, color: colors.ink }, caption: { ...workspaceTheme.typography.caption, color: colors.muted },
-    spacer: { width: workspaceTheme.layout.controlSize }, content: { padding: workspaceTheme.layout.sidePadding, gap: spacing[18], paddingBottom: spacing[28] },
+    root: { flex: 1 }, caption: { ...workspaceTheme.typography.caption, color: colors.muted },
+    content: { padding: workspaceTheme.layout.sidePadding, gap: spacing[18], paddingBottom: spacing[28] },
     identity: { gap: spacing[6], paddingVertical: spacing[12] }, name: { ...workspaceTheme.typography.section, color: colors.ink },
     group: { borderRadius: workspaceTheme.radius.card, overflow: 'hidden', backgroundColor: colors.surface },
     row: { minHeight: workspaceTheme.layout.appSettingsRowHeight, padding: spacing[16], flexDirection: 'row', alignItems: 'center', gap: spacing[14] },
     rowText: { flex: 1, minWidth: 0, gap: spacing[4] }, label: { ...workspaceTheme.typography.itemTitle, color: colors.ink },
     pressed: { opacity: workspaceTheme.interaction.pressedOpacity },
   }), [colors]);
-  const fileTitle = files.savePreview ? '确认保存' : files.editor ? '编辑文件' : files.deleteTarget ? '确认删除' : files.selectedPath ? files.selectedPath.split('/').pop()! : '文件';
   return <View style={styles.root} testID="workspace-space-page">
-    <View style={styles.header}>
-      <IconControl icon={section === 'home' ? Menu : ArrowLeft} label={section === 'home' ? '打开空间侧栏' : '返回空间上一级'} onPress={section === 'home' ? openDrawer : onBack} />
-      <View style={styles.heading}><Text numberOfLines={1} accessibilityRole="header" style={styles.title}>{section === 'files' ? fileTitle : titles[section]}</Text>
-        {section !== 'home' && <Text numberOfLines={1} style={styles.caption}>{name}</Text>}
-      </View><View style={styles.spacer} />
-    </View>
-    {section === 'files' ? <FilesScreen currentSpaceId={spaceId} /> : <ScrollView key={section} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
+    {section === 'files' ? <FilesScreen currentSpaceId={spaceId} spaceName={name} onBack={onBack} /> : <>
+    <SpaceHeader title={titles[section]} caption={section === 'home' ? undefined : name} home={section === 'home'} onBack={section === 'home' ? openDrawer : onBack} />
+    <ScrollView key={section} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
       {section === 'home' && <>
         <View style={styles.identity}><Text style={styles.name}>{name}</Text><Text style={styles.caption}>这里的文件、规则和技能只属于当前空间。</Text></View>
         <View style={styles.group}>{entries.map(({ section: target, title, detail, icon: Icon }) => <Pressable key={target} accessibilityRole="button" accessibilityLabel={`打开${title}`} testID={`space-open-${target}`}
@@ -55,6 +47,6 @@ export function SpacePage({ spaceId, name, section, onSection, onBack, openDrawe
       {(section === 'rules' || section === 'skills') && <SpaceSettings key={`${spaceId}:${section}`} spaceId={spaceId} section={section} onSaved={onSaved} />}
       {section === 'information' && <InformationSettingsCard key={spaceId} spaceId={spaceId} />}
       {section === 'maintenance' && maintenance}
-    </ScrollView>}
+    </ScrollView></>}
   </View>;
 }

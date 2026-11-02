@@ -64,7 +64,7 @@ test('会话面板当前执行与文件入口消费真实连接，不消费示�
   assert.match(source, /<ApprovalPanel key=\{spaceId\} spaceId=\{spaceId\}/);
   assert.doesNotMatch(source, /审批尚未接入/);
   assert.doesNotMatch(source, /FilesScreen|工作区|onDelete|settings=/);
-  assert.match(read('src/workspace/SpacePage.tsx'), /<FilesScreen currentSpaceId=\{spaceId\} \/>/);
+  assert.match(read('src/workspace/SpacePage.tsx'), /<FilesScreen currentSpaceId=\{spaceId\} spaceName=\{name\} onBack=\{onBack\} \/>/);
   assert.doesNotMatch(source, /工作区文件尚未接入/);
   const screen = read('src/workspace/WorkspaceScreen.tsx');
   assert.match(screen, /<FilesProvider currentSpaceId=\{spaces\.currentSpace\}>/);
