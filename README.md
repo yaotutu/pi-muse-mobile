@@ -35,7 +35,7 @@ The release workflow builds a signed Android APK and an unsigned iOS IPA for use
 ### Chat and isolated spaces
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/yaotutu/pi-muse/main/docs/assets/chat-preview.png" width="88%" alt="Chat with Markdown, tool cards, and the space sidebar">
+  <img src="https://raw.githubusercontent.com/yaotutu/pi-muse/main/docs/assets/chat-preview.png" width="88%" alt="Chat with Markdown and tool cards in an earlier version">
 </p>
 
 - **Streaming chat.** Messages run through the server's AG-UI SSE stream and are consumed natively by the client. The chat stream is separate from the shared notification stream used for runtime status.
@@ -67,12 +67,12 @@ The release workflow builds a signed Android APK and an unsigned iOS IPA for use
 
 ### Session panel, approvals, and workspace files
 
-- **One full-screen session center.** Tap the session information area at the top of the chat to open the current session panel. Its Activity, Approvals, and execution History switch in place while the chat remains mounted behind it.
+- **One full-screen session center.** Tap the private chat's top-right activity button to open the current session panel. Its Activity, Approvals, and execution History switch in place while the chat remains mounted behind it.
 - **Current execution and activity history.** Follow the current run, tool work, model-registered activities, progress, results, and related steps. Activity is not hidden model reasoning and is not represented as an archive of every chat run.
 - **Human-in-the-loop approvals.** Agent-initiated file writes and edits require full before/after review and explicit confirmation. A stale approval cannot overwrite content that changed after the approval was created.
-- **Space files.** Open bottom Space → Files to browse the current space's private directories and files, read complete text, preview supported images, and download files to a chosen Android directory without overwriting same-name files. Manual text saves require complete-content review and confirmation.
+- **Space files.** Open a member profile → Files to browse the current space's private directories and files, read complete text, preview supported images, and download files to a chosen Android directory without overwriting same-name files. Manual text saves require complete-content review and confirmation.
 
-Space is a full-screen home for private files, direct Markdown/text source editing, rules, skill switches, and maintenance. Child pages hide bottom navigation and protect file drafts. The left drawer has a single Settings entry; its Features group contains news and SMS settings: news and SMS keep independent data and preferences, with conversations routed to their assigned Space (main by default).
+Current source uses member profiles for private files, direct Markdown/text editing, rules, skills, and maintenance. Tap an avatar to open its profile, then Send Message for a separate private chat. News and SMS own their settings; background notifications default to main and can be explicitly rebound. Global settings open from the message list’s top-right gear. A shared multi-member timeline is not implemented yet.
 
 ### Global settings, memory, Dream, and themes
 
@@ -157,7 +157,7 @@ These are local development gates. `npm test` uses local protocol and state fixt
 
 ## Architecture notes
 
-- Chat, News, and Space are the primary bottom tabs; global Settings opens from the left space drawer and Goals remains hidden. Navigation uses in-app state; the project does not use React Navigation or Expo Router.
+- Messages, News, and Members are the primary bottom tabs; global Settings opens from the list’s top-right gear and Goals remains hidden. Navigation uses in-app state; the project does not use React Navigation or Expo Router.
 - The chat stream uses AG-UI SSE through `expo/fetch`, with custom framing and aggregation implemented in the client.
 - Runtime status, approvals, activities, and job invalidation share the server's notification SSE. Spaces, files, memory, goals, jobs, monitors, profiles, and Dream use documented REST endpoints.
 - Business state is kept in focused providers and stores around React context. The UI renders native React Native components rather than embedding a web app.

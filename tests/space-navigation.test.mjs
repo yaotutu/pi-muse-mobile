@@ -24,7 +24,8 @@ test('空间由根层统一处理 Back，键盘和覆盖层保持更高优先级
   const root = { keyboardVisible: false, sessionMounted: false, drawerOpen: false, page: 'space', settingsSubpage: null, goalCreating: false };
   assert.equal(workspaceBackAction(root), 'space');
   assert.equal(workspaceBackAction({ ...root, keyboardVisible: true }), 'keyboard');
-  assert.equal(workspaceBackAction({ ...root, drawerOpen: true }), 'drawer');
+  assert.equal(workspaceBackAction({ ...root, page: 'feature' }), 'feature');
+  assert.equal(workspaceBackAction({ ...root, page: 'chat' }), 'inbox');
   assert.equal(workspaceBackAction({ ...root, sessionMounted: true }), 'session');
 });
 

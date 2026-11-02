@@ -25,6 +25,7 @@ import type {
   MonitorsQuery,
   ResetSpaceResult,
   SpaceInfo,
+  MemberInfo,
   SpaceInstructions,
   SpaceSkills,
   UpdateGoalInput,
@@ -301,7 +302,9 @@ export interface ApiClient extends DreamClient, ApprovalClient, ActivityClient, 
   getServerTimeZone(signal?: AbortSignal): Promise<string>;
   /** POST /api/session → {token, mode}；客户端不按时间过期，失效以服务端401为准。 */
   createSession(accessKey?: string): Promise<{ token: string; mode: string }>;
-  /** GET /api/spaces（按活跃倒序） */
+  /** GET /api/members：普通空间与内置功能的只读成员目录，不创建聊天绑定。 */
+  listMembers(signal?: AbortSignal): Promise<MemberInfo[]>;
+  /** GET /api/spaces（按活跃倒序，只包含普通空间） */
   listSpaces(signal?: AbortSignal): Promise<SpaceInfo[]>;
   /** 重置只替换聊天绑定；默认保留规则、技能、文件、定时任务和监控。副作用绝不自动重试。 */
   resetSpace(spaceId: string, options?: { clearSchedules?: boolean }, signal?: AbortSignal): Promise<ResetSpaceResult>;

@@ -52,7 +52,7 @@ import {
 import { attachmentUploadOf, validateOutgoingMessage } from '../attachments/validation';
 import { ApiError, isRequestCancelled, requestCancelled, responseError } from './errors';
 import { parseSseFrames } from './sse';
-import { parseResetSpace, parseSpaces } from './space-contracts';
+import { parseResetSpace, parseMembers, parseSpaces } from './space-contracts';
 import { parseGoal, parseGoals, parseMilestoneToggle, parseGoalRemoval } from './goal-contracts';
 import { parseDeleteMonitorResult, parseMonitor, parseMonitors } from './monitor-contracts';
 import type {
@@ -293,6 +293,7 @@ export class HttpApiClient implements ApiClient {
     return parseServerTimeZone(await this.request('/api/health', { anonymous: true, signal }));
   }
 
+  async listMembers(signal?: AbortSignal) { return parseMembers(await this.request('/api/members', { signal })); }
   async listSpaces(signal?: AbortSignal): Promise<SpaceInfo[]> {
     return parseSpaces(await this.request('/api/spaces', { signal }));
   }

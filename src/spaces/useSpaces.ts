@@ -33,10 +33,10 @@ export function useSpaces(enabled = true, refreshVersion = 0) {
     const controller = new AbortController();
     request.current = controller;
     try {
-      const items = (await api.listSpaces(controller.signal)).filter((item) => !removed.current.has(item.id));
+      const items = (await api.listMembers(controller.signal)).filter((item) => !removed.current.has(item.id));
       if (controller.signal.aborted || generation.current !== version || sessions.getLifecycleVersion() !== lifecycle) return;
       const authoritative = items.some((item) => item.id === MAIN_SPACE) ? items : [mainSpace(), ...items];
-      for (const item of items) sessions.bindSession(item.id, item.sessionId);
+      for (const item of items) if (item.sessionId) sessions.bindSession(item.id, item.sessionId);
       setSpaces(authoritative);
       setError(undefined);
       // 首次 GET 不能丢掉用户刚建的本地空会话；一旦服务端确认存在，就不再用本地条目复活它。
@@ -79,6 +79,7 @@ export function useSpaces(enabled = true, refreshVersion = 0) {
     if (currentRef.current === id) selectSpace(MAIN_SPACE);
   };
   const merged = [...localSpaces, ...spaces.filter((space) => !localSpaces.some((item) => item.id === space.id))];
-  const sourceSpaces = spaces.some((space) => space.id === MAIN_SPACE) ? spaces : [mainSpace(), ...spaces];
+  const workspaces = spaces.filter((space) => space.id !== 'news-internal' && space.id !== 'sms-internal');
+  const sourceSpaces = workspaces.some((space) => space.id === MAIN_SPACE) ? workspaces : [mainSpace(), ...workspaces];
   return { spaces: merged.length ? merged : [mainSpace()], sourceSpaces, currentSpace, selectSpace, createSpace, removeSpace, error, reload };
 }

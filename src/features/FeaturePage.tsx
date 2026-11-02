@@ -51,13 +51,13 @@ export function FeaturePage({ section, onBack, spaces, onNewsSettings }: {
     finally { if (mounted.current) setSaving(false); }
   };
   return <View style={styles.root}>
-    <SpaceHeader title={feature?.name ?? (id === 'sms' ? '短信' : '新闻')} caption="独立功能设置" backLabel="返回设置" onBack={() => { setChoosing(false); onBack(); }} />
+    <SpaceHeader title={feature?.name ?? (id === 'sms' ? '短信' : '新闻')} caption="独立功能设置" backLabel="返回成员主页" onBack={() => { setChoosing(false); onBack(); }} />
     <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.body}>
       <FeedbackNotice tone="danger" text={error} />
       {loading && <Text style={styles.caption}>正在读取功能…</Text>}
       {error && <ActionButton text="刷新核对" label="刷新功能绑定" onPress={() => { setLoading(true); void reload(); }} disabled={saving || loading} />}
       {feature && <>
-        <View style={styles.group}><View style={styles.row}><View style={styles.flex}><Text style={styles.title}>交互承接空间</Text><Text style={styles.text}>{name(feature.targetSpaceId)}</Text><Text style={styles.caption}>只改变之后新发起交互的落点，不移动功能数据或聊天历史。</Text></View></View></View>
+        <View style={styles.group}><View style={styles.row}><View style={styles.flex}><Text style={styles.title}>交互承接空间</Text><Text style={styles.text}>{name(feature.targetSpaceId)}</Text><Text style={styles.caption}>仅改变后台通知及「带到会话讨论」的落点，不影响成员私聊或数据归属。</Text></View></View></View>
         <ActionButton label="更换交互承接空间" text={saving ? '正在保存…' : '更换承接空间'} disabled={loading || saving || needsReadback} onPress={() => setChoosing(!choosing)} />
         {choosing && <View style={styles.group}>{spaces.map((space) => <Pressable key={space.id} accessibilityRole="button" accessibilityLabel={`绑定到${space.title}`} disabled={saving} onPress={() => void bind(space.id)} style={({ pressed }) => [styles.row, pressed && styles.pressed]}><Text style={styles.text}>{space.title}{space.id === feature.targetSpaceId ? ' · 当前' : ''}</Text></Pressable>)}</View>}
         {id === 'news' ? <><ActionButton label="打开新闻RSS来源" text="RSS 来源管理" onPress={onNewsSettings} /><NewsPreferencesCard /></> : <SmsSettingsCard />}

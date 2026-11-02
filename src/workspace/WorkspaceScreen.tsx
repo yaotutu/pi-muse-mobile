@@ -2,11 +2,11 @@ import { useNewsDiscussion } from '../features/useNewsDiscussion';
 import { SmsProvider } from '../information/SmsProvider';
 import { FeaturePage, type FeatureSection } from '../features/FeaturePage';
 import { Card } from '../ui/Surfaces';
-import { BookOpen, ChevronRight, Download, FolderOpen, ArrowLeft, Menu, MessageCircle, Moon, Newspaper, Inbox, RotateCcw, Server, Settings, SlidersHorizontal, UserRound, X, Globe, type LucideIcon } from 'lucide-react-native';
+import { BookOpen, ChevronRight, Download, UsersRound, Activity, ArrowLeft, MessageCircle, Moon, Newspaper, RotateCcw, Server, Settings, UserRound, X, Globe, type LucideIcon } from 'lucide-react-native';
 import { BlurTargetView } from 'expo-blur';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ThemeStatusBar } from '../theme/ThemeStatusBar';
-import { Alert, Animated, AppState, BackHandler, Easing, Keyboard, KeyboardAvoidingView, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, View, type ViewInstance, useWindowDimensions } from 'react-native';
+import { Alert, Animated, AppState, BackHandler, Easing, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View, type ViewInstance, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ApiProvider, useApi } from '../api/ApiProvider';
 import { ConnectionProvider, useServiceConnection } from '../connection/ConnectionProvider';
@@ -37,7 +37,7 @@ import { ProfileProvider } from '../profile/ProfileProvider';
 import { DreamProvider } from '../dream/DreamProvider';
 import { DreamPanel } from './DreamPanel';
 import { ConversationHost } from './ConversationHost';
-import { SpaceLabels, headerSpaceNames } from './space-labels';
+import { SpaceLabels, headerSpaceNames, isBuiltinMember } from './space-labels';
 import { workspaceBackAction } from './workspace-back';
 import { SessionPanel, type SessionTab } from './SessionPanel';
 import { ResetSessionDialog } from './ResetSessionDialog';
@@ -49,18 +49,19 @@ import { ThemePicker } from '../theme/ThemePicker';
 import { IconControl, MuseAvatar, StatusPill, useReducedMotion } from './primitives';
 import { FrostedSurface } from '../ui/FrostedSurface';
 import { ActionButton } from '../ui/ActionButton';
-import { SpaceDrawer } from './SpaceDrawer';
+import { MemberDirectory } from './MemberDirectory';
+import { MemberAvatar } from './MemberAvatar';
 import { BrowserPanel } from '../browser/BrowserPanel';
 import { createBrowserStore } from '../browser/browser-store';
 
-type WorkspacePage = 'chat' | 'news' | 'goals' | 'settings' | 'space';
+type WorkspacePage = 'inbox' | 'members' | 'chat' | 'news' | 'goals' | 'settings' | 'space' | 'feature';
 type SettingsSubpage = 'memory' | 'profile' | 'dream' | 'news-sources' | FeatureSection | null;
 type WorkspaceNotice = { text: string; tone: 'success' | 'error' };
 const { layout: l, radius: r, typography: t } = workspaceTheme;
 const NAV: { id: WorkspacePage; label: string; icon: LucideIcon }[] = [
-  { id: 'chat', label: '聊天', icon: MessageCircle },
+  { id: 'inbox', label: '消息', icon: MessageCircle },
   { id: 'news', label: '新闻', icon: Newspaper },
-  { id: 'space', label: '空间', icon: FolderOpen },
+  { id: 'members', label: '成员', icon: UsersRound },
 ];
 function useStyles() { const { colors } = useTheme(); return useMemo(() => createStyles(colors), [colors]); }
 
@@ -136,18 +137,12 @@ function AnimatedSubpage({ children }: { children: ReactNode }) {
   );
 }
 
-function SettingsPage({ snapshot, openConnection, openBrowser, featuresAvailable = false, memoryAvailable = false, profileAvailable = false, dreamAvailable = false, currentSpaceId, subpage, onSubpage }: Pick<WorkspaceConnectionProps, 'snapshot' | 'openConnection'> & { openBrowser?: () => void; featuresAvailable?: boolean; memoryAvailable?: boolean; profileAvailable?: boolean; dreamAvailable?: boolean; currentSpaceId?: string; subpage: SettingsSubpage; onSubpage: (page: SettingsSubpage) => void }) {
+function SettingsPage({ snapshot, openConnection, openBrowser, memoryAvailable = false, profileAvailable = false, dreamAvailable = false, currentSpaceId, subpage, onSubpage }: Pick<WorkspaceConnectionProps, 'snapshot' | 'openConnection'> & { openBrowser?: () => void; memoryAvailable?: boolean; profileAvailable?: boolean; dreamAvailable?: boolean; currentSpaceId?: string; subpage: SettingsSubpage; onSubpage: (page: SettingsSubpage) => void }) {
   const styles = useStyles(); const update = useAppUpdate();
   if (subpage === 'memory' && memoryAvailable) return <AnimatedSubpage key="memory"><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}><MemoryPanel onBack={() => onSubpage(null)} /></ScrollView></AnimatedSubpage>;
   if (subpage === 'profile' && profileAvailable) return <AnimatedSubpage key="profile"><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}><ProfilePanel onBack={() => onSubpage(null)} /></ScrollView></AnimatedSubpage>;
   if (subpage === 'dream' && dreamAvailable && currentSpaceId) return <AnimatedSubpage key="dream"><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}><DreamPanel currentSpaceId={currentSpaceId} onBack={() => onSubpage(null)} /></ScrollView></AnimatedSubpage>;
   return <ScrollView key="settings" contentContainerStyle={[styles.otherPage, styles.settingsPage]}>
-    <View style={styles.appSection}><Text accessibilityRole="header" style={styles.appSectionTitle}>功能</Text>
-      <View style={styles.appSettingsGroup}>
-        <SettingRow title="新闻" label="管理新闻功能" description={featuresAvailable ? 'RSS 来源、阅读偏好与承接空间' : '连接真实服务后可用'} icon={Newspaper} onPress={() => onSubpage('news-feature')} disabled={!featuresAvailable} />
-        <SettingRow title="短信" label="管理短信功能" description={featuresAvailable ? '后台过滤、接收授权与承接空间' : '连接真实服务后可用'} icon={Inbox} onPress={() => onSubpage('sms')} disabled={!featuresAvailable} />
-      </View>
-    </View>
     <View style={styles.appSection}><Text accessibilityRole="header" style={styles.appSectionTitle}>连接与设备</Text>
       <View style={styles.appSettingsGroup}>
         <SettingRow title="服务器连接" label="服务器连接" description={connectionLabel(snapshot)} address={snapshot.serverUrl ?? undefined} icon={Server} onPress={openConnection} />
@@ -219,10 +214,10 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
   const { store: approvals } = useApprovals();
   const { store: goals } = useGoals();
   const runtime = useSpaceRuntime(spaces.currentSpace);
-  const [page, setPage] = useState<WorkspacePage>('chat');
+  const [page, setPage] = useState<WorkspacePage>('inbox');
   const [newsManaging, setNewsManaging] = useState(false);
   const [settingsSubpage, setSettingsSubpage] = useState<SettingsSubpage>(null);
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [profileReturn, setProfileReturn] = useState<WorkspacePage>('members');
   const [sessionOpen, setSessionOpen] = useState(false);
   const [sessionMounted, setSessionMounted] = useState(false);
   const chatBlurTarget = useRef<ViewInstance | null>(null);
@@ -241,13 +236,11 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
   const avatarCenterY = l.headerTop + l.headerAvatar / 2;
   const bloomRadius = 50;
   const targetScale = Math.max(25, Math.ceil((Math.hypot(contentWidth / 2, height - avatarCenterY) / bloomRadius) * 1.08));
-  const drawerWidth = Math.min(contentWidth * l.drawerRatio, l.drawerMaxWidth);
-  const [drawerProgress] = useState(() => new Animated.Value(0));
   const { snapshot: newsSnapshot } = useNews(news);
   const isNewsArticleOpen = !!newsSnapshot.selectedArticleId;
   const inSettingsSubpage = page === 'settings' && settingsSubpage !== null;
   const inNewsSubpage = page === 'news' && (newsManaging || isNewsArticleOpen);
-  const newsVisible = page === 'news' || (page === 'settings' && settingsSubpage === 'news-sources');
+  const newsVisible = page === 'news' || (page === 'feature' && settingsSubpage === 'news-sources');
   const isSubpage = inSettingsSubpage || inNewsSubpage;
   const statusLabel = snapshot.status === 'authentication-required' || snapshot.status === 'reset-error' || snapshot.status === 'storage-error'
     ? connectionLabel(snapshot) : runtime.label;
@@ -294,11 +287,6 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
     const timer = setTimeout(() => setNotice(undefined), workspaceTheme.motion.feedbackDuration);
     return () => clearTimeout(timer);
   }, [notice]);
-  useEffect(() => {
-    if (drawerOpen) { pendingSessionOpen.current = false; Keyboard.dismiss(); }
-    const animation = Animated.timing(drawerProgress, { toValue: drawerOpen ? 1 : 0, duration: reducedMotion ? 0 : workspaceTheme.motion.drawerDuration, easing: Easing.out(Easing.cubic), useNativeDriver: true });
-    animation.start(); return () => animation.stop();
-  }, [drawerOpen, drawerProgress, reducedMotion]);
   const onSessionCloseFinished = useCallback((finished = true) => {
     if (finished && !sessionOpen) setSessionMounted(false);
   }, [sessionOpen]);
@@ -318,7 +306,7 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
     } else setSpaceSection('home');
   }, [sessions, spaces.currentSpace, spaceSection, session.instructions.draft, session.instructions.saved, session.skills.draft, session.skills.saved]);
   const backSpace = useCallback(() => {
-    if (spaceSection === 'home') { setPage('chat'); return; }
+    if (spaceSection === 'home') { setPage(profileReturn); return; }
     if (spaceSection !== 'files') { leaveSpaceChild(); return; }
     const action = filesBackAction(files.getSnapshot());
     if (action === 'locked') {
@@ -333,50 +321,52 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
     else if (action === 'detail') files.closeFile();
     else if (action === 'directory') files.goUp();
     else setSpaceSection('home');
-  }, [files, leaveSpaceChild, spaceSection]);
+  }, [files, leaveSpaceChild, spaceSection, profileReturn]);
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      const action = workspaceBackAction({ keyboardVisible, browserOpen, sessionMounted, drawerOpen, page, newsArticleOpen: !!news.getSnapshot().selectedArticleId,
+      const action = workspaceBackAction({ keyboardVisible, browserOpen, sessionMounted, page, newsArticleOpen: !!news.getSnapshot().selectedArticleId,
         newsManaging, settingsSubpage, goalCreating: !!goals.getSnapshot().creator });
       if (action === 'keyboard') { pendingSessionOpen.current = false; Keyboard.dismiss(); }
       else if (action === 'browser') closeBrowser();
       else if (action === 'session') closeSession();
-      else if (action === 'drawer') setDrawerOpen(false);
       else if (action === 'news-article') news.closeArticle();
       else if (action === 'news-sources') setNewsManaging(false);
-      else if (action === 'chat') setPage('chat');
+      else if (action === 'inbox') setPage('inbox');
+      else if (action === 'feature') { if (settingsSubpage === 'news-sources') setSettingsSubpage('news-feature'); else { setPage('space'); setSettingsSubpage(null); } }
       else if (action === 'settings') setSettingsSubpage(settingsSubpage === 'news-sources' ? 'news-feature' : null);
       else if (action === 'space') backSpace();
       else if (action === 'goal' && !goals.getSnapshot().writing) goals.cancelCreate();
       return action !== 'none';
     });
     return () => subscription.remove();
-  }, [drawerOpen, keyboardVisible, browserOpen, closeBrowser, sessionMounted, closeSession, page, news, newsManaging, settingsSubpage, goals, backSpace]);
+  }, [keyboardVisible, browserOpen, closeBrowser, sessionMounted, closeSession, page, news, newsManaging, settingsSubpage, goals, backSpace]);
   const openSession = useCallback((tab?: unknown) => {
     if (typeof tab === 'string') setSessionTab(tab as SessionTab);
-    setDrawerOpen(false);
     if (keyboardVisible) { pendingSessionOpen.current = true; Keyboard.dismiss(); return; }
     setSessionMounted(true); setSessionOpen(true);
   }, [keyboardVisible]);
-  const openDrawer = useCallback(() => { Keyboard.dismiss(); setDrawerOpen(true); void reloadSpaces(); }, [reloadSpaces]);
+  const openInbox = useCallback(() => { Keyboard.dismiss(); setPage('inbox'); void reloadSpaces(); }, [reloadSpaces]);
   const changeSpace = (action: () => void) => {
     const state = files.getSnapshot();
     if (!hasFileWork(state)) { action(); return; }
     const busy = state.writing !== false || state.uncertain;
     Alert.alert('请先处理当前空间文件', busy ? '文件操作进行中或结果未明，请进入文件页核对后再切换。' : '切换空间前请保存或丢弃文件草稿，避免混淆文件归属。', [
       { text: '取消', style: 'cancel' },
-      { text: '返回文件', onPress: () => { setPage('space'); setSpaceSection('files'); setDrawerOpen(false); } },
+      { text: '返回文件', onPress: () => { setPage('space'); setSpaceSection('files'); } },
       ...(!busy ? [{ text: '丢弃并继续', style: 'destructive' as const, onPress: () => { files.cancelSavePreview(); files.cancelDelete(); files.cancelEditor(); action(); } }] : []),
     ]);
   };
-  const select = (id: string) => changeSpace(() => { spaces.selectSpace(id); setSessionOpen(false); setDrawerOpen(false); setPage('chat'); setSpaceSection('home'); setDeleteConfirm(false); setNotice(undefined); });
+  const select = (id: string) => changeSpace(() => { spaces.selectSpace(id); setSessionOpen(false); setPage('chat'); setSpaceSection('home'); setDeleteConfirm(false); setNotice(undefined); });
+  const openProfile = (id: string) => changeSpace(() => { Keyboard.dismiss(); spaces.selectSpace(id); setProfileReturn(page === 'chat' ? 'chat' : page === 'inbox' ? 'inbox' : 'members'); setPage('space'); setSpaceSection('home'); setSessionOpen(false); setDeleteConfirm(false); });
   const discussion = useNewsDiscussion((spaceId) => { refresh(spaceId); select(spaceId); });
   const remove = async () => {
     const id = spaces.currentSpace;
     try {
       const result = await sessions.deleteSpace(id);
       if (!result) return;
-      runtimeStore.forgetSpace(id); activities.forgetSpace(id); jobs.invalidate(); monitors.invalidate(); spaces.removeSpace(id); setSessionOpen(false); setDeleteConfirm(false); setNotice(undefined); await spaces.reload();
+      runtimeStore.forgetSpace(id); activities.forgetSpace(id); jobs.invalidate(); monitors.invalidate(); spaces.removeSpace(id);
+      setSessionOpen(false); setDeleteConfirm(false); setNotice(undefined); setSpaceSection('home'); setPage('members');
+      await spaces.reload();
     } catch (error) { setNotice({ text: error instanceof Error ? error.message : String(error), tone: 'error' }); }
   };
   const reset = async (id: string, clearSchedules: boolean) => {
@@ -397,15 +387,11 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
       void spaces.reload();
     }
   };
-  const pan = useMemo(() => PanResponder.create({
-    onMoveShouldSetPanResponder: (event, gesture) => !browserOpen && !sessionMounted && Math.abs(gesture.dx) > l.gestureThreshold && Math.abs(gesture.dx) > Math.abs(gesture.dy) * l.gestureAxisRatio && (drawerOpen ? gesture.dx < 0 : event.nativeEvent.pageX - gesture.dx < l.edgeGestureWidth && gesture.dx > 0),
-    onPanResponderRelease: (_event, gesture) => { if (sessionMounted) return; if (gesture.dx < -l.gestureThreshold) setDrawerOpen(false); if (gesture.dx > l.gestureThreshold) openDrawer(); },
-  }), [browserOpen, drawerOpen, openDrawer, sessionMounted]);
   const maintenance = <>
     <Card style={styles.exampleCard}><Text style={styles.itemTitle}>重置当前会话</Text><Text style={styles.mutedText}>开启全新对话，保留这个空间的文件、规则与技能。</Text>
       <ActionButton label="重置当前会话" text="重置会话" icon={RotateCcw} disabled={!connection?.enabled || hasFileWork(files.getSnapshot())} onPress={() => { setResetError(undefined); setResetTarget(spaces.currentSpace); }} />
     </Card>
-    {spaces.currentSpace !== MAIN_SPACE && <Card style={styles.exampleCard} tone="danger">
+    {spaces.currentSpace !== MAIN_SPACE && !isBuiltinMember(spaces.currentSpace) && <Card style={styles.exampleCard} tone="danger">
       <Text style={styles.itemTitle}>{deleteConfirm ? '确认删除当前空间？' : '删除当前空间'}</Text>
       <Text style={styles.mutedText}>空间的聊天历史、消息反馈、工作区文件、规则、技能及绑定任务将被彻底删除，无法撤销。</Text>
       <View style={styles.confirmActions}>
@@ -414,38 +400,56 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
       </View>
     </Card>}
   </>;
-  // 功能入口只在设置首页展示；RSS 作为新闻设置子页返回，不绕到新闻阅读主页面。
-  const otherPage = page === 'settings' && settingsSubpage === 'news-sources'
-    ? <NewsSourcesPage store={news} onBack={() => setSettingsSubpage('news-feature')} />
-    : page === 'settings' && (settingsSubpage === 'sms' || settingsSubpage === 'news-feature') ? <FeaturePage section={settingsSubpage} onBack={() => setSettingsSubpage(null)} spaces={spaces.spaces.filter((space) => !!space.sessionId).map((space) => ({ id: space.id, title: labels.title(space.id) }))} onNewsSettings={() => setSettingsSubpage('news-sources')} /> : page === 'chat' ? null : page === 'space' ? <SpacePage spaceId={spaces.currentSpace} name={labels.title(spaces.currentSpace)} section={spaceSection}
-    onSection={(next) => { setDeleteConfirm(false); setSpaceSection(next); }} onBack={backSpace} openDrawer={openDrawer} onSaved={refresh} maintenance={maintenance} /> : page === 'settings' ? <SettingsPage snapshot={snapshot} openConnection={openConnection} featuresAvailable memoryAvailable profileAvailable dreamAvailable currentSpaceId={spaces.currentSpace}
-    openBrowser={openBrowser} subpage={settingsSubpage} onSubpage={setSettingsSubpage} /> : page === 'news' ? <NewsPage store={news} managing={newsManaging} onManaging={setNewsManaging} openDrawer={openDrawer} onDiscuss={(id) => changeSpace(() => void discussion.discuss(id))} discussing={discussion.busy} discussionError={discussion.error} uncertainDiscussion={!!discussion.uncertainTarget} onCheckDiscussion={() => { if (discussion.uncertainTarget) select(discussion.uncertainTarget); }} onConfirmDiscussion={() => Alert.alert('确认已核对承接会话？', '恢复后不会重发上一次讨论。请先确认会话里是否已经收到这条新闻。', [{ text: '取消', style: 'cancel' }, { text: '已核对', onPress: () => void discussion.confirmChecked() }])} /> : !sessionOpen && <GoalsPanel openDrawer={openDrawer} />;
+  // 页面只组织入口；会话所有者与领域 Store 持续挂载，成员主页不会复制状态。
+  let otherPage: ReactNode = null;
+  if (page === 'inbox' || page === 'members') {
+    otherPage = <MemberDirectory mode={page} spaces={spaces.spaces} labels={labels} error={spaces.error}
+      onReload={() => void reloadSpaces()} onChat={select} onProfile={openProfile}
+      onSettings={() => { setPage('settings'); setSettingsSubpage(null); }}
+      onCreate={() => changeSpace(() => { spaces.createSpace(); setProfileReturn('members'); setPage('space'); setSpaceSection('home'); })} />;
+  } else if (page === 'feature' && settingsSubpage === 'news-sources') {
+    otherPage = <NewsSourcesPage store={news} onBack={() => setSettingsSubpage('news-feature')} />;
+  } else if (page === 'feature' && (settingsSubpage === 'sms' || settingsSubpage === 'news-feature')) {
+    otherPage = <FeaturePage section={settingsSubpage} onBack={() => { setSettingsSubpage(null); setPage('space'); }}
+      spaces={spaces.sourceSpaces.filter((space) => !!space.sessionId).map((space) => ({ id: space.id, title: labels.title(space.id) }))}
+      onNewsSettings={() => setSettingsSubpage('news-sources')} />;
+  } else if (page === 'space') {
+    otherPage = <SpacePage spaceId={spaces.currentSpace} name={labels.title(spaces.currentSpace)} section={spaceSection}
+      onSection={(next) => { setDeleteConfirm(false); setSpaceSection(next); }} onBack={backSpace}
+      onChat={() => select(spaces.currentSpace)} onActivity={() => { setPage('chat'); openSession(); }}
+      onFeatureSettings={() => { setPage('feature'); setSettingsSubpage(spaces.currentSpace === 'sms-internal' ? 'sms' : 'news-feature'); }}
+      onSaved={refresh} maintenance={maintenance} />;
+  } else if (page === 'settings') {
+    otherPage = <SettingsPage snapshot={snapshot} openConnection={openConnection} memoryAvailable profileAvailable dreamAvailable
+      currentSpaceId={spaces.currentSpace} openBrowser={openBrowser} subpage={settingsSubpage} onSubpage={setSettingsSubpage} />;
+  } else if (page === 'news') {
+    otherPage = <NewsPage store={news} managing={newsManaging} onManaging={setNewsManaging} onInbox={openInbox}
+      onDiscuss={(id) => changeSpace(() => void discussion.discuss(id))} discussing={discussion.busy} discussionError={discussion.error}
+      uncertainDiscussion={!!discussion.uncertainTarget} onCheckDiscussion={() => { if (discussion.uncertainTarget) select(discussion.uncertainTarget); }}
+      onConfirmDiscussion={() => Alert.alert('确认已核对承接会话？', '恢复后不会重发上一次讨论。请先确认会话里是否已经收到这条新闻。', [
+        { text: '取消', style: 'cancel' }, { text: '已核对', onPress: () => void discussion.confirmChecked() },
+      ])} />;
+  } else if (page === 'goals' && !sessionOpen) {
+    otherPage = <GoalsPanel openDrawer={openInbox} />;
+  }
   // 文件 Provider 与聊天所有者随连接持有；页面切换不销毁草稿或运行。
   return <View style={styles.root} testID="workspace-screen"><ThemeStatusBar />
-    <View style={[styles.viewport, { width: contentWidth }]} {...pan.panHandlers}
+    <View style={[styles.viewport, { width: contentWidth }]}
       pointerEvents={browserOpen ? 'none' : 'auto'} accessibilityElementsHidden={browserOpen} importantForAccessibility={browserOpen ? 'no-hide-descendants' : 'auto'}>
-      <View style={[styles.drawer, { width: drawerWidth }]} pointerEvents={drawerOpen ? 'auto' : 'none'} aria-hidden={!drawerOpen}
-        {...(Platform.OS === 'web' && !drawerOpen ? { inert: true } : {})} accessibilityElementsHidden={!drawerOpen} importantForAccessibility={drawerOpen ? 'yes' : 'no-hide-descendants'}>
-        {/* 仅重置侧栏本地筛选；会话、文件草稿与揭示动画都保留在外层。 */}
-        <SpaceDrawer key={drawerOpen ? 'open' : 'closed'} spaces={spaces.spaces} currentSpace={spaces.currentSpace} labels={labels} error={spaces.error}
-          onReload={() => void reloadSpaces()} onSelect={select} onClose={() => setDrawerOpen(false)}
-          onCreate={() => changeSpace(() => { spaces.createSpace(); setDrawerOpen(false); setSessionOpen(false); setPage('chat'); setSpaceSection('home'); setNotice(undefined); })}
-          onSettings={() => { setDrawerOpen(false); setPage('settings'); setSettingsSubpage(null); }} />
-      </View>
-      <Animated.View style={[styles.foreground, drawerOpen && styles.foregroundRounded, { transform: [{ translateX: drawerProgress.interpolate({ inputRange: [0, 1], outputRange: [0, drawerWidth] }) }] }]} accessibilityElementsHidden={drawerOpen} importantForAccessibility={drawerOpen ? 'no-hide-descendants' : 'auto'}>
-        <SafeAreaView style={styles.screen} edges={['top', 'bottom', 'left', 'right']} aria-hidden={drawerOpen} {...(Platform.OS === 'web' && drawerOpen ? { inert: true } : {})}>
+      <View style={styles.foreground}>
+        <SafeAreaView style={styles.screen} edges={['top', 'bottom', 'left', 'right']}>
           {/* 唯一键盘避让层：Android 按真实重叠缩小阅读区，iOS 保留 padding；不再另算键盘高度。 */}
           <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled={Platform.OS !== 'web'} accessibilityViewIsModal={sessionMounted}>
-            {page !== 'chat' && page !== 'news' && page !== 'goals' && page !== 'space' && !isSubpage && <View style={styles.pageHeader}><IconControl icon={ArrowLeft} label="返回当前会话" onPress={() => setPage('chat')} /><Text style={styles.pageTitle}>设置</Text><View style={styles.headerSideButtonSpacer} /></View>}
+            {page === 'settings' && !isSubpage && <View style={styles.pageHeader}><IconControl icon={ArrowLeft} label="返回消息列表" onPress={openInbox} /><Text style={styles.pageTitle}>设置</Text><View style={styles.headerSideButtonSpacer} /></View>}
             {/* 头像与左右操作浮在聊天层上方，不占正文高度；触控只落在实际控件。 */}
             {page === 'chat' && <View pointerEvents="box-none" style={[styles.chatHeader, keyboardVisible && styles.chatHeaderCompact]}>
-              <View style={styles.headerLeft}><IconControl icon={Menu} label="打开空间侧栏" testID="workspace-open-drawer" onPress={openDrawer} /></View>
-              <Pressable accessibilityRole="button" accessibilityLabel="打开当前会话面板" accessibilityHint={`当前空间：${labels.title(spaces.currentSpace)}；当前状态：${statusLabel}。全屏显示当前会话的动态、审批和执行历史`} accessibilityState={{ disabled: sessionMounted }} disabled={sessionMounted} testID="workspace-open-session" style={[styles.identity, keyboardVisible && styles.identityCompact]}
-                onPress={openSession}>
-                <MuseAvatar size={keyboardVisible ? l.compactHeaderAvatar : l.headerAvatar} />
+              <View style={styles.headerLeft}><IconControl icon={ArrowLeft} label="返回消息列表" testID="workspace-back-inbox" onPress={openInbox} /></View>
+              <Pressable accessibilityRole="button" accessibilityLabel={`查看${labels.title(spaces.currentSpace)}的主页`} accessibilityHint={`当前空间：${labels.title(spaces.currentSpace)}；当前状态：${statusLabel}。查看成员资料、发消息与管理专属文件`} accessibilityState={{ disabled: sessionMounted }} disabled={sessionMounted} testID="workspace-open-member" style={[styles.identity, keyboardVisible && styles.identityCompact]}
+                onPress={() => openProfile(spaces.currentSpace)}>
+                <MemberAvatar spaceId={spaces.currentSpace} size={keyboardVisible ? l.compactHeaderAvatar : l.headerAvatar} />
                 {headerNames.chat && <View style={[styles.identityLabel, styles.identityLabelSurface]}><Text numberOfLines={1} style={styles.identityName}>{headerNames.chat}</Text></View>}
               </Pressable>
-              <View style={styles.headerRight}><IconControl icon={SlidersHorizontal} label="打开当前空间" testID="workspace-open-console" onPress={() => { setPage('space'); setSpaceSection('home'); }} /></View>
+              <View style={styles.headerRight}><IconControl icon={Activity} label="打开当前会话面板" testID="workspace-open-session" onPress={openSession} /></View>
             </View>}
             <View style={styles.bodyStage}>
               <BlurTargetView ref={chatBlurTarget} style={styles.bodyStage}>
@@ -457,15 +461,8 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
                   <ConversationHost currentSpaceId={spaces.currentSpace} spaceIds={spaces.spaces.map((space) => space.id)} chatVisible={page === 'chat'} compactHeader={keyboardVisible} otherPage={otherPage}
                     refreshVersions={historyRefresh} onSettled={refresh} onBindingMismatch={reloadSpaces} openConnection={openConnection} onOpenApprovals={() => openSession('approvals')} />
                   {!!notice && <Text accessibilityRole="alert" style={[styles.notice, notice.tone === 'error' && styles.error]}>{notice.text}</Text>}
-                  {!browserOpen && !(page === 'chat' && keyboardVisible) && !(page === 'space' && spaceSection !== 'home') && page !== 'settings' && <Navigation page={page} onPage={(next) => {
-                    setPage(next);
-                    setSpaceSection('home');
-                    setSettingsSubpage(null);
-                    setNewsManaging(false);
-                    if (news.getSnapshot().selectedArticleId) {
-                      news.closeArticle();
-                    }
-                    setSessionOpen(false);
+                  {!browserOpen && (page === 'inbox' || page === 'members' || (page === 'news' && !inNewsSubpage)) && <Navigation page={page} onPage={(next) => {
+                    Keyboard.dismiss(); setPage(next); setSpaceSection('home'); setSettingsSubpage(null); setNewsManaging(false); news.closeArticle(); setSessionOpen(false);
                   }} />}
                 </View>
               </BlurTargetView>
@@ -495,7 +492,7 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
                 }
                 headerCenter={
                   <View style={styles.identity}>
-                    <MuseAvatar size={l.headerAvatar} />
+                    <MemberAvatar spaceId={spaces.currentSpace} size={l.headerAvatar} />
                     <View style={[styles.identityLabel, styles.sessionIdentityLabel]}>{headerNames.session && <Text numberOfLines={1} style={styles.identityName}>{headerNames.session}</Text>}<StatusPill label={statusLabel} testID="workspace-session-status" tone={!runtime.synchronized ? 'warning' : runtime.running ? 'accent' : 'neutral'} /></View>
                   </View>
                 }
@@ -520,8 +517,7 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
             )}
           </KeyboardAvoidingView>
         </SafeAreaView>
-        {drawerOpen && <Pressable accessibilityRole="button" accessibilityLabel="收起空间侧栏" onPress={() => setDrawerOpen(false)} style={styles.foregroundCover} />}
-      </Animated.View>
+      </View>
     </View>
     {browserOpen && <BrowserPanel store={browser} baseUrl={snapshot.serverUrl ?? ''} onClose={closeBrowser} />}
     {resetTarget && <ResetSessionDialog key={resetTarget} spaceId={resetTarget} available={!!connection?.enabled} error={resetError}
@@ -530,7 +526,7 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
 }
 const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: c.canvas }, viewport: { flex: 1, alignSelf: 'center', overflow: 'hidden', backgroundColor: c.canvas }, screen: { flex: 1 },
-  foreground: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: c.canvas, overflow: 'hidden' }, foregroundRounded: { borderRadius: r.drawerForeground }, foregroundCover: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: c.overlay },
+  foreground: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: c.canvas, overflow: 'hidden' },
   chatHeader: { position: 'absolute', zIndex: 2, top: l.headerTop, left: l.sidePadding, right: l.sidePadding, height: l.headerHeight }, chatHeaderCompact: { height: l.controlSize }, headerLeft: { position: 'absolute', top: 0, left: 0 }, headerRight: { position: 'absolute', top: 0, right: 0, flexDirection: 'row', gap: spacing[4] },
   bodyStage: { flex: 1 },
   sessionLayer: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden' },
@@ -549,7 +545,6 @@ const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   identityName: { ...t.name, color: c.ink, maxWidth: '100%', textAlign: 'center' },
   navigation: { flexDirection: 'row', height: l.navigationHeight, marginHorizontal: spacing[18], marginBottom: l.navigationBottom, alignItems: 'center' },
   navigationItem: { flex: 1, minHeight: l.controlSize, gap: l.navigationLabelGap, alignItems: 'center', justifyContent: 'center' }, navigationLabel: { ...t.navigation, color: c.faint }, navigationLabelSelected: { color: c.ink },
-  drawer: { position: 'absolute', top: 0, bottom: 0, left: 0, backgroundColor: c.canvas },
   headerSideButtonSpacer: { width: l.controlSize, height: l.controlSize },
   pageHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: l.sidePadding, paddingTop: spacing[12], paddingBottom: spacing[8] },
   otherPage: { paddingTop: l.pageTop, paddingHorizontal: l.sidePadding, paddingBottom: spacing[24], gap: spacing[18] }, pageTitle: { ...t.heroName, color: c.ink }, itemTitle: { ...t.itemTitle, color: c.ink }, mutedText: { ...t.detail, color: c.muted }, caption: { ...t.caption, color: c.faint }, error: { ...t.caption, color: c.danger },

@@ -11,25 +11,25 @@ test('空间编号按首次读到的时间分配，刷新与重排不改当前�
     entry('side-old', '2026-10-29T09:00:00Z'),
     entry('local-main', '2026-10-30T10:00:00Z'),
   ]);
-  assert.equal(labels.title('local-main'), '主空间');
-  assert.equal(labels.title('side-old'), '空间 1');
-  assert.equal(labels.title('side-new'), '空间 2');
+  assert.equal(labels.title('local-main'), 'Muse');
+  assert.equal(labels.title('side-old'), '成员 1');
+  assert.equal(labels.title('side-new'), '成员 2');
   const same = labels.sync([
     entry('side-new', '2026-11-01T09:00:00Z'),
     entry('side-old', '2026-11-02T09:00:00Z'),
     entry('local-main', '2026-11-02T10:00:00Z'),
   ]);
   assert.equal(same, labels);
-  assert.equal(same.title('side-old'), '空间 1');
-  assert.equal(same.title('side-new'), '空间 2');
+  assert.equal(same.title('side-old'), '成员 1');
+  assert.equal(same.title('side-new'), '成员 2');
 });
 
 test('新空间获得新编号，删除不影响已有标签，坏时间不伪造日期', () => {
   let labels = new SpaceLabels().sync([entry('local-main', '2026-10-30T00:00:00Z'), entry('side-a', '2026-10-30T01:00:00Z')]);
   labels = labels.sync([entry('local-main', '2026-10-30T00:00:00Z'), entry('side-a', '2026-10-30T01:00:00Z'), entry('side-b', '2026-10-30T02:00:00Z')]);
-  assert.equal(labels.title('side-b'), '空间 2');
+  assert.equal(labels.title('side-b'), '成员 2');
   labels = labels.sync([entry('local-main', '2026-10-30T00:00:00Z'), entry('side-b', '2026-10-30T02:00:00Z')]);
-  assert.equal(labels.title('side-b'), '空间 2');
+  assert.equal(labels.title('side-b'), '成员 2');
   assert.equal(spaceTime('bad-date'), '时间未知');
 });
 
@@ -38,11 +38,11 @@ test('主空间与键盘态无聊天名称，非主空间仅键盘收起时显�
     entry('local-main', '2026-10-30T00:00:00Z'),
     entry('side-a', '2026-10-30T01:00:00Z'),
   ]);
-  assert.equal(labels.title('local-main'), '主空间', '侧栏主空间名称不变');
+  assert.equal(labels.title('local-main'), 'Muse', '侧栏主空间名称不变');
   assert.deepEqual(headerSpaceNames(labels, 'local-main', false), { chat: null, session: null });
   assert.deepEqual(headerSpaceNames(labels, 'local-main', true), { chat: null, session: null });
-  assert.deepEqual(headerSpaceNames(labels, 'side-a', false), { chat: '空间 1', session: '空间 1' });
-  assert.deepEqual(headerSpaceNames(labels, 'side-a', true), { chat: null, session: '空间 1' });
+  assert.deepEqual(headerSpaceNames(labels, 'side-a', false), { chat: '成员 1', session: '成员 1' });
+  assert.deepEqual(headerSpaceNames(labels, 'side-a', true), { chat: null, session: '成员 1' });
 });
 
 test('空主空间的精确 epoch0 显示暂无聊天，真实日期照常显示', () => {
@@ -175,9 +175,9 @@ test('Android Back 优先关闭键盘、会话面板和侧栏，然后返回设�
   const state = { keyboardVisible: true, sessionMounted: true, drawerOpen: true, page: 'settings', settingsSubpage: 'profile', goalCreating: false };
   assert.equal(workspaceBackAction(state), 'keyboard');
   assert.equal(workspaceBackAction({ ...state, keyboardVisible: false }), 'session');
-  assert.equal(workspaceBackAction({ ...state, keyboardVisible: false, sessionMounted: false }), 'drawer');
+  assert.equal(workspaceBackAction({ ...state, keyboardVisible: false, sessionMounted: false }), 'settings');
   assert.equal(workspaceBackAction({ ...state, keyboardVisible: false, sessionMounted: false, drawerOpen: false }), 'settings');
-  assert.equal(workspaceBackAction({ ...state, keyboardVisible: false, sessionMounted: false, drawerOpen: false, settingsSubpage: null }), 'chat');
+  assert.equal(workspaceBackAction({ ...state, keyboardVisible: false, sessionMounted: false, drawerOpen: false, settingsSubpage: null }), 'inbox');
 });
 
 test('目标创建态 Back 先由创建流程消费，不落到系统退出', () => {
@@ -192,5 +192,5 @@ test('新闻 Back 先关闭键盘和阅读子页，再回聊天', () => {
   assert.equal(workspaceBackAction(state), 'keyboard');
   assert.equal(workspaceBackAction({ ...state, keyboardVisible: false }), 'news-article');
   assert.equal(workspaceBackAction({ ...state, keyboardVisible: false, newsArticleOpen: false }), 'news-sources');
-  assert.equal(workspaceBackAction({ ...state, keyboardVisible: false, newsArticleOpen: false, newsManaging: false }), 'chat');
+  assert.equal(workspaceBackAction({ ...state, keyboardVisible: false, newsArticleOpen: false, newsManaging: false }), 'inbox');
 });

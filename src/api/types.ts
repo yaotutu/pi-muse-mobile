@@ -14,6 +14,7 @@ import type { MessageFeedback } from '../feedback/types';
 // ---------------------------------------------------------------------------
 
 /** 空间持有配置与文件；sessionId 是当前聊天绑定，重置时改变，不能作为空间 ID 发请求。 */
+export type MemberInfo = SpaceEntry & { kind: 'workspace' | 'feature'; name?: string };
 export type SpaceInfo = { id: string; sessionId: string; updatedAt: string };
 /** 未持久化的本地空间草稿不伪造服务端 sessionId。 */
 export type SpaceEntry = Omit<SpaceInfo, 'sessionId'> & { sessionId: string | null };
