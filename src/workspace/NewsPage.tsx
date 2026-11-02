@@ -177,11 +177,17 @@ function ArticleDetail({ store, snapshot, onOpenActions, focusComments, onCommen
   </ScrollView>;
 }
 
-function Sources({ store, snapshot, onBack }: { store: NewsStore; snapshot: NewsSnapshot; onBack: () => void }) {
+/** 设置中的 RSS 沿原设置层级返回，且不清空阅读页当前打开的文章。 */
+export function NewsSourcesPage({ store, onBack }: { store: NewsStore; onBack: () => void }) {
+  const { snapshot } = useNews(store);
+  return <Sources store={store} snapshot={snapshot} onBack={onBack} backToSettings />;
+}
+
+function Sources({ store, snapshot, onBack, backToSettings = false }: { store: NewsStore; snapshot: NewsSnapshot; onBack: () => void; backToSettings?: boolean }) {
   const { colors } = useTheme();
   const [deleteId, setDeleteId] = useState<string | null>(null);
   return <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content} testID="news-sources">
-    <ActionButton label="返回新闻列表" text="返回新闻" icon={ChevronLeft} onPress={onBack} testID="news-sources-back" />
+    <ActionButton label={backToSettings ? '返回新闻设置' : '返回新闻列表'} text={backToSettings ? '返回新闻设置' : '返回新闻'} icon={ChevronLeft} onPress={onBack} testID="news-sources-back" />
     <View style={styles.sourceHeading}><Text accessibilityRole="header" style={[styles.sourceTitle, { color: colors.ink }]}>RSS 来源</Text>
       <Text style={[styles.excerpt, { color: colors.muted }]}>添加标准 RSS 地址，新闻会在服务端抓取并分析。</Text></View>
     <Card style={styles.sourceStatus}>

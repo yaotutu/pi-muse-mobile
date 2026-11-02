@@ -189,7 +189,7 @@ def return_to_chat():
 def open_global_settings():
     return_to_chat()
     tap('打开空间侧栏')
-    tap('打开全局设置')
+    tap('打开设置')
 
 
 try:

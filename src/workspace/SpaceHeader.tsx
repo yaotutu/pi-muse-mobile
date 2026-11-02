@@ -6,8 +6,8 @@ import { IconControl } from '../ui/IconControl';
 import { spacing, workspaceTheme } from '../ui/tokens';
 
 /** 空间及其子页共用固定顶栏；文件路径只作标题副文，不再挤占阅读正文。 */
-export function SpaceHeader({ title, caption, home = false, onBack, action }: {
-  title: string; caption?: string; home?: boolean; onBack: () => void; action?: ReactNode;
+export function SpaceHeader({ title, caption, home = false, backLabel, onBack, action }: {
+  title: string; caption?: string; home?: boolean; backLabel?: string; onBack: () => void; action?: ReactNode;
 }) {
   const { colors } = useTheme();
   const styles = useMemo(() => StyleSheet.create({
@@ -18,7 +18,7 @@ export function SpaceHeader({ title, caption, home = false, onBack, action }: {
     side: { width: workspaceTheme.layout.controlSize },
   }), [colors]);
   return <View style={styles.header}>
-    <IconControl icon={home ? Menu : ArrowLeft} label={home ? '打开空间侧栏' : '返回空间上一级'} onPress={onBack} />
+    <IconControl icon={home ? Menu : ArrowLeft} label={backLabel ?? (home ? '打开空间侧栏' : '返回空间上一级')} onPress={onBack} />
     <View style={styles.heading}>
       <Text numberOfLines={1} accessibilityRole="header" style={styles.title}>{title}</Text>
       {!!caption && <Text numberOfLines={1} ellipsizeMode="middle" style={styles.caption}>{caption}</Text>}

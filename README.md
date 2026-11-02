@@ -72,7 +72,7 @@ The release workflow builds a signed Android APK and an unsigned iOS IPA for use
 - **Human-in-the-loop approvals.** Agent-initiated file writes and edits require full before/after review and explicit confirmation. A stale approval cannot overwrite content that changed after the approval was created.
 - **Space files.** Open bottom Space → Files to browse the current space's private directories and files, read complete text, preview supported images, and download files to a chosen Android directory without overwriting same-name files. Manual text saves require complete-content review and confirmation.
 
-Space is a full-screen home for private files, direct Markdown/text source editing, rules, skill switches, and maintenance. Child pages hide bottom navigation and protect file drafts. The left drawer separates global settings from Features: news and SMS keep independent data and preferences, with conversations routed to their assigned Space (main by default).
+Space is a full-screen home for private files, direct Markdown/text source editing, rules, skill switches, and maintenance. Child pages hide bottom navigation and protect file drafts. The left drawer has a single Settings entry; its Features group contains news and SMS settings: news and SMS keep independent data and preferences, with conversations routed to their assigned Space (main by default).
 
 ### Global settings, memory, Dream, and themes
 

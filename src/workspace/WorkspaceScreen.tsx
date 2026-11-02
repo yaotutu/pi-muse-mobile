@@ -2,7 +2,7 @@ import { useNewsDiscussion } from '../features/useNewsDiscussion';
 import { SmsProvider } from '../information/SmsProvider';
 import { FeaturePage, type FeatureSection } from '../features/FeaturePage';
 import { Card } from '../ui/Surfaces';
-import { BookOpen, Check, ChevronRight, Download, FolderOpen, ArrowLeft, Menu, MessageCircle, Moon, Newspaper, RotateCcw, Search, Server, Settings, SlidersHorizontal, SquarePen, UserRound, X, Globe, type LucideIcon } from 'lucide-react-native';
+import { BookOpen, Check, ChevronRight, Download, FolderOpen, ArrowLeft, Menu, MessageCircle, Moon, Newspaper, Inbox, RotateCcw, Search, Server, Settings, SlidersHorizontal, SquarePen, UserRound, X, Globe, type LucideIcon } from 'lucide-react-native';
 import { BlurTargetView } from 'expo-blur';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ThemeStatusBar } from '../theme/ThemeStatusBar';
@@ -23,7 +23,7 @@ import { useSpaces } from '../spaces/useSpaces';
 import { useAppUpdate } from '../update/UpdateProvider';
 import { spacing, sizing, workspaceTheme, type WorkspaceColors } from '../ui/tokens';
 import { ConnectionPanel } from './ConnectionPanel';
-import { NewsPage } from './NewsPage';
+import { NewsPage, NewsSourcesPage } from './NewsPage';
 import { createNewsStore } from '../news/news-store';
 import { useNews } from '../news/useNews';
 import { useJobs } from '../jobs/JobProvider';
@@ -54,7 +54,7 @@ import { BrowserPanel } from '../browser/BrowserPanel';
 import { createBrowserStore } from '../browser/browser-store';
 
 type WorkspacePage = 'chat' | 'news' | 'goals' | 'settings' | 'space';
-type SettingsSubpage = 'memory' | 'profile' | 'dream' | FeatureSection | null;
+type SettingsSubpage = 'memory' | 'profile' | 'dream' | 'news-sources' | FeatureSection | null;
 type WorkspaceNotice = { text: string; tone: 'success' | 'error' };
 const { layout: l, radius: r, typography: t } = workspaceTheme;
 const NAV: { id: WorkspacePage; label: string; icon: LucideIcon }[] = [
@@ -136,12 +136,18 @@ function AnimatedSubpage({ children }: { children: ReactNode }) {
   );
 }
 
-function SettingsPage({ snapshot, openConnection, openBrowser, memoryAvailable = false, profileAvailable = false, dreamAvailable = false, currentSpaceId, subpage, onSubpage }: Pick<WorkspaceConnectionProps, 'snapshot' | 'openConnection'> & { openBrowser?: () => void; memoryAvailable?: boolean; profileAvailable?: boolean; dreamAvailable?: boolean; currentSpaceId?: string; subpage: SettingsSubpage; onSubpage: (page: SettingsSubpage) => void }) {
+function SettingsPage({ snapshot, openConnection, openBrowser, featuresAvailable = false, memoryAvailable = false, profileAvailable = false, dreamAvailable = false, currentSpaceId, subpage, onSubpage }: Pick<WorkspaceConnectionProps, 'snapshot' | 'openConnection'> & { openBrowser?: () => void; featuresAvailable?: boolean; memoryAvailable?: boolean; profileAvailable?: boolean; dreamAvailable?: boolean; currentSpaceId?: string; subpage: SettingsSubpage; onSubpage: (page: SettingsSubpage) => void }) {
   const styles = useStyles(); const update = useAppUpdate();
   if (subpage === 'memory' && memoryAvailable) return <AnimatedSubpage key="memory"><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}><MemoryPanel onBack={() => onSubpage(null)} /></ScrollView></AnimatedSubpage>;
   if (subpage === 'profile' && profileAvailable) return <AnimatedSubpage key="profile"><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}><ProfilePanel onBack={() => onSubpage(null)} /></ScrollView></AnimatedSubpage>;
   if (subpage === 'dream' && dreamAvailable && currentSpaceId) return <AnimatedSubpage key="dream"><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}><DreamPanel currentSpaceId={currentSpaceId} onBack={() => onSubpage(null)} /></ScrollView></AnimatedSubpage>;
   return <ScrollView key="settings" contentContainerStyle={[styles.otherPage, styles.settingsPage]}>
+    <View style={styles.appSection}><Text accessibilityRole="header" style={styles.appSectionTitle}>功能</Text>
+      <View style={styles.appSettingsGroup}>
+        <SettingRow title="新闻" label="管理新闻功能" description={featuresAvailable ? 'RSS 来源、阅读偏好与承接空间' : '连接真实服务后可用'} icon={Newspaper} onPress={() => onSubpage('news-feature')} disabled={!featuresAvailable} />
+        <SettingRow title="短信" label="管理短信功能" description={featuresAvailable ? '后台过滤、接收授权与承接空间' : '连接真实服务后可用'} icon={Inbox} onPress={() => onSubpage('sms')} disabled={!featuresAvailable} />
+      </View>
+    </View>
     <View style={styles.appSection}><Text accessibilityRole="header" style={styles.appSectionTitle}>连接与设备</Text>
       <View style={styles.appSettingsGroup}>
         <SettingRow title="服务器连接" label="服务器连接" description={connectionLabel(snapshot)} address={snapshot.serverUrl ?? undefined} icon={Server} onPress={openConnection} />
@@ -168,7 +174,7 @@ function DisconnectedWorkspace({ snapshot, openConnection }: WorkspaceConnection
   const inSettingsSubpage = page === 'settings' && settingsSubpage !== null;
   return <View style={styles.root} testID="workspace-screen"><ThemeStatusBar />
     <SafeAreaView style={styles.disconnected}>
-      {!inSettingsSubpage && <View style={styles.disconnectedHeader}><Text style={styles.itemTitle}>Pi Muse</Text><IconControl icon={Settings} label="全局设置" onPress={() => setPage(page === 'settings' ? 'chat' : 'settings')} /></View>}
+      {!inSettingsSubpage && <View style={styles.disconnectedHeader}><Text style={styles.itemTitle}>Pi Muse</Text><IconControl icon={Settings} label="设置" onPress={() => setPage(page === 'settings' ? 'chat' : 'settings')} /></View>}
       {page === 'settings' ? <SettingsPage snapshot={snapshot} openConnection={openConnection} subpage={settingsSubpage} onSubpage={setSettingsSubpage} /> : <View style={styles.welcome}>
         <MuseAvatar size={l.welcomeAvatar} /><Text style={styles.eyebrow}>HELLO, PI MUSE</Text><Text style={styles.emptyTitle}>{connectionLabel(snapshot)}</Text>
         <Text style={styles.mutedText}>{snapshot.error ?? '连接自己的 Pi Muse 服务器后即可恢复会话、聊天与真实执行状态。'}</Text>
@@ -242,6 +248,7 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
   const isNewsArticleOpen = !!newsSnapshot.selectedArticleId;
   const inSettingsSubpage = page === 'settings' && settingsSubpage !== null;
   const inNewsSubpage = page === 'news' && (newsManaging || isNewsArticleOpen);
+  const newsVisible = page === 'news' || (page === 'settings' && settingsSubpage === 'news-sources');
   const isSubpage = inSettingsSubpage || inNewsSubpage;
   const statusLabel = snapshot.status === 'authentication-required' || snapshot.status === 'reset-error' || snapshot.status === 'storage-error'
     ? connectionLabel(snapshot) : runtime.label;
@@ -267,9 +274,9 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
     setBrowserOpen(false);
   }, [browser]);
   useEffect(() => {
-    if (page === 'news') news.open();
+    if (newsVisible) news.open();
     else news.close();
-  }, [news, page]);
+  }, [news, newsVisible]);
   useEffect(() => {
     // ready 不重放通知历史；空间绑定与当前聊天都要回到服务端权威事实。
     if (runtime.synchronized) void reloadSpaces();
@@ -339,7 +346,7 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
       else if (action === 'news-article') news.closeArticle();
       else if (action === 'news-sources') setNewsManaging(false);
       else if (action === 'chat') setPage('chat');
-      else if (action === 'settings') { if (settingsSubpage === 'sms' || settingsSubpage === 'news-feature') setSettingsSubpage('features'); else if (settingsSubpage === 'features') { setSettingsSubpage(null); setPage('chat'); } else setSettingsSubpage(null); }
+      else if (action === 'settings') setSettingsSubpage(settingsSubpage === 'news-sources' ? 'news-feature' : null);
       else if (action === 'space') backSpace();
       else if (action === 'goal' && !goals.getSnapshot().writing) goals.cancelCreate();
       return action !== 'none';
@@ -408,8 +415,11 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
       </View>
     </Card>}
   </>;
-  const otherPage = page === 'settings' && (settingsSubpage === 'features' || settingsSubpage === 'sms' || settingsSubpage === 'news-feature') ? <FeaturePage section={settingsSubpage} onSection={setSettingsSubpage} onBack={() => { setSettingsSubpage(null); setPage('chat'); }} spaces={spaces.spaces.filter((space) => !!space.sessionId).map((space) => ({ id: space.id, title: labels.title(space.id) }))} onNewsSettings={() => { setPage('news'); setNewsManaging(true); news.closeArticle(); }} /> : page === 'chat' ? null : page === 'space' ? <SpacePage spaceId={spaces.currentSpace} name={labels.title(spaces.currentSpace)} section={spaceSection}
-    onSection={(next) => { setDeleteConfirm(false); setSpaceSection(next); }} onBack={backSpace} openDrawer={openDrawer} onSaved={refresh} maintenance={maintenance} /> : page === 'settings' ? <SettingsPage snapshot={snapshot} openConnection={openConnection} memoryAvailable profileAvailable dreamAvailable currentSpaceId={spaces.currentSpace}
+  // 功能入口只在设置首页展示；RSS 作为新闻设置子页返回，不绕到新闻阅读主页面。
+  const otherPage = page === 'settings' && settingsSubpage === 'news-sources'
+    ? <NewsSourcesPage store={news} onBack={() => setSettingsSubpage('news-feature')} />
+    : page === 'settings' && (settingsSubpage === 'sms' || settingsSubpage === 'news-feature') ? <FeaturePage section={settingsSubpage} onBack={() => setSettingsSubpage(null)} spaces={spaces.spaces.filter((space) => !!space.sessionId).map((space) => ({ id: space.id, title: labels.title(space.id) }))} onNewsSettings={() => setSettingsSubpage('news-sources')} /> : page === 'chat' ? null : page === 'space' ? <SpacePage spaceId={spaces.currentSpace} name={labels.title(spaces.currentSpace)} section={spaceSection}
+    onSection={(next) => { setDeleteConfirm(false); setSpaceSection(next); }} onBack={backSpace} openDrawer={openDrawer} onSaved={refresh} maintenance={maintenance} /> : page === 'settings' ? <SettingsPage snapshot={snapshot} openConnection={openConnection} featuresAvailable memoryAvailable profileAvailable dreamAvailable currentSpaceId={spaces.currentSpace}
     openBrowser={openBrowser} subpage={settingsSubpage} onSubpage={setSettingsSubpage} /> : page === 'news' ? <NewsPage store={news} managing={newsManaging} onManaging={setNewsManaging} openDrawer={openDrawer} onDiscuss={(id) => changeSpace(() => void discussion.discuss(id))} discussing={discussion.busy} discussionError={discussion.error} uncertainDiscussion={!!discussion.uncertainTarget} onCheckDiscussion={() => { if (discussion.uncertainTarget) select(discussion.uncertainTarget); }} onConfirmDiscussion={() => Alert.alert('确认已核对承接会话？', '恢复后不会重发上一次讨论。请先确认会话里是否已经收到这条新闻。', [{ text: '取消', style: 'cancel' }, { text: '已核对', onPress: () => void discussion.confirmChecked() }])} /> : !sessionOpen && <GoalsPanel openDrawer={openDrawer} />;
   // 文件 Provider 与聊天所有者随连接持有；页面切换不销毁草稿或运行。
   return <View style={styles.root} testID="workspace-screen"><ThemeStatusBar />
@@ -430,15 +440,14 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
           </Pressable>)}
         </ScrollView>
         <View style={styles.drawerFooter}><View style={styles.drawerSearch}><Search size={sizing[18]} color={colors.faint} /><FormInput variant="search" accessibilityLabel="搜索空间" placeholder="搜索空间" placeholderTextColor={colors.faint} value={spaceQuery} onChangeText={setSpaceQuery} style={styles.searchInput} /></View><IconControl icon={SquarePen} label="新建空间" testID="workspace-create-space" onPress={() => { changeSpace(() => { spaces.createSpace(); setSpaceQuery(''); setDrawerOpen(false); setSessionOpen(false); setPage('chat'); setSpaceSection('home'); setNotice(undefined); }); }} /></View>
-        <SettingRow title="功能" label="打开功能管理" description="新闻、短信与交互承接空间" icon={Newspaper} onPress={() => { setDrawerOpen(false); setPage('settings'); setSettingsSubpage('features'); }} testID="workspace-features" />
-        <SettingRow title="全局设置" label="打开全局设置" description="连接、资料、记忆与本机外观" icon={Settings} onPress={() => { setDrawerOpen(false); setPage('settings'); setSettingsSubpage(null); }} testID="workspace-global-settings" />
+        <SettingRow title="设置" label="打开设置" description="功能、连接与应用偏好" icon={Settings} onPress={() => { setDrawerOpen(false); setPage('settings'); setSettingsSubpage(null); }} testID="workspace-settings" />
         </SafeAreaView>
       </View>
       <Animated.View style={[styles.foreground, drawerOpen && styles.foregroundRounded, { transform: [{ translateX: drawerProgress.interpolate({ inputRange: [0, 1], outputRange: [0, drawerWidth] }) }] }]} accessibilityElementsHidden={drawerOpen} importantForAccessibility={drawerOpen ? 'no-hide-descendants' : 'auto'}>
         <SafeAreaView style={styles.screen} edges={['top', 'bottom', 'left', 'right']} aria-hidden={drawerOpen} {...(Platform.OS === 'web' && drawerOpen ? { inert: true } : {})}>
           {/* 唯一键盘避让层：Android 按真实重叠缩小阅读区，iOS 保留 padding；不再另算键盘高度。 */}
           <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled={Platform.OS !== 'web'} accessibilityViewIsModal={sessionMounted}>
-            {page !== 'chat' && page !== 'news' && page !== 'goals' && page !== 'space' && !isSubpage && <View style={styles.pageHeader}><IconControl icon={ArrowLeft} label="返回当前会话" onPress={() => setPage('chat')} /><Text style={styles.pageTitle}>全局设置</Text><View style={styles.headerSideButtonSpacer} /></View>}
+            {page !== 'chat' && page !== 'news' && page !== 'goals' && page !== 'space' && !isSubpage && <View style={styles.pageHeader}><IconControl icon={ArrowLeft} label="返回当前会话" onPress={() => setPage('chat')} /><Text style={styles.pageTitle}>设置</Text><View style={styles.headerSideButtonSpacer} /></View>}
             {/* 头像与左右操作浮在聊天层上方，不占正文高度；触控只落在实际控件。 */}
             {page === 'chat' && <View pointerEvents="box-none" style={[styles.chatHeader, keyboardVisible && styles.chatHeaderCompact]}>
               <View style={styles.headerLeft}><IconControl icon={Menu} label="打开空间侧栏" testID="workspace-open-drawer" onPress={openDrawer} /></View>

@@ -278,7 +278,7 @@ test('空间维护归空间子页，全局设置来自抽屉，会话面板只�
   const screen = read('src/workspace/WorkspaceScreen.tsx');
   const panel = read('src/workspace/SessionPanel.tsx');
   assert.match(screen, /id: 'space', label: '空间', icon: FolderOpen/);
-  assert.match(screen, /title="全局设置" label="打开全局设置"/);
+  assert.match(screen, /title="设置" label="打开设置"/);
   assert.match(screen, /page === 'space' \? <SpacePage/);
   assert.match(screen, /const maintenance =/);
   const settings = screen.slice(screen.indexOf('function SettingsPage'), screen.indexOf('function DisconnectedWorkspace'));
