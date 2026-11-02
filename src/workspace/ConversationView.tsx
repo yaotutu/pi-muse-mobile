@@ -481,6 +481,7 @@ function Message({ message, pendingStatus, feedbackScope }: {
     });
   };
   const bubbleContent = <>
+    {message.featureSource && <Text style={styles.featureSourceLabel}>来自{message.featureSource.featureId === 'news' ? '新闻' : '短信'}</Text>}
     {!!message.text && (message.role === 'user'
       ? <Text selectable={!feedbackScope} onLongPress={feedbackScope ? openFeedback : undefined}
         accessibilityActions={feedbackScope ? [{ name: 'openMessageActions', label: '打开消息操作' }] : undefined}
@@ -649,6 +650,7 @@ const createStyles = (c: WorkspaceColors) =>
     userMessageFailed: { backgroundColor: c.danger },
     userMessageUnconfirmed: { opacity: 0.75 },
     messageSubtext: { ...t.caption, color: c.onAccent, marginTop: spacing[4], alignSelf: 'flex-end' },
+    featureSourceLabel: { ...t.caption, color: c.muted, marginBottom: spacing[4] },
     pendingBanner: {
       padding: spacing[12],
       borderRadius: r.card,

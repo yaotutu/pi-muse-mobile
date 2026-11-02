@@ -66,6 +66,7 @@ export type ConversationMessageMetadata = {
   jobId: string | null;
   notificationId: string | null;
   feedbackAvailable: boolean;
+  featureSource?: import("../features/contracts").FeatureSource;
 };
 
 type ConversationMessageBase = {

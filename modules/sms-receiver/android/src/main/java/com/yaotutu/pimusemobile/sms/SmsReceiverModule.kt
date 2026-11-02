@@ -41,10 +41,14 @@ class SmsReceiverModule : Module() {
       override fun onReceive(c: Context?, intent: Intent?) {
         if (intent?.action == Telephony.Sms.Intents.SMS_RECEIVED_ACTION) {
           val messages = Telephony.Sms.Intents.getMessagesFromIntent(intent) ?: return
-          for (msg in messages) {
-            val body = msg.displayMessageBody ?: msg.messageBody ?: ""
-            val sender = msg.displayOriginatingAddress ?: msg.originatingAddress ?: "Unknown"
-            val timestamp = msg.timestampMillis
+          // 同条长短信的 PDU 分片共享发件人与时间。先拼原文再发事件，避免
+          // 各分片使用同一个接入幂等键后冲突，导致只保存第一段。
+          val grouped = messages.groupBy { msg ->
+            Pair(msg.displayOriginatingAddress ?: msg.originatingAddress ?: "Unknown", msg.timestampMillis)
+          }
+          for ((identity, parts) in grouped) {
+            val body = parts.joinToString("") { it.displayMessageBody ?: it.messageBody ?: "" }
+            val (sender, timestamp) = identity
             this@SmsReceiverModule.sendEvent(
               "onSmsReceived",
               mapOf(

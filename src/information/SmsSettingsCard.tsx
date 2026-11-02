@@ -7,14 +7,14 @@ import { workspaceTheme, spacing } from '../ui/tokens';
 import { useTheme } from '../theme/ThemeProvider';
 import { ActionButton } from '../ui/ActionButton';
 import { FormInput } from '../ui/FormInput';
-import { useInformation } from './useInformation';
+import { useSmsInformationState } from './SmsProvider';
 
 const SAMPLE_COURIER = '【顺丰速运】您的包裹已送达菜鸟驿站，取件码 3-4-2018，请凭码及时取件。';
 const SAMPLE_SPAM = '【特惠通知】年中大促火热开启，全场五折包邮，回复TD退订。';
 
-export function InformationSettingsCard({ spaceId }: { spaceId: string }) {
+export function SmsSettingsCard() {
   const { colors } = useTheme();
-  const info = useInformation(spaceId);
+  const info = useSmsInformationState();
   const [customSms, setCustomSms] = useState('');
 
   const styles = useMemo(() => StyleSheet.create({
@@ -60,22 +60,22 @@ export function InformationSettingsCard({ spaceId }: { spaceId: string }) {
     <Card style={styles.card}>
       <View style={styles.iconHeading}>
         <Inbox size={workspaceTheme.layout.iconSize - spacing[4]} strokeWidth={1.6} color={colors.muted} />
-        <Text style={styles.section}>信息后台与短信整理</Text>
+        <Text style={styles.section}>短信处理</Text>
       </View>
       <Text style={styles.caption}>
-        将此空间作为短信与消息的智能处理空间，根据偏好提醒重要内容，静默忽略垃圾信息。
+        短信保存在独立功能中；仅重要结果进入绑定的承接会话，不随当前空间切换。
       </Text>
 
       <Pressable
         accessibilityRole="switch"
-        accessibilityLabel="启用信息后台"
-        accessibilityState={{ checked: enabled, disabled: info.loading || info.saving }}
-        disabled={info.loading || info.saving}
+        accessibilityLabel="启用短信处理"
+        accessibilityState={{ checked: enabled, disabled: info.loading || info.saving || info.needsReadback }}
+        disabled={info.loading || info.saving || info.needsReadback}
         onPress={() => void info.toggleEnabled(!enabled)}
         style={styles.row}
       >
         <View style={styles.body}>
-          <Text style={styles.text}>启用信息后台</Text>
+          <Text style={styles.text}>启用短信处理</Text>
           <Text style={styles.caption}>
             {enabled ? '已开启：信息上报后自动进行批处理分析' : '已关闭：不处理上报信息'}
           </Text>
@@ -106,7 +106,7 @@ export function InformationSettingsCard({ spaceId }: { spaceId: string }) {
               icon={Check}
               tone="primary"
               busy={info.saving}
-              disabled={info.saving}
+              disabled={info.saving || info.needsReadback}
               onPress={() => void info.saveNotes()}
             />
           </View>
@@ -179,11 +179,10 @@ export function InformationSettingsCard({ spaceId }: { spaceId: string }) {
                 icon={Send}
                 tone="secondary"
                 busy={info.ingesting}
-                disabled={info.ingesting || !customSms.trim()}
+                disabled={info.ingesting || info.needsReadback || !customSms.trim()}
                 onPress={async () => {
                   const textToIngest = customSms;
-                  setCustomSms('');
-                  await info.ingestSms(textToIngest);
+                  if (await info.ingestSms(textToIngest)) setCustomSms('');
                 }}
               />
               {pendingCount > 0 && (
@@ -193,7 +192,7 @@ export function InformationSettingsCard({ spaceId }: { spaceId: string }) {
                   icon={Play}
                   tone="primary"
                   busy={info.triggering}
-                  disabled={info.triggering}
+                  disabled={info.triggering || info.needsReadback}
                   onPress={() => void info.triggerRun()}
                 />
               )}
@@ -241,6 +240,7 @@ export function InformationSettingsCard({ spaceId }: { spaceId: string }) {
       )}
 
       {!!info.error && <FeedbackNotice text={info.error} tone="danger" />}
+      <ActionButton label="刷新短信状态" text="刷新核对" disabled={info.saving || info.ingesting || info.triggering} onPress={() => void info.reload()} />
       {!!info.notice && <Text style={styles.caption}>{info.notice}</Text>}
     </Card>
   );

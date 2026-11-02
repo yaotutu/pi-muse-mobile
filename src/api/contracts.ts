@@ -1,3 +1,4 @@
+import { parseFeatureSource, type FeatureClient } from "../features/contracts";
 /** 页面依赖的客户端契约；网络实现不向上泄露传输细节。 */
 import type {
   AgUiEvent,
@@ -114,7 +115,7 @@ export function parseMessageFeedback(value: unknown): MessageFeedback {
 
 function parseMessageMetadata(value: unknown): ConversationMessageMetadata {
   if (!isRecord(value) || !hasOnlyKeys(value, [
-    'createdAt', 'source', 'runId', 'jobId', 'notificationId', 'feedbackAvailable',
+    'createdAt', 'source', 'runId', 'jobId', 'notificationId', 'feedbackAvailable', 'featureSource',
   ])) {
     throw invalidHistory();
   }
@@ -125,7 +126,9 @@ function parseMessageMetadata(value: unknown): ConversationMessageMetadata {
   if (jobId !== null && typeof jobId !== 'string') throw invalidHistory();
   if (notificationId !== null && typeof notificationId !== 'string') throw invalidHistory();
   if (typeof feedbackAvailable !== 'boolean') throw invalidHistory();
-  return { createdAt, source, runId, jobId, notificationId, feedbackAvailable };
+  const featureSource = value.featureSource === undefined ? undefined : parseFeatureSource(value.featureSource);
+  if (featureSource && (source !== 'notification' || !notificationId)) throw invalidHistory();
+  return { createdAt, source, runId, jobId, notificationId, feedbackAvailable, ...(featureSource ? { featureSource } : {}) };
 }
 
 function parseFeedbackEvent(value: unknown): MessageFeedbackEvent {
@@ -293,7 +296,7 @@ export function parseMessagesSnapshotEvent(event: AgUiEvent): AgUiEvent {
 /**
  * 客户端接口：页面只依赖此抽象，不感知 mock/HTTP 差异。
  */
-export interface ApiClient extends DreamClient, ApprovalClient, ActivityClient, MemoryClient, FilesClient, NewsClient, BrowserClient, InformationClient {
+export interface ApiClient extends DreamClient, ApprovalClient, ActivityClient, MemoryClient, FilesClient, NewsClient, BrowserClient, InformationClient, FeatureClient {
   /** 免鉴权 health 的权威 IANA 时区；不猜测服务端与手机处于相同时区。 */
   getServerTimeZone(signal?: AbortSignal): Promise<string>;
   /** POST /api/session → {token, mode}；客户端不按时间过期，失效以服务端401为准。 */

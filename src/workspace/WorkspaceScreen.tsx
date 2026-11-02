@@ -1,3 +1,6 @@
+import { useNewsDiscussion } from '../features/useNewsDiscussion';
+import { SmsProvider } from '../information/SmsProvider';
+import { FeaturePage, type FeatureSection } from '../features/FeaturePage';
 import { Card } from '../ui/Surfaces';
 import { BookOpen, Check, ChevronRight, Download, FolderOpen, ArrowLeft, Menu, MessageCircle, Moon, Newspaper, RotateCcw, Search, Server, Settings, SlidersHorizontal, SquarePen, UserRound, X, Globe, type LucideIcon } from 'lucide-react-native';
 import { BlurTargetView } from 'expo-blur';
@@ -51,7 +54,7 @@ import { BrowserPanel } from '../browser/BrowserPanel';
 import { createBrowserStore } from '../browser/browser-store';
 
 type WorkspacePage = 'chat' | 'news' | 'goals' | 'settings' | 'space';
-type SettingsSubpage = 'memory' | 'profile' | 'dream' | null;
+type SettingsSubpage = 'memory' | 'profile' | 'dream' | FeatureSection | null;
 type WorkspaceNotice = { text: string; tone: 'success' | 'error' };
 const { layout: l, radius: r, typography: t } = workspaceTheme;
 const NAV: { id: WorkspacePage; label: string; icon: LucideIcon }[] = [
@@ -189,7 +192,7 @@ function Navigation({ page, onPage }: { page: WorkspacePage; onPage: (page: Work
 function LiveWorkspace(props: WorkspaceConnectionProps) {
   const connection = useServiceConnection();
   const spaces = useSpaces(!!connection?.enabled, props.snapshot.refreshVersion);
-  return <FilesProvider currentSpaceId={spaces.currentSpace}><WorkspaceContent {...props} spaces={spaces} /></FilesProvider>;
+  return <SmsProvider><FilesProvider currentSpaceId={spaces.currentSpace}><WorkspaceContent {...props} spaces={spaces} /></FilesProvider></SmsProvider>;
 }
 
 function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnectionProps & { spaces: ReturnType<typeof useSpaces> }) {
@@ -336,7 +339,7 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
       else if (action === 'news-article') news.closeArticle();
       else if (action === 'news-sources') setNewsManaging(false);
       else if (action === 'chat') setPage('chat');
-      else if (action === 'settings') setSettingsSubpage(null);
+      else if (action === 'settings') { if (settingsSubpage === 'sms' || settingsSubpage === 'news-feature') setSettingsSubpage('features'); else if (settingsSubpage === 'features') { setSettingsSubpage(null); setPage('chat'); } else setSettingsSubpage(null); }
       else if (action === 'space') backSpace();
       else if (action === 'goal' && !goals.getSnapshot().writing) goals.cancelCreate();
       return action !== 'none';
@@ -361,6 +364,7 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
     ]);
   };
   const select = (id: string) => changeSpace(() => { spaces.selectSpace(id); setSessionOpen(false); setDrawerOpen(false); setPage('chat'); setSpaceSection('home'); setDeleteConfirm(false); setNotice(undefined); });
+  const discussion = useNewsDiscussion((spaceId) => { refresh(spaceId); select(spaceId); });
   const remove = async () => {
     const id = spaces.currentSpace;
     try {
@@ -404,9 +408,9 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
       </View>
     </Card>}
   </>;
-  const otherPage = page === 'chat' ? null : page === 'space' ? <SpacePage spaceId={spaces.currentSpace} name={labels.title(spaces.currentSpace)} section={spaceSection}
+  const otherPage = page === 'settings' && (settingsSubpage === 'features' || settingsSubpage === 'sms' || settingsSubpage === 'news-feature') ? <FeaturePage section={settingsSubpage} onSection={setSettingsSubpage} onBack={() => { setSettingsSubpage(null); setPage('chat'); }} spaces={spaces.spaces.filter((space) => !!space.sessionId).map((space) => ({ id: space.id, title: labels.title(space.id) }))} onNewsSettings={() => { setPage('news'); setNewsManaging(true); news.closeArticle(); }} /> : page === 'chat' ? null : page === 'space' ? <SpacePage spaceId={spaces.currentSpace} name={labels.title(spaces.currentSpace)} section={spaceSection}
     onSection={(next) => { setDeleteConfirm(false); setSpaceSection(next); }} onBack={backSpace} openDrawer={openDrawer} onSaved={refresh} maintenance={maintenance} /> : page === 'settings' ? <SettingsPage snapshot={snapshot} openConnection={openConnection} memoryAvailable profileAvailable dreamAvailable currentSpaceId={spaces.currentSpace}
-    openBrowser={openBrowser} subpage={settingsSubpage} onSubpage={setSettingsSubpage} /> : page === 'news' ? <NewsPage store={news} managing={newsManaging} onManaging={setNewsManaging} openDrawer={openDrawer} /> : !sessionOpen && <GoalsPanel openDrawer={openDrawer} />;
+    openBrowser={openBrowser} subpage={settingsSubpage} onSubpage={setSettingsSubpage} /> : page === 'news' ? <NewsPage store={news} managing={newsManaging} onManaging={setNewsManaging} openDrawer={openDrawer} onDiscuss={(id) => changeSpace(() => void discussion.discuss(id))} discussing={discussion.busy} discussionError={discussion.error} uncertainDiscussion={!!discussion.uncertainTarget} onCheckDiscussion={() => { if (discussion.uncertainTarget) select(discussion.uncertainTarget); }} onConfirmDiscussion={() => Alert.alert('确认已核对承接会话？', '恢复后不会重发上一次讨论。请先确认会话里是否已经收到这条新闻。', [{ text: '取消', style: 'cancel' }, { text: '已核对', onPress: () => void discussion.confirmChecked() }])} /> : !sessionOpen && <GoalsPanel openDrawer={openDrawer} />;
   // 文件 Provider 与聊天所有者随连接持有；页面切换不销毁草稿或运行。
   return <View style={styles.root} testID="workspace-screen"><ThemeStatusBar />
     <View style={[styles.viewport, { width: contentWidth }]} {...pan.panHandlers}
@@ -426,6 +430,7 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
           </Pressable>)}
         </ScrollView>
         <View style={styles.drawerFooter}><View style={styles.drawerSearch}><Search size={sizing[18]} color={colors.faint} /><FormInput variant="search" accessibilityLabel="搜索空间" placeholder="搜索空间" placeholderTextColor={colors.faint} value={spaceQuery} onChangeText={setSpaceQuery} style={styles.searchInput} /></View><IconControl icon={SquarePen} label="新建空间" testID="workspace-create-space" onPress={() => { changeSpace(() => { spaces.createSpace(); setSpaceQuery(''); setDrawerOpen(false); setSessionOpen(false); setPage('chat'); setSpaceSection('home'); setNotice(undefined); }); }} /></View>
+        <SettingRow title="功能" label="打开功能管理" description="新闻、短信与交互承接空间" icon={Newspaper} onPress={() => { setDrawerOpen(false); setPage('settings'); setSettingsSubpage('features'); }} testID="workspace-features" />
         <SettingRow title="全局设置" label="打开全局设置" description="连接、资料、记忆与本机外观" icon={Settings} onPress={() => { setDrawerOpen(false); setPage('settings'); setSettingsSubpage(null); }} testID="workspace-global-settings" />
         </SafeAreaView>
       </View>

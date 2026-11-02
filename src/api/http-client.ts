@@ -1,3 +1,4 @@
+import { parseFeatures, parseFeature, parseDiscussion, type FeatureId } from "../features/contracts";
 /**
  * 真实 HTTP 客户端：expo/fetch（原生流式支持）+ Bearer token + SSE 分帧消费。
  *
@@ -1210,6 +1211,71 @@ export class HttpApiClient implements ApiClient {
 
   async triggerInformationRun(spaceId: string, signal?: AbortSignal): Promise<void> {
     await this.request<unknown>(`/api/spaces/${encodeURIComponent(spaceId)}/information/runs`, {
+      method: 'POST',
+      body: {},
+      signal,
+    });
+  }
+  async listFeatures(signal?: AbortSignal) { return parseFeatures(await this.request<unknown>('/api/features', { signal })); }
+  async bindFeature(id: FeatureId, spaceId: string, signal?: AbortSignal) { return parseFeature(await this.request<unknown>(`/api/features/${id}/binding`, { method: 'PUT', body: { spaceId }, signal })); }
+  async discussNews(articleId: string, signal?: AbortSignal) { return parseDiscussion(await this.request<unknown>('/api/features/news/discussions', { method: 'POST', body: { articleId }, signal })); }
+  // --- 独立短信功能：不接收当前工作空间 ID ---
+
+  async getSmsSettings(signal?: AbortSignal): Promise<InformationSettings> {
+    return parseInformationSettings(
+      await this.request<unknown>(`/api/features/sms/settings`, { signal }),
+    );
+  }
+
+  async saveSmsSettings(settings: InformationSettings, signal?: AbortSignal): Promise<InformationSettings> {
+    return parseInformationSettings(
+      await this.request<unknown>(`/api/features/sms/settings`, {
+        method: 'PUT',
+        body: settings,
+        signal,
+      }),
+    );
+  }
+
+  async getSmsPreferences(signal?: AbortSignal): Promise<InformationPreferences> {
+    return parseInformationPreferences(
+      await this.request<unknown>(`/api/features/sms/preferences`, { signal }),
+    );
+  }
+
+  async saveSmsPreferences(preferences: { notes: string }, signal?: AbortSignal): Promise<InformationPreferences> {
+    return parseInformationPreferences(
+      await this.request<unknown>(`/api/features/sms/preferences`, {
+        method: 'PUT',
+        body: preferences,
+        signal,
+      }),
+    );
+  }
+
+  async ingestSmsItems(items: InformationInputItem[], signal?: AbortSignal): Promise<InformationItem[]> {
+    return parseInformationIngestResult(
+      await this.request<unknown>(`/api/features/sms/items`, {
+        method: 'POST',
+        body: { items },
+        signal,
+      }),
+    );
+  }
+
+  async listSmsItems(query?: InformationItemsQuery, signal?: AbortSignal): Promise<InformationItemsPage> {
+    const params = new URLSearchParams();
+    if (query?.limit !== undefined) params.set('limit', String(query.limit));
+    if (query?.cursor) params.set('cursor', query.cursor);
+    if (query?.status) params.set('status', query.status);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    return parseInformationItemsPage(
+      await this.request<unknown>(`/api/features/sms/items${qs}`, { signal }),
+    );
+  }
+
+  async triggerSmsRun(signal?: AbortSignal): Promise<void> {
+    await this.request<unknown>(`/api/features/sms/runs`, {
       method: 'POST',
       body: {},
       signal,

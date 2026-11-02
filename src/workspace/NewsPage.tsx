@@ -100,9 +100,11 @@ function UncertainArticle({ articleId, snapshot, store }: { articleId: string; s
   </View>;
 }
 
-function ArticleDetail({ store, snapshot, onOpenActions, focusComments, onCommentsFocused }: { store: NewsStore;
+type DiscussionProps = { onDiscuss?: (articleId: string) => void; discussing?: boolean; discussionError?: string; uncertainDiscussion?: boolean; onCheckDiscussion?: () => void; onConfirmDiscussion?: () => void };
+
+function ArticleDetail({ store, snapshot, onOpenActions, focusComments, onCommentsFocused, onDiscuss, discussing, discussionError, uncertainDiscussion, onCheckDiscussion, onConfirmDiscussion }: { store: NewsStore;
   snapshot: NewsSnapshot; onOpenActions: (id: string, target: ViewInstance | null) => void;
-  focusComments: boolean; onCommentsFocused: () => void }) {
+  focusComments: boolean; onCommentsFocused: () => void } & DiscussionProps) {
   const { colors } = useTheme();
   const scrollRef = useRef<ScrollViewInstance>(null);
   const titleRef = useRef<ViewInstance>(null);
@@ -146,6 +148,10 @@ function ArticleDetail({ store, snapshot, onOpenActions, focusComments, onCommen
           style={[styles.body, { color: colors.ink }]}>{article.content || 'RSS 未提供可显示的正文。'}</Text>
       </Pressable>
       {url && <ActionButton label="在浏览器打开无凭据原文" text="查看原文" icon={ExternalLink} onPress={() => void Linking.openURL(url).catch(() => Alert.alert('无法打开原文', '请稍后重试。'))} testID="news-original-link" />}
+      {onDiscuss && <ActionButton label="带到承接会话讨论新闻" text={discussing ? '正在带入讨论…' : '带到会话讨论'} onPress={() => onDiscuss(id)} disabled={discussing || uncertainDiscussion} testID="news-discuss" />}
+      <FeedbackNotice tone="danger" text={discussionError} />
+      {uncertainDiscussion && onCheckDiscussion && <ActionButton label="核对新闻承接会话" text="前往承接会话核对" onPress={onCheckDiscussion} />}
+      {uncertainDiscussion && onConfirmDiscussion && <ActionButton label="已核对恢复新闻讨论" text="已核对，恢复操作" disabled={discussing} onPress={onConfirmDiscussion} />}
       <NewsFeedbackBadge article={article} onOpen={(target) => onOpenActions(id, target)} />
       <UncertainArticle articleId={id} snapshot={snapshot} store={store} />
       <View onLayout={(event) => setCommentsY(event.nativeEvent.layout.y)}
@@ -265,7 +271,7 @@ function Sources({ store, snapshot, onBack }: { store: NewsStore; snapshot: News
 }
 
 /** 页面仅呈现连接级 NewsStore；切页与后台生命周期由根层统一驱动。 */
-export function NewsPage({ store, managing, onManaging, openDrawer }: { store: NewsStore; managing: boolean; onManaging: (value: boolean) => void; openDrawer?: () => void }) {
+export function NewsPage({ store, managing, onManaging, openDrawer, ...discussion }: { store: NewsStore; managing: boolean; onManaging: (value: boolean) => void; openDrawer?: () => void } & DiscussionProps) {
   const { colors } = useTheme();
   const { snapshot } = useNews(store);
   const scope = { store, articleId: snapshot.selectedArticleId, managing,
@@ -312,7 +318,7 @@ export function NewsPage({ store, managing, onManaging, openDrawer }: { store: N
   };
   const pending = !!snapshot.status && (snapshot.status.pendingCount > 0 || snapshot.status.processing);
   const pageContent = snapshot.selectedArticleId
-    ? <ArticleDetail store={store} snapshot={snapshot} onOpenActions={openActions}
+    ? <ArticleDetail store={store} snapshot={snapshot} onOpenActions={openActions} {...discussion}
       focusComments={focusCommentsId === snapshot.selectedArticleId} onCommentsFocused={() => setFocusCommentsId(null)} />
     : managing ? <Sources store={store} snapshot={snapshot} onBack={() => onManaging(false)} />
       : <View style={[styles.readerContainer, { backgroundColor: colors.surface }]}>

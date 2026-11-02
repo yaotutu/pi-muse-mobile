@@ -13,7 +13,8 @@ import type {
   InformationSettings,
 } from './types';
 
-export function useInformation(spaceId: string) {
+/** 每个连接只挂载一次；切空间与切页面不改变短信来源或中断监听。 */
+export function useSmsInformation() {
   const api = useApi();
   const [settings, setSettings] = useState<InformationSettings | null>(null);
   const [preferences, setPreferences] = useState<InformationPreferences | null>(null);
@@ -26,6 +27,7 @@ export function useInformation(spaceId: string) {
   const [hasSmsPermission, setHasSmsPermission] = useState<boolean | null>(null);
   const [error, setError] = useState<string | undefined>();
   const [notice, setNotice] = useState<string | undefined>();
+  const [needsReadback, setNeedsReadback] = useState(false);
 
   const abortRef = useRef<AbortController | null>(null);
 
@@ -61,9 +63,9 @@ export function useInformation(spaceId: string) {
     abortRef.current = controller;
 
     void Promise.all([
-      api.getInformationSettings(spaceId, controller.signal),
-      api.getInformationPreferences(spaceId, controller.signal),
-      api.listInformationItems(spaceId, { limit: 10 }, controller.signal).catch(() => ({ items: [] })),
+      api.getSmsSettings(controller.signal),
+      api.getSmsPreferences(controller.signal),
+      api.listSmsItems({ limit: 10 }, controller.signal),
     ])
       .then(([s, p, it]) => {
         if (!mounted || controller.signal.aborted) return;
@@ -85,8 +87,9 @@ export function useInformation(spaceId: string) {
     return () => {
       mounted = false;
       controller.abort();
+      abortRef.current?.abort();
     };
-  }, [api, spaceId]);
+  }, [api]);
 
   useEffect(() => {
     if (!isSmsReceiverAvailable()) {
@@ -109,9 +112,9 @@ export function useInformation(spaceId: string) {
     abortRef.current = controller;
     try {
       const [s, p, it] = await Promise.all([
-        api.getInformationSettings(spaceId, controller.signal),
-        api.getInformationPreferences(spaceId, controller.signal),
-        api.listInformationItems(spaceId, { limit: 10 }, controller.signal).catch(() => ({ items: [] })),
+        api.getSmsSettings(controller.signal),
+        api.getSmsPreferences(controller.signal),
+        api.listSmsItems({ limit: 10 }, controller.signal),
       ]);
       if (controller.signal.aborted) return;
       setSettings(s);
@@ -119,6 +122,7 @@ export function useInformation(spaceId: string) {
       setDraftNotes(p.notes);
       setItems(it.items);
       setError(undefined);
+      setNeedsReadback(false);
     } catch (e) {
       if (!controller.signal.aborted && !isRequestCancelled(e)) {
         setError(e instanceof Error ? e.message : String(e));
@@ -126,90 +130,94 @@ export function useInformation(spaceId: string) {
     } finally {
       if (!controller.signal.aborted) setLoading(false);
     }
-  }, [api, spaceId]);
+  }, [api]);
 
   const toggleEnabled = useCallback(async (enabled: boolean) => {
-    if (!settings || saving) return;
+    if (!settings || saving || needsReadback) return;
     setSaving(true);
     setError(undefined);
     try {
-      const updated = await api.saveInformationSettings(spaceId, {
+      const updated = await api.saveSmsSettings({
         enabled,
         batchWindowSeconds: settings.batchWindowSeconds,
       });
       setSettings(updated);
-      setNotice(enabled ? '已开启信息后台与短信处理' : '已关闭信息后台');
+      setNotice(enabled ? '已开启独立短信处理' : '已关闭短信处理');
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setNeedsReadback(true);
+      setError(`${e instanceof Error ? e.message : String(e)}。请刷新核对，不会自动重发。`);
     } finally {
       setSaving(false);
     }
-  }, [api, spaceId, settings, saving]);
+  }, [api, settings, saving, needsReadback]);
 
   const saveNotes = useCallback(async (notesToSave?: string) => {
-    if (saving) return;
+    if (saving || needsReadback) return;
     const value = notesToSave ?? draftNotes;
     setSaving(true);
     setError(undefined);
     try {
-      const updated = await api.saveInformationPreferences(spaceId, { notes: value });
+      const updated = await api.saveSmsPreferences({ notes: value });
       setPreferences(updated);
       setDraftNotes(updated.notes);
-      setNotice('已保存信息处理偏好');
+      setNotice('已保存短信功能偏好');
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setNeedsReadback(true);
+      setError(`${e instanceof Error ? e.message : String(e)}。请刷新核对，不会自动重发。`);
     } finally {
       setSaving(false);
     }
-  }, [api, spaceId, draftNotes, saving]);
+  }, [api, draftNotes, saving, needsReadback]);
 
-  const ingestSms = useCallback(async (content: string, title?: string, externalId?: string) => {
-    if (ingesting || !content.trim()) return;
+  const ingestSms = useCallback(async (content: string, title?: string, externalId?: string, receivedAt?: string) => {
+    if (!content.trim() || (!externalId && needsReadback)) return;
     setIngesting(true);
     setError(undefined);
     try {
       const extId = externalId ?? `sms-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      const result = await api.ingestInformationItems(spaceId, [{
+      const result = await api.ingestSmsItems([{
         source: 'sms',
         externalId: extId,
-        content: content.trim(),
+        content,
         title: title?.trim() || undefined,
-        receivedAt: new Date().toISOString(),
+        receivedAt: receivedAt ?? new Date().toISOString(),
       }]);
       setItems((prev) => [...result, ...prev]);
       setNotice(`已上报 ${result.length} 条信息到待处理队列`);
       return result;
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setNeedsReadback(true);
+      setError(`${e instanceof Error ? e.message : String(e)}。请刷新核对最近条目，不会自动重发。`);
     } finally {
       setIngesting(false);
     }
-  }, [api, spaceId, ingesting]);
+  }, [api, needsReadback]);
 
   const triggerRun = useCallback(async () => {
-    if (triggering) return;
+    if (triggering || needsReadback) return;
     setTriggering(true);
     setError(undefined);
     try {
-      await api.triggerInformationRun(spaceId);
+      await api.triggerSmsRun();
       setNotice('已触发信息后台分析');
-      const it = await api.listInformationItems(spaceId, { limit: 10 }).catch(() => ({ items: [] }));
+      const it = await api.listSmsItems({ limit: 10 });
       setItems(it.items);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setNeedsReadback(true);
+      setError(`${e instanceof Error ? e.message : String(e)}。请刷新核对条目状态，不会自动重跑。`);
     } finally {
       setTriggering(false);
     }
-  }, [api, spaceId, triggering]);
+  }, [api, triggering, needsReadback]);
 
   useEffect(() => {
-    if (!settings?.enabled || !isSmsReceiverAvailable() || hasSmsPermission === false) {
+    if (!settings?.enabled || !isSmsReceiverAvailable() || hasSmsPermission !== true) {
       return;
     }
     const sub = addSmsListener((event) => {
       if (!event.body?.trim()) return;
       const externalId = `sms-${event.timestamp}-${event.sender}`;
-      void ingestSms(event.body, `来自: ${event.sender}`, externalId);
+      void ingestSms(event.body, `来自: ${event.sender}`, externalId, new Date(event.timestamp).toISOString());
     });
     return () => {
       sub.remove();
@@ -228,6 +236,7 @@ export function useInformation(spaceId: string) {
     triggering,
     error,
     notice,
+    needsReadback,
     toggleEnabled,
     saveNotes,
     ingestSms,

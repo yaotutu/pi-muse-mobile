@@ -1,20 +1,18 @@
 import { useMemo, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { ChevronRight, FileText, FolderOpen, Inbox, Settings2, Sparkles, type LucideIcon } from 'lucide-react-native';
+import { ChevronRight, FileText, FolderOpen, Settings2, Sparkles, type LucideIcon } from 'lucide-react-native';
 import { useTheme } from '../theme/ThemeProvider';
 import { workspaceTheme, spacing, sizing } from '../ui/tokens';
 import { FilesScreen } from './FilesScreen';
 import { SpaceHeader } from './SpaceHeader';
 import { SpaceSettings } from './SpaceSettings';
-import { InformationSettingsCard } from '../information/InformationSettingsCard';
 import type { SpaceSection } from './space-navigation';
 
-const titles: Record<SpaceSection, string> = { home: '空间', files: '文件', rules: '空间规则', skills: '空间技能', information: '信息处理', maintenance: '空间维护' };
+const titles: Record<SpaceSection, string> = { home: '空间', files: '文件', rules: '空间规则', skills: '空间技能', maintenance: '空间维护' };
 const entries: { section: Exclude<SpaceSection, 'home'>; title: string; detail: string; icon: LucideIcon }[] = [
-  { section: 'files', title: '文件', detail: '浏览目录、阅读和编辑 Markdown 与文本', icon: FolderOpen },
+  { section: 'files', title: '文件', detail: '浏览目录、直接编辑 Markdown 与文本原文', icon: FolderOpen },
   { section: 'rules', title: '空间规则', detail: '只在这个空间生效的指令', icon: FileText },
   { section: 'skills', title: '空间技能', detail: '选择这个空间可以使用的技能', icon: Sparkles },
-  { section: 'information', title: '信息处理', detail: '管理当前空间已有的信息处理设置', icon: Inbox },
   { section: 'maintenance', title: '空间维护', detail: '重置会话与空间管理', icon: Settings2 },
 ];
 
@@ -45,7 +43,6 @@ export function SpacePage({ spaceId, name, section, onSection, onBack, openDrawe
         </Pressable>)}</View>
       </>}
       {(section === 'rules' || section === 'skills') && <SpaceSettings key={`${spaceId}:${section}`} spaceId={spaceId} section={section} onSaved={onSaved} />}
-      {section === 'information' && <InformationSettingsCard key={spaceId} spaceId={spaceId} />}
       {section === 'maintenance' && maintenance}
     </ScrollView></>}
   </View>;
