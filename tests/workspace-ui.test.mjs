@@ -118,7 +118,8 @@ test('聊天只为非主空间非键盘名称挂小浮层，详细状态留在�
   assert.match(screen, /identityLabelSurface: \{ backgroundColor: c\.floatingSurface, borderColor: c\.floatingLine, borderWidth: StyleSheet\.hairlineWidth, borderRadius: r\.field, paddingBottom: spacing\[6\] \}/);
   assert.match(screen, /style=\{\[styles\.identityLabel, styles\.sessionIdentityLabel\]\}/);
   assert.doesNotMatch(screen.match(/chatHeader: \{[^}]*\}/)?.[0] ?? '', /backgroundColor|borderWidth/);
-  assert.match(screen, /label="打开当前会话面板"/);
+  assert.match(screen, /testID="workspace-open-space-settings"/);
+  assert.match(read('src/workspace/SpacePage.tsx'), /accessibilityLabel="查看成员动态与审批"/);
   assert.match(screen, /onPress=\{\(\) => openProfile\(spaces.currentSpace\)\}/);
   const execution = read('src/workspace/CurrentExecution.tsx');
   assert.match(execution, /<Text accessibilityRole="alert" style=\{styles\.syncTitle\}>\{runtime\.label\}/);
@@ -279,18 +280,32 @@ test('启动直达聊天，唯一会话列表的 Muse 快捷入口显式选择 m
   assert.match(source, /const select = .*changeSpace/);
 });
 
-test('新闻在成员内部阅读并返回真实入口，保留动态与审批入口', () => {
+test('所有私聊右上角统一进入当前空间设置，头像仍进入成员主页', () => {
+  const source = read('src/workspace/WorkspaceScreen.tsx');
+  const profile = read('src/workspace/SpacePage.tsx');
+  const header = source.slice(source.indexOf("{page === 'chat' && <View"), source.indexOf('<View style={styles.bodyStage}>'));
+  assert.match(header, /icon={Settings}.*testID="workspace-open-space-settings".*openProfile\(spaces.currentSpace, 'settings'\)/);
+  assert.match(header, /onPress={\(\) => openProfile\(spaces.currentSpace\)}/);
+  assert.doesNotMatch(header, /openNews|openSession|news-internal|icon={Activity}/);
+  assert.match(source, /setSpaceView\(view\)/);
+  assert.match(source, /<SpacePage view={spaceView} spaceId={spaces.currentSpace}/);
+  assert.match(profile, /section === 'home' && view === 'settings' \? '空间设置'/);
+  assert.match(profile, /view === 'profile' && <ActionButton/);
+  assert.match(source, /backLabel={spaceView === 'settings' \? '返回空间设置' : '返回成员主页'}/);
+  assert.match(read('src/features/FeaturePage.tsx'), /<SpaceHeader.*backLabel={backLabel}/);
+});
+
+test('新闻只从成员主页阅读，返回主页后仍按原入口返回私聊或列表', () => {
   const source = read('src/workspace/WorkspaceScreen.tsx');
   const profile = read('src/workspace/SpacePage.tsx');
   const reader = read('src/workspace/NewsPage.tsx');
-  assert.match(source, /useState<'chat' \| 'space'>\('chat'\)/);
-  assert.match(source, /onPress={\(\) => openNews\('chat'\)}/);
-  assert.match(source, /onReadNews={\(\) => openNews\('space'\)}/);
-  assert.match(source, /action === 'news-owner'\) setPage\(newsReturn\)/);
-  assert.match(source, /onBack={\(\) => setPage\(newsReturn\)}/);
-  assert.match(profile, /spaceId === 'news-internal'.*<View style={styles.group}>/);
+  assert.doesNotMatch(source, /newsReturn|setNewsReturn/);
+  assert.match(source, /onReadNews={openNews}/);
+  assert.match(source, /action === 'news-owner'\) setPage\('space'\)/);
+  assert.match(source, /onBack={\(\) => setPage\('space'\)}/);
+  assert.match(profile, /view === 'profile' && spaceId === 'news-internal'/);
   assert.match(profile, /accessibilityLabel="查看成员动态与审批"/);
-  assert.match(reader, /label={backLabel} onPress={onBack}/);
+  assert.match(reader, /label="返回新闻主页" onPress={onBack}/);
 });
 
 test('空间维护归空间子页，全局设置来自列表顶部，会话面板只处理当前执行', () => {

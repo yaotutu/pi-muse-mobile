@@ -20,8 +20,8 @@ const entries: { section: Exclude<SpaceSection, 'home'>; title: string; detail: 
 ];
 
 /** 空间页只组织当前空间的功能；不持有聊天/SSE，也不创建另一份规则文件。 */
-export function SpacePage({ spaceId, name, section, onSection, onBack, onChat, onActivity, onFeatureSettings, onReadNews, onSaved, maintenance }: {
-  spaceId: string; name: string; section: SpaceSection; onSection: (section: SpaceSection) => void;
+export function SpacePage({ view, spaceId, name, section, onSection, onBack, onChat, onActivity, onFeatureSettings, onReadNews, onSaved, maintenance }: {
+  view: 'profile' | 'settings'; spaceId: string; name: string; section: SpaceSection; onSection: (section: SpaceSection) => void;
   onBack: () => void; onChat: () => void; onActivity: () => void; onFeatureSettings: () => void; onReadNews: () => void; onSaved: () => void; maintenance: ReactNode;
 }) {
   const { colors } = useTheme();
@@ -36,13 +36,13 @@ export function SpacePage({ spaceId, name, section, onSection, onBack, onChat, o
   }), [colors]);
   return <View style={styles.root} testID="workspace-space-page">
     {section === 'files' ? <FilesScreen currentSpaceId={spaceId} spaceName={name} onBack={onBack} /> : <>
-    <SpaceHeader title={titles[section]} caption={section === 'home' ? undefined : name} onBack={onBack} backLabel={section === 'home' ? '返回上一页' : undefined} />
+    <SpaceHeader title={section === 'home' && view === 'settings' ? '空间设置' : titles[section]} caption={section === 'home' ? undefined : name} onBack={onBack} backLabel={section === 'home' ? '返回上一页' : undefined} />
     <ScrollView key={section} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
       {section === 'home' && <>
-        <View style={styles.identity}><MemberAvatar spaceId={spaceId} size={92} /><Text style={styles.name}>{name}</Text><Text style={styles.caption}>{memberDescription(spaceId)}</Text>
-          <ActionButton label={`给${name}发消息`} text="发消息" icon={MessageCircle} tone="primary" style={{ alignSelf: 'center' }} onPress={onChat} />
+        <View style={styles.identity}><MemberAvatar spaceId={spaceId} size={92} /><Text style={styles.name}>{name}</Text>{view === 'profile' && <Text style={styles.caption}>{memberDescription(spaceId)}</Text>}
+          {view === 'profile' && <ActionButton label={`给${name}发消息`} text="发消息" icon={MessageCircle} tone="primary" style={{ alignSelf: 'center' }} onPress={onChat} />}
         </View>
-        {spaceId === 'news-internal' && <View style={styles.group}><Pressable accessibilityRole="button" accessibilityLabel="阅读新闻" onPress={onReadNews} style={styles.row}>
+        {view === 'profile' && spaceId === 'news-internal' && <View style={styles.group}><Pressable accessibilityRole="button" accessibilityLabel="阅读新闻" onPress={onReadNews} style={styles.row}>
           <Newspaper size={sizing.iconMedium} color={colors.blue} /><View style={styles.rowText}><Text style={styles.label}>阅读新闻</Text><Text style={styles.caption}>查看文章、收藏与阅读来源</Text></View><ChevronRight size={sizing[18]} color={colors.faint} />
         </Pressable></View>}
         <View style={styles.group}>{entries.map(({ section: target, title, detail, icon: Icon }) => <Pressable key={target} accessibilityRole="button" accessibilityLabel={`打开${title}`} testID={`space-open-${target}`}

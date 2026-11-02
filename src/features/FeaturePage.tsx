@@ -12,9 +12,9 @@ import type { FeatureBinding, FeatureId } from './contracts';
 import { NewsPreferencesCard } from './NewsPreferencesCard';
 export type FeatureSection = 'sms' | 'news-feature';
 
-/** 功能设置独立于当前聊天空间；不把功能内部 Space 暴露为可切换的会话。 */
-export function FeaturePage({ section, onBack, spaces, onNewsSettings }: {
-  section: FeatureSection; onBack: () => void;
+/** 后台功能设置由专用接口持有，不以当前私聊的 sessionId 代替 Feature 归属。 */
+export function FeaturePage({ section, onBack, backLabel, spaces, onNewsSettings }: {
+  section: FeatureSection; onBack: () => void; backLabel: string;
   spaces: { id: string; title: string }[]; onNewsSettings: () => void;
 }) {
   const api = useApi(); const { colors } = useTheme();
@@ -51,7 +51,7 @@ export function FeaturePage({ section, onBack, spaces, onNewsSettings }: {
     finally { if (mounted.current) setSaving(false); }
   };
   return <View style={styles.root}>
-    <SpaceHeader title={feature?.name ?? (id === 'sms' ? '短信' : '新闻')} caption="独立功能设置" backLabel="返回成员主页" onBack={() => { setChoosing(false); onBack(); }} />
+    <SpaceHeader title={feature?.name ?? (id === 'sms' ? '短信' : '新闻')} caption="独立功能设置" backLabel={backLabel} onBack={() => { setChoosing(false); onBack(); }} />
     <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.body}>
       <FeedbackNotice tone="danger" text={error} />
       {loading && <Text style={styles.caption}>正在读取功能…</Text>}

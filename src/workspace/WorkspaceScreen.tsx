@@ -2,7 +2,7 @@ import { useNewsDiscussion } from '../features/useNewsDiscussion';
 import { SmsProvider } from '../information/SmsProvider';
 import { FeaturePage, type FeatureSection } from '../features/FeaturePage';
 import { Card } from '../ui/Surfaces';
-import { BookOpen, ChevronRight, Download, Activity, ArrowLeft, Moon, Newspaper, RotateCcw, Server, Settings, UserRound, X, Globe, type LucideIcon } from 'lucide-react-native';
+import { BookOpen, ChevronRight, Download, ArrowLeft, Moon, RotateCcw, Server, Settings, UserRound, X, Globe, type LucideIcon } from 'lucide-react-native';
 import { BlurTargetView } from 'expo-blur';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ThemeStatusBar } from '../theme/ThemeStatusBar';
@@ -188,6 +188,7 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
   const [browserOpen, setBrowserOpen] = useState(false);
   const connection = useServiceConnection();
   const { store: files } = useFiles();
+  const [spaceView, setSpaceView] = useState<'profile' | 'settings'>('profile');
   const [spaceSection, setSpaceSection] = useState<SpaceSection>('home');
   const session = useSpaceState(spaces.currentSpace);
   const sessions = useSpaceStore(); const runtimeStore = useRuntimeStore();
@@ -198,8 +199,6 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
   const { store: goals } = useGoals();
   const runtime = useSpaceRuntime(spaces.currentSpace);
   const [page, setPage] = useState<WorkspacePage>('chat');
-  // 阅读器只记录直接入口，不重建 Space，也不在回到前台时强制跳转主会话。
-  const [newsReturn, setNewsReturn] = useState<'chat' | 'space'>('chat');
   const [newsManaging, setNewsManaging] = useState(false);
   const [settingsSubpage, setSettingsSubpage] = useState<SettingsSubpage>(null);
   const [profileReturn, setProfileReturn] = useState<'chat' | 'inbox'>('inbox');
@@ -312,7 +311,7 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
       else if (action === 'session') closeSession();
       else if (action === 'news-article') news.closeArticle();
       else if (action === 'news-sources') setNewsManaging(false);
-      else if (action === 'news-owner') setPage(newsReturn);
+      else if (action === 'news-owner') setPage('space');
       else if (action === 'inbox') setPage('inbox');
       else if (action === 'feature') { if (settingsSubpage === 'news-sources') setSettingsSubpage('news-feature'); else { setPage('space'); setSettingsSubpage(null); } }
       else if (action === 'settings') setSettingsSubpage(settingsSubpage === 'news-sources' ? 'news-feature' : null);
@@ -321,7 +320,7 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
       return action !== 'none';
     });
     return () => subscription.remove();
-  }, [keyboardVisible, browserOpen, closeBrowser, sessionMounted, closeSession, page, news, newsManaging, newsReturn, settingsSubpage, goals, backSpace]);
+  }, [keyboardVisible, browserOpen, closeBrowser, sessionMounted, closeSession, page, news, newsManaging, settingsSubpage, goals, backSpace]);
   const openSession = useCallback((tab?: unknown) => {
     if (typeof tab === 'string') setSessionTab(tab as SessionTab);
     if (keyboardVisible) { pendingSessionOpen.current = true; Keyboard.dismiss(); return; }
@@ -339,8 +338,9 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
     ]);
   };
   const select = (id: string) => changeSpace(() => { Keyboard.dismiss(); spaces.selectSpace(id); setSessionOpen(false); setPage('chat'); setSpaceSection('home'); setDeleteConfirm(false); setNotice(undefined); });
-  const openProfile = (id: string) => changeSpace(() => { Keyboard.dismiss(); spaces.selectSpace(id); setProfileReturn(page === 'chat' ? 'chat' : 'inbox'); setPage('space'); setSpaceSection('home'); setSessionOpen(false); setDeleteConfirm(false); });
-  const openNews = (origin: 'chat' | 'space') => { Keyboard.dismiss(); setNewsReturn(origin); setNewsManaging(false); news.closeArticle(); setPage('news'); };
+  // 主页与空间设置共用同一批领域状态；只区分入口呈现，子页返回不丢当前空间。
+  const openProfile = (id: string, view: 'profile' | 'settings' = 'profile') => changeSpace(() => { Keyboard.dismiss(); spaces.selectSpace(id); setSpaceView(view); setProfileReturn(page === 'chat' ? 'chat' : 'inbox'); setPage('space'); setSpaceSection('home'); setSessionOpen(false); setDeleteConfirm(false); });
+  const openNews = () => { Keyboard.dismiss(); setNewsManaging(false); news.closeArticle(); setPage('news'); };
   const discussion = useNewsDiscussion((spaceId) => { refresh(spaceId); select(spaceId); });
   const remove = async () => {
     const id = spaces.currentSpace;
@@ -389,24 +389,24 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
     otherPage = <MemberDirectory spaces={spaces.spaces} labels={labels} error={spaces.error}
       onReload={() => void reloadSpaces()} onChat={select} onProfile={openProfile} onMainChat={() => select(MAIN_SPACE)}
       onSettings={() => { setPage('settings'); setSettingsSubpage(null); }}
-      onCreate={() => changeSpace(() => { spaces.createSpace(); setProfileReturn('inbox'); setPage('space'); setSpaceSection('home'); })} />;
+      onCreate={() => changeSpace(() => { spaces.createSpace(); setSpaceView('profile'); setProfileReturn('inbox'); setPage('space'); setSpaceSection('home'); })} />;
   } else if (page === 'feature' && settingsSubpage === 'news-sources') {
     otherPage = <NewsSourcesPage store={news} onBack={() => setSettingsSubpage('news-feature')} />;
   } else if (page === 'feature' && (settingsSubpage === 'sms' || settingsSubpage === 'news-feature')) {
-    otherPage = <FeaturePage section={settingsSubpage} onBack={() => { setSettingsSubpage(null); setPage('space'); }}
+    otherPage = <FeaturePage section={settingsSubpage} backLabel={spaceView === 'settings' ? '返回空间设置' : '返回成员主页'} onBack={() => { setSettingsSubpage(null); setPage('space'); }}
       spaces={spaces.sourceSpaces.filter((space) => !!space.sessionId).map((space) => ({ id: space.id, title: labels.title(space.id) }))}
       onNewsSettings={() => setSettingsSubpage('news-sources')} />;
   } else if (page === 'space') {
-    otherPage = <SpacePage spaceId={spaces.currentSpace} name={labels.title(spaces.currentSpace)} section={spaceSection}
+    otherPage = <SpacePage view={spaceView} spaceId={spaces.currentSpace} name={labels.title(spaces.currentSpace)} section={spaceSection}
       onSection={(next) => { setDeleteConfirm(false); setSpaceSection(next); }} onBack={backSpace}
       onChat={() => select(spaces.currentSpace)} onActivity={() => { setPage('chat'); openSession(); }}
       onFeatureSettings={() => { setPage('feature'); setSettingsSubpage(spaces.currentSpace === 'sms-internal' ? 'sms' : 'news-feature'); }}
-      onReadNews={() => openNews('space')} onSaved={refresh} maintenance={maintenance} />;
+      onReadNews={openNews} onSaved={refresh} maintenance={maintenance} />;
   } else if (page === 'settings') {
     otherPage = <SettingsPage snapshot={snapshot} openConnection={openConnection} memoryAvailable profileAvailable dreamAvailable
       currentSpaceId={spaces.currentSpace} openBrowser={openBrowser} subpage={settingsSubpage} onSubpage={setSettingsSubpage} />;
   } else if (page === 'news') {
-    otherPage = <NewsPage store={news} managing={newsManaging} onManaging={setNewsManaging} onBack={() => setPage(newsReturn)} backLabel={newsReturn === 'chat' ? '返回新闻聊天' : '返回新闻主页'}
+    otherPage = <NewsPage store={news} managing={newsManaging} onManaging={setNewsManaging} onBack={() => setPage('space')}
       onDiscuss={(id) => changeSpace(() => void discussion.discuss(id))} discussing={discussion.busy} discussionError={discussion.error}
       uncertainDiscussion={!!discussion.uncertainTarget} onCheckDiscussion={() => { if (discussion.uncertainTarget) select(discussion.uncertainTarget); }}
       onConfirmDiscussion={() => Alert.alert('确认已核对承接会话？', '恢复后不会重发上一次讨论。请先确认会话里是否已经收到这条新闻。', [
@@ -432,9 +432,7 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
                 <MemberAvatar spaceId={spaces.currentSpace} size={keyboardVisible ? l.compactHeaderAvatar : l.headerAvatar} />
                 {headerNames.chat && <View style={[styles.identityLabel, styles.identityLabelSurface]}><Text numberOfLines={1} style={styles.identityName}>{headerNames.chat}</Text></View>}
               </Pressable>
-              <View style={styles.headerRight}>{spaces.currentSpace === 'news-internal'
-                ? <IconControl icon={Newspaper} label="阅读新闻" testID="workspace-read-news" onPress={() => openNews('chat')} />
-                : <IconControl icon={Activity} label="打开当前会话面板" testID="workspace-open-session" onPress={openSession} />}</View>
+              <View style={styles.headerRight}><IconControl icon={Settings} label={`打开${labels.title(spaces.currentSpace)}的空间设置`} testID="workspace-open-space-settings" onPress={() => openProfile(spaces.currentSpace, 'settings')} /></View>
             </View>}
             <View style={styles.bodyStage}>
               <BlurTargetView ref={chatBlurTarget} style={styles.bodyStage}>

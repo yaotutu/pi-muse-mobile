@@ -67,7 +67,7 @@ The release workflow builds a signed Android APK and an unsigned iOS IPA for use
 
 ### Session panel, approvals, and workspace files
 
-- **One full-screen session center.** Tap the private chat's top-right activity button to open the current session panel. Its Activity, Approvals, and execution History switch in place while the chat remains mounted behind it.
+- **One full-screen session center.** Open the private chat's top-right Space Settings, then Activity and Approvals to open the current session panel. Its Activity, Approvals, and execution History switch in place while the chat remains mounted behind it.
 - **Current execution and activity history.** Follow the current run, tool work, model-registered activities, progress, results, and related steps. Activity is not hidden model reasoning and is not represented as an archive of every chat run.
 - **Human-in-the-loop approvals.** Agent-initiated file writes and edits require full before/after review and explicit confirmation. A stale approval cannot overwrite content that changed after the approval was created.
 - **Space files.** Open a member profile → Files to browse the current space's private directories and files, read complete text, preview supported images, and download files to a chosen Android directory without overwriting same-name files. Manual text saves require complete-content review and confirmation.
