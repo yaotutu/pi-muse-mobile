@@ -264,6 +264,7 @@ def select_space(label, query, identity_text=None):
         time.sleep(.25)
     else:
         # 只有目标行不在当前视口时才过滤；避免键盘收起动画吞掉首点。
+        tap('展开空间搜索')
         enter('搜索空间', query)
         time.sleep(.35)
     tap_space_row(label)

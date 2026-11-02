@@ -56,7 +56,7 @@ test('features client uses feature facade and never sends the selected workspace
 test('feature settings are separate from space UI and SMS listener lives for the connection, not a settings page', () => {
   assert.doesNotMatch(read('workspace/SpacePage.tsx'), /InformationSettingsCard|SmsSettingsCard|section.*information/);
   assert.match(read('workspace/WorkspaceScreen.tsx'), /<SmsProvider><FilesProvider/);
-  assert.match(read('workspace/WorkspaceScreen.tsx'), /label="打开设置"/);
+  assert.match(read('workspace/SpaceDrawer.tsx'), /label="打开设置"/);
   assert.match(read('information/useSmsInformation.ts'), /api\.ingestSmsItems\(\[/);
   assert.doesNotMatch(read('information/useSmsInformation.ts'), /spaceId|\.catch\(\(\) => \(\{ items: \[\]/);
   assert.match(read('information/useSmsInformation.ts'), /hasSmsPermission !== true/);
@@ -69,9 +69,9 @@ test('feature settings are separate from space UI and SMS listener lives for the
 
 test('one sidebar settings entry owns feature settings and RSS returns through its actual parent', () => {
   const screen = read('workspace/WorkspaceScreen.tsx');
-  const drawer = screen.slice(screen.indexOf('<View style={styles.drawerHeading}>'), screen.indexOf('<Animated.View style={[styles.foreground'));
-  assert.equal((drawer.match(/<SettingRow /g) ?? []).length, 1);
-  assert.match(drawer, /title="设置" label="打开设置"/);
+  const drawer = read('workspace/SpaceDrawer.tsx');
+  assert.equal((drawer.match(/label="打开设置"/g) ?? []).length, 1);
+  assert.match(drawer, /icon=\{Settings\} label="打开设置"/);
   assert.doesNotMatch(drawer, /打开功能管理|打开全局设置|管理新闻功能|管理短信功能/);
   const settings = screen.slice(screen.indexOf('function SettingsPage'), screen.indexOf('function DisconnectedWorkspace'));
   assert.match(settings, /title="新闻" label="管理新闻功能"/);

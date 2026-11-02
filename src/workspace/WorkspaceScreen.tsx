@@ -2,7 +2,7 @@ import { useNewsDiscussion } from '../features/useNewsDiscussion';
 import { SmsProvider } from '../information/SmsProvider';
 import { FeaturePage, type FeatureSection } from '../features/FeaturePage';
 import { Card } from '../ui/Surfaces';
-import { BookOpen, Check, ChevronRight, Download, FolderOpen, ArrowLeft, Menu, MessageCircle, Moon, Newspaper, Inbox, RotateCcw, Search, Server, Settings, SlidersHorizontal, SquarePen, UserRound, X, Globe, type LucideIcon } from 'lucide-react-native';
+import { BookOpen, ChevronRight, Download, FolderOpen, ArrowLeft, Menu, MessageCircle, Moon, Newspaper, Inbox, RotateCcw, Server, Settings, SlidersHorizontal, UserRound, X, Globe, type LucideIcon } from 'lucide-react-native';
 import { BlurTargetView } from 'expo-blur';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ThemeStatusBar } from '../theme/ThemeStatusBar';
@@ -37,7 +37,7 @@ import { ProfileProvider } from '../profile/ProfileProvider';
 import { DreamProvider } from '../dream/DreamProvider';
 import { DreamPanel } from './DreamPanel';
 import { ConversationHost } from './ConversationHost';
-import { SpaceLabels, headerSpaceNames, spaceTime } from './space-labels';
+import { SpaceLabels, headerSpaceNames } from './space-labels';
 import { workspaceBackAction } from './workspace-back';
 import { SessionPanel, type SessionTab } from './SessionPanel';
 import { ResetSessionDialog } from './ResetSessionDialog';
@@ -49,7 +49,7 @@ import { ThemePicker } from '../theme/ThemePicker';
 import { IconControl, MuseAvatar, StatusPill, useReducedMotion } from './primitives';
 import { FrostedSurface } from '../ui/FrostedSurface';
 import { ActionButton } from '../ui/ActionButton';
-import { FormInput } from '../ui/FormInput';
+import { SpaceDrawer } from './SpaceDrawer';
 import { BrowserPanel } from '../browser/BrowserPanel';
 import { createBrowserStore } from '../browser/browser-store';
 
@@ -233,7 +233,6 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
   const [resetError, setResetError] = useState<string>();
   const [notice, setNotice] = useState<WorkspaceNotice>();
   const reducedMotion = useReducedMotion();
-  const [spaceQuery, setSpaceQuery] = useState('');
   const [historyRefresh, setHistoryRefresh] = useState<Record<string, number>>({});
   const [labelState, setLabelState] = useState(() => ({ ids: '', labels: new SpaceLabels() }));
   const [keyboardVisible, setKeyboardVisible] = useState(false);
@@ -427,21 +426,11 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
       pointerEvents={browserOpen ? 'none' : 'auto'} accessibilityElementsHidden={browserOpen} importantForAccessibility={browserOpen ? 'no-hide-descendants' : 'auto'}>
       <View style={[styles.drawer, { width: drawerWidth }]} pointerEvents={drawerOpen ? 'auto' : 'none'} aria-hidden={!drawerOpen}
         {...(Platform.OS === 'web' && !drawerOpen ? { inert: true } : {})} accessibilityElementsHidden={!drawerOpen} importantForAccessibility={drawerOpen ? 'yes' : 'no-hide-descendants'}>
-        <SafeAreaView style={styles.screen} edges={['top', 'bottom', 'left']}>
-        <View style={styles.drawerHeading}><Text style={styles.drawerTitle}>Pi Muse</Text><IconControl icon={X} label="关闭空间侧栏" onPress={() => setDrawerOpen(false)} /></View>
-        <View style={styles.drawerSectionRow}><Text style={styles.drawerSection}>你的空间</Text><Text style={styles.caption}>{spaces.spaces.length}</Text></View>
-        {!!spaces.error && <Text style={styles.error}>{spaces.error}</Text>}
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.drawerList}>
-          {spaces.spaces.filter((space) => `${labels.title(space.id)} ${space.id}`.toLowerCase().includes(spaceQuery.toLowerCase().trim())).map((space) => <Pressable key={space.id} accessibilityRole="button" accessibilityLabel={labels.title(space.id)} accessibilityState={{ selected: space.id === spaces.currentSpace }}
-            onPress={() => select(space.id)} style={[styles.threadRow, space.id === spaces.currentSpace && styles.threadSelected]}>
-            <MessageCircle size={l.navigationIconSize} color={colors.ink} /><View style={styles.threadText}>
-              <Text numberOfLines={1} style={styles.itemTitle}>{labels.title(space.id)}</Text><SpaceStatusCaption spaceId={space.id} updatedAt={space.updatedAt} />
-            </View>{space.id === spaces.currentSpace && <Check size={sizing[18]} color={colors.muted} />}
-          </Pressable>)}
-        </ScrollView>
-        <View style={styles.drawerFooter}><View style={styles.drawerSearch}><Search size={sizing[18]} color={colors.faint} /><FormInput variant="search" accessibilityLabel="搜索空间" placeholder="搜索空间" placeholderTextColor={colors.faint} value={spaceQuery} onChangeText={setSpaceQuery} style={styles.searchInput} /></View><IconControl icon={SquarePen} label="新建空间" testID="workspace-create-space" onPress={() => { changeSpace(() => { spaces.createSpace(); setSpaceQuery(''); setDrawerOpen(false); setSessionOpen(false); setPage('chat'); setSpaceSection('home'); setNotice(undefined); }); }} /></View>
-        <SettingRow title="设置" label="打开设置" description="功能、连接与应用偏好" icon={Settings} onPress={() => { setDrawerOpen(false); setPage('settings'); setSettingsSubpage(null); }} testID="workspace-settings" />
-        </SafeAreaView>
+        {/* 仅重置侧栏本地筛选；会话、文件草稿与揭示动画都保留在外层。 */}
+        <SpaceDrawer key={drawerOpen ? 'open' : 'closed'} spaces={spaces.spaces} currentSpace={spaces.currentSpace} labels={labels} error={spaces.error}
+          onReload={() => void reloadSpaces()} onSelect={select} onClose={() => setDrawerOpen(false)}
+          onCreate={() => changeSpace(() => { spaces.createSpace(); setDrawerOpen(false); setSessionOpen(false); setPage('chat'); setSpaceSection('home'); setNotice(undefined); })}
+          onSettings={() => { setDrawerOpen(false); setPage('settings'); setSettingsSubpage(null); }} />
       </View>
       <Animated.View style={[styles.foreground, drawerOpen && styles.foregroundRounded, { transform: [{ translateX: drawerProgress.interpolate({ inputRange: [0, 1], outputRange: [0, drawerWidth] }) }] }]} accessibilityElementsHidden={drawerOpen} importantForAccessibility={drawerOpen ? 'no-hide-descendants' : 'auto'}>
         <SafeAreaView style={styles.screen} edges={['top', 'bottom', 'left', 'right']} aria-hidden={drawerOpen} {...(Platform.OS === 'web' && drawerOpen ? { inert: true } : {})}>
@@ -539,11 +528,6 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
       onCancel={() => { setResetTarget(undefined); setResetError(undefined); }} onConfirm={reset} />}
   </View>;
 }
-function SpaceStatusCaption({ spaceId, updatedAt }: { spaceId: string; updatedAt: string }) {
-  const runtime = useSpaceRuntime(spaceId); const styles = useStyles();
-  return <Text numberOfLines={1} style={styles.caption}>{spaceTime(updatedAt)} · {runtime.label}</Text>;
-}
-
 const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: c.canvas }, viewport: { flex: 1, alignSelf: 'center', overflow: 'hidden', backgroundColor: c.canvas }, screen: { flex: 1 },
   foreground: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: c.canvas, overflow: 'hidden' }, foregroundRounded: { borderRadius: r.drawerForeground }, foregroundCover: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: c.overlay },
@@ -565,9 +549,7 @@ const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   identityName: { ...t.name, color: c.ink, maxWidth: '100%', textAlign: 'center' },
   navigation: { flexDirection: 'row', height: l.navigationHeight, marginHorizontal: spacing[18], marginBottom: l.navigationBottom, alignItems: 'center' },
   navigationItem: { flex: 1, minHeight: l.controlSize, gap: l.navigationLabelGap, alignItems: 'center', justifyContent: 'center' }, navigationLabel: { ...t.navigation, color: c.faint }, navigationLabelSelected: { color: c.ink },
-  drawer: { position: 'absolute', top: 0, bottom: 0, left: 0, paddingHorizontal: l.sidePadding, paddingTop: l.drawerTop, backgroundColor: c.canvas }, drawerHeading: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: l.drawerTop, marginBottom: l.drawerTitleBottom }, drawerTitle: { ...t.drawerTitle, color: c.ink }, drawerSection: { ...t.caption, color: c.faint }, drawerSectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing[4], marginBottom: spacing[14] }, drawerList: { gap: spacing[6] },
-  threadRow: { minHeight: l.drawerRowHeight, flexDirection: 'row', alignItems: 'center', gap: spacing[14], paddingHorizontal: spacing[14], paddingVertical: spacing[12], borderRadius: r.listItem }, threadSelected: { backgroundColor: c.surface }, threadText: { flex: 1, gap: spacing[4], minWidth: 0 }, drawerFooter: { height: l.drawerFooterHeight, flexDirection: 'row', alignItems: 'center', gap: spacing[12], borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.line },
-  drawerSearch: { flex: 1, minWidth: 0, height: l.controlSize, borderRadius: r.round, backgroundColor: c.surface, flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing[14], gap: spacing[8] }, searchInput: { flex: 1, minWidth: 0, height: l.smallControl },
+  drawer: { position: 'absolute', top: 0, bottom: 0, left: 0, backgroundColor: c.canvas },
   headerSideButtonSpacer: { width: l.controlSize, height: l.controlSize },
   pageHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: l.sidePadding, paddingTop: spacing[12], paddingBottom: spacing[8] },
   otherPage: { paddingTop: l.pageTop, paddingHorizontal: l.sidePadding, paddingBottom: spacing[24], gap: spacing[18] }, pageTitle: { ...t.heroName, color: c.ink }, itemTitle: { ...t.itemTitle, color: c.ink }, mutedText: { ...t.detail, color: c.muted }, caption: { ...t.caption, color: c.faint }, error: { ...t.caption, color: c.danger },
