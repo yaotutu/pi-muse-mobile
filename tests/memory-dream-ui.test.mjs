@@ -53,11 +53,11 @@ test('长期记忆保留直接操作和提交安全提示，紧凑展示真实�
   assert.match(source, /<ActionButton label="确认删除记忆"[^\n]+tone="danger" wide/);
 });
 
-test('Dream 展开平级分组，保留独立保存、切换确认、开关与待决归属', () => {
+test('Dream 常用操作先于折叠配置，保留独立保存、切换确认、开关与待决归属', () => {
   const source = read('DreamPanel.tsx');
   assert.doesNotMatch(source, /SectionHeading|eyebrow="DREAM"/);
   assert.match(source, /styles\.topRow/);
-  for (const label of ['全局概览', '全局整理提示词', '选择整理空间', '当前空间设置', '最近整理', '待决建议', '保存全局Dream提示词', '取消全局Dream提示词修改', '保存当前空间Dream设置', '取消当前空间Dream设置修改', '立即整理当前Dream空间']) {
+  for (const label of ['全局整理提示词', '选择整理空间', '当前空间设置', '最近整理', '待决建议', '保存全局Dream提示词', '取消全局Dream提示词修改', '保存当前空间Dream设置', '取消当前空间Dream设置修改', '立即整理当前Dream空间']) {
     assert.ok(source.includes(label), label);
   }
   assert.match(source, /if \(snapshot\.spaceDirty\) \{ setNextSpaceId\(spaceId\); return; \}/);
@@ -69,4 +69,16 @@ test('Dream 展开平级分组，保留独立保存、切换确认、开关与�
   assert.match(source, /确认忽略Dream建议/);
   assert.match(source, /showDefault && <Text selectable/);
   assert.match(source, /<ActionButton label="保存全局Dream提示词"[^>]+wide/);
+  const order = ['>选择整理空间</Text>', '>最近整理</Text>', '>待决建议 ·', '>当前空间设置</Text>', '>全局整理提示词</Text>'];
+  assert.deepEqual([...order].sort((a, b) => source.indexOf(a) - source.indexOf(b)), order);
+  for (const name of ['GlobalSettings', 'SpaceSettings']) {
+    assert.match(source, new RegExp(`const \\[show${name}, setShow${name}\\] = useState\\(false\\)`));
+    assert.match(source, new RegExp(`expanded=\\{show${name}\\}`));
+    assert.match(source, new RegExp(`\\{show${name} && <>`));
+    assert.match(source, new RegExp(`setShow${name}\\(!show${name}\\)`));
+  }
+  assert.match(source, /snapshot\.globalDirty \? '有未保存修改'/);
+  assert.match(source, /snapshot\.spaceDirty \? '有未保存修改'/);
+  assert.match(source, /disabled=\{!canRun\}/);
+  assert.doesNotMatch(source, /setShow\w+\([^;]+;\s*(?:store\.discard|void store\.save|void store\.run)/);
 });

@@ -1,8 +1,9 @@
-import { Bookmark, Check, ChevronLeft, ExternalLink, ArrowLeft, Plus, RefreshCw, Rss, X } from 'lucide-react-native';
+import { ChevronDown, ChevronUp, Bookmark, Check, ChevronLeft, ExternalLink, ArrowLeft, Plus, RefreshCw, Rss, X } from 'lucide-react-native';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Alert, Keyboard, Linking, Pressable, ScrollView, StyleSheet, Text, View, type ScrollViewInstance, type ViewInstance } from 'react-native';
 import { useTheme } from '../theme/ThemeProvider';
 import { spacing, themeTokens } from '../theme/tokens';
+import { SpaceHeader } from './SpaceHeader';
 import { ActionButton } from '../ui/ActionButton';
 import { FeedbackNotice } from '../ui/Feedback';
 import { FormInput } from '../ui/FormInput';
@@ -186,94 +187,103 @@ export function NewsSourcesPage({ store, onBack }: { store: NewsStore; onBack: (
 function Sources({ store, snapshot, onBack, backToSettings = false }: { store: NewsStore; snapshot: NewsSnapshot; onBack: () => void; backToSettings?: boolean }) {
   const { colors } = useTheme();
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  return <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content} testID="news-sources">
-    <ActionButton label={backToSettings ? '返回新闻设置' : '返回新闻列表'} text={backToSettings ? '返回新闻设置' : '返回新闻'} icon={ChevronLeft} onPress={onBack} testID="news-sources-back" />
-    <View style={styles.sourceHeading}><Text accessibilityRole="header" style={[styles.sourceTitle, { color: colors.ink }]}>RSS 来源</Text>
-      <Text style={[styles.excerpt, { color: colors.muted }]}>添加标准 RSS 地址，新闻会在服务端抓取并分析。</Text></View>
-    <Card style={styles.sourceStatus}>
-      <Text style={[styles.sectionTitle, { color: colors.ink }]}>抓取与分析</Text>
-      {snapshot.status ? <>
-        <Text style={[styles.excerpt, { color: colors.muted }]}>{snapshot.status.refreshing ? '正在抓取来源' : snapshot.status.processing || snapshot.status.pendingCount > 0 ? `正在分析 · ${snapshot.status.pendingCount} 篇等待处理` : '当前没有待处理文章'}</Text>
-        <Text style={[styles.meta, { color: colors.faint }]}>{snapshot.status.lastRefreshedAt ? `上次抓取 ${dateLabel(snapshot.status.lastRefreshedAt)}` : '尚未抓取'}</Text>
-        {snapshot.status.failedCount > 0 && <FeedbackNotice tone="warning" text={`${snapshot.status.failedCount} 篇分析失败；全部文章仍可阅读。手动抓取可重试已知失败分析。`} />}
-        <FeedbackNotice tone="danger" text={snapshot.status.lastError ?? undefined} />
-      </> : <Text style={[styles.meta, { color: colors.faint }]}>{snapshot.statusLoading ? '正在读取状态…' : '尚未读取状态'}</Text>}
-      <FeedbackNotice tone="danger" text={snapshot.statusError} />
-      <ActionButton label="回读新闻抓取与分析状态" text="核对状态" busy={snapshot.statusLoading} onPress={() => void store.refreshStatus()} testID="news-status-retry" />
-    </Card>
-    <FeedFeedback snapshot={snapshot} store={store} />
-    <NewsNotice notice={snapshot.notice} store={store} success={routineNotice(snapshot.notice)} />
-    <Card style={styles.sourceForm}>
-      <Text style={[styles.sectionTitle, { color: colors.ink }]}>添加来源</Text>
-      <FormInput accessibilityLabel="RSS 地址" placeholder="https://example.com/feed.xml" autoCapitalize="none" keyboardType="url" value={snapshot.sourceDraft.url}
-        editable={!snapshot.sourceWriting && !snapshot.sourceUncertain} onChangeText={(url) => store.setSourceDraft({ url })} testID="news-source-url" />
-      <FormInput accessibilityLabel="来源标题，可选" placeholder="标题（可选）" value={snapshot.sourceDraft.title}
-        editable={!snapshot.sourceWriting && !snapshot.sourceUncertain} onChangeText={(title) => store.setSourceDraft({ title })} testID="news-source-title" />
-      <FeedbackNotice tone={snapshot.sourceUncertain ? 'warning' : 'danger'} text={snapshot.sourceWriteError} />
-      <ActionButton label="添加RSS来源" text="添加来源" tone="primary" busy={snapshot.sourceWriting} disabled={!snapshot.sourceDraft.url.trim() || snapshot.sourceUncertain}
-        onPress={() => void store.addSource()} testID="news-source-add" />
-      {snapshot.sourceUncertain && <View style={styles.actionRow}>
-        <ActionButton label="回读RSS来源以核对" text="回读核对" onPress={() => void store.refreshSources()} testID="news-source-readback" />
-        {snapshot.sourceReviewed && <ActionButton label="确认已核对RSS来源并解锁添加" text="已核对，解锁" onPress={() => store.acknowledgeSourceCreateReadback()} testID="news-source-acknowledge" />}
-      </View>}
-    </Card>
-    <Card style={styles.presetCard}>
-      <Text style={[styles.sectionTitle, { color: colors.ink }]}>推荐中文精选源</Text>
-      <Text style={[styles.meta, { color: colors.muted }]}>精选常用中文科技与资讯 RSS，点击快捷填入：</Text>
-      <View style={styles.presetList}>
-        {PRESET_CHINESE_SOURCES.map((preset) => {
-          const added = snapshot.sources.some((s) => s.url === preset.url);
-          return (
-            <View key={preset.url} style={[styles.presetRow, { borderColor: colors.line }]}>
-              <View style={styles.presetInfo}>
-                <Text style={[styles.presetTitle, { color: colors.ink }]}>{preset.title}</Text>
-                <Text numberOfLines={1} style={[styles.meta, { color: colors.faint }]}>{preset.desc}</Text>
-              </View>
-              {added ? (
-                <View style={[styles.presetBadge, { backgroundColor: colors.surface }]}>
-                  <Check size={14} color={colors.success} />
-                  <Text style={[styles.meta, { color: colors.success }]}>已添加</Text>
+  const [showAddSource, setShowAddSource] = useState(!!snapshot.sourceDraft.url || !!snapshot.sourceDraft.title);
+  const [showPresets, setShowPresets] = useState(false);
+  // 展开只控制可见性，不清草稿、不解锁未明写入；正在写入和待核对状态始终可见。
+  const adding = showAddSource || snapshot.sourceWriting || snapshot.sourceUncertain;
+  return <View style={styles.readerContainer}>
+    <SpaceHeader title="RSS 来源" backLabel={backToSettings ? '返回新闻设置' : '返回新闻列表'} onBack={onBack} />
+    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content} testID="news-sources">
+      <FeedFeedback snapshot={snapshot} store={store} />
+      <NewsNotice notice={snapshot.notice} store={store} success={routineNotice(snapshot.notice)} />
+      <View style={styles.sectionHeading}><Text accessibilityRole="header" style={[styles.sectionTitle, { color: colors.ink }]}>已有来源 · {snapshot.sources.length}</Text>
+        <View style={styles.actionRow}>
+          <ActionButton label={adding ? '收起RSS添加表单' : '展开RSS添加表单'} text={adding ? '收起' : snapshot.sourceDraft.url || snapshot.sourceDraft.title ? '继续添加' : '添加来源'}
+            icon={adding ? ChevronUp : Plus} expanded={adding} disabled={snapshot.sourceWriting || snapshot.sourceUncertain}
+            onPress={() => { Keyboard.dismiss(); setShowAddSource(!adding); }} testID="news-source-toggle" />
+          <IconControl small icon={RefreshCw} label="刷新来源列表" busy={snapshot.sourcesLoading} onPress={() => void store.refreshSources()} testID="news-sources-retry" />
+        </View></View>
+      {adding && <Card style={styles.sourceForm}>
+        <Text style={[styles.sectionTitle, { color: colors.ink }]}>添加来源</Text>
+        <FormInput accessibilityLabel="RSS 地址" placeholder="https://example.com/feed.xml" autoCapitalize="none" keyboardType="url" value={snapshot.sourceDraft.url}
+          editable={!snapshot.sourceWriting && !snapshot.sourceUncertain} onChangeText={(url) => store.setSourceDraft({ url })} testID="news-source-url" />
+        <FormInput accessibilityLabel="来源标题，可选" placeholder="标题（可选）" value={snapshot.sourceDraft.title}
+          editable={!snapshot.sourceWriting && !snapshot.sourceUncertain} onChangeText={(title) => store.setSourceDraft({ title })} testID="news-source-title" />
+        <FeedbackNotice tone={snapshot.sourceUncertain ? 'warning' : 'danger'} text={snapshot.sourceWriteError} />
+        <ActionButton label="添加RSS来源" text="添加来源" tone="primary" busy={snapshot.sourceWriting} disabled={!snapshot.sourceDraft.url.trim() || snapshot.sourceUncertain}
+          onPress={() => void store.addSource()} testID="news-source-add" />
+        {snapshot.sourceUncertain && <View style={styles.actionRow}>
+          <ActionButton label="回读RSS来源以核对" text="回读核对" onPress={() => void store.refreshSources()} testID="news-source-readback" />
+          {snapshot.sourceReviewed && <ActionButton label="确认已核对RSS来源并解锁添加" text="已核对，解锁" onPress={() => store.acknowledgeSourceCreateReadback()} testID="news-source-acknowledge" />}
+        </View>}
+        <ActionButton label={showPresets ? '收起推荐中文来源' : '展开推荐中文来源'} text="推荐中文来源" expanded={showPresets}
+          icon={showPresets ? ChevronUp : ChevronDown} onPress={() => setShowPresets(!showPresets)} />
+        {showPresets && <View style={styles.presetCard}>
+          <Text style={[styles.meta, { color: colors.muted }]}>精选常用中文科技与资讯 RSS，点击快捷填入：</Text>
+          <View style={styles.presetList}>
+            {PRESET_CHINESE_SOURCES.map((preset) => {
+              const added = snapshot.sources.some((s) => s.url === preset.url);
+              return (
+                <View key={preset.url} style={[styles.presetRow, { borderColor: colors.line }]}>
+                  <View style={styles.presetInfo}>
+                    <Text style={[styles.presetTitle, { color: colors.ink }]}>{preset.title}</Text>
+                    <Text numberOfLines={1} style={[styles.meta, { color: colors.faint }]}>{preset.desc}</Text>
+                  </View>
+                  {added ? (
+                    <View style={[styles.presetBadge, { backgroundColor: colors.surface }]}>
+                      <Check size={14} color={colors.success} />
+                      <Text style={[styles.meta, { color: colors.success }]}>已添加</Text>
+                    </View>
+                  ) : (
+                    <ActionButton
+                      label={`快捷填入 ${preset.title}`}
+                      text="填入"
+                      icon={Plus}
+                      disabled={snapshot.sourceWriting || snapshot.sourceUncertain}
+                      onPress={() => store.setSourceDraft({ url: preset.url, title: preset.title })}
+                      testID={`news-preset-select-${preset.title}`}
+                    />
+                  )}
                 </View>
-              ) : (
-                <ActionButton
-                  label={`快捷填入 ${preset.title}`}
-                  text="填入"
-                  icon={Plus}
-                  disabled={snapshot.sourceWriting || snapshot.sourceUncertain}
-                  onPress={() => store.setSourceDraft({ url: preset.url, title: preset.title })}
-                  testID={`news-preset-select-${preset.title}`}
-                />
-              )}
-            </View>
-          );
-        })}
-      </View>
-    </Card>
-    <View style={styles.sectionHeading}><Text accessibilityRole="header" style={[styles.sectionTitle, { color: colors.ink }]}>已有来源 · {snapshot.sources.length}</Text>
-      <ActionButton label="刷新来源列表" text="刷新列表" busy={snapshot.sourcesLoading} onPress={() => void store.refreshSources()} testID="news-sources-retry" /></View>
-    <FeedbackNotice tone="danger" text={snapshot.sourceError} />
-    {snapshot.sourcesLoading && !snapshot.sourcesLoaded && <Text style={[styles.meta, { color: colors.faint }]}>正在读取来源…</Text>}
-    {snapshot.sourcesLoaded && !snapshot.sources.length && <Text style={[styles.excerpt, { color: colors.muted }]}>还没有 RSS 来源。添加后可回到新闻页手动抓取。</Text>}
-    {snapshot.sources.map((source) => {
-      const work = snapshot.sourceDeleteWork[source.id];
-      return <View key={source.id} style={[styles.sourceRow, { borderBottomColor: colors.line }]}>
-        <Text style={[styles.articleTitle, { color: colors.ink }]}>{source.title}</Text>
-        <Text selectable style={[styles.meta, { color: colors.faint }]}>{source.url}</Text>
-        <Text style={[styles.meta, { color: colors.muted }]}>{source.lastFetchedAt ? `上次抓取 ${dateLabel(source.lastFetchedAt)}` : '尚未抓取'}</Text>
-        <FeedbackNotice tone="danger" text={source.lastError ?? undefined} />
-        {work?.uncertain && <><FeedbackNotice tone="warning" text="删除结果未明；请回读来源并核对，确认前不会重复删除。" />
-          <View style={styles.actionRow}><ActionButton label="回读来源以核对删除" text="回读核对" onPress={() => void store.refreshSources()} />
-            {work.reviewed && <ActionButton label="确认已核对来源删除结果" text="已核对，解锁" onPress={() => store.acknowledgeSourceDeleteReadback(source.id)} />}</View></>}
-        {deleteId === source.id ? <Card tone="danger" style={styles.confirm}>
-          <Text style={[styles.excerpt, { color: colors.ink }]}>停止采集「{source.title}」？已有文章和收藏不会删除。</Text>
-          <View style={styles.actionRow}><ActionButton label="确认删除RSS来源" text="确认删除" tone="danger" busy={!!work?.writing} disabled={!!work?.uncertain}
-            onPress={() => void store.deleteSource(source.id).then((ok) => { if (ok) setDeleteId(null); })} testID="news-source-confirm-delete" />
-            <ActionButton label="取消删除RSS来源" text="取消" onPress={() => setDeleteId(null)} /></View>
-        </Card> : <ActionButton label={`删除RSS来源，${source.title}`} text="删除来源" tone="danger" disabled={!!work?.uncertain || !!work?.writing}
-          onPress={() => setDeleteId(source.id)} testID={`news-source-delete-${source.id}`} />}
-      </View>;
-    })}
-  </ScrollView>;
+              );
+            })}
+          </View>
+        </View>}
+      </Card>}
+      <FeedbackNotice tone="danger" text={snapshot.sourceError} />
+      {snapshot.sourcesLoading && !snapshot.sourcesLoaded && <Text style={[styles.meta, { color: colors.faint }]}>正在读取来源…</Text>}
+      {snapshot.sourcesLoaded && !snapshot.sources.length && <Text style={[styles.excerpt, { color: colors.muted }]}>还没有 RSS 来源。添加后可回到新闻页手动抓取。</Text>}
+      {snapshot.sources.map((source) => {
+        const work = snapshot.sourceDeleteWork[source.id];
+        return <View key={source.id} style={[styles.sourceRow, { borderBottomColor: colors.line }]}>
+          <Text style={[styles.articleTitle, { color: colors.ink }]}>{source.title}</Text>
+          <Text selectable style={[styles.meta, { color: colors.faint }]}>{source.url}</Text>
+          <Text style={[styles.meta, { color: colors.muted }]}>{source.lastFetchedAt ? `上次抓取 ${dateLabel(source.lastFetchedAt)}` : '尚未抓取'}</Text>
+          <FeedbackNotice tone="danger" text={source.lastError ?? undefined} />
+          {work?.uncertain && <><FeedbackNotice tone="warning" text="删除结果未明；请回读来源并核对，确认前不会重复删除。" />
+            <View style={styles.actionRow}><ActionButton label="回读来源以核对删除" text="回读核对" onPress={() => void store.refreshSources()} />
+              {work.reviewed && <ActionButton label="确认已核对来源删除结果" text="已核对，解锁" onPress={() => store.acknowledgeSourceDeleteReadback(source.id)} />}</View></>}
+          {deleteId === source.id ? <Card tone="danger" style={styles.confirm}>
+            <Text style={[styles.excerpt, { color: colors.ink }]}>停止采集「{source.title}」？已有文章和收藏不会删除。</Text>
+            <View style={styles.actionRow}><ActionButton label="确认删除RSS来源" text="确认删除" tone="danger" busy={!!work?.writing} disabled={!!work?.uncertain}
+              onPress={() => void store.deleteSource(source.id).then((ok) => { if (ok) setDeleteId(null); })} testID="news-source-confirm-delete" />
+              <ActionButton label="取消删除RSS来源" text="取消" onPress={() => setDeleteId(null)} /></View>
+          </Card> : <ActionButton label={`删除RSS来源，${source.title}`} text="删除来源" tone="danger" disabled={!!work?.uncertain || !!work?.writing}
+            onPress={() => setDeleteId(source.id)} testID={`news-source-delete-${source.id}`} />}
+        </View>;
+      })}
+      <Card style={styles.sourceStatus}>
+        <Text style={[styles.sectionTitle, { color: colors.ink }]}>抓取与分析</Text>
+        {snapshot.status ? <>
+          <Text style={[styles.excerpt, { color: colors.muted }]}>{snapshot.status.refreshing ? '正在抓取来源' : snapshot.status.processing || snapshot.status.pendingCount > 0 ? `正在分析 · ${snapshot.status.pendingCount} 篇等待处理` : '当前没有待处理文章'}</Text>
+          <Text style={[styles.meta, { color: colors.faint }]}>{snapshot.status.lastRefreshedAt ? `上次抓取 ${dateLabel(snapshot.status.lastRefreshedAt)}` : '尚未抓取'}</Text>
+          {snapshot.status.failedCount > 0 && <FeedbackNotice tone="warning" text={`${snapshot.status.failedCount} 篇分析失败；全部文章仍可阅读。手动抓取可重试已知失败分析。`} />}
+          <FeedbackNotice tone="danger" text={snapshot.status.lastError ?? undefined} />
+        </> : <Text style={[styles.meta, { color: colors.faint }]}>{snapshot.statusLoading ? '正在读取状态…' : '尚未读取状态'}</Text>}
+        <FeedbackNotice tone="danger" text={snapshot.statusError} />
+        <ActionButton label="回读新闻抓取与分析状态" text="核对状态" busy={snapshot.statusLoading} onPress={() => void store.refreshStatus()} testID="news-status-retry" />
+      </Card>
+  </ScrollView></View>;
 }
 
 /** 页面仅呈现连接级 NewsStore；切页与后台生命周期由根层统一驱动。 */
@@ -414,13 +424,11 @@ const styles = StyleSheet.create({
   detailNote: { ...n.detailNote, marginTop: spacing[8] },
   bodyOpen: { marginTop: spacing[8] },
   body: { ...n.detailBody },
-  sourceHeading: { gap: spacing[12], paddingTop: spacing[8] },
-  sourceTitle: { ...t.pageTitle },
   sectionLine: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: spacing[20], gap: spacing[14] },
   comment: { paddingBottom: spacing[16], borderBottomWidth: StyleSheet.hairlineWidth, gap: spacing[8] },
   commentInput: { minHeight: 104 },
   sourceForm: { gap: spacing[12] },
-  sourceRow: { paddingVertical: spacing[18], borderBottomWidth: StyleSheet.hairlineWidth, gap: spacing[8] },
+  sourceRow: { paddingVertical: spacing[12], borderBottomWidth: StyleSheet.hairlineWidth, gap: spacing[8] },
   confirm: { gap: spacing[12] },
   empty: { alignItems: 'center', justifyContent: 'center', paddingVertical: spacing[48], paddingHorizontal: spacing[24], gap: spacing[12] },
   emptyIconWrap: { width: 64, height: 64, borderRadius: r.round, borderWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center', marginBottom: spacing[4] },

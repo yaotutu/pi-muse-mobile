@@ -92,9 +92,22 @@ test('详情完整显示原始 RSS 正文与推荐理由，阅读行距不影响
   assert.match(detail, /onLongPress=\{\(\) => onOpenActions\(id, bodyRef\.current\)\}/);
   assert.ok(themeTokens.newsReading.detailBody.lineHeight > themeTokens.newsReading.listExcerpt.lineHeight);
   assert.ok(themeTokens.newsReading.detailTitle.lineHeight > themeTokens.newsReading.listTitle.lineHeight);
+});
+
+test('RSS 固定顶栏按入口返回，默认先展示已有来源，添加和精选按需展开', () => {
+  const page = read('workspace/NewsPage.tsx');
   const sources = page.split('function Sources(')[1].split('export function NewsPage(')[0];
-  assert.match(sources, /style=\{styles\.sourceHeading\}.*style=\{\[styles\.sourceTitle/);
-  assert.match(page, /sourceHeading: \{ gap: spacing\[12\], paddingTop: spacing\[8\] \}/);
+  assert.match(sources, /<SpaceHeader title="RSS 来源" backLabel=\{backToSettings \? '返回新闻设置' : '返回新闻列表'\} onBack=\{onBack\} \/>\s*<ScrollView/);
+  assert.doesNotMatch(sources, /styles\.sourceHeading|styles\.sourceTitle|news-sources-back/);
+  assert.match(sources, /useState\(!!snapshot\.sourceDraft\.url \|\| !!snapshot\.sourceDraft\.title\)/);
+  assert.match(sources, /const adding = showAddSource \|\| snapshot\.sourceWriting \|\| snapshot\.sourceUncertain/);
+  assert.match(sources, /\{adding && <Card[\s\S]*news-source-url[\s\S]*\{showPresets && <View/);
+  assert.match(sources, /onPress=\{\(\) => store\.setSourceDraft\(\{ url: preset\.url, title: preset\.title \}\)\}/);
+  assert.ok(sources.indexOf('已有来源 ·') < sources.indexOf('{adding &&'));
+  assert.ok(sources.indexOf('snapshot.sources.map(') < sources.indexOf('styles.sourceStatus'));
+  assert.match(sources, /disabled=\{snapshot\.sourceWriting \|\| snapshot\.sourceUncertain\}/);
+  assert.match(sources, /setShowAddSource\(!adding\)/);
+  assert.doesNotMatch(sources, /setSourceDraft\(\{ url: ''|acknowledgeSourceCreateReadback\(\).*setShow/);
 });
 
 test('新闻阅读页使用真实连接状态、共享控件和安全原文入口', () => {
@@ -215,7 +228,7 @@ test('新闻来源支持推荐中文精选 RSS 源并可一键填入', () => {
   assert.match(page, /机器之心/);
   assert.match(page, /阮一峰的网络日志/);
   assert.match(page, /IT之家/);
-  assert.match(page, /推荐中文精选源/);
+  assert.match(page, /推荐中文来源/);
   assert.match(page, /news-preset-select-/);
   assert.match(page, /store\.setSourceDraft\(\{ url: preset\.url, title: preset\.title \}\)/);
   assert.match(page, /已添加/);
