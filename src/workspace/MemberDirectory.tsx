@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
 import { FlatList, Keyboard, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Plus, Search, Settings, Users, X } from 'lucide-react-native';
-import type { SpaceEntry } from '../api/types';
+import type { AgentEntry } from '../api/types';
 import type { GroupPreview } from '../group/contracts';
-import { useSpaceRuntime } from '../runtime/RuntimeProvider';
+import { useAgentRuntime } from '../runtime/RuntimeProvider';
 import { useTheme } from '../theme/ThemeProvider';
 import { ActionButton } from '../ui/ActionButton';
 import { FeedbackNotice } from '../ui/Feedback';
@@ -11,13 +11,13 @@ import { FormInput } from '../ui/FormInput';
 import { IconControl } from '../ui/IconControl';
 import { spacing, sizing, workspaceTheme } from '../ui/tokens';
 import { MemberAvatar } from './MemberAvatar';
-import { memberDescription, type SpaceLabels } from './space-labels';
+import { memberDescription, type AgentLabels } from './agent-labels';
 
 const mainShortcutSize = 56;
 
-/** 列表不另建聊天存储；点头像看主页，点消息行才进入对应 Space 的真实私聊。 */
-export function MemberDirectory({ spaces, labels, error, creating, groupPreview, onReload, onChat, onProfile, onCreate, onSettings, onGroup }: {
-  spaces: SpaceEntry[]; labels: SpaceLabels; error?: string; creating: boolean; groupPreview: GroupPreview;
+/** 列表不另建聊天存储；点头像看主页，点消息行才进入对应 Agent 的真实私聊。 */
+export function MemberDirectory({ agents, labels, error, creating, groupPreview, onReload, onChat, onProfile, onCreate, onSettings, onGroup }: {
+  agents: AgentEntry[]; labels: AgentLabels; error?: string; creating: boolean; groupPreview: GroupPreview;
   onReload: () => void; onChat: (id: string) => void; onProfile: (id: string) => void; onCreate: () => void; onSettings: () => void; onGroup: () => void;
 }) {
   const { colors } = useTheme();
@@ -33,7 +33,7 @@ export function MemberDirectory({ spaces, labels, error, creating, groupPreview,
     shortcut: { position: 'absolute', right: workspaceTheme.layout.sidePadding, bottom: spacing[18], padding: spacing[8], borderRadius: workspaceTheme.radius.card, backgroundColor: colors.surface, borderWidth: sizing.borderWidth, borderColor: colors.line },
     utility: { backgroundColor: 'transparent', borderColor: 'transparent' },
   }), [colors]);
-  const filtered = spaces.filter((space) => `${labels.title(space.id)} ${space.id}`.toLowerCase().includes(query?.trim().toLowerCase() ?? ''));
+  const filtered = agents.filter((agent) => `${labels.title(agent.id)} ${agent.id}`.toLowerCase().includes(query?.trim().toLowerCase() ?? ''));
   const latest = groupPreview.latest;
   const groupDescription = latest ? `${latest.sender ? labels.title(latest.sender) : '我'}${latest.notification ? ' · 通知' : ''}：${latest.text}` : '默认 Muse 回复，@ 成员定向聊天';
   return <View style={styles.root} testID="conversation-list">
@@ -59,8 +59,8 @@ export function MemberDirectory({ spaces, labels, error, creating, groupPreview,
         <Text numberOfLines={1} style={styles.caption}>{groupDescription}</Text>
         {groupPreview.error && <Text accessibilityRole="alert" style={{ ...workspaceTheme.typography.caption, color: colors.danger }}>群聊同步失败，进入群聊核对</Text>}
       </View>
-    </Pressable> : undefined} data={filtered} keyExtractor={(space) => space.id} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={styles.content}
-      renderItem={({ item }) => <MemberRow space={item} name={labels.title(item.id)} onProfile={() => onProfile(item.id)} onPress={() => onChat(item.id)} />}
+    </Pressable> : undefined} data={filtered} keyExtractor={(agent) => agent.id} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={styles.content}
+      renderItem={({ item }) => <MemberRow agent={item} name={labels.title(item.id)} onProfile={() => onProfile(item.id)} onPress={() => onChat(item.id)} />}
       ListEmptyComponent={<Text style={styles.caption}>没有找到成员</Text>} />
     <Pressable accessibilityRole="button" accessibilityLabel="回到群聊" testID="conversation-main-shortcut" onPress={onGroup} style={styles.shortcut}>
       <View style={{ width: mainShortcutSize, height: mainShortcutSize, alignItems: 'center', justifyContent: 'center' }}><Users size={30} color={colors.accentText} /></View>
@@ -68,16 +68,16 @@ export function MemberDirectory({ spaces, labels, error, creating, groupPreview,
   </View>;
 }
 
-function MemberRow({ space, name, onProfile, onPress }: { space: SpaceEntry; name: string; onProfile: () => void; onPress: () => void }) {
-  const { colors } = useTheme(); const runtime = useSpaceRuntime(space.id);
+function MemberRow({ agent, name, onProfile, onPress }: { agent: AgentEntry; name: string; onProfile: () => void; onPress: () => void }) {
+  const { colors } = useTheme(); const runtime = useAgentRuntime(agent.id);
   return <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[14], paddingVertical: spacing[16] }}>
-    <Pressable accessibilityRole="button" accessibilityLabel={`查看${name}的主页`} onPress={onProfile}><MemberAvatar spaceId={space.id} /></Pressable>
+    <Pressable accessibilityRole="button" accessibilityLabel={`查看${name}的主页`} onPress={onProfile}><MemberAvatar agentId={agent.id} /></Pressable>
     <Pressable accessibilityRole="button" accessibilityLabel={`打开${name}`} onPress={onPress} style={{ flex: 1, minHeight: 52, justifyContent: 'center', gap: spacing[6] }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing[8] }}>
         <Text numberOfLines={1} style={{ ...workspaceTheme.typography.itemTitle, color: colors.ink, flex: 1 }}>{name}</Text>
         {runtime.running && <Text style={{ ...workspaceTheme.typography.caption, color: colors.accentText }}>处理中</Text>}
       </View>
-      <Text numberOfLines={1} style={{ ...workspaceTheme.typography.caption, color: colors.muted }}>{memberDescription(space.id)}</Text>
+      <Text numberOfLines={1} style={{ ...workspaceTheme.typography.caption, color: colors.muted }}>{memberDescription(agent.id)}</Text>
     </Pressable>
   </View>;
 }

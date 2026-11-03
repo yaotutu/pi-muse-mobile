@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useApi } from '../api/ApiProvider';
 import { ApiError } from '../api/errors';
 /** 操作状态随连接保留；结果未明时只提供核对入口，绝不自动重发讨论。 */
-export function useNewsDiscussion(onDelivered: (spaceId: string) => void) {
+export function useNewsDiscussion(onDelivered: (agentId: string) => void) {
   const api = useApi(); const active = useRef(true); const pending = useRef(false);
   const [busy, setBusy] = useState(false); const [error, setError] = useState<string>();
   const [uncertainTarget, setUncertainTarget] = useState<string>();
@@ -12,10 +12,10 @@ export function useNewsDiscussion(onDelivered: (spaceId: string) => void) {
     pending.current = true; setBusy(true); setError(undefined);
     let target: string | undefined; let submitted = false;
     try {
-      target = (await api.listFeatures()).find((feature) => feature.id === 'news')!.targetSpaceId;
+      target = (await api.listFeatures()).find((feature) => feature.id === 'news')!.targetAgentId;
       submitted = true;
       const receipt = await api.discussNews(articleId);
-      if (active.current) onDelivered(receipt.spaceId);
+      if (active.current) onDelivered(receipt.agentId);
     } catch (e) {
       if (!active.current) return;
       const unknown = submitted && (!(e instanceof ApiError) || e.status >= 500 || e.status === 0);

@@ -1,6 +1,6 @@
 /**
  * 工作区文件非视觉层真实回归：实际 HttpApiClient/FilesStore + 真外部模型。
- * 只使用专用空间和唯一 ASCII 文件；共享区只创建/清理本轮标记文件，不读取无关正文。
+ * 只使用专用智能体和唯一 ASCII 文件；共享区只创建/清理本轮标记文件，不读取无关正文。
  */
 import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync } from 'node:fs';
@@ -20,9 +20,9 @@ const base = process.env.E2E_API_BASE_URL.replace(/\/$/, '');
 const output = mkdtempSync(join(tmpdir(), 'pimuse-workspace-files-e2e.'));
 const stamp = Date.now().toString(36);
 const marker = `WORKSPACE_FILES_E2E_${stamp}`;
-const spaceId = `files-e2e-${stamp}`;
-const otherSpaceId = `files-other-e2e-${stamp}`;
-const bulkSpaceId = `files-bulk-e2e-${stamp}`;
+const agentId = `files-e2e-${stamp}`;
+const otherAgentId = `files-other-e2e-${stamp}`;
+const bulkAgentId = `files-bulk-e2e-${stamp}`;
 const isolationPath = `isolation-${stamp}.txt`;
 const manualPath = `manual-${stamp}.txt`;
 const nestedPath = `notes/nested-${stamp}.txt`;
@@ -32,13 +32,13 @@ const deletePath = `delete-${stamp}.txt`;
 const boundaryPath = `boundary-${stamp}.txt`;
 const sharedOwn = new Set();
 const intendedSharedDeletes = new Set();
-const spaces = new Set();
+const agents = new Set();
 const checks = [];
 const runs = [];
 let token;
 let failure;
 let serviceVersion;
-let baselineSpaceIds;
+let baselineAgentIds;
 
 const api = new HttpApiClient(base, () => token, () => {
   throw new Error('Real authentication rejected');
@@ -55,7 +55,7 @@ const pass = (name, extra = {}) => {
   checks.push({ name, ...extra });
   console.log('PASS', name);
 };
-const phase = (name, extra = {}) => write('context.json', { phase: name, base, marker, spaceId, otherSpaceId, bulkSpaceId, ...extra });
+const phase = (name, extra = {}) => write('context.json', { phase: name, base, marker, agentId, otherAgentId, bulkAgentId, ...extra });
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function until(predicate, label, timeout = 300_000) {
   const end = Date.now() + timeout;
@@ -106,10 +106,10 @@ async function rawFilesRequest(path, init = {}) {
   return { response, payload };
 }
 
-async function createSpace(id, instructions) {
-  spaces.add(id);
-  await api.saveSpaceInstructions(id, instructions);
-  assert.ok((await api.listSpaces()).some((space) => space.id === id));
+async function createAgent(id, instructions) {
+  agents.add(id);
+  await api.saveAgentInstructions(id, instructions);
+  assert.ok((await api.listAgents()).some((agent) => agent.id === id));
 }
 
 async function settledFiles(label) {
@@ -124,7 +124,7 @@ async function settledFiles(label) {
   return snapshot;
 }
 
-async function createWithStore(spaceIdForFile, path, content) {
+async function createWithStore(agentIdForFile, path, content) {
   files.beginCreate();
   files.setDraftPath(path);
   files.setDraftContent(content);
@@ -134,7 +134,7 @@ async function createWithStore(spaceIdForFile, path, content) {
   assert.equal(preview.before, '');
   assert.equal(preview.after, content);
   assert.equal(await files.confirmSave(), true, `create ${path}`);
-  return settledFiles(`create ${path} in ${spaceIdForFile}`);
+  return settledFiles(`create ${path} in ${agentIdForFile}`);
 }
 
 async function updateWithStore(path, content) {
@@ -152,7 +152,7 @@ async function updateWithStore(path, content) {
 }
 
 function begin(content) {
-  const history = api.getConversation(spaceId);
+  const history = api.getConversation(agentId);
   const runId = `files-e2e-run-${stamp}-${runs.length + 1}`;
   const item = {
     runId,
@@ -165,7 +165,7 @@ function begin(content) {
   item.promise = history.then(({ revision, messages }) => {
     item.aggregator = new StreamAggregator(projectHistory(messages));
     return api.runAgent({
-      spaceId,
+      agentId,
       runId,
       expectedRevision: revision,
       message: { id: `msg-${runId}`, content },
@@ -188,20 +188,20 @@ async function finished(item) {
   assert.equal(item.error, undefined, `model RUN_ERROR: ${item.error}`);
   assert.equal(item.transportError, undefined, `model transport error: ${item.transportError}`);
   assert.ok(item.events.includes('RUN_FINISHED'));
-  return api.getConversation(spaceId);
+  return api.getConversation(agentId);
 }
 
 async function pendingApproval(item, expected) {
   let approval;
   await until(() => {
     approval = Object.values(approvals.getSnapshot().records).find((record) =>
-      record.spaceId === spaceId && record.runId === item.runId && record.status === 'pending');
+      record.agentId === agentId && record.runId === item.runId && record.status === 'pending');
     return !!approval || item.settled;
   }, 'real file write/edit approval');
   assert.ok(approval, `model ended without approval: ${item.error ?? item.transportError ?? ''}`);
-  assert.equal(approval.preview.scope, 'space');
-  assert.equal(approval.preview.ownerSpaceId, spaceId);
-  assert.equal(approval.workspaceSpaceId, spaceId);
+  assert.equal(approval.preview.scope, 'agent');
+  assert.equal(approval.preview.ownerAgentId, agentId);
+  assert.equal(approval.workspaceAgentId, agentId);
   assert.equal(approval.preview.path, expected.path);
   assert.equal(approval.preview.after, expected.after);
   assert.equal(approval.preview.before, expected.before);
@@ -221,7 +221,7 @@ async function waitApprovalTerminal(id) {
 async function createBulkFiles() {
   for (let number = 0; number <= MAX_WORKSPACE_DIRECTORY_ENTRIES; number++) {
     await api.createWorkspaceTextFile(
-      { scope: 'space', spaceId: bulkSpaceId, path: `bulk/file-${String(number).padStart(4, '0')}.txt` },
+      { scope: 'agent', agentId: bulkAgentId, path: `bulk/file-${String(number).padStart(4, '0')}.txt` },
       `${marker}:${number}`,
     );
   }
@@ -238,26 +238,26 @@ try {
   const auth = await api.createSession(process.env.E2E_ACCESS_KEY);
   assert.equal(auth.mode, 'live', 'This acceptance must use the confirmed real external model service');
   token = auth.token;
-  baselineSpaceIds = new Set((await api.listSpaces()).map((space) => space.id));
-  for (const id of [spaceId, otherSpaceId, bulkSpaceId]) assert.ok(!baselineSpaceIds.has(id));
-  const sharedBaseline = await api.listWorkspaceFiles({ scope: 'shared', spaceId: null });
+  baselineAgentIds = new Set((await api.listAgents()).map((agent) => agent.id));
+  for (const id of [agentId, otherAgentId, bulkAgentId]) assert.ok(!baselineAgentIds.has(id));
+  const sharedBaseline = await api.listWorkspaceFiles({ scope: 'shared', agentId: null });
   assert.equal(sharedBaseline.scope, 'shared');
-  assert.equal(sharedBaseline.spaceId, null);
+  assert.equal(sharedBaseline.agentId, null);
   assert.ok(!sharedBaseline.entries.some((entry) => entry.name.includes(stamp)));
-  pass('real baseline has no dedicated spaces or shared marker files');
+  pass('real baseline has no dedicated agents or shared marker files');
 
   const instructions = [
-    'Dedicated mobile workspace-file acceptance space.',
+    'Dedicated mobile workspace-file acceptance agent.',
     'Follow only explicit test requests.',
     `Only use read/write/edit on the exact PRIVATE filenames containing ${stamp}.`,
-    'Never touch shared files, other spaces, memories, profile, goals, monitors, schedules or subagents.',
+    'Never touch shared files, other agents, memories, profile, goals, monitors, schedules or subagents.',
     'For write/edit, wait for human approval and do not retry after denial or version failure.',
   ].join('\n');
-  await createSpace(spaceId, instructions);
-  await createSpace(otherSpaceId, `Dedicated isolation space ${marker}. Never run models or touch other data.`);
-  await createSpace(bulkSpaceId, `Dedicated bulk-list space ${marker}. Never run models or touch other data.`);
+  await createAgent(agentId, instructions);
+  await createAgent(otherAgentId, `Dedicated isolation agent ${marker}. Never run models or touch other data.`);
+  await createAgent(bulkAgentId, `Dedicated bulk-list agent ${marker}. Never run models or touch other data.`);
 
-  files.selectSpace(spaceId);
+  files.selectAgent(agentId);
   files.setActive(true);
   files.open();
   let snapshot = await settledFiles('initial private root');
@@ -265,7 +265,7 @@ try {
   pass('actual HttpApiClient/FilesStore reads a dedicated private root');
 
   const nestedContent = `NESTED_${marker}`;
-  await api.createWorkspaceTextFile({ scope: 'space', spaceId, path: nestedPath }, nestedContent);
+  await api.createWorkspaceTextFile({ scope: 'agent', agentId, path: nestedPath }, nestedContent);
   await files.refreshDirectory();
   await settledFiles('refresh after nested create');
   assert.equal(files.openDirectory('notes'), true);
@@ -298,26 +298,26 @@ try {
   files.beginCreate();
   files.setDraftPath(`pending-${stamp}.txt`);
   files.setDraftContent(`PENDING_${marker}`);
-  assert.equal(files.selectSpace(otherSpaceId), false);
-  assert.equal(files.getSnapshot().pendingSpaceId, otherSpaceId);
+  assert.equal(files.selectAgent(otherAgentId), false);
+  assert.equal(files.getSnapshot().pendingAgentId, otherAgentId);
   assert.equal(files.selectShared(), false);
-  assert.equal(files.getSnapshot().pendingSpaceId, undefined);
+  assert.equal(files.getSnapshot().pendingAgentId, undefined);
   files.cancelEditor();
-  await settledFiles('draft cancel keeps current space');
-  assert.equal(files.getSnapshot().selectedSpaceId, spaceId);
-  pass('blocked space switch keeps its draft ownership and explicit shared intent cancels pending switch');
+  await settledFiles('draft cancel keeps current agent');
+  assert.equal(files.getSnapshot().selectedAgentId, agentId);
+  pass('blocked agent switch keeps its draft ownership and explicit shared intent cancels pending switch');
 
   const initialManual = `MANUAL_V1_${marker}`;
-  await createWithStore(spaceId, manualPath, initialManual);
-  const manualDetail = await api.readWorkspaceFile({ scope: 'space', spaceId, path: manualPath });
+  await createWithStore(agentId, manualPath, initialManual);
+  const manualDetail = await api.readWorkspaceFile({ scope: 'agent', agentId, path: manualPath });
   assert.equal(manualDetail.content, initialManual);
   assert.equal(manualDetail.kind, 'text');
-  assert.equal(manualDetail.spaceId, spaceId);
+  assert.equal(manualDetail.agentId, agentId);
   pass('confirmed create returns and reads the exact full text');
 
   const updatedManual = `MANUAL_V2_${marker}`;
   await updateWithStore(manualPath, updatedManual);
-  assert.equal((await api.readWorkspaceFile({ scope: 'space', spaceId, path: manualPath })).content, updatedManual);
+  assert.equal((await api.readWorkspaceFile({ scope: 'agent', agentId, path: manualPath })).content, updatedManual);
   pass('confirmed update requires full before/after and last successful save wins');
 
   files.beginCreate();
@@ -326,20 +326,20 @@ try {
   files.requestSave();
   files.cancelSavePreview();
   files.cancelEditor();
-  await assert.rejects(api.readWorkspaceFile({ scope: 'space', spaceId, path: cancelledPath }), (error) => error.status === 404);
+  await assert.rejects(api.readWorkspaceFile({ scope: 'agent', agentId, path: cancelledPath }), (error) => error.status === 404);
   pass('cancelling preview/editor leaves no file');
 
-  await api.createWorkspaceTextFile({ scope: 'space', spaceId, path: deletePath }, `DELETE_${marker}`);
+  await api.createWorkspaceTextFile({ scope: 'agent', agentId, path: deletePath }, `DELETE_${marker}`);
   await files.refreshDirectory();
   await settledFiles('refresh before delete');
   assert.equal(files.requestDelete(deletePath), true);
   files.cancelDelete();
   assert.equal(await files.confirmDelete(), false);
-  assert.equal((await api.readWorkspaceFile({ scope: 'space', spaceId, path: deletePath })).content, `DELETE_${marker}`);
+  assert.equal((await api.readWorkspaceFile({ scope: 'agent', agentId, path: deletePath })).content, `DELETE_${marker}`);
   files.requestDelete(deletePath);
   assert.equal(await files.confirmDelete(), true);
   await settledFiles('refresh after delete');
-  await assert.rejects(api.readWorkspaceFile({ scope: 'space', spaceId, path: deletePath }), (error) => error.status === 404);
+  await assert.rejects(api.readWorkspaceFile({ scope: 'agent', agentId, path: deletePath }), (error) => error.status === 404);
   pass('delete needs a current explicit target; cancel sends nothing and confirm removes it');
 
   const beforeMissing = files.getSnapshot().entries.length;
@@ -349,48 +349,48 @@ try {
   pass('missing detail does not erase the last observed directory list');
 
   const privateIsolation = `PRIVATE_${marker}`;
-  await api.createWorkspaceTextFile({ scope: 'space', spaceId, path: isolationPath }, privateIsolation);
+  await api.createWorkspaceTextFile({ scope: 'agent', agentId, path: isolationPath }, privateIsolation);
   const otherIsolation = `OTHER_${marker}`;
-  await api.createWorkspaceTextFile({ scope: 'space', spaceId: otherSpaceId, path: isolationPath }, otherIsolation);
+  await api.createWorkspaceTextFile({ scope: 'agent', agentId: otherAgentId, path: isolationPath }, otherIsolation);
   const sharedIsolation = `SHARED_${marker}`;
   sharedOwn.add(isolationPath);
-  await api.createWorkspaceTextFile({ scope: 'shared', spaceId: null, path: isolationPath }, sharedIsolation);
+  await api.createWorkspaceTextFile({ scope: 'shared', agentId: null, path: isolationPath }, sharedIsolation);
   const [privateRead, otherRead, sharedRead] = await Promise.all([
-    api.readWorkspaceFile({ scope: 'space', spaceId, path: isolationPath }),
-    api.readWorkspaceFile({ scope: 'space', spaceId: otherSpaceId, path: isolationPath }),
-    api.readWorkspaceFile({ scope: 'shared', spaceId: null, path: isolationPath }),
+    api.readWorkspaceFile({ scope: 'agent', agentId, path: isolationPath }),
+    api.readWorkspaceFile({ scope: 'agent', agentId: otherAgentId, path: isolationPath }),
+    api.readWorkspaceFile({ scope: 'shared', agentId: null, path: isolationPath }),
   ]);
-  assert.equal(privateRead.spaceId, spaceId);
-  assert.equal(otherRead.spaceId, otherSpaceId);
-  assert.equal(sharedRead.spaceId, null);
+  assert.equal(privateRead.agentId, agentId);
+  assert.equal(otherRead.agentId, otherAgentId);
+  assert.equal(sharedRead.agentId, null);
   assert.deepEqual([privateRead.content, otherRead.content, sharedRead.content], [privateIsolation, otherIsolation, sharedIsolation]);
-  pass('same path stays isolated across private spaces and shared');
+  pass('same path stays isolated across private agents and shared');
 
   assert.equal(files.selectShared(), true);
   await settledFiles('shared root');
   const sharedCreate = `SHARED_UPDATE_${marker}`;
   await updateWithStore(isolationPath, sharedCreate);
-  assert.equal((await api.readWorkspaceFile({ scope: 'shared', spaceId: null, path: isolationPath })).content, sharedCreate);
-  pass('FilesStore consumes shared responses with spaceId=null');
+  assert.equal((await api.readWorkspaceFile({ scope: 'shared', agentId: null, path: isolationPath })).content, sharedCreate);
+  pass('FilesStore consumes shared responses with agentId=null');
 
-  const missingSpace = `files-missing-${stamp}`;
+  const missingAgent = `files-missing-${stamp}`;
   await assert.rejects(
-    api.listWorkspaceFiles({ scope: 'space', spaceId: missingSpace, path: '.' }),
+    api.listWorkspaceFiles({ scope: 'agent', agentId: missingAgent, path: '.' }),
     (error) => error.status === 404,
   );
   for (const path of ['%2e%2e/x', 'a%5Cb', '%2Fabsolute', 'a%2F%2E%2E']) {
-    const result = await rawFilesRequest(`/api/workspace/files?scope=space&spaceId=${encodeURIComponent(spaceId)}&path=${path}`);
+    const result = await rawFilesRequest(`/api/workspace/files?scope=agent&agentId=${encodeURIComponent(agentId)}&path=${path}`);
     assert.equal(result.response.status, 400, path);
   }
-  pass('missing spaces and unsafe server paths fail without implicit creation');
+  pass('missing agents and unsafe server paths fail without implicit creation');
 
   const boundaryContent = 'B'.repeat(MAX_WORKSPACE_TEXT_BYTES);
-  await api.createWorkspaceTextFile({ scope: 'space', spaceId: bulkSpaceId, path: boundaryPath }, boundaryContent);
-  assert.equal((await api.readWorkspaceFile({ scope: 'space', spaceId: bulkSpaceId, path: boundaryPath })).size, MAX_WORKSPACE_TEXT_BYTES);
+  await api.createWorkspaceTextFile({ scope: 'agent', agentId: bulkAgentId, path: boundaryPath }, boundaryContent);
+  assert.equal((await api.readWorkspaceFile({ scope: 'agent', agentId: bulkAgentId, path: boundaryPath })).size, MAX_WORKSPACE_TEXT_BYTES);
   const oversized = await rawFilesRequest('/api/workspace/files/text', {
     method: 'POST',
     body: JSON.stringify({
-      scope: 'space', spaceId: bulkSpaceId, path: `oversized-${stamp}.txt`,
+      scope: 'agent', agentId: bulkAgentId, path: `oversized-${stamp}.txt`,
       content: `${boundaryContent}B`, confirmed: true,
     }),
   });
@@ -399,7 +399,7 @@ try {
 
   await createBulkFiles();
   await assert.rejects(
-    api.listWorkspaceFiles({ scope: 'space', spaceId: bulkSpaceId, path: 'bulk' }),
+    api.listWorkspaceFiles({ scope: 'agent', agentId: bulkAgentId, path: 'bulk' }),
     (error) => error.status === 413,
   );
   pass('1001-entry directory returns 413 instead of truncating');
@@ -411,7 +411,7 @@ try {
   const readRun = begin(`Use read exactly once to read the PRIVATE relative file ${manualPath}. Report its exact content and no other text. Do not write or use any other tool.`);
   const readHistory = await finished(readRun);
   assert.ok(projectHistory(readHistory.messages).some((message) => message.role === 'assistant' && message.text.includes(updatedManual)));
-  const readStatus = await api.getAgentStatus(spaceId, readRun.runId);
+  const readStatus = await api.getAgentStatus(agentId, readRun.runId);
   assert.equal(readStatus.status.status, 'succeeded');
   write('model-read.json', {
     runId: readRun.runId,
@@ -429,7 +429,7 @@ try {
   await finished(writeRun);
   const writeReceipt = await waitApprovalTerminal(writeApproval.id);
   assert.equal(writeReceipt.execution?.status, 'succeeded');
-  assert.equal((await api.readWorkspaceFile({ scope: 'space', spaceId, path: modelPath })).content, modelContent);
+  assert.equal((await api.readWorkspaceFile({ scope: 'agent', agentId, path: modelPath })).content, modelContent);
   pass('real model write shows a complete pending preview and commits only after original approval API');
 
   const staleBefore = updatedManual;
@@ -438,13 +438,13 @@ try {
   const editApproval = await pendingApproval(editRun, { path: manualPath, after: staleAfter, before: staleBefore, beforeExists: true });
   write('model-edit-preview.json', editApproval);
   const manualFinal = `MANUAL_AFTER_MODEL_${marker}`;
-  await api.updateWorkspaceTextFile({ scope: 'space', spaceId, path: manualPath }, manualFinal);
+  await api.updateWorkspaceTextFile({ scope: 'agent', agentId, path: manualPath }, manualFinal);
   assert.equal(await approvals.decide(editApproval.id, 'approve'), true);
   await finished(editRun);
   const editReceipt = await waitApprovalTerminal(editApproval.id);
   assert.equal(editReceipt.execution?.status, 'failed');
   assert.match(editReceipt.execution?.result ?? '', /changed/i);
-  assert.equal((await api.readWorkspaceFile({ scope: 'space', spaceId, path: manualPath })).content, manualFinal);
+  assert.equal((await api.readWorkspaceFile({ scope: 'agent', agentId, path: manualPath })).content, manualFinal);
   write('stale-approval.json', { approval: editReceipt, finalContent: manualFinal });
   pass('old model approval fails after manual last-successful save and cannot overwrite new value');
 
@@ -457,7 +457,7 @@ try {
 } finally {
   for (const item of runs) {
     if (!item.settled) {
-      await api.stopRun(spaceId, item.runId).catch(() => {});
+      await api.stopRun(agentId, item.runId).catch(() => {});
       item.controller.abort();
       await item.promise;
     }
@@ -469,7 +469,7 @@ try {
     for (const path of sharedOwn) {
       intendedSharedDeletes.add(path);
       try {
-        await api.deleteWorkspaceFile({ scope: 'shared', spaceId: null, path });
+        await api.deleteWorkspaceFile({ scope: 'shared', agentId: null, path });
       } catch (error) {
         if (error.status !== 404) {
           write(`cleanup-shared-${path}.json`, { path, status: error.status, message: error.message });
@@ -478,22 +478,22 @@ try {
       }
     }
     if (token) {
-      const sharedAfter = (await api.listWorkspaceFiles({ scope: 'shared', spaceId: null })).entries;
+      const sharedAfter = (await api.listWorkspaceFiles({ scope: 'shared', agentId: null })).entries;
       assert.equal(sharedAfter.some((entry) => entry.name.includes(stamp)), false, 'dedicated shared files must be cleaned');
     }
-    for (const id of spaces) {
+    for (const id of agents) {
       try {
-        await api.deleteSpace(id);
+        await api.deleteAgent(id);
       } catch (error) {
         if (error.status !== 404) throw error;
       }
     }
-    if (token && baselineSpaceIds) {
-      const after = (await api.listSpaces()).map((space) => space.id);
-      assert.equal(after.some((id) => id === spaceId || id === otherSpaceId || id === bulkSpaceId), false);
-      for (const id of baselineSpaceIds) assert.ok(after.includes(id), `original space retained: ${id}`);
+    if (token && baselineAgentIds) {
+      const after = (await api.listAgents()).map((agent) => agent.id);
+      assert.equal(after.some((id) => id === agentId || id === otherAgentId || id === bulkAgentId), false);
+      for (const id of baselineAgentIds) assert.ok(after.includes(id), `original agent retained: ${id}`);
     }
-    pass('cleanup removed only dedicated spaces/files and retained original spaces');
+    pass('cleanup removed only dedicated agents/files and retained original agents');
   } catch (error) {
     failure ??= error;
     console.error('FAIL cleanup:', error);
@@ -503,9 +503,9 @@ try {
     passed: !failure,
     base,
     marker,
-    spaceId,
-    otherSpaceId,
-    bulkSpaceId,
+    agentId,
+    otherAgentId,
+    bulkAgentId,
     checks,
     runs: runs.map(({ runId, events, error, transportError }) => ({ runId, events, error, transportError })),
     error: failure?.message,

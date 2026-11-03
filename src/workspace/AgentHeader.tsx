@@ -5,8 +5,8 @@ import { useTheme } from '../theme/ThemeProvider';
 import { IconControl } from '../ui/IconControl';
 import { spacing, workspaceTheme } from '../ui/tokens';
 
-/** 空间及其子页共用固定顶栏；文件路径只作标题副文，不再挤占阅读正文。 */
-export function SpaceHeader({ title, caption, backLabel, onBack, action }: {
+/** 智能体及其子页共用固定顶栏；文件路径只作标题副文，不再挤占阅读正文。 */
+export function AgentHeader({ title, caption, backLabel, onBack, action }: {
   title: string; caption?: string; backLabel?: string; onBack: () => void; action?: ReactNode;
 }) {
   const { colors } = useTheme();

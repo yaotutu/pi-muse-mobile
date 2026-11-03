@@ -135,7 +135,7 @@ export const themeTokens = {
     composerBottom: 12,
     sessionTabsHeight: 66,
     sessionTabInset: 6,
-    /** 首条消息避开浮动头像与可选空间名称，后续内容可从其下滚过。 */
+    /** 首条消息避开浮动头像与可选智能体名称，后续内容可从其下滚过。 */
     chatContentTop: 124,
     chatContentTopCompact: 56,
     messageGap: 16,

@@ -11,7 +11,7 @@ import type {
   WorkspaceTextDetail,
 } from './types';
 
-export const WORKSPACE_SPACE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
+export const WORKSPACE_AGENT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 export const WORKSPACE_WRITE_SEGMENT = /^[A-Za-z0-9._-]+$/;
 export const MAX_WORKSPACE_TEXT_BYTES = 100_000;
 export const MAX_WORKSPACE_DOWNLOAD_BYTES = 8 * 1024 * 1024;
@@ -57,22 +57,22 @@ export const isValidUnicodeText = (value: string): boolean => {
 export const isValidWorkspaceText = (value: string): boolean =>
   isValidUnicodeText(value) && utf8ByteLength(value) <= MAX_WORKSPACE_TEXT_BYTES;
 
-export function validateWorkspaceSpaceId(value: string): string {
-  if (!WORKSPACE_SPACE_ID_PATTERN.test(value)) {
-    throw new ApiError(400, '工作区空间 ID 不合法');
+export function validateWorkspaceAgentId(value: string): string {
+  if (!WORKSPACE_AGENT_ID_PATTERN.test(value)) {
+    throw new ApiError(400, '工作区智能体 ID 不合法');
   }
   return value;
 }
 
 export function validateWorkspaceSelector(selector: WorkspaceFileSelector): WorkspaceFileSelector {
-  if (selector.scope !== 'space' && selector.scope !== 'shared') throw new ApiError(400, '工作区范围不合法');
-  if (selector.scope === 'space') {
-    if (typeof selector.spaceId !== 'string') throw new ApiError(400, 'scope=space 时必须提供 spaceId');
-    validateWorkspaceSpaceId(selector.spaceId);
-    return { scope: 'space', spaceId: selector.spaceId };
+  if (selector.scope !== 'agent' && selector.scope !== 'shared') throw new ApiError(400, '工作区范围不合法');
+  if (selector.scope === 'agent') {
+    if (typeof selector.agentId !== 'string') throw new ApiError(400, 'scope=agent 时必须提供 agentId');
+    validateWorkspaceAgentId(selector.agentId);
+    return { scope: 'agent', agentId: selector.agentId };
   }
-  if (selector.spaceId !== null) throw new ApiError(400, 'scope=shared 时不能提供 spaceId');
-  return { scope: 'shared', spaceId: null };
+  if (selector.agentId !== null) throw new ApiError(400, 'scope=shared 时不能提供 agentId');
+  return { scope: 'shared', agentId: null };
 }
 
 /**
@@ -101,8 +101,8 @@ export function validateWorkspaceWritePath(rawPath: string): string {
   return path;
 }
 
-export function workspaceFileTarget(scope: WorkspaceFileScope, spaceId: string | null, path: string, mode: 'read' | 'write' | 'file'): WorkspaceFileTarget {
-  const selector = validateWorkspaceSelector({ scope, spaceId });
+export function workspaceFileTarget(scope: WorkspaceFileScope, agentId: string | null, path: string, mode: 'read' | 'write' | 'file'): WorkspaceFileTarget {
+  const selector = validateWorkspaceSelector({ scope, agentId });
   const validated = mode === 'write'
     ? validateWorkspaceWritePath(path)
     : validateWorkspaceReadPath(path, { fileRequired: mode === 'file' });
@@ -111,21 +111,21 @@ export function workspaceFileTarget(scope: WorkspaceFileScope, spaceId: string |
 
 export function workspaceFileQuery(target: WorkspaceFileTarget): string {
   const params = new URLSearchParams({ scope: target.scope, path: target.path });
-  if (target.scope === 'space') params.set('spaceId', target.spaceId!);
+  if (target.scope === 'agent') params.set('agentId', target.agentId!);
   return params.toString();
 }
 
 function selectorOf(value: unknown, expected?: WorkspaceFileSelector): WorkspaceFileSelector {
   const item = object(value);
-  if (item.scope !== 'space' && item.scope !== 'shared') return invalid();
-  const spaceId = nullableText(item.spaceId);
+  if (item.scope !== 'agent' && item.scope !== 'shared') return invalid();
+  const agentId = nullableText(item.agentId);
   let selector: WorkspaceFileSelector;
   try {
-    selector = validateWorkspaceSelector({ scope: item.scope, spaceId });
+    selector = validateWorkspaceSelector({ scope: item.scope, agentId });
   } catch {
     return invalid();
   }
-  if (expected && (selector.scope !== expected.scope || selector.spaceId !== expected.spaceId)) return invalid();
+  if (expected && (selector.scope !== expected.scope || selector.agentId !== expected.agentId)) return invalid();
   return selector;
 }
 

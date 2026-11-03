@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState, useSyncExterna
 import { AppState, Platform } from 'react-native';
 import { useApi } from '../api/ApiProvider';
 import { useServiceConnection } from '../connection/ConnectionProvider';
-import { RuntimeStore, spaceRuntime } from './runtime-store';
+import { RuntimeStore, agentRuntime } from './runtime-store';
 import { ApprovalStore } from '../approvals/approval-store';
 import { ApprovalProvider } from '../approvals/ApprovalProvider';
 import { ActivityStore } from '../activities/activity-store';
@@ -51,8 +51,8 @@ export function useRuntimeStore() {
   if (!store) throw new Error('RuntimeProvider is required');
   return store;
 }
-export function useSpaceRuntime(spaceId: string) {
+export function useAgentRuntime(agentId: string) {
   const store = useRuntimeStore();
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
-  return { ...spaceRuntime(snapshot, spaceId), retry: store.retry, forgetSpace: (id: string) => store.forgetSpace(id) };
+  return { ...agentRuntime(snapshot, agentId), retry: store.retry, forgetAgent: (id: string) => store.forgetAgent(id) };
 }

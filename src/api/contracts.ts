@@ -10,7 +10,7 @@ import type {
   DeleteGoalResult,
   DeleteJobResult,
   DeleteMonitorResult,
-  DeleteSpaceResult,
+  DeleteAgentResult,
   Goal,
   GoalStatus,
   GoalsQuery,
@@ -24,11 +24,10 @@ import type {
   MessageAttachmentInput,
   Monitor,
   MonitorsQuery,
-  ResetSpaceResult,
-  SpaceInfo,
-  MemberInfo,
-  SpaceInstructions,
-  SpaceSkills,
+  ResetAgentResult,
+  AgentInfo,
+  AgentInstructions,
+  AgentSkills,
   UpdateGoalInput,
   UpdateJobInput,
   WorkspaceSnapshot,
@@ -55,7 +54,7 @@ import type { InformationClient } from '../information/contracts';
 
 /** 增量聊天只提交一条新用户消息；历史与工具消息始终由服务端持有。 */
 export type RunInput = {
-  spaceId: string;
+  agentId: string;
   /** 本轮唯一 ID；成功请求可幂等重放。 */
   runId: string;
   /** 来自 GET /api/conversation；空会话也是明确的 empty 版本。 */
@@ -303,33 +302,31 @@ export interface ApiClient extends DreamClient, ApprovalClient, ActivityClient, 
   getServerTimeZone(signal?: AbortSignal): Promise<string>;
   /** POST /api/session → {token, mode}；客户端不按时间过期，失效以服务端401为准。 */
   createSession(accessKey?: string): Promise<{ token: string; mode: string }>;
-  /** GET /api/members：普通空间与内置功能的只读成员目录，不创建聊天绑定。 */
-  listMembers(signal?: AbortSignal): Promise<MemberInfo[]>;
-  /** GET /api/spaces（按活跃倒序，只包含普通空间） */
-  listSpaces(signal?: AbortSignal): Promise<SpaceInfo[]>;
-  /** 显式建立普通成员；只确认同一 ID，不插入消息或重置已有空间。 */
-  createSpace(spaceId: string, signal?: AbortSignal): Promise<SpaceInfo>;
+  /** GET /api/agents：统一目录，包含新闻与短信，extensions 仅声明附加业务。 */
+  listAgents(signal?: AbortSignal): Promise<AgentInfo[]>;
+  /** 显式建立普通成员；只确认同一 ID，不插入消息或重置已有智能体。 */
+  createAgent(agentId: string, signal?: AbortSignal): Promise<AgentInfo>;
   /** 重置只替换聊天绑定；默认保留规则、技能、文件、定时任务和监控。副作用绝不自动重试。 */
-  resetSpace(spaceId: string, options?: { clearSchedules?: boolean }, signal?: AbortSignal): Promise<ResetSpaceResult>;
-  /** GET /api/conversation?spaceId= 权威历史；empty 不代表空间存在，存在性以空间列表为准。 */
-  getConversation(spaceId: string, signal?: AbortSignal): Promise<ConversationSnapshot>;
+  resetAgent(agentId: string, options?: { clearSchedules?: boolean }, signal?: AbortSignal): Promise<ResetAgentResult>;
+  /** GET /api/conversation?agentId= 权威历史；empty 不代表智能体存在，存在性以智能体列表为准。 */
+  getConversation(agentId: string, signal?: AbortSignal): Promise<ConversationSnapshot>;
   /** GET 消息当前反馈；读取失败由调用方保留旧值，不用空反馈冒充。 */
   getMessageFeedback(
-    spaceId: string,
+    agentId: string,
     messageId: string,
     sessionId: string,
     signal?: AbortSignal,
   ): Promise<MessageFeedback>;
   /** GET 服务端保留的原始反馈操作事件。 */
   getMessageFeedbackEvents(
-    spaceId: string,
+    agentId: string,
     messageId: string,
     sessionId: string,
     signal?: AbortSignal,
   ): Promise<MessageFeedbackEvents>;
   /** PUT 互斥反应；null 表示撤销。成功返回完整反馈，不改变聊天 revision。 */
   setMessageReaction(
-    spaceId: string,
+    agentId: string,
     messageId: string,
     sessionId: string,
     reaction: MessageReaction | null,
@@ -337,7 +334,7 @@ export interface ApiClient extends DreamClient, ApprovalClient, ActivityClient, 
   ): Promise<MessageFeedback>;
   /** POST 新评论；服务端 trim 后必须为 1..4000 字。 */
   addMessageComment(
-    spaceId: string,
+    agentId: string,
     messageId: string,
     sessionId: string,
     text: string,
@@ -345,7 +342,7 @@ export interface ApiClient extends DreamClient, ApprovalClient, ActivityClient, 
   ): Promise<MessageFeedback>;
   /** PATCH 编辑评论；成功返回完整反馈。 */
   editMessageComment(
-    spaceId: string,
+    agentId: string,
     messageId: string,
     commentId: string,
     sessionId: string,
@@ -354,7 +351,7 @@ export interface ApiClient extends DreamClient, ApprovalClient, ActivityClient, 
   ): Promise<MessageFeedback>;
   /** DELETE 评论；成功返回完整反馈。 */
   deleteMessageComment(
-    spaceId: string,
+    agentId: string,
     messageId: string,
     commentId: string,
     sessionId: string,
@@ -367,43 +364,43 @@ export interface ApiClient extends DreamClient, ApprovalClient, ActivityClient, 
     signal?: AbortSignal,
   ): Promise<void>;
   /** 只停止指定运行；迟到停止返回 false，不影响下一轮。 */
-  stopRun(spaceId: string, runId: string): Promise<boolean>;
+  stopRun(agentId: string, runId: string): Promise<boolean>;
   /** 保留的全量快照消费者；新版顶栏、审批与活动不调用此方法，也不恢复盲轮询。 */
   getSnapshot(signal?: AbortSignal): Promise<WorkspaceSnapshot>;
 
-  // --- 空间配置与生命周期 ---
+  // --- 智能体配置与生命周期 ---
 
-  /** GET /api/spaces/:id/instructions 读取空间规则 */
-  getSpaceInstructions(spaceId: string, signal?: AbortSignal): Promise<SpaceInstructions>;
-  /** PUT /api/spaces/:id/instructions 保存空间规则；空串允许（等价"清空"） */
-  saveSpaceInstructions(spaceId: string, instructions: string, signal?: AbortSignal): Promise<SpaceInstructions>;
-  /** GET /api/spaces/:id/skills 读取空间级技能生效值；diagnostics 缺省视为无诊断 */
-  getSpaceSkills(spaceId: string, signal?: AbortSignal): Promise<SpaceSkills>;
-  /** PUT /api/spaces/:id/skills 用名称→启用态覆盖写入；空对象等价"恢复默认" */
-  saveSpaceSkills(
-    spaceId: string,
+  /** GET /api/agents/:id/instructions 读取智能体规则 */
+  getAgentInstructions(agentId: string, signal?: AbortSignal): Promise<AgentInstructions>;
+  /** PUT /api/agents/:id/instructions 保存智能体规则；空串允许（等价"清空"） */
+  saveAgentInstructions(agentId: string, instructions: string, signal?: AbortSignal): Promise<AgentInstructions>;
+  /** GET /api/agents/:id/skills 读取智能体级技能生效值；diagnostics 缺省视为无诊断 */
+  getAgentSkills(agentId: string, signal?: AbortSignal): Promise<AgentSkills>;
+  /** PUT /api/agents/:id/skills 用名称→启用态覆盖写入；空对象等价"恢复默认" */
+  saveAgentSkills(
+    agentId: string,
     overrides: Record<string, boolean>,
     signal?: AbortSignal,
-  ): Promise<SpaceSkills>;
-  /** DELETE /api/spaces/:id 彻底删除空间并清点副作用；服务端 401/404/409 语义保留 */
-  deleteSpace(spaceId: string, signal?: AbortSignal): Promise<DeleteSpaceResult>;
+  ): Promise<AgentSkills>;
+  /** DELETE /api/agents/:id 彻底删除智能体并清点副作用；服务端 401/404/409 语义保留 */
+  deleteAgent(agentId: string, signal?: AbortSignal): Promise<DeleteAgentResult>;
 
   // --- 定时任务（GET /api/jobs, GET /api/jobs/:id, POST /api/jobs/:id/control, PATCH /api/jobs/:id, DELETE /api/jobs/:id） ---
 
-  /** 查询定时任务列表：全量返回不分页，支持空间过滤与排序 */
+  /** 查询定时任务列表：全量返回不分页，支持智能体过滤与排序 */
   listJobs(query?: JobsQuery, signal?: AbortSignal): Promise<JobItem[]>;
   /** 读取指定定时任务详情（含时间线 events） */
   getJob(id: string, signal?: AbortSignal): Promise<JobDetail>;
   /** 控制定时任务生命周期（pause/resume/cancel/retry） */
   controlJob(id: string, action: JobAction, signal?: AbortSignal): Promise<JobItem>;
-  /** 直接编辑定时任务提示词、时刻周期或归属空间 */
+  /** 直接编辑定时任务提示词、时刻周期或归属智能体 */
   updateJob(id: string, updates: UpdateJobInput, signal?: AbortSignal): Promise<JobItem>;
   /** 彻底删除指定定时任务 */
   deleteJob(id: string, signal?: AbortSignal): Promise<DeleteJobResult>;
 
   // --- 监控（创建走聊天 monitor 工具，页面只做控制） ---
 
-  /** 查询网页监控列表：全量返回不分页，支持 spaceId、sort (createdAt/lastCheckedAt/status)、order (asc/desc) 过滤与排序 */
+  /** 查询网页监控列表：全量返回不分页，支持 agentId、sort (createdAt/lastCheckedAt/status)、order (asc/desc) 过滤与排序 */
   listMonitors(query?: MonitorsQuery, signal?: AbortSignal): Promise<Monitor[]>;
   /** 读取指定网页监控详情 */
   getMonitor(id: string, signal?: AbortSignal): Promise<Monitor>;
@@ -439,10 +436,10 @@ export interface ApiClient extends DreamClient, ApprovalClient, ActivityClient, 
 
   // --- 工作区文件（手动管理；模型写入仍走聊天工具审批） ---
 
-  // --- 运行状态（GET /api/agent/status + GET /api/events） ---
+  // --- 运行状态（GET /api/runs/status + GET /api/events） ---
 
-  /** 单点查询指定 (spaceId, runId) 的最新状态；运行不存在或被清理返回 404。 */
-  getAgentStatus(spaceId: string, runId: string, signal?: AbortSignal): Promise<AgentStatusResponse>;
+  /** 单点查询指定 (agentId, runId) 的最新状态；运行不存在或被清理返回 404。 */
+  getAgentStatus(agentId: string, runId: string, signal?: AbortSignal): Promise<AgentStatusResponse>;
   /**
    * 订阅唯一工作区通知流；首帧 ready 同时给出运行和待审批完整集合。
    * 后续运行状态与审批新增／回执事件交由各自领域消费，不额外建立审批 SSE。

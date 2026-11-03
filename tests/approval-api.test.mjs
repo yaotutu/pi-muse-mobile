@@ -18,22 +18,22 @@ test('审批严格解析完整不可变预览，空内容不是缺失字段', ()
 });
 test('技能资源审批必须使用 scope=skill 且不归属工作区', () => {
   const skill = approvalFixture({
-    preview: { ...approvalFixture().preview, scope: 'skill', ownerSpaceId: null, path: 'notes/SKILL.md' },
+    preview: { ...approvalFixture().preview, scope: 'skill', ownerAgentId: null, path: 'notes/SKILL.md' },
   });
   assert.equal(parseApprovalView(skill).preview.scope, 'skill');
-  assert.equal(parseApprovalView(skill).preview.ownerSpaceId, null);
+  assert.equal(parseApprovalView(skill).preview.ownerAgentId, null);
   const invalid = [
-    { ...skill, preview: { ...skill.preview, ownerSpaceId: 'thread-a' } },
-    { ...skill, preview: { ...skill.preview, scope: 'thread' } },
+    { ...skill, preview: { ...skill.preview, ownerAgentId: 'agent-a' } },
+    { ...skill, preview: { ...skill.preview, scope: 'agent' } },
   ];
   for (const value of invalid) assert.throws(() => parseApprovalView(value), (error) => error.status === 502);
 });
 test('审批缺字段、伪造作用域、坏 revision/时间/执行状态均拒绝而非补默认', () => {
   const item = approvalFixture();
   const invalid = [null, {}, { ...item, execution: undefined }, { ...item, revision: 0 }, { ...item, revision: 1.5 },
-    { ...item, spaceId: undefined }, { ...item, expiresAt: 'invalid' }, { ...item, status: 'success' },
-    { ...item, preview: { ...item.preview, after: undefined } }, { ...item, preview: { ...item.preview, ownerSpaceId: null } },
-    { ...item, preview: { ...item.preview, scope: 'shared', ownerSpaceId: 'thread-a' } },
+    { ...item, agentId: undefined }, { ...item, expiresAt: 'invalid' }, { ...item, status: 'success' },
+    { ...item, preview: { ...item.preview, after: undefined } }, { ...item, preview: { ...item.preview, ownerAgentId: null } },
+    { ...item, preview: { ...item.preview, scope: 'shared', ownerAgentId: 'agent-a' } },
     { ...item, execution: { status: 'success' } }, { ...item, resolvedAt: item.createdAt },
   ];
   for (const value of invalid) assert.throws(() => parseApprovalView(value), (error) => error.status === 502);
@@ -61,11 +61,11 @@ test('审批列表只发送声明的过滤参数，不透明 cursor 编码后原
   await withFetch(async (url, init) => {
     const parsed = new URL(url); assert.equal(parsed.pathname, '/api/approvals');
     assert.equal(parsed.searchParams.get('cursor'), 'Ab+c/d==_中文');
-    assert.equal(parsed.searchParams.get('spaceId'), 'thread-a'); assert.equal(parsed.searchParams.get('status'), 'denied');
+    assert.equal(parsed.searchParams.get('agentId'), 'agent-a'); assert.equal(parsed.searchParams.get('status'), 'denied');
     assert.equal(parsed.searchParams.get('activityId'), 'activity-a'); assert.equal(parsed.searchParams.get('limit'), '20');
     assert.equal(parsed.searchParams.has('extra'), false); assert.equal(init.headers.authorization, 'Bearer test-token');
     return json({ approvals: [], hasMore: false, nextCursor: null });
-  }, (api) => api.listApprovals({ cursor: 'Ab+c/d==_中文', spaceId: 'thread-a', status: 'denied', activityId: 'activity-a', limit: 20, extra: 'not-sent' }));
+  }, (api) => api.listApprovals({ cursor: 'Ab+c/d==_中文', agentId: 'agent-a', status: 'denied', activityId: 'activity-a', limit: 20, extra: 'not-sent' }));
 });
 test('补读 pending 使用新版端点，未调用旧 actions 或全量工作区', async () => {
   await withFetch(async (url) => { assert.equal(url, `${BASE}/api/approvals/pending`); return json({ approvals: [approvalFixture()] }); }, async (api) => {

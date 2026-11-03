@@ -8,7 +8,7 @@ export type MemoryQuery = {
 };
 export type MemoryPage = { memories: MemoryItem[] };
 
-/** 全局长期记忆与空间无关；只用独立 HTTP，不读工作区大快照、不新增通知连接。 */
+/** 全局长期记忆与智能体无关；只用独立 HTTP，不读工作区大快照、不新增通知连接。 */
 export interface MemoryClient {
   listMemories(query?: MemoryQuery, signal?: AbortSignal): Promise<MemoryPage>;
   getMemory(id: string, signal?: AbortSignal): Promise<MemoryItem>;

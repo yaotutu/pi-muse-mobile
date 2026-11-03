@@ -8,9 +8,9 @@ const Context = createContext<{ store: FilesStore; snapshot: FilesSnapshot } | n
 
 /**
  * FilesProvider 只承载当前连接与前台生命周期；文件面板后续必须调用 open()/close()。
- * currentSpaceId 是全局当前空间，不由文件域自行创建或猜测。
+ * currentAgentId 是全局当前智能体，不由文件域自行创建或猜测。
  */
-export function FilesProvider({ currentSpaceId, children }: { currentSpaceId: string; children: ReactNode }) {
+export function FilesProvider({ currentAgentId, children }: { currentAgentId: string; children: ReactNode }) {
   const api = useApi();
   const connection = useServiceConnection();
   const [foreground, setForeground] = useState(AppState.currentState === 'active');
@@ -29,9 +29,9 @@ export function FilesProvider({ currentSpaceId, children }: { currentSpaceId: st
   }, [store, enabled]);
 
   useEffect(() => {
-    // 草稿/未明操作阻塞时由 Store 记住最新空间；不复制草稿，也不抢夺用户显式 shared 选择。
-    store.selectSpace(currentSpaceId);
-  }, [store, currentSpaceId]);
+    // 草稿/未明操作阻塞时由 Store 记住最新智能体；不复制草稿，也不抢夺用户显式 shared 选择。
+    store.selectAgent(currentAgentId);
+  }, [store, currentAgentId]);
 
   useEffect(() => () => store.dispose(), [store]);
 

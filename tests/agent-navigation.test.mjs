@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
-import { filesBackAction, hasFileWork } from '../src/workspace/space-navigation.ts';
+import { filesBackAction, hasFileWork } from '../src/workspace/agent-navigation.ts';
 import { workspaceBackAction } from '../src/workspace/workspace-back.ts';
 import { FilesStore } from '../src/files/files-store.ts';
 const read = path => readFileSync(new URL(`../src/${path}`, import.meta.url), 'utf8');
 const state = { writing: false, uncertain: false, directoryPath: '.', entries: [] };
 
-test('文件返回按未明/写入、确认、草稿、详情、目录、空间首页分层', () => {
+test('文件返回按未明/写入、确认、草稿、详情、目录、智能体首页分层', () => {
   assert.equal(filesBackAction(state), 'home');
   assert.equal(filesBackAction({ ...state, directoryPath: 'notes' }), 'directory');
   assert.equal(filesBackAction({ ...state, selectedPath: 'readme.md' }), 'detail');
@@ -20,9 +20,9 @@ test('文件返回按未明/写入、确认、草稿、详情、目录、空间�
   for (const patch of [{ editor: {} }, { savePreview: {} }, { deleteTarget: {} }, { writing: 'update' }, { uncertain: true }]) assert.equal(hasFileWork({ ...state, ...patch }), true);
 });
 
-test('空间由根层统一处理 Back，键盘和覆盖层保持更高优先级', () => {
-  const root = { keyboardVisible: false, sessionMounted: false, drawerOpen: false, page: 'space', settingsSubpage: null, goalCreating: false };
-  assert.equal(workspaceBackAction(root), 'space');
+test('智能体由根层统一处理 Back，键盘和覆盖层保持更高优先级', () => {
+  const root = { keyboardVisible: false, sessionMounted: false, drawerOpen: false, page: 'agent', settingsSubpage: null, goalCreating: false };
+  assert.equal(workspaceBackAction(root), 'agent');
   assert.equal(workspaceBackAction({ ...root, keyboardVisible: true }), 'keyboard');
   assert.equal(workspaceBackAction({ ...root, page: 'feature' }), 'feature');
   assert.equal(workspaceBackAction({ ...root, page: 'chat' }), 'inbox');
@@ -31,13 +31,13 @@ test('空间由根层统一处理 Back，键盘和覆盖层保持更高优先级
 
 test('目录返回不清空列表，编辑/未明状态不能被 closeFile 绕过', async () => {
   const at = '2026-11-02T00:00:00.000Z';
-  const selector = { scope: 'space', spaceId: 'test-space' };
+  const selector = { scope: 'agent', agentId: 'test-agent' };
   const entry = { path: 'a.md', name: 'a.md', kind: 'file', size: 4, updatedAt: at };
   const store = new FilesStore({
     listWorkspaceFiles: async () => ({ ...selector, path: '.', entries: [entry] }),
     readWorkspaceFile: async () => ({ ...selector, ...entry, kind: 'text', content: '# Hi', mimeType: 'text/markdown' }),
   });
-  store.selectSpace(selector.spaceId); store.setActive(true); store.open();
+  store.selectAgent(selector.agentId); store.setActive(true); store.open();
   await store.refresh(); await store.openFile(entry.path);
   store.beginEdit(); assert.equal(store.closeFile(), false);
   store.cancelEditor(); const before = store.getSnapshot().entries;
@@ -54,24 +54,24 @@ test('文件只展示和编辑完整原文，Markdown 渲染与聊天清理不�
   assert.match(read('workspace/MessageContent.tsx'), /text\.replace\(/);
   assert.doesNotMatch(read('workspace/FilesScreen.tsx'), /MarkdownContent|marked|<WebView/);
   assert.match(read('workspace/FilesScreen.tsx'), /onChangeText=\{store.editFileContent\}/);
-  assert.doesNotMatch(read('workspace/FilesScreen.tsx'), /selectShared|共享文件"|查看全部空间/);
+  assert.doesNotMatch(read('workspace/FilesScreen.tsx'), /selectShared|共享文件"|查看全部智能体/);
 });
 
 test('丢弃规则或技能只影响所选字段，不丢其他设置草稿', async () => {
-  const { SpaceStore } = await import('../src/spaces/space-store.ts');
-  const store = new SpaceStore({});
-  const a = store.get('space-a'); const b = store.get('space-b');
+  const { AgentStore } = await import('../src/agents/agent-store.ts');
+  const store = new AgentStore({});
+  const a = store.get('agent-a'); const b = store.get('agent-b');
   a.instructions.saved = 'saved'; a.instructions.draft = 'draft';
   a.skills.saved = {read: true}; a.skills.draft = {read: false};
-  b.instructions.draft = 'other-space';
-  store.discardSettings('space-a','instructions');
+  b.instructions.draft = 'other-agent';
+  store.discardSettings('agent-a','instructions');
   assert.equal(a.instructions.draft, 'saved');
   assert.equal(a.skills.draft.read, false);
   a.instructions.draft = 'another-draft';
-  store.discardSettings('space-a','skills');
+  store.discardSettings('agent-a','skills');
   assert.equal(a.skills.draft.read, true);
   assert.equal(a.instructions.draft, 'another-draft');
-  assert.equal(b.instructions.draft, 'other-space');
+  assert.equal(b.instructions.draft, 'other-agent');
 });
 
 test('文件未明回读保持原文，不使用 Markdown 渲染替代完整核对', () => {
@@ -84,8 +84,8 @@ test('文件默认直接编辑原文，路径归顶栏，信息与非编辑操�
   const source = read('workspace/FilesScreen.tsx');
   const start = source.indexOf('{!!snapshot.selectedPath && <View');
   const reading = source.slice(start, source.indexOf('</ScrollView>', start));
-  assert.match(source, /<SpaceHeader title=\{title\} caption=\{caption\}/);
-  assert.match(source, /const caption = parent === '\.' \? spaceName :/);
+  assert.match(source, /<AgentHeader title=\{title\} caption=\{caption\}/);
+  assert.match(source, /const caption = parent === '\.' \? agentName :/);
   assert.doesNotMatch(reading, /路径：|formatSize|formatTime|mimeType|ActionButton|FeedbackMenuRow/);
   assert.doesNotMatch(source, /ChoiceChip|阅读 Markdown|查看 Markdown 原文/);
   const menu = source.slice(source.indexOf('{info &&'));
@@ -97,14 +97,14 @@ test('文件默认直接编辑原文，路径归顶栏，信息与非编辑操�
   assert.doesNotMatch(menu, /store.confirmSave\(|store.confirmDelete\(/);
 });
 
-test('文件菜单不跨空间、文件或编辑状态复活；测量在页面变化后失效', () => {
+test('文件菜单不跨智能体、文件或编辑状态复活；测量在页面变化后失效', () => {
   const source = read('workspace/FilesScreen.tsx');
   assert.match(source, /infoState.store !== store \|\| infoState.owner !== menuOwner/);
-  assert.match(source, /\[store, selectedKey, viewKey, currentSpaceId\]/);
+  assert.match(source, /\[store, selectedKey, viewKey, currentAgentId\]/);
   assert.match(source, /sequence !== measureSequence.current/);
-  assert.match(source, /info.key === detailKey && detail && fileOpen && !wrongSpace/);
+  assert.match(source, /info.key === detailKey && detail && fileOpen && !wrongAgent/);
   assert.match(source, /label="查看文件详情与操作"/);
-  assert.match(read('workspace/SpaceHeader.tsx'), /ellipsizeMode="middle"/);
+  assert.match(read('workspace/AgentHeader.tsx'), /ellipsizeMode="middle"/);
   assert.match(source, /width=\{l.fileInformationWidth\}/);
   const menu = read('ui/AnchoredFeedbackMenu.tsx');
   assert.match(menu, /Math.min\(width, viewport.width - m.screenMargin \* 2\)/);
@@ -112,7 +112,7 @@ test('文件菜单不跨空间、文件或编辑状态复活；测量在页面�
 });
 
 test('原文直编首次修改才建草稿，确认前不写入，恢复原文解除草稿保护', async () => {
-  const selector = { scope: 'space', spaceId: 'source-space' };
+  const selector = { scope: 'agent', agentId: 'source-agent' };
   const content = '# 原文\n\n**未渲染**\n\n```text\nhello\n```\n<think>保留</think>';
   const entry = { path: 'source.md', name: 'source.md', kind: 'file', size: Buffer.byteLength(content), updatedAt: '2026-11-02T00:00:00.000Z' };
   let writes = 0;
@@ -121,7 +121,7 @@ test('原文直编首次修改才建草稿，确认前不写入，恢复原文�
     readWorkspaceFile: async () => ({ ...selector, ...entry, kind: 'text', content, mimeType: 'text/plain' }),
     updateWorkspaceTextFile: async (_, next) => { writes++; return { ...selector, ...entry, kind: 'text', content: next, size: Buffer.byteLength(next), mimeType: 'text/plain' }; },
   });
-  store.selectSpace(selector.spaceId); store.setActive(true); store.open(); await store.refresh(); await store.openFile(entry.path);
+  store.selectAgent(selector.agentId); store.setActive(true); store.open(); await store.refresh(); await store.openFile(entry.path);
   assert.equal(store.getSnapshot().editor, undefined);
   store.editFileContent(content); assert.equal(hasFileWork(store.getSnapshot()), false);
   store.editFileContent(content + '\nchanged');
@@ -156,6 +156,6 @@ test('原文直编保持输入节点，只有草稿出现保存栏，元信息�
 });
 
 // 维护页每次重新进入都要重新确认，不能复用上次离开前的删除确认。
-test('重新进入空间维护会清除先前删除确认', () => {
-  assert.match(read('workspace/WorkspaceScreen.tsx'), /onSection=\{\(next\) => \{ setDeleteConfirm\(false\); setSpaceSection\(next\); \}\}/);
+test('重新进入智能体维护会清除先前删除确认', () => {
+  assert.match(read('workspace/WorkspaceScreen.tsx'), /onSection=\{\(next\) => \{ setDeleteConfirm\(false\); setAgentSection\(next\); \}\}/);
 });

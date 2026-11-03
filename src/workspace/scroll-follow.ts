@@ -36,7 +36,7 @@ export class ScrollFollow {
   shouldAnchor() { return !this.dragging && (this.nearBottom || this.sendingJump); }
 }
 
-/** 将连续布局纠偏合并到下一帧；执行时重新检查当前空间是否仍需锚定。 */
+/** 将连续布局纠偏合并到下一帧；执行时重新检查当前智能体是否仍需锚定。 */
 export class ScrollAnchorFrame {
   private frame: number | null = null;
 

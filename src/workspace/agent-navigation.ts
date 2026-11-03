@@ -1,6 +1,6 @@
 import type { FilesSnapshot } from '../files/types';
 
-export type SpaceSection = 'home' | 'files' | 'rules' | 'skills' | 'maintenance';
+export type AgentSection = 'home' | 'files' | 'rules' | 'skills' | 'maintenance';
 
 /** 根层与可见返回按钮共用相同次序；未明写入不能靠返回解除。 */
 export function filesBackAction(state: FilesSnapshot) {

@@ -25,7 +25,7 @@ function deferred() {
 }
 
 const at = '2026-10-24T01:02:03.004Z';
-const selector = { scope: 'space', spaceId: 'space-a' };
+const selector = { scope: 'agent', agentId: 'agent-a' };
 const entry = (overrides = {}) => ({
   name: 'a.txt', path: 'a.txt', kind: 'file', size: 9, updatedAt: at, ...overrides,
 });
@@ -51,7 +51,7 @@ test('workspace parsers validate ownership, ordering, content branches and base6
   assert.deepEqual(parseWorkspaceDelete({ ...selector, path: 'a.txt', ok: true }), { ...selector, path: 'a.txt', ok: true });
 
   const invalidLists = [
-    list({ spaceId: 'other' }),
+    list({ agentId: 'other' }),
     list({ path: 'other' }),
     list({ entries: [entry(), entry()] }),
     list({ entries: [{ ...entry(), path: 'wrong.txt' }] }),
@@ -61,7 +61,7 @@ test('workspace parsers validate ownership, ordering, content branches and base6
   for (const value of invalidLists) assert.throws(() => parseWorkspaceList(value, { ...selector, path: '.' }), ApiError);
 
   const invalidDetails = [
-    detail({ spaceId: null, scope: 'shared' }),
+    detail({ agentId: null, scope: 'shared' }),
     detail({ path: 'other.txt', name: 'other.txt' }),
     detail({ name: 'a', size: 3 }),
     detail({ content: '一' }),
@@ -111,11 +111,11 @@ test('HttpApiClient sends the fixed file endpoints, bearer auth and confirmed wr
     assert.deepEqual(calls.map(({ url }) => new URL(url).pathname), [
       '/api/workspace/files', '/api/workspace/files/content', '/api/workspace/files/text', '/api/workspace/files/text', '/api/workspace/files',
     ]);
-    assert.deepEqual(Object.fromEntries(new URL(calls[0].url).searchParams), { scope: 'space', spaceId: 'space-a', path: '.' });
-    assert.deepEqual(Object.fromEntries(new URL(calls[4].url).searchParams), { scope: 'space', spaceId: 'space-a', path: 'a.txt' });
+    assert.deepEqual(Object.fromEntries(new URL(calls[0].url).searchParams), { scope: 'agent', agentId: 'agent-a', path: '.' });
+    assert.deepEqual(Object.fromEntries(new URL(calls[4].url).searchParams), { scope: 'agent', agentId: 'agent-a', path: 'a.txt' });
     for (const call of calls) assert.equal(call.init.headers.authorization, 'Bearer token');
     assert.deepEqual(JSON.parse(calls[2].init.body), {
-      scope: 'space', spaceId: 'space-a', path: 'a.txt', content: 'saved', confirmed: true,
+      scope: 'agent', agentId: 'agent-a', path: 'a.txt', content: 'saved', confirmed: true,
     });
     assert.equal(calls[3].init.method, 'PUT');
     assert.equal(calls[4].init.method, 'DELETE');
@@ -146,17 +146,17 @@ function storeFixture() {
   return { client, calls, store: new FilesStore(client) };
 }
 
-async function openStore(fixture, spaceId = 'space-a') {
-  fixture.store.selectSpace(spaceId);
+async function openStore(fixture, agentId = 'agent-a') {
+  fixture.store.selectAgent(agentId);
   fixture.store.setActive(true);
   fixture.store.open();
   await tick();
 }
 
-test('directory and space reads isolate late responses and preserve drafts across close/reopen', async () => {
+test('directory and agent reads isolate late responses and preserve drafts across close/reopen', async () => {
   const fixture = storeFixture();
   await openStore(fixture);
-  assert.equal(fixture.calls.list[0].target.spaceId, 'space-a');
+  assert.equal(fixture.calls.list[0].target.agentId, 'agent-a');
   fixture.store.openDirectory('docs');
   assert.equal(fixture.calls.list[0].signal.aborted, true);
   fixture.calls.list[0].resolve(list({ path: '.', entries: [entry()] }));
@@ -167,23 +167,23 @@ test('directory and space reads isolate late responses and preserve drafts acros
   fixture.store.beginCreate();
   fixture.store.setDraftPath('draft.txt');
   fixture.store.setDraftContent('draft');
-  assert.equal(fixture.store.selectSpace('space-b'), false);
+  assert.equal(fixture.store.selectAgent('agent-b'), false);
   fixture.store.close();
   fixture.store.open();
   await tick();
   const snapshot = fixture.store.getSnapshot();
   assert.equal(snapshot.editor?.content, 'draft');
   assert.equal(fixture.calls.list[1].target.path, 'docs');
-  assert.equal(fixture.calls.list[2].target.spaceId, 'space-a');
+  assert.equal(fixture.calls.list[2].target.agentId, 'agent-a');
   fixture.calls.list[2].resolve(list({ path: 'docs', entries: [] }));
   await tick();
   fixture.store.cancelEditor();
   assert.equal(fixture.store.getSnapshot().editor, undefined);
-  assert.equal(fixture.store.selectSpace('space-b'), true);
+  assert.equal(fixture.store.selectAgent('agent-b'), true);
   fixture.store.dispose();
 });
 
-test('pending global space switch waits for the draft and never steals explicit shared selection', async () => {
+test('pending global agent switch waits for the draft and never steals explicit shared selection', async () => {
   const fixture = storeFixture();
   await openStore(fixture);
   fixture.calls.list[0].resolve(list({ entries: [] }));
@@ -191,33 +191,33 @@ test('pending global space switch waits for the draft and never steals explicit 
   fixture.store.beginCreate();
   fixture.store.setDraftPath('pending.txt');
   fixture.store.setDraftContent('pending draft');
-  assert.equal(fixture.store.selectSpace('space-b'), false);
-  assert.equal(fixture.store.getSnapshot().pendingSpaceId, 'space-b');
+  assert.equal(fixture.store.selectAgent('agent-b'), false);
+  assert.equal(fixture.store.getSnapshot().pendingAgentId, 'agent-b');
 
   assert.equal(fixture.store.selectShared(), false);
-  assert.equal(fixture.store.getSnapshot().pendingSpaceId, undefined);
+  assert.equal(fixture.store.getSnapshot().pendingAgentId, undefined);
   fixture.store.cancelEditor();
   await tick();
-  assert.equal(fixture.store.getSnapshot().scope, 'space');
-  assert.equal(fixture.store.getSnapshot().selectedSpaceId, 'space-a');
+  assert.equal(fixture.store.getSnapshot().scope, 'agent');
+  assert.equal(fixture.store.getSnapshot().selectedAgentId, 'agent-a');
   assert.equal(fixture.calls.list.length, 1);
   assert.equal(fixture.store.selectShared(), true);
-  fixture.calls.list[1].resolve({ scope: 'shared', spaceId: null, path: '.', entries: [] });
+  fixture.calls.list[1].resolve({ scope: 'shared', agentId: null, path: '.', entries: [] });
   await tick();
 
-  assert.equal(fixture.store.selectSpace('space-a'), true);
+  assert.equal(fixture.store.selectAgent('agent-a'), true);
   fixture.calls.list[2].resolve(list({ entries: [] }));
   await tick();
   fixture.store.beginCreate();
   fixture.store.setDraftPath('switch-after-cancel.txt');
   fixture.store.setDraftContent('will cancel');
-  assert.equal(fixture.store.selectSpace('space-b'), false);
+  assert.equal(fixture.store.selectAgent('agent-b'), false);
   fixture.store.cancelEditor();
   await tick();
   const snapshot = fixture.store.getSnapshot();
-  assert.equal(snapshot.scope, 'space');
-  assert.equal(snapshot.selectedSpaceId, 'space-b');
-  assert.equal(fixture.calls.list.at(-1).target.spaceId, 'space-b');
+  assert.equal(snapshot.scope, 'agent');
+  assert.equal(snapshot.selectedAgentId, 'agent-b');
+  assert.equal(fixture.calls.list.at(-1).target.agentId, 'agent-b');
   fixture.store.dispose();
 });
 
@@ -269,20 +269,20 @@ test('foreground reopen and refresh restore selected detail without replacing dr
   fixture.store.dispose();
 });
 
-test('a late detail response cannot cross a space switch', async () => {
+test('a late detail response cannot cross an agent switch', async () => {
   const fixture = storeFixture();
   await openStore(fixture);
   fixture.calls.list[0].resolve(list());
   await tick();
   const opened = fixture.store.openFile('a.txt');
-  assert.equal(fixture.store.selectSpace('space-b'), true);
+  assert.equal(fixture.store.selectAgent('agent-b'), true);
   fixture.calls.read[0].resolve(detail());
-  fixture.calls.list[1].resolve(list({ spaceId: 'space-b', entries: [] }));
+  fixture.calls.list[1].resolve(list({ agentId: 'agent-b', entries: [] }));
   assert.equal(await opened, false);
   await tick();
   const snapshot = fixture.store.getSnapshot();
-  assert.equal(snapshot.scope, 'space');
-  assert.equal(snapshot.selectedSpaceId, 'space-b');
+  assert.equal(snapshot.scope, 'agent');
+  assert.equal(snapshot.selectedAgentId, 'agent-b');
   assert.equal(snapshot.selectedPath, undefined);
   assert.equal(snapshot.detail, undefined);
   fixture.store.dispose();
@@ -545,7 +545,7 @@ test('public non-visual integration surface is stable for the Sol UI task', () =
   const contracts = readFileSync('src/api/contracts.ts', 'utf8');
   assert.match(contracts, /interface ApiClient extends .*FilesClient/);
   for (const member of [
-    'setActive(', 'open()', 'close()', 'selectSpace =', 'selectShared =', 'openDirectory =', 'goUp =',
+    'setActive(', 'open()', 'close()', 'selectAgent =', 'selectShared =', 'openDirectory =', 'goUp =',
     'refreshDirectory =', 'openFile =', 'refreshDetail =', 'beginCreate =', 'beginEdit =', 'setDraftPath =',
     'setDraftContent =', 'cancelEditor =', 'requestSave =', 'cancelSavePreview =', 'confirmSave =',
     'requestDelete =', 'cancelDelete =', 'confirmDelete =', 'verifyUncertainOperation =', 'acknowledgeReviewed =',

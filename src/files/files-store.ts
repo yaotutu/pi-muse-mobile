@@ -3,7 +3,7 @@ import {
   MAX_WORKSPACE_TEXT_BYTES,
   assertWorkspaceTextForWrite,
   validateWorkspaceReadPath,
-  validateWorkspaceSpaceId,
+  validateWorkspaceAgentId,
   validateWorkspaceWritePath,
 } from './contracts';
 import type {
@@ -20,7 +20,7 @@ import type {
 } from './types';
 
 const initial = (): FilesSnapshot => ({
-  scope: 'space',
+  scope: 'agent',
   directoryPath: '.',
   entries: [],
   loaded: false,
@@ -81,7 +81,7 @@ export class FilesStore {
   private detailController?: AbortController;
   private writeController?: AbortController;
   private activeWriteOperation?: FilesUncertainOperation;
-  private pendingSpaceId?: string;
+  private pendingAgentId?: string;
 
   constructor(private readonly client: FilesClient) {}
 
@@ -99,13 +99,13 @@ export class FilesStore {
     for (const listener of this.listeners) listener();
   }
 
-  private get selector(): { scope: WorkspaceFileScope; spaceId: string | null } | undefined {
-    if (this.state.scope === 'space') {
-      return this.state.selectedSpaceId
-        ? { scope: 'space', spaceId: this.state.selectedSpaceId }
+  private get selector(): { scope: WorkspaceFileScope; agentId: string | null } | undefined {
+    if (this.state.scope === 'agent') {
+      return this.state.selectedAgentId
+        ? { scope: 'agent', agentId: this.state.selectedAgentId }
         : undefined;
     }
-    return { scope: 'shared', spaceId: null };
+    return { scope: 'shared', agentId: null };
   }
 
   private cancelList() {
@@ -125,12 +125,12 @@ export class FilesStore {
       this.state.savePreview !== undefined || this.state.deleteTarget !== undefined;
   }
 
-  private releasePendingSpace(): boolean {
-    if (!this.pendingSpaceId || this.disposed || this.hasUnreleasedWork()) return false;
-    const target = this.pendingSpaceId;
-    this.pendingSpaceId = undefined;
-    // selectSpace 负责实际切换；若状态恰又阻塞，它会重新记录待切换目标。
-    this.selectSpace(target);
+  private releasePendingAgent(): boolean {
+    if (!this.pendingAgentId || this.disposed || this.hasUnreleasedWork()) return false;
+    const target = this.pendingAgentId;
+    this.pendingAgentId = undefined;
+    // selectAgent 负责实际切换；若状态恰又阻塞，它会重新记录待切换目标。
+    this.selectAgent(target);
     return true;
   }
 
@@ -162,7 +162,7 @@ export class FilesStore {
           : {}),
       });
     } else if (this.visible) {
-      if (!this.releasePendingSpace()) void this.refresh();
+      if (!this.releasePendingAgent()) void this.refresh();
     }
   }
 
@@ -170,7 +170,7 @@ export class FilesStore {
     if (this.disposed) return;
     this.visible = true;
     if (!this.selector) {
-      this.publish({ error: '请先选择当前空间后再打开文件。' });
+      this.publish({ error: '请先选择当前智能体后再打开文件。' });
       return;
     }
     void this.refresh();
@@ -195,28 +195,28 @@ export class FilesStore {
     this.publish({ error: undefined, notice: undefined });
   };
 
-  selectSpace = (spaceId: string): boolean => {
+  selectAgent = (agentId: string): boolean => {
     if (this.disposed) return false;
-    validateWorkspaceSpaceId(spaceId);
-    if (this.state.scope === 'space' && this.state.selectedSpaceId === spaceId) {
-      this.pendingSpaceId = undefined;
-      this.publish({ pendingSpaceId: undefined });
+    validateWorkspaceAgentId(agentId);
+    if (this.state.scope === 'agent' && this.state.selectedAgentId === agentId) {
+      this.pendingAgentId = undefined;
+      this.publish({ pendingAgentId: undefined });
       return true;
     }
     if (this.hasUnreleasedWork()) {
-      this.pendingSpaceId = spaceId;
+      this.pendingAgentId = agentId;
       this.publish({
-        pendingSpaceId: spaceId,
-        error: '当前文件草稿或未明操作未收口；请先取消、保存并核对，或解除锁定后再切换空间。',
+        pendingAgentId: agentId,
+        error: '当前文件草稿或未明操作未收口；请先取消、保存并核对，或解除锁定后再切换智能体。',
       });
       return false;
     }
     this.cancelList();
     this.cancelDetail();
     this.publish({
-      scope: 'space',
-      selectedSpaceId: spaceId,
-      pendingSpaceId: undefined,
+      scope: 'agent',
+      selectedAgentId: agentId,
+      pendingAgentId: undefined,
       directoryPath: '.',
       entries: [],
       loaded: false,
@@ -237,14 +237,14 @@ export class FilesStore {
   selectShared = (): boolean => {
     if (this.disposed) return false;
     if (this.state.scope === 'shared') {
-      this.pendingSpaceId = undefined;
-      this.publish({ pendingSpaceId: undefined });
+      this.pendingAgentId = undefined;
+      this.publish({ pendingAgentId: undefined });
       return true;
     }
     if (this.hasUnreleasedWork()) {
-      this.pendingSpaceId = undefined;
+      this.pendingAgentId = undefined;
       this.publish({
-        pendingSpaceId: undefined,
+        pendingAgentId: undefined,
         error: '当前文件草稿或未明操作未收口；请先取消、保存并核对，或解除锁定后再切换到共享区。',
       });
       return false;
@@ -253,8 +253,8 @@ export class FilesStore {
     this.cancelDetail();
     this.publish({
       scope: 'shared',
-      selectedSpaceId: undefined,
-      pendingSpaceId: undefined,
+      selectedAgentId: undefined,
+      pendingAgentId: undefined,
       directoryPath: '.',
       entries: [],
       loaded: false,
@@ -336,10 +336,10 @@ export class FilesStore {
       const result = await this.client.listWorkspaceFiles(target, controller.signal);
       if (generation !== this.listGeneration || controller.signal.aborted || this.disposed) return false;
       if (
-        result.scope !== selector.scope || result.spaceId !== selector.spaceId || result.path !== target.path
+        result.scope !== selector.scope || result.agentId !== selector.agentId || result.path !== target.path
       ) throw new ApiError(502, '服务器返回的文件列表归属不正确');
       this.publish({ entries: result.entries, loaded: true, stale: false });
-      this.releasePendingSpace();
+      this.releasePendingAgent();
       return true;
     } catch (error) {
       if (generation !== this.listGeneration || controller.signal.aborted || this.disposed || isRequestCancelled(error)) return false;
@@ -374,7 +374,7 @@ export class FilesStore {
     try {
       const detail = await this.client.readWorkspaceFile(target, controller.signal);
       if (generation !== this.detailGeneration || controller.signal.aborted || this.disposed) return false;
-      if (detail.scope !== selector.scope || detail.spaceId !== selector.spaceId || detail.path !== target.path) {
+      if (detail.scope !== selector.scope || detail.agentId !== selector.agentId || detail.path !== target.path) {
         throw new ApiError(502, '服务器返回的文件详情归属不正确');
       }
       this.publish({ detail, detailStale: false });
@@ -448,7 +448,7 @@ export class FilesStore {
     this.publish({ editor: { ...this.state.editor, content }, savePreview: undefined, error: undefined, notice: undefined });
   };
 
-  /** 原文件直接编辑：第一次实际修改才建立草稿，单纯打开文件不阻塞返回或切空间。 */
+  /** 原文件直接编辑：第一次实际修改才建立草稿，单纯打开文件不阻塞返回或切智能体。 */
   editFileContent = (content: string) => {
     if (!this.canWrite() || this.state.savePreview || this.state.deleteTarget) return;
     if (!this.state.editor) {
@@ -463,7 +463,7 @@ export class FilesStore {
   cancelEditor = () => {
     if (this.state.writing !== false || this.state.uncertain) return;
     this.publish({ editor: undefined, savePreview: undefined, error: undefined });
-    if (this.releasePendingSpace()) return;
+    if (this.releasePendingAgent()) return;
     // 系统目录选择器等前后台切换会使已保存详情失效；放弃草稿后重新读取，不能留下空白编辑页。
     if (this.active && this.visible && this.state.selectedPath && this.state.detailStale) void this.refresh();
   };
@@ -508,7 +508,7 @@ export class FilesStore {
     if (!preview || !editor || !this.canWrite()) return false;
     if (preview.path !== editor.path || preview.after !== editor.content) return false;
     const selector = this.selector;
-    if (!selector || preview.scope !== selector.scope || preview.spaceId !== selector.spaceId) return false;
+    if (!selector || preview.scope !== selector.scope || preview.agentId !== selector.agentId) return false;
     return this.write(preview.mode, { ...selector, path: preview.path }, editor.content, (signal) =>
       preview.mode === 'create'
         ? this.client.createWorkspaceTextFile({ ...selector, path: preview.path }, editor.content, signal)
@@ -535,7 +535,7 @@ export class FilesStore {
   cancelDelete = () => {
     if (this.state.writing !== false) return;
     this.publish({ deleteTarget: undefined });
-    this.releasePendingSpace();
+    this.releasePendingAgent();
   };
 
   confirmDelete = async (): Promise<boolean> => {
@@ -550,7 +550,7 @@ export class FilesStore {
     const operation = this.state.uncertainOperation;
     const selector = this.selector;
     if (!operation || !selector || !this.state.uncertain || this.state.writing !== false || !this.canReadState()) return false;
-    if (operation.scope !== selector.scope || operation.spaceId !== selector.spaceId) return false;
+    if (operation.scope !== selector.scope || operation.agentId !== selector.agentId) return false;
     const target = { ...selector, path: operation.path };
     try {
       if (operation.kind === 'delete') {
@@ -594,12 +594,12 @@ export class FilesStore {
       error: undefined,
       notice: '已解除操作锁定。再次提交会发起新请求，请确认没有重复写入。',
     });
-    this.releasePendingSpace();
+    this.releasePendingAgent();
   };
 
   private async write(
     kind: FilesWriteKind,
-    target: { scope: WorkspaceFileScope; spaceId: string | null; path: string },
+    target: { scope: WorkspaceFileScope; agentId: string | null; path: string },
     content: string | undefined,
     action: (signal: AbortSignal) => Promise<(WorkspaceFileDetail & WorkspaceFileSelector) | { ok: true }>,
   ): Promise<boolean> {
@@ -611,7 +611,7 @@ export class FilesStore {
     const activeOperation: FilesUncertainOperation = {
       kind,
       scope: target.scope,
-      spaceId: target.spaceId,
+      agentId: target.agentId,
       path: target.path,
       ...(content === undefined ? {} : { content }),
     };
@@ -641,7 +641,7 @@ export class FilesStore {
         });
       } else {
         const detail = result;
-        if (detail.scope !== target.scope || detail.spaceId !== target.spaceId || detail.path !== target.path) {
+        if (detail.scope !== target.scope || detail.agentId !== target.agentId || detail.path !== target.path) {
           throw new ApiError(502, '服务器返回的文件写入结果归属不正确');
         }
         succeeded = true;
@@ -675,7 +675,7 @@ export class FilesStore {
       const uncertain = uncertainWrite(error) ||
         (kind === 'update' && error instanceof ApiError && error.status === 409);
       const operation: FilesUncertainOperation | undefined = uncertain
-        ? { kind, scope: target.scope, spaceId: target.spaceId, path: target.path, ...(content === undefined ? {} : { content }) }
+        ? { kind, scope: target.scope, agentId: target.agentId, path: target.path, ...(content === undefined ? {} : { content }) }
         : undefined;
       this.publish({
         ...(uncertain ? { uncertain: true, reviewed: false, uncertainOperation: operation } : {}),
@@ -689,7 +689,7 @@ export class FilesStore {
         this.activeWriteOperation = undefined;
         this.writeController = undefined;
         this.publish({ writing: false });
-        this.releasePendingSpace();
+        this.releasePendingAgent();
         if (succeeded && this.visible) void this.refreshDirectory();
       }
     }

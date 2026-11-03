@@ -1,12 +1,11 @@
 /**
- * 运行状态流（GET /api/events）与单点运行查询（GET /api/agent/status）的协议解析与结构校验。
+ * 运行状态流（GET /api/events）与单点运行查询（GET /api/runs/status）的协议解析与结构校验。
  *
  * 契约边界：
  * - 字段类型、枚举值或归属错位一律抛 ApiError(502)；坏协议不静默漏状态，也不替上层臆造默认值；
  * - ready 首帧同时校验运行集合与待审批完整集合（复用 parsePendingApprovals）。
  */
 import { ApiError } from '../api/errors';
-import { assertSpaceAlias } from '../api/space-contracts';
 import { parsePendingApprovals } from '../approvals/contracts';
 import { parseActivityOverview } from '../activities/contracts';
 import { isActiveActivity } from '../activities/types';
@@ -109,12 +108,11 @@ function ensureSubagentState(value: unknown): AgentStatus['subagents'][number] {
 export function ensureAgentStatus(value: unknown): AgentStatus {
   if (!value || typeof value !== 'object') throw new ApiError(502, '运行状态 status 不是对象');
   const entry = value as Record<string, unknown>;
-  assertSpaceAlias(entry);
   if (!Array.isArray(entry.tools) || entry.tools.length > 64) throw new ApiError(502, '运行状态 tools 不是长度 ≤64 的数组');
   if (!Array.isArray(entry.subagents) || entry.subagents.length > 64) throw new ApiError(502, '运行状态 subagents 不是长度 ≤64 的数组');
   return {
     activityId: entry.activityId === null ? null : ensureString(entry.activityId, 'status.activityId'),
-    spaceId: ensureString(entry.spaceId, 'status.spaceId'),
+    agentId: ensureString(entry.agentId, 'status.agentId'),
     runId: ensureString(entry.runId, 'status.runId'),
     revision: ensureRevision(entry.revision, 'status.revision'),
     source: ensureEnum<AgentStatus['source']>(entry.source, RUN_SOURCES, 'status.source'),
@@ -177,17 +175,16 @@ export function parseConversationUpdated(
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ApiError(502, 'conversation_updated data 不是对象');
   const entry = value as Record<string, unknown>;
   // 契约是 strictObject；未知字段说明服务端与客户端协议版本不一致，不能悄悄当作状态或审批载荷。
-  if (Object.keys(entry).sort().join(',') !== 'instanceId,sessionId,spaceId') {
+  if (Object.keys(entry).sort().join(',') !== 'agentId,instanceId,sessionId') {
     throw new ApiError(502, 'conversation_updated 字段不符合契约');
   }
   const instanceId = ensureString(entry.instanceId, 'conversation_updated.data.instanceId');
   if (instanceId !== expectedInstanceId) {
     throw new ApiError(502, 'conversation_updated 与 ready 的 instanceId 不一致，按服务端约定视为非法帧');
   }
-  assertSpaceAlias(entry);
   return {
     instanceId,
-    spaceId: ensureString(entry.spaceId, 'conversation_updated.data.spaceId'),
+    agentId: ensureString(entry.agentId, 'conversation_updated.data.agentId'),
     sessionId: ensureString(entry.sessionId, 'conversation_updated.data.sessionId'),
   };
 }

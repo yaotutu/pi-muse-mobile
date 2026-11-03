@@ -1,5 +1,5 @@
 /**
- * 附件真实链路 E2E：真实 HTTP/SSE + 真实外部模型 + 专属空间数据清理。
+ * 附件真实链路 E2E：真实 HTTP/SSE + 真实外部模型 + 专属智能体数据清理。
  *
  * 安全边界：
  * - 不 mock、不拦截响应、不使用本地假模型；
@@ -14,7 +14,7 @@ import { basename, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { HttpApiClient } from '../src/api/http-client.ts';
 import { ApiError } from '../src/api/errors.ts';
-import { SpaceStore } from '../src/spaces/space-store.ts';
+import { AgentStore } from '../src/agents/agent-store.ts';
 import { projectHistory } from '../src/chat/chat-state.ts';
 import {
   MAX_TOTAL_ATTACHMENT_BYTES,
@@ -29,8 +29,8 @@ assert.ok(process.env.E2E_API_BASE_URL, 'E2E_API_BASE_URL is required');
 const base = process.env.E2E_API_BASE_URL.replace(/\/$/, '');
 const output = mkdtempSync(join(tmpdir(), 'pimuse-attachments-e2e.'));
 const stamp = Date.now().toString(36);
-const spaceA = `attachments-e2e-a-${stamp}`;
-const spaceB = `attachments-e2e-b-${stamp}`;
+const agentA = `attachments-e2e-a-${stamp}`;
+const agentB = `attachments-e2e-b-${stamp}`;
 const textMarker = `ATTACHMENT_E2E_${stamp}`;
 
 const resolveInputPath = (value, fallback) => {
@@ -56,7 +56,7 @@ let token;
 let cleanupRequired = false;
 let failure;
 let serviceVersion;
-let baselineSpaces;
+let baselineAgents;
 const checks = [];
 const api = new HttpApiClient(base, () => token, () => {
   throw new Error('Real authentication rejected');
@@ -104,7 +104,7 @@ const mixedTextDraft = makeTextAttachment(
 const mixedPrompt = [
   'Use the attached image and attached text attachment.',
   'Report the exact 8-digit code visible in the image, then the exact marker from the text attachment.',
-  'Put both values on one line separated by one space. Do not use tools.',
+  'Put both values on one line separated by one agent. Do not use tools.',
 ].join(' ');
 assert.equal(mixedPrompt.includes(expected.code), false, 'Expected image code must not appear in user text');
 assert.equal(mixedPrompt.includes(textMarker), false, 'Text marker must not appear in user text');
@@ -125,9 +125,9 @@ async function deployment(label) {
   for (const [path, methods] of Object.entries({
     '/api/conversation': ['get'],
     '/api/conversation/run': ['post'],
-    '/api/spaces': ['get'],
-    '/api/spaces/{spaceId}': ['delete'],
-    '/api/spaces/{spaceId}/instructions': ['get', 'put'],
+    '/api/agents': ['get'],
+    '/api/agents/{agentId}': ['delete'],
+    '/api/agents/{agentId}/instructions': ['get', 'put'],
   })) {
     for (const method of methods) assert.ok(spec.paths[path]?.[method], `${method} ${path} must exist`);
   }
@@ -154,7 +154,7 @@ async function rejectBeforeRun(attachments, pattern) {
   const runId = `attachments-boundary-${stamp}-${checks.length}`;
   try {
     await api.runAgent({
-      spaceId: spaceA,
+      agentId: agentA,
       runId,
       expectedRevision: 'empty',
       message: { id: `${runId}-message`, content: 'boundary', attachments },
@@ -187,17 +187,17 @@ try {
   token = auth.token;
   pass('real deployment and live authentication', { serviceVersion });
 
-  baselineSpaces = (await api.listSpaces()).map((space) => space.id);
-  assert.equal(baselineSpaces.includes(spaceA), false);
-  assert.equal(baselineSpaces.includes(spaceB), false);
-  await api.saveSpaceInstructions(
-    spaceA,
-    'Dedicated attachment E2E space A. Answer directly from attachments. Never use tools, write files, or create memories, reminders, goals, monitors, or subagents.',
+  baselineAgents = (await api.listAgents()).map((agent) => agent.id);
+  assert.equal(baselineAgents.includes(agentA), false);
+  assert.equal(baselineAgents.includes(agentB), false);
+  await api.saveAgentInstructions(
+    agentA,
+    'Dedicated attachment E2E agent A. Answer directly from attachments. Never use tools, write files, or create memories, reminders, goals, monitors, or subagents.',
   );
   cleanupRequired = true;
-  pass('dedicated space A created');
+  pass('dedicated agent A created');
 
-  const initialA = await api.getConversation(spaceA);
+  const initialA = await api.getConversation(agentA);
   assert.deepEqual(initialA, { revision: 'empty', messages: [] });
 
   // 这些失败都应由 HttpApiClient 在真实网络前拒绝；不把坏载荷交给服务端或模型。
@@ -215,13 +215,13 @@ try {
   })), /最多/);
   await rejectBeforeRun([{ id: 'text-total-1', name: 'large.txt', mimeType: 'text/plain', dataBase64: largeText.toString('base64') }], /文本附件合计/);
   await rejectBeforeRun([{ id: 'total-1', name: 'oversize.png', mimeType: 'image/png', dataBase64: oversizedImage.toString('base64') }], /附件总大小|图片/);
-  assert.deepEqual(await api.getConversation(spaceA), initialA);
+  assert.deepEqual(await api.getConversation(agentA), initialA);
   pass('invalid Base64, MIME, bytes, UTF-8, zero, count and size limits reject before run');
 
   const mixedRunId = `attachments-mixed-run-${stamp}`;
   const mixedMessageId = `${mixedRunId}-message`;
   const mixedEvents = await runReal({
-    spaceId: spaceA,
+    agentId: agentA,
     runId: mixedRunId,
     expectedRevision: initialA.revision,
     message: {
@@ -236,7 +236,7 @@ try {
   assert.equal(mixedEvents.some((event) => event.type === 'MESSAGES_SNAPSHOT'), false, 'Normal run must not be asserted as replay snapshot');
   pass('real model reads mixed image and UTF-8 text attachments');
 
-  const historyA = await api.getConversation(spaceA);
+  const historyA = await api.getConversation(agentA);
   const mixedUser = historyA.messages.find((message) => message.id === mixedMessageId);
   assert.ok(mixedUser);
   assert.equal(mixedUser.role, 'user');
@@ -257,12 +257,12 @@ try {
   assert.equal('dataBase64' in (historyText ?? {}), false, 'History must not return text attachment content');
   const projected = projectHistory(historyA.messages).find((view) => view.id === mixedMessageId);
   assert.equal(projected?.attachments?.length, 2);
-  write('space-a-history-summary.json', historySummary(historyA));
+  write('agent-a-history-summary.json', historySummary(historyA));
   pass('GET history preserves metadata, image ownership, and hides text content');
 
-  const beforeReplay = await api.getConversation(spaceA);
+  const beforeReplay = await api.getConversation(agentA);
   const replayEvents = await runReal({
-    spaceId: spaceA,
+    agentId: agentA,
     runId: mixedRunId,
     expectedRevision: beforeReplay.revision,
     message: {
@@ -278,34 +278,34 @@ try {
   assert.equal(snapshotUser.attachments?.length, 2);
   assert.equal(snapshotUser.attachments?.[0].image?.dataBase64 === imageDraft.dataBase64, true);
   assert.equal(replayEvents.some((event) => event.type === 'TEXT_MESSAGE_CONTENT'), false, 'Legal replay must not call the model again');
-  const afterReplay = await api.getConversation(spaceA);
+  const afterReplay = await api.getConversation(agentA);
   assert.equal(afterReplay.revision, beforeReplay.revision);
   assert.equal(afterReplay.messages.length, beforeReplay.messages.length);
   pass('legal completed replay returns snapshot without a second model call');
 
   const changedText = makeTextAttachment('text-probe-1', 'changed.txt', 'changed attachment identity');
   await assertConflict({
-    spaceId: spaceA,
+    agentId: agentA,
     runId: mixedRunId,
     expectedRevision: afterReplay.revision,
     message: { id: mixedMessageId, content: mixedPrompt, attachments: [imageDraft, changedText] },
   }, 'RUN_ID_CONFLICT');
   await assertConflict({
-    spaceId: spaceA,
+    agentId: agentA,
     runId: `attachments-message-conflict-${stamp}`,
     expectedRevision: afterReplay.revision,
     message: { id: mixedMessageId, content: mixedPrompt, attachments: [imageDraft, changedText] },
   }, 'MESSAGE_ID_CONFLICT');
-  const afterConflicts = await api.getConversation(spaceA);
+  const afterConflicts = await api.getConversation(agentA);
   assert.equal(afterConflicts.revision, afterReplay.revision);
   assert.deepEqual(historySummary(afterConflicts), historySummary(afterReplay));
   pass('run and message identity conflicts reject changed attachment payloads');
 
-  await api.saveSpaceInstructions(
-    spaceB,
-    'Dedicated attachment E2E space B. Follow the sole text attachment instruction. Never use tools, write files, or create memories, reminders, goals, monitors, or subagents.',
+  await api.saveAgentInstructions(
+    agentB,
+    'Dedicated attachment E2E agent B. Follow the sole text attachment instruction. Never use tools, write files, or create memories, reminders, goals, monitors, or subagents.',
   );
-  const initialB = await api.getConversation(spaceB);
+  const initialB = await api.getConversation(agentB);
   assert.deepEqual(initialB, { revision: 'empty', messages: [] });
   const pureRunId = `attachments-pure-run-${stamp}`;
   const pureMessageId = `${pureRunId}-message`;
@@ -315,34 +315,34 @@ try {
     `The text marker is ${textMarker}. Reply with exactly this marker and nothing else.`,
   );
   const pureEvents = await runReal({
-    spaceId: spaceB,
+    agentId: agentB,
     runId: pureRunId,
     expectedRevision: initialB.revision,
     message: { id: pureMessageId, content: '', attachments: [pureTextDraft] },
   });
   const pureReply = assistantTextOf(pureEvents);
   assert.ok(pureReply.includes(textMarker), 'Pure attachment run must read the marker from UTF-8 bytes');
-  const historyB = await api.getConversation(spaceB);
+  const historyB = await api.getConversation(agentB);
   const pureUser = historyB.messages.find((message) => message.id === pureMessageId);
   assert.ok(pureUser);
   assert.equal(pureUser.content, '', 'Pure attachment message content must remain empty');
   assert.equal(pureUser.attachments?.length, 1);
   assert.equal(pureUser.attachments?.[0].kind, 'text');
   assert.equal('image' in (pureUser.attachments?.[0] ?? {}), false);
-  assert.equal(historyB.messages.some((message) => message.content?.includes(expected.code)), false, 'Space B must not inherit space A image data');
-  const isolatedA = await api.getConversation(spaceA);
+  assert.equal(historyB.messages.some((message) => message.content?.includes(expected.code)), false, 'Agent B must not inherit agent A image data');
+  const isolatedA = await api.getConversation(agentA);
   assert.equal(isolatedA.revision, afterReplay.revision);
   assert.deepEqual(historySummary(isolatedA), historySummary(afterReplay));
-  write('space-b-history-summary.json', historySummary(historyB));
-  pass('pure attachment run and per-space isolation');
+  write('agent-b-history-summary.json', historySummary(historyB));
+  pass('pure attachment run and per-agent isolation');
 
-  const store = new SpaceStore(api);
-  const storeEpoch = store.get(spaceA).epoch;
+  const store = new AgentStore(api);
+  const storeEpoch = store.get(agentA).epoch;
   store.setEnabled(false);
-  assert.equal(store.appendDraftAttachments(spaceA, storeEpoch, [imageDraft, mixedTextDraft]).ok, true);
-  assert.deepEqual(store.get(spaceA).draftAttachments.map(({ id }) => id), [imageDraft.id, mixedTextDraft.id]);
+  assert.equal(store.appendDraftAttachments(agentA, storeEpoch, [imageDraft, mixedTextDraft]).ok, true);
+  assert.deepEqual(store.get(agentA).draftAttachments.map(({ id }) => id), [imageDraft.id, mixedTextDraft.id]);
   store.setEnabled(true);
-  store.setPendingSubmission(spaceA, storeEpoch, {
+  store.setPendingSubmission(agentA, storeEpoch, {
     messageId: `${mixedMessageId}-restore`,
     runId: `${mixedRunId}-restore`,
     text: mixedPrompt,
@@ -351,16 +351,16 @@ try {
     error: 'controlled failure',
     attachments: [imageDraft, mixedTextDraft],
   });
-  assert.equal(store.restorePendingSubmissionToDraft(spaceA), false, 'Existing drafts must not be overwritten by restore');
-  assert.equal(store.clearDraftAttachments(spaceA, storeEpoch), true);
-  assert.equal(store.restorePendingSubmissionToDraft(spaceA), true);
-  const restored = store.get(spaceA).draftAttachments;
+  assert.equal(store.restorePendingSubmissionToDraft(agentA), false, 'Existing drafts must not be overwritten by restore');
+  assert.equal(store.clearDraftAttachments(agentA, storeEpoch), true);
+  assert.equal(store.restorePendingSubmissionToDraft(agentA), true);
+  const restored = store.get(agentA).draftAttachments;
   assert.equal(restored[0].dataBase64 === imageDraft.dataBase64, true);
   assert.equal(restored[1].dataBase64 === mixedTextDraft.dataBase64, true);
   assert.equal(restored[0].image?.dataBase64 === imageDraft.image?.dataBase64, true);
-  assert.equal(store.get(spaceA).pendingSubmission, null);
+  assert.equal(store.get(agentA).pendingSubmission, null);
   store.dispose();
-  pass('SpaceStore preserves complete original payload through failed restore');
+  pass('AgentStore preserves complete original payload through failed restore');
 
   assert.deepEqual((await deployment('end')), serviceVersion);
 } catch (error) {
@@ -369,18 +369,18 @@ try {
 } finally {
   try {
     if (cleanupRequired) {
-      for (const spaceId of [spaceA, spaceB]) {
+      for (const agentId of [agentA, agentB]) {
         try {
-          await api.deleteSpace(spaceId);
+          await api.deleteAgent(agentId);
         } catch (error) {
           if (!(error instanceof ApiError) || error.status !== 404) throw error;
         }
       }
-      const remaining = (await api.listSpaces()).map((space) => space.id);
-      assert.equal(remaining.includes(spaceA), false);
-      assert.equal(remaining.includes(spaceB), false);
-      assert.ok(baselineSpaces.every((id) => remaining.includes(id)), 'Baseline spaces must remain');
-      pass('dedicated spaces cleaned up and baseline preserved');
+      const remaining = (await api.listAgents()).map((agent) => agent.id);
+      assert.equal(remaining.includes(agentA), false);
+      assert.equal(remaining.includes(agentB), false);
+      assert.ok(baselineAgents.every((id) => remaining.includes(id)), 'Baseline agents must remain');
+      pass('dedicated agents cleaned up and baseline preserved');
     }
   } catch (error) {
     failure ??= error;
@@ -392,7 +392,7 @@ try {
     passed: !failure,
     base,
     serviceVersion,
-    spaces: [spaceA, spaceB],
+    agents: [agentA, agentB],
     checks,
     probe: {
       bytes: visionBytes.length,

@@ -46,7 +46,7 @@
     "test:e2e:attachments": "node --import ./tests/register-source.mjs tools/e2e-attachments.mjs",
     "test:e2e:memories": "node --import ./tests/register-source.mjs tools/e2e-memories.mjs",
     "test:e2e:themes": "node --import ./tests/register-source.mjs tools/e2e-themes.mjs",
-    "test:e2e:spaces": "node --import ./tests/register-source.mjs tools/e2e-spaces.mjs",
+    "test:e2e:agents": "node --import ./tests/register-source.mjs tools/e2e-agents.mjs",
     "test:e2e:jobs": "node --import ./tests/register-source.mjs tools/e2e-jobs.mjs"
   },
   "private": true

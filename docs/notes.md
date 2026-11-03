@@ -5,42 +5,42 @@
 ## 2026-10-21：Jobs 合法主线继续推进，非阻塞问题集中汇报
 
 - **最新决策**：用户明确允许客户端始终发送合法时区时间后继续Jobs；下节无时区负例的原始 `passed=false` 保留，不再作为当前开发阻塞，也不记为后端已修复。服务端仍应拒绝无时区一次性输入；移动端不会产生此载荷，收到旧无时区值也不会擅自按手机时区解释为绝对时刻。
-- **已处理的客户端遗留**：移除Jobs旧threadId查询及originThreadId／result字段、task详情响应别名，严格校验独立资源、目标ID和事件归属。匿名读取health权威时区；未读到时区不伪装空列表，但禁止更改每日排期。创建保持真实聊天工具，无POST /api/jobs。
+- **已处理的客户端遗留**：移除Jobs旧agentId查询及originAgentId／result字段、task详情响应别名，严格校验独立资源、目标ID和事件归属。匿名读取health权威时区；未读到时区不伪装空列表，但禁止更改每日排期。创建保持真实聊天工具，无POST /api/jobs。
 - **非阻塞时间戳语义待核对**：本轮真实原生编辑已回读新prompt／daily／at及正确nextRunAt，但 `updatedAt` 仍与初始 `createdAt` 相同（例如专用任务 `7882e277-3299-4078-a090-c031ca32c2e1` 的每日编辑后两者均为 `2026-10-21T10:53:50.967Z`）。客户端原样展示及使用服务端排序，不自行补造更新时间；后端需确认“更新时间”是否应随管理操作刷新。不影响按下次执行时刻的主线，编辑冲突检查比较完整观测内容而非只信updatedAt。
 - **重新开工预验**：当前 `a4a39d1 / 490da08847d9` 部署的合法管理链路重新通过，实际调度并精确停止本轮自建run可以合法得到failed，再调用retry被接受；专用数据均API清理。不能把临时探测脚本继承的“来源交付”文字当成该探测实际覆盖；完整正常到点成功、失败重试和原生消费由新增永久 `test:e2e:jobs` 最终验证。
 - **生命周期验收修正**：当前服务实际400明确 `Only a paused task can be resumed`，不能将已cancelled的任务强行恢复为调度夹具；产品本就仅对paused显示恢复按钮。永久测试已改为通过真实聊天分别准备管理、自动调度与停止后重试任务，不修改后端状态机或放宽断言绕过400。失败尝试及其API清理保留为历史。
-- **最终合法客户端主线已通过**：同一 `a4a39d1 / 490da08847d9` 部署，最终20:30–20:46永久Jobs整轮退出0，23组整轮与7组Android界面检查通过；84个产品模块及2个驱动首尾一致，当前进程JS/fatal错误日志为空。先通过真实聊天建立3项独立命名的合法远期夹具，再验证真实编辑／管理、三字段六组排序、到点成功及来源空间投递、精确Stop自建任务形成failed后原生确认重试成功、草稿／三主题／前后台外部修改保护和实际删除。3个任务及专用空间全部API清理、原有任务和空间保留；总索引 `/tmp/pimuse-jobs-live-20261021/acceptance.json`，原始 `pimuse-jobs-e2e-run.sYVL9x/`。441/441本地回归、typecheck、lint及Android Hermes导出通过，未跑mock服务；剪裁按钮／系统文字选择导致的驱动失败和一次未创建夹具的真实模型失败均保留，详见HANDOFF，不据此推断服务端故障。这不改变下节无时区负例的原始失败，也不代表updatedAt问题已修复。
+- **最终合法客户端主线已通过**：同一 `a4a39d1 / 490da08847d9` 部署，最终20:30–20:46永久Jobs整轮退出0，23组整轮与7组Android界面检查通过；84个产品模块及2个驱动首尾一致，当前进程JS/fatal错误日志为空。先通过真实聊天建立3项独立命名的合法远期夹具，再验证真实编辑／管理、三字段六组排序、到点成功及来源智能体投递、精确Stop自建任务形成failed后原生确认重试成功、草稿／三主题／前后台外部修改保护和实际删除。3个任务及专用智能体全部API清理、原有任务和智能体保留；总索引 `/tmp/pimuse-jobs-live-20261021/acceptance.json`，原始 `pimuse-jobs-e2e-run.sYVL9x/`。441/441本地回归、typecheck、lint及Android Hermes导出通过，未跑mock服务；剪裁按钮／系统文字选择导致的驱动失败和一次未创建夹具的真实模型失败均保留，详见HANDOFF，不据此推断服务端故障。这不改变下节无时区负例的原始失败，也不代表updatedAt问题已修复。
 - **不扩展范围**：不借此推进目标／监控／人设等新模块；此前主题／记忆／活动跨部署的复验欠账及审批自然过期仍独立保留，不由Jobs测试自动补齐。每日连续多天触发、运行中所有控制组合、真实故障注入、iOS／物理机／独立APK不在本轮主线验收范围。
 
 ## 2026-10-21：Jobs 时区负例历史预验（目前按用户指示列为非阻塞）
 
 - **已解除的契约问题**：用户确认每日 `at=HH:mm` 按服务端本地时区解释，原样提交，不转UTC；一次性 `at` 必须为含时区的完整ISO时刻；`nextRunAt` 统一返回UTC、客户端按手机本地时区展示。实际免鉴权health已返回 `timeZone=Asia/Shanghai`，最新OpenAPI同步声明此字段及三项时刻语义，不再将“缺时区口径”记为当前阻塞。
 - **当前实际部署**：17890 docs／OpenAPI／health一致，commit `a4a39d12b59ae5630775aa7ae5d3b6e0b0f01c58`、sourceHash `490da08847d941c6a200f6b220157f6cf148883d17f84ee15b7d8c00298fe495`、dirty/source，预验前后不变。通过实际客户端与真实聊天SSE创建新的专用未来任务，不复用上一部署的通过记录；证据 `/tmp/pimuse-jobs-timezone-20261021/`。
-- **已真实验证**：每日切换为 `daily=true, at=09:00` 后原样回读，`nextRunAt=2026-10-22T01:00:00.000Z` 在权威时区恰为09:00；切回一次性 `2026-10-29T09:00:00+08:00` 后，返回 `nextRunAt=2026-10-29T01:00:00.000Z`，绝对时刻一致。另有当前部署实际鉴权、列表／六种排序参数／空间过滤、详情404及新任务非空详情检查通过。
+- **已真实验证**：每日切换为 `daily=true, at=09:00` 后原样回读，`nextRunAt=2026-10-22T01:00:00.000Z` 在权威时区恰为09:00；切回一次性 `2026-10-29T09:00:00+08:00` 后，返回 `nextRunAt=2026-10-29T01:00:00.000Z`，绝对时刻一致。另有当前部署实际鉴权、列表／六种排序参数／智能体过滤、详情404及新任务非空详情检查通过。
 - **本次先处理的问题**：向本轮专用任务提交 `PATCH /api/jobs/{id}`，正文 `{"daily":false,"at":"2026-10-29T09:00:00"}`（没有Z或时区偏移），实际接口仍成功接受，响应的 `at` 原样返回无时区值，`nextRunAt` 为 `2026-10-29T01:00:00.000Z`。这与用户及最新文档要求的“一次性必须带时区”不一致；客户端不能用自己的默认时区替服务端补齐，也不能以只提交合法值为由忽略契约缺口。
 - **预期与协调**：请服务端拒绝缺少时区的一次性时间（参数错误，建议400），拒绝时不改变原任务；继续接受合法的Z或显式偏移绝对时刻，并保证 `nextRunAt` 为UTC。修改由用户协调服务端完成，本仓库不改服务端实现。证据 `unexpected-naive-accepted.json` 包含本次实际请求与响应。
-- **严格保留失败与清理**：整轮 `results.json` 为 `passed=false`、退出1，没有跳过非法输入断言来伪造就绪。失败后只做清理：本轮任务与空间均已通过接口删除，原有空间和任务保留，`cleanup.json` 为通过。本轮不再开始Jobs页面或其他领域；真实失败任务retry、当前部署实际触发、每日重复触发及原生UI仍未验，旧部署结果不拼接为当前全部通过。
+- **严格保留失败与清理**：整轮 `results.json` 为 `passed=false`、退出1，没有跳过非法输入断言来伪造就绪。失败后只做清理：本轮任务与智能体均已通过接口删除，原有智能体和任务保留，`cleanup.json` 为通过。本轮不再开始Jobs页面或其他领域；真实失败任务retry、当前部署实际触发、每日重复触发及原生UI仍未验，旧部署结果不拼接为当前全部通过。
 
 ## 2026-10-21：Jobs 开工预验，先确认每日时区，再进入界面实现
 
 - **推进规则**：用户要求逐模块推进，每个模块开始前重新跑对应真实接口。当前仅做 Jobs 预验，不开发页面、不展开 Goals／监控等其他领域；旧活动整轮验收及审批自然过期仍独立保留，不能因本次 Jobs 检查通过而销项。
 - **真实部署与证据**：实际17890的 docs／OpenAPI／health 一致，commit `daadeab0a4a6f15e2cd91541acf89e427e7acf9d`、sourceHash `8c51e599c3114b13e3faac08830efe85bfc97669878baaa0d40f01d65d68cb13`、dirty/source。10组管理预验与8组实际调度预验各自退出0，前后及两轮部署标识相同。证据 `/tmp/pimuse-jobs-preflight-20261021-1656/` 与其 `trigger-run/`；Token只在内存，未改服务端、客户端产品源码或设备凭据。
-- **已实际跑通**：通过真实聊天工具创建本轮专用未来任务，并验证非空列表／空间过滤／六种排序参数、详情与时间线、修改正文／时刻／来源后回读、暂停／恢复／取消、删除后404。另一专用任务通过 PATCH 改为近未来时刻，实际到点触发模型，收到 `source=job` 与正确 `jobId` 的运行及成功终态SSE，状态查询与持久任务结果一致；新助手结果回到指定来源空间，主空间没有本轮标记。两轮任务和空间均通过API删除，原有空间与任务保留。
+- **已实际跑通**：通过真实聊天工具创建本轮专用未来任务，并验证非空列表／智能体过滤／六种排序参数、详情与时间线、修改正文／时刻／来源后回读、暂停／恢复／取消、删除后404。另一专用任务通过 PATCH 改为近未来时刻，实际到点触发模型，收到 `source=job` 与正确 `jobId` 的运行及成功终态SSE，状态查询与持久任务结果一致；新助手结果回到指定来源智能体，主智能体没有本轮标记。两轮任务和智能体均通过API删除，原有智能体与任务保留。
 - **第一项待协调：每日任务时区**。当前契约仅将每日任务 `at` 说明为 `HH:mm`，没有声明按服务端时区、客户端时区还是固定时区解释，也没有时区字段；本轮只验证带时区的一次性ISO时刻，不猜测每日时区。请服务端明确每日时刻及 `nextRunAt` 的时区口径，并同步文档；若按服务端时区，需要客户端可读取的权威标识，以免在跨时区设备上把09:00显示或保存成不同执行时刻。尚未因此判定服务端调度实现有缺陷，当前是契约待明确，界面尚未开工。
 - **另一未验边界：失败重试**。未修改用户已有任务，也未通过服务端文件／配置造失败状态，所以 `failed -> retry` 尚未实际验证。需要本轮专用、安全可复现的合法失败任务场景；不能拿已取消或成功任务冒充失败任务。每日重复触发、执行中的控制／删除等其余状态组合也不在本次预验结论内。
-- **客户端待清理项，不是服务端故障**：`JobsQuery.threadId` 仍会被 `listJobs()` 发给服务端，实际只读探测返回400 `Invalid query parameters`；当前契约使用 `spaceId`。编辑类型也仍声明文档外 `originThreadId`，尚未对其提交写入验证。后续本模块实现应按现契约移除旧入口，不要求服务端兼容别名；现有界面没有调用这些方法。
+- **客户端待清理项，不是服务端故障**：`JobsQuery.agentId` 仍会被 `listJobs()` 发给服务端，实际只读探测返回400 `Invalid query parameters`；当前契约使用 `agentId`。编辑类型也仍声明文档外 `originAgentId`，尚未对其提交写入验证。后续本模块实现应按现契约移除旧入口，不要求服务端兼容别名；现有界面没有调用这些方法。
 - **验收边界**：本轮是实际客户端HTTP／SSE开工预验，不是Jobs界面完成验收；没有运行mock或Jobs原生UI测试。未开始页面实现，不把未验的retry／每日语义记为服务端全部就绪。
 
 ## 2026-10-21：长期目标（Goals）REST 独立接口与快照解耦迁移完成
 
-- **快照解耦**：`GET /api/agent` 不再提供 `goals` 字段，`src/api/types.ts` 中 `WorkspaceSnapshot.goals` 已调整为可选，`HttpApiClient.getSnapshot()` 移除了对 `goals` 数组的强校验断言，避免客户端误报 502。
+- **快照解耦**：`GET /api/identity` 不再提供 `goals` 字段，`src/api/types.ts` 中 `WorkspaceSnapshot.goals` 已调整为可选，`HttpApiClient.getSnapshot()` 移除了对 `goals` 数组的强校验断言，避免客户端误报 502。
 - **独立端点全面对齐**：
   - 列表查询：`GET /api/goals`，支持 `status`、`category`、`sort`（`updatedAt` / `createdAt`）、`order`（`asc` / `desc`）过滤与排序，解包 `{ goals: Goal[] }`。
   - 单项详情：`GET /api/goals/:id`，不存在时返回 404。
   - 创建目标：`POST /api/goals`，请求体支持 `title`、`description`、`category`、`milestones: string[]`。
   - 修改目标：`PATCH /api/goals/:id`，支持 `title`、`description`、`category`、`status`；当 `status` 设为 `completed` 时，服务端自动将名下全部里程碑置为完成。
   - 快捷状态迁移：`ApiClient.setGoalStatus` 统一委托为 `PATCH /api/goals/:id`，移除已下线的 `/status` 子路径。
-  - 里程碑切换：`POST /api/goals/:id/milestones/:mid/toggle` 移出 `/api/agent` 前缀。
+  - 里程碑切换：`POST /api/goals/:id/milestones/:mid/toggle` 移出 `/api/identity` 前缀。
   - 删除目标：改为标准的 `DELETE /api/goals/:id`，返回 `{ ok: true, id }`。
 - **废弃端点验证**：服务端对 `/api/agent/goals*` 等旧路由统一返回 501 Not Implemented，客户端契约与测试均已完成更新与断言覆盖。
 
@@ -48,7 +48,7 @@
 
 - **不是当前服务仍离线**：主题和记忆分别在 `59013f5 / cadddbbe1c88` 部署完整通过（8组整轮＋9组原生、12组整轮＋8组原生），活动第一阶段真实登记、SSE、重连集合及原生3步顺序也已验证。但11:55左右继续run收到 `RUN_ERROR: Response cancelled`，当时清理连接失败；恢复后的health已是 `63fc83c / 71c06ad4ae0d`，现在HTTP200。这个换版窗口不能当作整个任务已经验收通过。
 - **契约核对**：新旧OpenAPI没有增删路径／方法，请求及2xx成功响应快照一致，主要补充operationId和错误响应字段。协议形状未变不代表运行实现未变，仍须在用户确认稳定的新部署从头跑三项真实原生端到端，不能仅补活动后半段。新旧文档及结构差异保存在 `/tmp/pimuse-recheck-20261021.33EwvY/openapi-new.json`、`contract-diff.json`。
-- **安全恢复清理**：重新正常鉴权，逐字核对本轮专用空间指令，仅删除 `activity-e2e-mvhkr93s`；关联活动详情404、同空间活动列表为空，其他原有空间保留，未读取或覆盖设备凭据。`recovery-cleanup.json` 记录恢复清理，不篡改原始失败整轮 `activity-interrupted/results.json`；客户端79个产品源码模块全程未变。模拟器已通过正常界面回主空间，不将此恢复操作冒充活动完整原生验收。
+- **安全恢复清理**：重新正常鉴权，逐字核对本轮专用智能体指令，仅删除 `activity-e2e-mvhkr93s`；关联活动详情404、同智能体活动列表为空，其他原有智能体保留，未读取或覆盖设备凭据。`recovery-cleanup.json` 记录恢复清理，不篡改原始失败整轮 `activity-interrupted/results.json`；客户端79个产品源码模块全程未变。模拟器已通过正常界面回主智能体，不将此恢复操作冒充活动完整原生验收。
 - **本地与当前状态**：最终414/414本地测试、typecheck、lint、脚本语法及Android／iOS Hermes／Web导出通过；未跑mock，不以导出替代运行验收。主题／记忆驱动前期失败与修正、当前部署边界及未覆盖场景详见 `HANDOFF.md` 文首和总索引 `acceptance.json`。本轮测试／文档仍未提交、未推送；等待稳定窗口，不再启动模型验收。审批自然过期等独立协调项没有在新部署复验，不声称已修复。
 
 ## 2026-10-21：整理后接口清单与未挂载领域
@@ -56,15 +56,15 @@
 - **基线**：客户端已整理并提交为 `9aca44f`，重新检查时工作区干净。真实17890的 docs／OpenAPI／health 对齐，info.version 为 `0.1.0+cadddbbe1c88`，sourceHash 为 `cadddbbe1c88722b4f1dca56fcfc5c24bbbf9f701053495ffa2fa517825ec83b`；不以此前部署或未提交工作区作为当前验收基线。
 - **定时任务可推进，但未完成界面对接**：当前文档已声明 `/api/jobs` 列表、`/api/jobs/{id}` 详情／编辑／删除及 `/control` 生命周期控制；客户端有相应HTTP方法，任务页仍明确显示“定时任务管理尚未接入”。实际鉴权后的空列表、六组排序参数及不存在详情404已只读核对；没有现有任务可读详情，也没有验证调度、生命周期或写入，不能据此宣称Jobs模块验收完成。后续优先串列表／详情及必要控制，不恢复旧工作区大快照。
 - **目标／监控存在客户端协议遗留**：当前文档使用 `/api/goals/*` 和 `/api/monitors/*`；`src/api/http-client.ts` 中未挂载的目标方法及 `controlMonitor` 仍使用文档外的 `/api/agent/goals/*`、`/api/agent/monitors/*`。目前主界面没有调用这些方法，不是主题／记忆／活动主线的运行阻塞；接入相应领域前必须按当前契约迁移，不能直接恢复旧调用或修改服务端兼容旧客户端。本轮未提交这些领域的真实写入，也不根据文档差异猜测未声明别名的实际行为。
-- **旧总快照校验亦未迁移**：新旧部署的 `/api/agent` 文档均只声明 `identity`，新部署实际HTTP200也只返回该字段；但 `HttpApiClient.getSnapshot()` 仍强制要求 `goals` 数组，因而产生客户端校验502，不是服务端返回502。只读实证 `legacy-snapshot-audit.json`。当前产品源码无调用者，仅旧HTTP测试仍使用带goals的夹具，414项通过不能证明此旧方法符合新契约。后续不恢复旧快照／轮询，目标应独立消费 `/api/goals`；清理或迁移未挂载的旧接口层时一并处理，不能直接拿它组装新功能。
-- **其他领域**：`/api/profile`、全局及空间级Dream接口已出现在当前文档，原生编辑／管理界面尚未接入；本轮仅记录就绪清单，不把文档存在等同于业务链路已验证。只读清单及Jobs探测证据在 `/tmp/pimuse-recheck-20261021.33EwvY/api-gap-audit.json`、`jobs-read-only.json`；主题、记忆和活动的完整复验结果另见 `HANDOFF.md` 最新记录。
+- **旧总快照校验亦未迁移**：新旧部署的 `/api/identity` 文档均只声明 `identity`，新部署实际HTTP200也只返回该字段；但 `HttpApiClient.getSnapshot()` 仍强制要求 `goals` 数组，因而产生客户端校验502，不是服务端返回502。只读实证 `legacy-snapshot-audit.json`。当前产品源码无调用者，仅旧HTTP测试仍使用带goals的夹具，414项通过不能证明此旧方法符合新契约。后续不恢复旧快照／轮询，目标应独立消费 `/api/goals`；清理或迁移未挂载的旧接口层时一并处理，不能直接拿它组装新功能。
+- **其他领域**：`/api/profile`、全局及智能体级Dream接口已出现在当前文档，原生编辑／管理界面尚未接入；本轮仅记录就绪清单，不把文档存在等同于业务链路已验证。只读清单及Jobs探测证据在 `/tmp/pimuse-recheck-20261021.33EwvY/api-gap-audit.json`、`jobs-read-only.json`；主题、记忆和活动的完整复验结果另见 `HANDOFF.md` 最新记录。
 
 ## 2026-10-21：主题最终验收环境中断，待稳定窗口
 
 - 主题代码、本机偏好及永久 `test:e2e:themes` 已实现，本地405/405、typecheck、lint及三平台导出通过。当前不是主题接口缺失，也不是通过修改服务端来解决的问题。
-- 实际17890＋Android已验证三套配色、草稿／当前空间／会话面板／筛选保留、真实连接Modal、一次原生实际聊天与HTTP／SSE终态、晨光白及深夜黑跨进程恢复；整轮尚未走完经典蓝白冷启动、320dp窄屏及最后的原生错误日志断言。
+- 实际17890＋Android已验证三套配色、草稿／当前智能体／会话面板／筛选保留、真实连接Modal、一次原生实际聊天与HTTP／SSE终态、晨光白及深夜黑跨进程恢复；整轮尚未走完经典蓝白冷启动、320dp窄屏及最后的原生错误日志断言。
 - 00:27左右模拟器ADB离线并消失，之后qemu进程与Metro8082均不在。验收部署sourceHash从 `b9ce61299f8c` 变为结束时 `16a0d846daf5`，随后只读健康检查又为 `6467aac7d5f1`。原生驱动和部署一致性断言均失败，严格保持待真实接口验收，不能拼接为通过。
-- 79个客户端源码模块与本轮开始未变；专用空间经API删除、原有空间保留，未改服务端源码／配置／存储／Git或读取设备凭据。原始失败证据 `/var/folders/hl/dngy2s057pq4wyny6k87sj9w0000gn/T/pimuse-themes-e2e-run.2Fifyn/`，本地日志及抽离一致性证据 `/tmp/pimuse-themes-20261020-235959/`。
+- 79个客户端源码模块与本轮开始未变；专用智能体经API删除、原有智能体保留，未改服务端源码／配置／存储／Git或读取设备凭据。原始失败证据 `/var/folders/hl/dngy2s057pq4wyny6k87sj9w0000gn/T/pimuse-themes-e2e-run.2Fifyn/`，本地日志及抽离一致性证据 `/tmp/pimuse-themes-20261020-235959/`。
 - 后续记忆／活动原生回归按前置门禁未启动。需先协调稳定部署并恢复模拟器、Metro，再从头验收；本轮不提交／推送，不用旧结果或mock替代。此前审批自然过期等独立未验项仍保留。
 
 ## 活动推送与长期记忆接口差异（2026-10-20）
@@ -72,7 +72,7 @@
 - **核对部署**：实际17890的 docs／OpenAPI／health 均为 info.version `0.1.0+5711a4829036`，commit `59013f5af4529ee10fb33ded675e897d8115f61d`、sourceHash `5711a4829036132d58f05e7b68e709c9d7c1aa0980c4ab13957ed27da4803cfd`、dirty/source。本节是新一轮接入，不把下方旧部署结果当作本轮验收。
 - **活动文档措辞滞后**：`/api/events` 明确声明必需的 `ready.activities` 和 `activity_updated`，真实首帧也包含数组；但活动查询说明仍残留“没有新增SSE”的旧说法。客户端以事件端点的完整契约为准，当前非终态集合整体替换，状态概览按接收顺序更新；步骤和过程进展仍查询，不增加第二条通知流或轮询。建议后端同步查询文案，避免其他消费端继续忽略活动事件。
 - **记忆默认来源不一致**：新增记忆的 OpenAPI 将 `source` 默认值描述为 `Apps UI`，真实未传来源的原生新增实际返回 `Web UI`。首轮测试严格来源断言失败，未伪称整轮通过，专用条目已通过API删除且原有记忆未变。已向用户报告；建议后端统一默认值与文档。`source` 本身是可显式传入的自由文本字段，客户端现明确发送 `Mobile UI`，按契约使用该字段而不依赖不一致的默认值；编辑继续保留服务端来源。未改服务端源码、配置、存储或Git。
-- **记忆写入边界**：没有记忆SSE、revision或幂等键，不以 `/api/agent` 大快照替代独立读取，不跨空间伪造隔离。成功后回读，网络／超时／取消／5xx结果未明时保留草稿并锁定重提，要求读取全部记忆和用户明确核对；不自动重试或用相同正文猜测成功。
+- **记忆写入边界**：没有记忆SSE、revision或幂等键，不以 `/api/identity` 大快照替代独立读取，不跨智能体伪造隔离。成功后回读，网络／超时／取消／5xx结果未明时保留草稿并锁定重提，要求读取全部记忆和用户明确核对；不自动重试或用相同正文猜测成功。
 - **本轮最终结果**：在上述同一部署，活动SSE／历史和记忆两个永久真实端到端测试最终均退出0；分别11组整轮＋14组Android检查、11组整轮＋8组Android检查通过，专用数据经API清理、原有内容保留。383/383本地测试、lint、typecheck及diff检查通过，未跑mock；67个`src/`模块在最终验收前后未变。证据 `/tmp/pimuse-mainline-20261020/acceptance.json`，详细真实与本地故障注入边界见 `HANDOFF.md` 文首。上述默认来源与旧SSE文案仍属后端文档差异，不因客户端显式传参或本轮通过而记为后端已修复。
 - **原审批协调项独立保留**：本轮不复验自然过期，不据活动／记忆主线结果声称提前TIMEOUT／cancelled已修复。新一轮最终验收状态与未覆盖边界见 `HANDOFF.md` 文首。
 
@@ -85,21 +85,21 @@
 ## 修复后复验：重置计数已修复，审批自动过期仍待协调（2026-10-20）
 
 - **重置计数已解除**：实际17890的新部署 sourceHash 为 `8e1dc7c935c630e34f2e169076ace246e78e95ef11cc52df37dde0f78d26bf7e`，commit 仍为 `59013f5af4529ee10fb33ded675e897d8115f61d`、dirty/source，docs/OpenAPI/health 一致。与上次快照逐项比较，端点及 schema 未变，无需前端再次改字段。新文档明确计数包含关闭活跃运行时撤销的审批；真实 pending 重置后 cancelled、空历史、新 session，回执已正确返回 `cancelledApprovals=1`。旧的0值记录仅保留为历史，不再标作当前阻塞。
-- **空间迁移主链路通过**：修正下述工具投影测试假设后，最终 `E2E_NATIVE=1`、`scope=full` 整轮重跑通过，9组整体检查及4组Android原生交互通过；包括此前被截断的真实文件保留、新会话精确Stop、旧Stop无副作用和停止后继续。证据 `/tmp/pimuse-spaces-fixed-verified-20261020/`，前后部署和客户端源码哈希一致。349/349本地测试、lint、typecheck及diff检查通过；未跑mock。该结论不包含下述独立过期场景，也不补齐未运行的物理机／独立APK／iOS等边界。
-- **独立遗留项仍复现**：space=`space-expiry-mvgihg32`、approval=`ad33c26a-5f60-4502-a69a-2208638785bc`。真实 `createdAt=2026-10-20T09:59:30.944Z`、`expiresAt=10:04:30.944Z`；`10:01:28.704Z` 已变 cancelled，decidedAt/execution=null；聊天明确收到 `RUN_ERROR`、code=`TIMEOUT`、message=`Model response timed out`。等待期间未提交决定或 Stop，也未更改服务端时限。这次在新部署重新复现，不能再仅称“旧部署尚未验证”。
+- **智能体迁移主链路通过**：修正下述工具投影测试假设后，最终 `E2E_NATIVE=1`、`scope=full` 整轮重跑通过，9组整体检查及4组Android原生交互通过；包括此前被截断的真实文件保留、新会话精确Stop、旧Stop无副作用和停止后继续。证据 `/tmp/pimuse-agents-fixed-verified-20261020/`，前后部署和客户端源码哈希一致。349/349本地测试、lint、typecheck及diff检查通过；未跑mock。该结论不包含下述独立过期场景，也不补齐未运行的物理机／独立APK／iOS等边界。
+- **独立遗留项仍复现**：agent=`agent-expiry-mvgihg32`、approval=`ad33c26a-5f60-4502-a69a-2208638785bc`。真实 `createdAt=2026-10-20T09:59:30.944Z`、`expiresAt=10:04:30.944Z`；`10:01:28.704Z` 已变 cancelled，decidedAt/execution=null；聊天明确收到 `RUN_ERROR`、code=`TIMEOUT`、message=`Model response timed out`。等待期间未提交决定或 Stop，也未更改服务端时限。这次在新部署重新复现，不能再仅称“旧部署尚未验证”。
 - **需要后端说明／处理**：请明确审批等待与聊天运行超时的契约，提供能合法等待至 `expiresAt` 的真实场景，再验证 expired、晚到决定409和原生终态消费。运行超时后取消审批本身符合取消安全语义，但当前窗口使5分钟自动过期路径无法验通；不把 cancelled 改称 expired，不擅自改TTL或绕过审批。该项独立于已经修复的 reset 计数问题。
-- **验收脚本修正**：首轮已越过原计数断言，但错误要求重置后历史必须含 `role=tool` 正文，因服务工具展示策略未投影而失败；不能据此断言文件丢失。脚本改为先验证新会话读取回复，再用另一条真实审批的固定 before 全文逐字对照原批准写入内容，严格核对归属／路径／beforeExists 后拒绝探测写入。这样证明实际文件存续，而不是放宽为只信模型回复或更改服务端展示策略。最终整轮复跑结果见 `HANDOFF.md` 文首；首轮失败证据保留在 `/tmp/pimuse-spaces-reset-fixed-attempt-20261020/`。
-- **过期复验结果与清理**：`/tmp/pimuse-spaces-expiry-recheck-20261020/` 保存 pending／terminal、RUN_ERROR、真实SSE事件、前后部署、客户端源码哈希及复现脚本；`results.json` 明确 passed=false，未执行后续expired409或原生expired验收。专用空间与pending均通过API清理，用户原有空间保留；前后部署一致。没有修改服务端源码／配置／存储／Git，也不以本地测试或mock代替真实接口。
+- **验收脚本修正**：首轮已越过原计数断言，但错误要求重置后历史必须含 `role=tool` 正文，因服务工具展示策略未投影而失败；不能据此断言文件丢失。脚本改为先验证新会话读取回复，再用另一条真实审批的固定 before 全文逐字对照原批准写入内容，严格核对归属／路径／beforeExists 后拒绝探测写入。这样证明实际文件存续，而不是放宽为只信模型回复或更改服务端展示策略。最终整轮复跑结果见 `HANDOFF.md` 文首；首轮失败证据保留在 `/tmp/pimuse-agents-reset-fixed-attempt-20261020/`。
+- **过期复验结果与清理**：`/tmp/pimuse-agents-expiry-recheck-20261020/` 保存 pending／terminal、RUN_ERROR、真实SSE事件、前后部署、客户端源码哈希及复现脚本；`results.json` 明确 passed=false，未执行后续expired409或原生expired验收。专用智能体与pending均通过API清理，用户原有智能体保留；前后部署一致。没有修改服务端源码／配置／存储／Git，也不以本地测试或mock代替真实接口。
 
-## 空间会话迁移：重置审批计数历史复现（2026-10-20，后续已修复）
+## 智能体会话迁移：重置审批计数历史复现（2026-10-20，后续已修复）
 
 本节保留首次迁移时的失败证据及当时状态；最新修复与复验以文首为准。
 
-- **已确认的契约差异**：`POST /api/spaces/:spaceId/reset` 的 `cancelledApprovals` 在迁移文档和实际 OpenAPI 中定义为“重置时作废的待审批写操作数”。真实客户端在重置前通过详情接口确认唯一审批仍为 `pending`，重置后该项变为 `cancelled`、待审批集合为空、历史为空且 `sessionId` 已更换，但响应计数为 **0**，应为 **1**。不是“审批没有被撤销”的安全故障，而是本次重置的回执漏计。
-- **独立复现**：实际17890、space=`spaces-e2e-mvgg5d7v`、approval=`741fad09-c848-4a83-aea2-3e8af9e90545`。`08:54:19.024Z` 的详情为 pending（expiresAt=`08:59:18.857Z`）；`08:54:19.058Z` 重置返回新 session，`cancelledApprovals=0`，同审批已 cancelled、decidedAt/execution 均为 null。上一轮专用空间同样返回0；不是等待超时或客户端先发 Stop 导致本次状态变化。
-- **只读定位与期望**：服务端 `src/http/routes/spaces.ts` 先 `await closeCurrent()`，再 `actions.cancelBySpaceId()`，最终仅统计后者结果。关闭运行时已撤销的审批可能因此漏计；这属于源码顺序支持的根因推断，不修改服务端。请服务端统一计算整次 reset 作废的审批数，或由用户协调明确变更文档语义；移动端不自行补算、不把断言放宽为任意非负数来宣称全链路通过。
-- **当前结果**：协议字段、空间设置和默认／可选重置已适配；Android真实发送、进程重启恢复、取消确认、两种重置选项与规则保留已通过。真实HTTP/SSE已验证新归属字段与真实文件批准执行，但完整 `test:e2e:spaces` 在上述计数断言明确失败，状态为 **待真实接口验收**。因此尚未执行后续“重置后实际读取保留文件／新会话精确Stop／继续聊天”场景，也未完成本轮新审批归属的原生决定流程，不引用旧部署验收补齐。
-- **证据与边界**：`/tmp/pimuse-spaces-reset-contract-20261020/` 的 `active-reset-before.json`、`active-reset-after.json`、`results.json` 保存真实前后快照；原生重置证据在 `/tmp/pimuse-spaces-native-20261020/`。两轮前后 docs/OpenAPI/health 均一致且部署未变：commit `59013f5af4529ee10fb33ded675e897d8115f61d`、sourceHash `5b45cb9c246b1458fcf38dac04dad9dbb11884ef772b1f7604af93f445568267`、dirty/source。专用空间、文件、监控和 pending 已通过API清理，用户原有空间保留，终态审批按服务端契约保留；未修改服务端源码、配置、存储或 Git。未跑mock，未验非零jobs级联／重新投递、物理机、独立APK或iOS；原有自动过期问题仍独立待协调。
+- **已确认的契约差异**：`POST /api/agents/:agentId/reset` 的 `cancelledApprovals` 在迁移文档和实际 OpenAPI 中定义为“重置时作废的待审批写操作数”。真实客户端在重置前通过详情接口确认唯一审批仍为 `pending`，重置后该项变为 `cancelled`、待审批集合为空、历史为空且 `sessionId` 已更换，但响应计数为 **0**，应为 **1**。不是“审批没有被撤销”的安全故障，而是本次重置的回执漏计。
+- **独立复现**：实际17890、agent=`agents-e2e-mvgg5d7v`、approval=`741fad09-c848-4a83-aea2-3e8af9e90545`。`08:54:19.024Z` 的详情为 pending（expiresAt=`08:59:18.857Z`）；`08:54:19.058Z` 重置返回新 session，`cancelledApprovals=0`，同审批已 cancelled、decidedAt/execution 均为 null。上一轮专用智能体同样返回0；不是等待超时或客户端先发 Stop 导致本次状态变化。
+- **只读定位与期望**：服务端 `src/http/routes/agents.ts` 先 `await closeCurrent()`，再 `actions.cancelByAgentId()`，最终仅统计后者结果。关闭运行时已撤销的审批可能因此漏计；这属于源码顺序支持的根因推断，不修改服务端。请服务端统一计算整次 reset 作废的审批数，或由用户协调明确变更文档语义；移动端不自行补算、不把断言放宽为任意非负数来宣称全链路通过。
+- **当前结果**：协议字段、智能体设置和默认／可选重置已适配；Android真实发送、进程重启恢复、取消确认、两种重置选项与规则保留已通过。真实HTTP/SSE已验证新归属字段与真实文件批准执行，但完整 `test:e2e:agents` 在上述计数断言明确失败，状态为 **待真实接口验收**。因此尚未执行后续“重置后实际读取保留文件／新会话精确Stop／继续聊天”场景，也未完成本轮新审批归属的原生决定流程，不引用旧部署验收补齐。
+- **证据与边界**：`/tmp/pimuse-agents-reset-contract-20261020/` 的 `active-reset-before.json`、`active-reset-after.json`、`results.json` 保存真实前后快照；原生重置证据在 `/tmp/pimuse-agents-native-20261020/`。两轮前后 docs/OpenAPI/health 均一致且部署未变：commit `59013f5af4529ee10fb33ded675e897d8115f61d`、sourceHash `5b45cb9c246b1458fcf38dac04dad9dbb11884ef772b1f7604af93f445568267`、dirty/source。专用智能体、文件、监控和 pending 已通过API清理，用户原有智能体保留，终态审批按服务端契约保留；未修改服务端源码、配置、存储或 Git。未跑mock，未验非零jobs级联／重新投递、物理机、独立APK或iOS；原有自动过期问题仍独立待协调。
 
 ## 活动主线实现与验收结论（2026-10-20）
 
@@ -112,7 +112,7 @@
 用户随后确认开始实现：采用本节建议的已登记活动范围及保守回读口径，不以全部聊天run档案或严格逐步实时为首期目标。下方“待确认／仅预审”描述审阅当时的状态，后续实现与验收结果另记。
 
 - **事实来源与范围**：重新读取实际17890的 docs/OpenAPI/health，部署仍为 `5b83d3b4cc58...`，版本标识一致。两个只读入口为 `GET /api/activities` 与 `GET /api/activities/{id}`；列表的会话／状态过滤、不透明游标、排序及详情字段基本齐全。活动由模型通过对话工具显式登记，普通聊天可以没有活动；完成一轮运行不等于活动完成，同一活动继续执行会追加runIds。步骤按服务端返回的真实顺序展示，不自行排序或推断完成。
-- **待用户确认：历史范围**。建议首期只展示“已登记活动及其关联运行／步骤”，不是“每轮聊天的完整运行档案”。现有活动查询不覆盖activityId=null的普通运行；`GET /api/agent/status`需要已知runId且状态可以被清理，聊天历史也没有runId列表，不能冒充全量执行历史。如果首期需要全部聊天运行的持久历史，需要服务端另行提供明确契约；不由客户端猜测或伪造。
+- **待用户确认：历史范围**。建议首期只展示“已登记活动及其关联运行／步骤”，不是“每轮聊天的完整运行档案”。现有活动查询不覆盖activityId=null的普通运行；`GET /api/runs/status`需要已知runId且状态可以被清理，聊天历史也没有runId列表，不能冒充全量执行历史。如果首期需要全部聊天运行的持久历史，需要服务端另行提供明确契约；不由客户端猜测或伪造。
 - **待服务端说明：更新后的刷新信号**。活动详情文档要求收到工作区通知后重新读取，但没有明确保证每次活动登记、状态／进展变化、步骤新增／结束均会触发哪一种现有通知，以及通知发出时是否已能读到对应最新投影。请补充此刷新契约，不预设必须增加新SSE事件。若无该保证，建议首期采用打开历史／回前台／聊天结束／手动刷新时查询，不宣称严格实时、不新增轮询。
 - **不扩张首期范围**：列表和详情只读，不做客户端创建／完成活动、自动继续或重试。步骤字段没有独立approvalId/toolCallId，不凭标题或步骤ID格式推断具体审批；首期可展示审批与文件提交步骤的真实状态，不把“某一步精确跳转到审批”当成当前阻塞。步骤ID只承诺运行内稳定，应结合runId使用。
 - **本次仅预审，不是功能验收**：实际只读探测验证了鉴权401、列表200、非法查询／游标400、缺失详情404，会话列表前后不变；当前真实活动列表为空，未验证非空详情、有效游标翻页或活动状态变化。没有调用模型、创建／修改／删除业务数据，也没有修改产品代码或做模拟器验收。证据 `/tmp/pimuse-activity-review.ve_npfn2/`。等待用户确认上述范围和刷新口径后再实现，先串主线，不提前堆控制功能。
@@ -134,7 +134,7 @@
 
 ## 审批接入与验收边界（2026-10-20）
 
-- 实际17890部署的 `/docs`、`/openapi.json`、health 版本一致（`0.1.0`，commit `83f33c47ee5c2e40847cdcf8b8e92d1076e9583b`，dirty source，sourceHash `6fd5c53fade38850e345713275ec0722e0d0f117d91adbd2d8e7aa56ac00f87c`）。新 `/api/approvals` 领域提供完整固定预览、thread/run/toolCall/subagent/activity关联、revision、终态历史、执行回执与全局通知，不再将下方旧 payload/toolCallId 协调项视为当前审批接入阻塞。
+- 实际17890部署的 `/docs`、`/openapi.json`、health 版本一致（`0.1.0`，commit `83f33c47ee5c2e40847cdcf8b8e92d1076e9583b`，dirty source，sourceHash `6fd5c53fade38850e345713275ec0722e0d0f117d91adbd2d8e7aa56ac00f87c`）。新 `/api/approvals` 领域提供完整固定预览、agent/run/toolCall/subagent/activity关联、revision、终态历史、执行回执与全局通知，不再将下方旧 payload/toolCallId 协调项视为当前审批接入阻塞。
 - `src/approvals/` 与会话面板审批页已对接真实四个HTTP接口及共享SSE。实际模型私有写入批准并成功、编辑拒绝不执行、同决定幂等/反向409、精确Stop撤销、断线重连、历史游标/范围筛选均已验证；Android16/API36 Expo Go的真实批准/拒绝、字面全文预览、回执、历史、范围和亮暗主题已验。405项本地测试、lint、typecheck与diff检查通过；本轮没有跑mock，不以fixture或浏览器启动代替原生业务验收。
 - **待真实接口验收：自动过期**。专用待审批的 `expiresAt` 为5分钟后，等待期间运行先被服务端撤销，审批返回 `cancelled`，不是 `expired`；本轮不判断这是服务端缺陷，也不改服务端时限来制造通过。expired 展示／按钮禁用／409解析有自动化，真实自动过期及晚到决定仍未验。协议证据 `/tmp/pimuse-approvals-real-1792461917831/results.json` 明确 `success=false`；通过的主流程与该未通过场景分别记录。
 - Android证据 `/tmp/pimuse-approvals-native-1792462308026/`。专用会话与私有文件均经API清理，服务端终态审批历史按契约保留，未改用户原有数据、服务端或版本/CI。shared写入、多端并发决定、真实执行失败/版本冲突、巨型预览滚动、审批专属前后台恢复及物理机/独立APK/iOS仍未动态验收。更多实现与限制见 `HANDOFF.md` 文首。
@@ -154,15 +154,15 @@
 
 | 日期 | 接口 | 现状 | 期望 | 状态 |
 | --- | --- | --- | --- | --- |
-| 2026-10-15 | GET /api/threads（及线程域整体） | 线程无标题字段（仅 `{id, updatedAt}`），且无重命名/删除端点；HANDOFF 会话 Sheet 规格含「重命名」，按现 API 无法实现，列表只能展示 threadId 原文 | 服务端补线程标题字段 + 重命名（可再加删除）端点；或确认移动端去掉重命名、直接展示 threadId | 部分解除：2026-10-18 已实测 DELETE；标题与重命名仍未提供，本轮按 ID 展示 |
+| 2026-10-15 | GET /api/agents（及线程域整体） | 线程无标题字段（仅 `{id, updatedAt}`），且无重命名/删除端点；HANDOFF 会话 Sheet 规格含「重命名」，按现 API 无法实现，列表只能展示 agentId 原文 | 服务端补线程标题字段 + 重命名（可再加删除）端点；或确认移动端去掉重命名、直接展示 agentId | 部分解除：2026-10-18 已实测 DELETE；标题与重命名仍未提供，本轮按 ID 展示 |
 | 2026-10-15 | notifications.payload（GET /api/agent） | 类型为 `Record<string, string>`，键名未定义。审批卡需要知道键名（如 file_write→content、file_edit→before/after）才能友好渲染写入预览 | 文档明确各 kind 的 payload 键名枚举 | 待澄清；过渡期从 pi-muse 源码只读提取实际键名 |
 | 2026-10-15 | tasks.plan / tasks.evidence（GET /api/agent、任务详情） | 元素结构未定义（`items: {}`），无法类型安全渲染 | 文档给出元素结构 | 低优先：任务详情已有 events 时间线（结构完整）可渲染，plan/evidence 可通用展示或不渲染 |
 | 2026-10-15 | 全端点 CORS | 历史问题：OPTIONS 预检正常但响应缺少 `Access-Control-Allow-Origin`，曾阻断浏览器跨域（原生 App 不受影响） | 当前服务端已统一处理 CORS，Web 直接连接服务端 | 已解决；临时代理及 `npm run proxy` 已退役，历史交接中的代理命令不再适用 |
-| 2026-10-18 | GET /api/agent & /api/events（工作区状态同步） | 保留的数据层仍以 5 秒盲轮询全量快照（新版根入口当前未挂载），高耗电且切后台感知不及时 | 提供全局轻量 SSE（/api/events）+ 默认 7 天活跃快照与 Cursor 分页 + 远程推送唤醒，详见 docs/backlog.md | 方案已定，待服务端协同；据交接说明 `/api/events` 已由服务端提交 `473213f` 交付，但本仓库尚未定位修订正文，客户端未接入 |
+| 2026-10-18 | GET /api/identity & /api/events（工作区状态同步） | 保留的数据层仍以 5 秒盲轮询全量快照（新版根入口当前未挂载），高耗电且切后台感知不及时 | 提供全局轻量 SSE（/api/events）+ 默认 7 天活跃快照与 Cursor 分页 + 远程推送唤醒，详见 docs/backlog.md | 方案已定，待服务端协同；据交接说明 `/api/events` 已由服务端提交 `473213f` 交付，但本仓库尚未定位修订正文，客户端未接入 |
 
 ## 运行状态模块验收（2026-10-19）
 
-- 最新在线 `GET /api/events` 与 `GET /api/agent/status` 已满足本轮实时短状态、工具／子代理明细、重连当前集合与已知运行终态查询，无需本轮协调服务端扩接口。状态通知与聊天文字流独立，普通聊天的 `activityId=null` 合法；完成运行不等于完成活动。
+- 最新在线 `GET /api/events` 与 `GET /api/runs/status` 已满足本轮实时短状态、工具／子代理明细、重连当前集合与已知运行终态查询，无需本轮协调服务端扩接口。状态通知与聊天文字流独立，普通聊天的 `activityId=null` 合法；完成运行不等于完成活动。
 - 用户确认直接接通新版真实界面，在会话面板“动态”顶部放“当前执行”。连接入口仅应用页；未接审批、活动、文件、目标、记忆明确标注，不再加载示例数组。旧工作区快照／审批轮询未恢复。
 - 369项自动化通过；隔离协议预检8项、最终实现7项联调通过，临时会话已清理。浏览器实际覆盖首次连接、空Key mock、真实聊天及状态、子代理等待／终态、精确Stop、会话面板、未接模块边界、删除收尾和冷刷新；未改实际服务业务数据。证据与限制见 `HANDOFF.md` 文首。
 - 此处下方的旧“根入口仅示例／SSE未接／协议未定位”等内容均是历史阶段；审批操作、活动历史和其他领域仍须按模块单独讨论，不把本轮状态接入当成它们已完成。
@@ -172,7 +172,7 @@
 - 本轮只适配会话与聊天数据层，以在线 `/openapi.json` 为准；删除响应已移除 `removed.tasks` 要求，`THREAD_DELETING` 与普通 revision 冲突区别处理。配置保存保留草稿且不自动重试；测试夹具不再用历史 GET 重建会话。没有接入新全局 SSE／审批或恢复真实 UI 连接。
 - 新在线契约已明确：不存在、已删除或正在删除的合法会话历史只读返回 `{revision:"empty",messages:[]}`；会话是否存在以列表为准。2026-10-18 下方的复现属于旧部署，不能继续当作当前服务仍有同样故障的证据；本轮未对正式会话做写入／删除复验。
 - **隔离联调阻塞已解除**：首次 `pnpm dev:mock` 在读取旧审批数据时抛 `Invalid actions document`。只读定位确认 `.pi-muse/mock/actions.json` 共7条旧终态记录，缺少新版 `revision/resolvedAt` 与关联字段；不是17890实际服务未启动。用户明确授权直接重置且不备份后，仅重置该文件为空数组，未改服务端源码、配置或其他已有 mock 数据；官方 mock 成功恢复17891监听。
-- **补做联调**：真实 `HttpApiClient + ThreadSessionStore` 对17891完成19项检查，全部通过；覆盖规则／技能、历史只读、聊天流、幂等／revision冲突、精确Stop、删除响应／当前轮收尾、迟到请求和同名新会话。临时会话经API全部清理，原会话列表保持不变，证据 `/tmp/pi-muse-session-live.r5o8kM/`（无Token）。17890健康检查正常，本轮未对其发送业务写入或调用真实模型。
+- **补做联调**：真实 `HttpApiClient + AgentSessionStore` 对17891完成19项检查，全部通过；覆盖规则／技能、历史只读、聊天流、幂等／revision冲突、精确Stop、删除响应／当前轮收尾、迟到请求和同名新会话。临时会话经API全部清理，原会话列表保持不变，证据 `/tmp/pi-muse-session-live.r5o8kM/`（无Token）。17890健康检查正常，本轮未对其发送业务写入或调用真实模型。
 - 本地 lint、typecheck、299/299 回归与 diff 检查通过；新版 UI 和原生运行仍未接入验收，其他模块的历史问题暂未在本轮重新验收。
 
 ## 会话与隔离工作区接口验收（2026-10-18）
@@ -190,15 +190,15 @@
 
 | 优先级 | 接口/行为 | 证据与现状 | 期望 | 状态 |
 | --- | --- | --- | --- | --- |
-| P1 | `POST /api/agent/tasks` 的显式 `originThreadId` | 来源是合法但尚未聊天/保存设置的新 ID 时，创建返回 200、任务 succeeded，结果通知却进 `local-main`，指定会话历史仍是 `empty`。在 17891 两次独立复现；已有聊天或仅保存设置的会话均正确。源码 `src/features/tasks/task-worker.ts:51-57` 对 `hasThread=false` 静默回退主会话；监控投递初始化也有同类回退，监控实际命中场景尚未动态验证。 | 显式来源不得静默改投主会话。推荐接受合法新 ID 时建立/保留来源并投递该来源；若只允许持久化来源，应在创建时返回明确 4xx，且不得已排队。来源删除后的策略也应明确，不能误投或复活旧会话。 | 待用户协调服务端 |
-| P1 | `GET /api/conversation?threadId=` 的只读副作用 | 移动端真实 HttpApiClient + ThreadSessionStore 集成验收中，DELETE 后列表已无旧 ID；随后 GET 同 ID 历史返回 `{revision:"empty",messages:[]}`，再 GET 列表该 ID 又出现。请求证据 `/tmp/pi-muse-mobile-session-qa-WjsIHE/http-store-results.json`。 | 读取缺失/已删会话历史不能重新建立目录或列表项；首次显式 run/保存设置再创建。客户端已在删除开始取消历史读、成功切主会话并屏蔽迟到结果，但跨端迟到 GET 仍需服务端保证只读。 | 新增待协调 |
+| P1 | `POST /api/agent/tasks` 的显式 `originAgentId` | 来源是合法但尚未聊天/保存设置的新 ID 时，创建返回 200、任务 succeeded，结果通知却进 `local-main`，指定会话历史仍是 `empty`。在 17891 两次独立复现；已有聊天或仅保存设置的会话均正确。源码 `src/features/tasks/task-worker.ts:51-57` 对 `hasAgent=false` 静默回退主会话；监控投递初始化也有同类回退，监控实际命中场景尚未动态验证。 | 显式来源不得静默改投主会话。推荐接受合法新 ID 时建立/保留来源并投递该来源；若只允许持久化来源，应在创建时返回明确 4xx，且不得已排队。来源删除后的策略也应明确，不能误投或复活旧会话。 | 待用户协调服务端 |
+| P1 | `GET /api/conversation?agentId=` 的只读副作用 | 移动端真实 HttpApiClient + AgentSessionStore 集成验收中，DELETE 后列表已无旧 ID；随后 GET 同 ID 历史返回 `{revision:"empty",messages:[]}`，再 GET 列表该 ID 又出现。请求证据 `/tmp/pi-muse-mobile-session-qa-WjsIHE/http-store-results.json`。 | 读取缺失/已删会话历史不能重新建立目录或列表项；首次显式 run/保存设置再创建。客户端已在删除开始取消历史读、成功切主会话并屏蔽迟到结果，但跨端迟到 GET 仍需服务端保证只读。 | 新增待协调 |
 | P2 | 文件工具错误信息 | 读取不存在的 `draft.md` / `shared/...` 时，HTTP 权威历史与 SSE 回复可见服务端完整绝对路径（含本机用户名、数据根和线程目录），而不是逻辑路径；不影响越界拒绝本身。 | 保留明确 not-found/denied 信息，但在工具结果与上层回复前统一净化本机绝对路径，只回逻辑路径和稳定错误信息。无需前端反向解析/掩盖。 | 待服务端评估 |
 | P2 | OpenAPI 来源说明与部署标识 | 当前任务/监控端点 hint 仍写「进主聊天流」，与已有来源正确投递的实际行为不符；`info.version` 固定 `1.0.0`，health 无 build/capabilities，无法从运行实例确认交接提交 `e37e544`；本次正式服务期间曾自行重启，未对其做控制。 | 更新端点提示为「显式来源/缺省主会话」；提供可核验 build/commit 或能力版本，区分本交接与并行 `/api/events` 交付。 | 待服务端评估 |
 
 ### 声称修复后的独立复验（2026-10-18）
 
 - 用户提供的实际地址为 `http://192.168.55.201:17890/`。本次重新取得会话、使用 no-cache 请求读取 health/OpenAPI/list，并只用专用验收 ID 进行规则保存、删除和历史回读。**当前该实例仍复现 GET 历史创建空会话及删除后重建列表项**，因此没有把修复状态标为完成。
-- 该实例对尚不存在的显式 `originThreadId` 仍返回 200/queued，未建立来源会话；立即取消本轮任务成功（终态 cancelled）。没有等待真实供应商完成，**不声称本次已在正式实例复现最终通知误投**。任务记录按契约保留；最终列表仅 local-main，无活跃任务、监控、pending。
+- 该实例对尚不存在的显式 `originAgentId` 仍返回 200/queued，未建立来源会话；立即取消本轮任务成功（终态 cancelled）。没有等待真实供应商完成，**不声称本次已在正式实例复现最终通知误投**。任务记录按契约保留；最终列表仅 local-main，无活跃任务、监控、pending。
 - 从当前 `~/Desktop/code/personal-bot` 源码运行其官方 `pnpm dev:mock`，独立复验 12 条观察：4 条控制/清理检查通过，8 条预期检查未通过。仍见未持久化来源任务结果进入主会话、监控接受悬空来源、已删来源任务仍被接受、历史 GET 重建、文件 not-found 绝对路径泄漏、OpenAPI 旧来源文案及缺少部署标识。已有来源任务仍正常执行并投递来源。
 - 只读源码定位仍保留上述路径：`task-worker.ts:51-57`、`create-service.ts:185` 的缺失来源回退；`routes/conversation.ts:11-21` 经 hub 初始化历史；`session-history.ts:27-33` mkdir；`path-guard.ts:37-40` 缺失文件异常未净化；health/OpenAPI 的版本与 hint 未变。未读取或修改服务端配置/密钥，未对服务端做 Git 或重启操作。
 - 据交接说明，`/api/events` 由独立提交 `473213f` 交付；这是文档范围的更新，**不代表上述四项已在当前源码/部署修复**。本仓库尚未定位该修订正文，移动端也未接入通知流或解除来源保护。
@@ -209,7 +209,7 @@
 - 以下为保留数据层与测试层面的已完成项；新版根入口当前仍未挂载真实连接，因此不等于已在新版 UI 生效。
 - 已接五个会话方法、规则编辑/清空、二态技能与恢复默认、诊断、危险删除、连接内分会话草稿和迟到请求保护；不持久化业务正文，改服务器随工作区销毁。
 - 后台任务页面显式传来源，`local-main` 也传；只列服务端已确认的普通会话。本地未保存会话明确提示不可作来源，不偷偷保存空规则或发消息。来源若被其他端删除，仍需要后端在创建时校验，客户端不能提供强一致保证。
-- 文件工具标明私有/shared；审批继续全局可见，展示服务端 threadId/runId，保留完整 payload；不通过路径猜工具卡决定。增加 instructions 中文卡与下一轮提示，不从摘要推断规则正文。
+- 文件工具标明私有/shared；审批继续全局可见，展示服务端 agentId/runId，保留完整 payload；不通过路径猜工具卡决定。增加 instructions 中文卡与下一轮提示，不从摘要推断规则正文。
 - 回到聊天 tab、手动刷新工作区、回前台时重新读取当前权威历史；运行中不覆盖流式视图。保留数据层的五秒快照轮询不改为未交付的通知流，不承诺自动实时聊天推送。
 
 ### 可接受的当前限制（不要求本轮后端扩展）
@@ -223,12 +223,12 @@
 ## 本轮核对（2026-10-15）
 
 - 已实际读取 `http://127.0.0.1:8790/openapi.json`：文档接口可用，会话仍只有 `id/updatedAt`，没有重命名端点；重命名继续等待协调。该文档实例与隔离 mock 8788 不同，不能据此宣称 mock 或真实模型已验收。
-- **聊天卡审批关联待协调**：当前审批通知可含 threadId/runId，但没有 toolCallId；同一轮可能多次写同一路径，仅按路径或时间匹配会串错审批。期望通知增加 toolCallId，或 SSE 提供 notificationId 关联。客户端保留审批列表的准确状态，并增加聊天卡“查看审批”入口；不猜测每张工具卡的批准/拒绝状态。
+- **聊天卡审批关联待协调**：当前审批通知可含 agentId/runId，但没有 toolCallId；同一轮可能多次写同一路径，仅按路径或时间匹配会串错审批。期望通知增加 toolCallId，或 SSE 提供 notificationId 关联。客户端保留审批列表的准确状态，并增加聊天卡“查看审批”入口；不猜测每张工具卡的批准/拒绝状态。
 - **结构化天气待协调**：`get_weather` 当前通过 SSE 只投影格式化文本，无法稳定取得温度、湿度、观测时间等结构化字段。期望在工具结果契约提供带版本的结构化数据；客户端暂提供天气专用文本卡，不用正则反向解析展示文案。
 
 ## 真实 mock 联调补充（2026-10-15）
 
-- **已修复客户端旧契约适配**：以当前 8788/8790 OpenAPI 为准，聊天改为 `POST /api/conversation/run` 的 `{threadId,runId,expectedRevision,message}` 增量请求；历史保留 `{revision,messages}`；停止改为 `POST /api/conversation/stop` 并同时匹配两个 ID。任务 kind/target 使用 `job|task`，详情读取 `{task,events}`。`GET /api/agent` 不再含审批正文，由客户端并行读取 `/api/actions/pending` 后合成展示状态。本次登录中实际提交的最近决定只在客户端内存保留。
+- **已修复客户端旧契约适配**：以当前 8788/8790 OpenAPI 为准，聊天改为 `POST /api/conversation/run` 的 `{agentId,runId,expectedRevision,message}` 增量请求；历史保留 `{revision,messages}`；停止改为 `POST /api/conversation/stop` 并同时匹配两个 ID。任务 kind/target 使用 `job|task`，详情读取 `{task,events}`。`GET /api/identity` 不再含审批正文，由客户端并行读取 `/api/actions/pending` 后合成展示状态。本次登录中实际提交的最近决定只在客户端内存保留。
 - **工具投影缺失，待服务端协调**：在隔离 mock 8788 新建会话 `mobile-tools-smoke-1792053047670`，发送「写入工具投影验收」，确认 `/api/actions/pending` 出现该会话的写入审批并通过决定端点拒绝（200）。实际 SSE 仅有 `RUN_STARTED/TEXT_MESSAGE_*/RUN_FINISHED`，没有 `TOOL_CALL_*`；随后权威历史也只有 user 与 assistant 文本，没有 toolCalls/tool 消息。浏览器批准与拒绝流程同样能执行，但聊天专用工具卡缺少可消费的事件与历史。期望工具执行时发出 AG-UI 工具事件，历史保留调用与结果投影。移动端不猜测助手回复来还原工具调用；前一轮固定数据卡片验收继续有效，真实工具卡全链路保持阻塞。本仓库未修改服务端。
 
 ## Android APK 更新的原生边界（2026-10-17）
@@ -260,9 +260,9 @@
 ## 定时任务（Jobs）独立资源迁移与快照调整（2026-10-21）
 
 - **服务端接口调整核实**：
-  - `GET /api/agent` 已彻底移除 `tasks` 字段，且 `monitors` 与 `memories` 已迁移至独立接口，快照响应体仅保证返回 `identity` 与 `goals`。客户端已移除对快照中 `tasks` 等字段的强制数组校验，避免 502。
+  - `GET /api/identity` 已彻底移除 `tasks` 字段，且 `monitors` 与 `memories` 已迁移至独立接口，快照响应体仅保证返回 `identity` 与 `goals`。客户端已移除对快照中 `tasks` 等字段的强制数组校验，避免 502。
   - 旧接口 `GET /api/agent/tasks/:id` 与 `POST /api/agent/tasks/:id/control` 服务端已返回 501 下线。
-  - 新增独立资源 `/api/jobs`（列表查询支持 `spaceId`、`sort`、`order`）、`GET /api/jobs/:id`、`POST /api/jobs/:id/control`（已移除冗余 `target: "job"`）、`PATCH /api/jobs/:id`、`DELETE /api/jobs/:id`。
+  - 新增独立资源 `/api/jobs`（列表查询支持 `agentId`、`sort`、`order`）、`GET /api/jobs/:id`、`POST /api/jobs/:id/control`（已移除冗余 `target: "job"`）、`PATCH /api/jobs/:id`、`DELETE /api/jobs/:id`。
   - 字段变更：任务结果字段统一规范为 `lastResult`，客户端提供 `result` 别名平滑兼容。
 - **客户端契约与实现落地**：
   - 更新 `src/api/types.ts`、`src/api/contracts.ts`、`src/api/http-client.ts`，新增 `listJobs`、`getJob`、`controlJob`、`updateJob`、`deleteJob` 标准接口，并保留 `getTask` 与 `controlTask` 作为无缝向前兼容封装。
@@ -271,7 +271,7 @@
 ## 长期记忆（Memories）独立资源迁移与端点调整（2026-10-21）
 
 - **服务端接口调整核实**：
-  - `GET /api/agent` 已彻底移除 `memories` 字段；客户端此前已支持可选读取，快照不依赖 `memories`。
+  - `GET /api/identity` 已彻底移除 `memories` 字段；客户端此前已支持可选读取，快照不依赖 `memories`。
   - 旧接口下线：`GET /api/agent/memories`、`POST /api/agent/memories/:id`、`POST /api/agent/memories/:id/forget` 服务端均返回 501。
   - 新独立端点就绪：
     - 列表与搜索：`GET /api/memories`，支持 `q`、`limit`、`sort`（`updatedAt` / `createdAt`）、`order`（`asc` / `desc`）。

@@ -17,8 +17,8 @@ const { layout: l, typography: t, radius: r } = workspaceTheme;
 /** 连接内只挂一份群聊所有者；换页面不重发、不把私聊草稿或历史带进群里。 */
 export function GroupChat({ visible, members, onProfile, onApprovals, onPrivateChat, onSummary }: {
   visible: boolean; members: { id: string; name: string }[];
-  onProfile: (id: string) => void; onApprovals: (spaceId: string) => void;
-  onPrivateChat: (spaceId: string) => void; onSummary: (preview: GroupPreview) => void;
+  onProfile: (id: string) => void; onApprovals: (agentId: string) => void;
+  onPrivateChat: (agentId: string) => void; onSummary: (preview: GroupPreview) => void;
 }) {
   const api = useApi(); const { colors: c } = useTheme(); const approvals = useApprovals();
   const runtimeStore = useRuntimeStore();
@@ -91,7 +91,7 @@ export function GroupChat({ visible, members, onProfile, onApprovals, onPrivateC
       if (mounted.current) { setRunning(false); await reload(); }
     }
   };
-  const pendingApprovals = approvals.snapshot.pendingIds.map((id) => approvals.snapshot.records[id]).filter((item) => item && item.spaceId && combined.some((turn) => turn.rootId === item.runId));
+  const pendingApprovals = approvals.snapshot.pendingIds.map((id) => approvals.snapshot.records[id]).filter((item) => item && item.agentId && combined.some((turn) => turn.rootId === item.runId));
   const title = (id: string) => members.find((member) => member.id === id)?.name ?? id;
   const anchor = () => { if (visible && following.current) scroll.current?.scrollToEnd({ animated: false }); };
   return <View style={{ flex: 1, minHeight: 0, display: visible ? 'flex' : 'none' }} accessibilityElementsHidden={!visible} importantForAccessibility={visible ? 'auto' : 'no-hide-descendants'}>
@@ -102,15 +102,15 @@ export function GroupChat({ visible, members, onProfile, onApprovals, onPrivateC
       {snapshot && !rows.length && !busy && <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}><Text style={{ ...t.detail, color: c.muted }}>有什么想聊的？</Text></View>}
       {rows.map((row) => <View key={row.key} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing[8] }}>
         {row.sender && <Pressable accessibilityRole="button" accessibilityLabel={`查看${title(row.sender)}的主页`} onPress={() => { Keyboard.dismiss(); onProfile(row.sender!); }} style={{ width: l.smallControl, minHeight: l.smallControl, alignItems: 'center', justifyContent: 'center' }}>
-          <MemberAvatar spaceId={row.sender} size={l.groupAvatar} />
+          <MemberAvatar agentId={row.sender} size={l.groupAvatar} />
         </Pressable>}
         <View style={{ flex: 1, minWidth: 0, gap: spacing[2] }}>
           {row.sender && <Text style={{ ...t.caption, color: c.muted }}>{title(row.sender)}{row.notification ? ' · 通知' : ''}</Text>}
           <Message message={row.message} layout="group" recipient={row.target && row.target !== 'local-main' ? `@${title(row.target)}` : undefined} />
-          {row.notification && <Pressable accessibilityRole="button" accessibilityLabel={`在${title(row.notification.targetSpaceId)}私聊中处理通知`}
-            onPress={() => { Keyboard.dismiss(); onPrivateChat(row.notification!.targetSpaceId); }}
+          {row.notification && <Pressable accessibilityRole="button" accessibilityLabel={`在${title(row.notification.targetAgentId)}私聊中处理通知`}
+            onPress={() => { Keyboard.dismiss(); onPrivateChat(row.notification!.targetAgentId); }}
             style={{ alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing[12] }}>
-            <Text style={{ ...t.caption, color: c.accentText }}>由 {title(row.notification.targetSpaceId)} 承接 · 查看私聊</Text>
+            <Text style={{ ...t.caption, color: c.accentText }}>由 {title(row.notification.targetAgentId)} 承接 · 查看私聊</Text>
           </Pressable>}
           {row.status && <Text style={{ ...t.caption, color: row.status === 'failed' ? c.danger : c.muted }}>{row.status === 'cancelled' ? '已停止' : '处理失败，不会自动重试'}</Text>}
         </View>
@@ -119,10 +119,10 @@ export function GroupChat({ visible, members, onProfile, onApprovals, onPrivateC
       {!!error && <Text accessibilityRole="alert" style={{ ...t.caption, color: c.danger }}>{error}</Text>}
       {(!!error || uncertain || (!!snapshot?.running && !running)) && <ActionButton label="重新同步群聊" text="同步核对" onPress={() => void reload()} />}
     </ScrollView>
-    {pendingApprovals.length > 0 && <ActionButton label="查看群聊待处理审批" text={`待处理审批（${pendingApprovals.length}）`} onPress={() => onApprovals(pendingApprovals[0].spaceId!)} style={{ marginHorizontal: l.sidePadding }} />}
+    {pendingApprovals.length > 0 && <ActionButton label="查看群聊待处理审批" text={`待处理审批（${pendingApprovals.length}）`} onPress={() => onApprovals(pendingApprovals[0].agentId!)} style={{ marginHorizontal: l.sidePadding }} />}
     {choosing && <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 200, marginHorizontal: l.sidePadding, borderRadius: r.card, backgroundColor: c.surface }}>
       {members.map((member) => <Pressable key={member.id} accessibilityRole="button" accessibilityLabel={`群聊艾特${member.name}`} onPress={() => { setTarget(member.id); setChoosing(false); setDraft((text) => text.endsWith('@') ? text.slice(0, -1) : text); }} style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', padding: spacing[12], gap: spacing[12] }}>
-        <MemberAvatar spaceId={member.id} size={30} /><Text style={{ ...t.detail, color: c.ink }}>{member.name}</Text>
+        <MemberAvatar agentId={member.id} size={30} /><Text style={{ ...t.detail, color: c.ink }}>{member.name}</Text>
       </Pressable>)}
     </ScrollView>}
     {!!target && <Pressable accessibilityRole="button" accessibilityLabel="取消群聊艾特" onPress={() => setTarget(undefined)} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[8], alignSelf: 'flex-start', marginHorizontal: l.sidePadding, padding: spacing[10] }}><Text style={{ ...t.caption, color: c.accentText }}>@{title(target)}</Text><X size={16} color={c.muted} /></Pressable>}

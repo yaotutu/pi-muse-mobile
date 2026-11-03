@@ -1,5 +1,5 @@
 /**
- * 真实网页监控 HTTP/状态机验收。专用空间与 URL 标记只清理本轮数据；
+ * 真实网页监控 HTTP/状态机验收。专用智能体与 URL 标记只清理本轮数据；
  * 不拦截响应、不使用替身，模型创建也走真实 AG-UI SSE 与外部模型。
  */
 import assert from 'node:assert/strict';
@@ -17,7 +17,7 @@ const base = process.env.E2E_API_BASE_URL.replace(/\/$/, '');
 const output = mkdtempSync(join(tmpdir(), 'pimuse-monitors-e2e-run.'));
 const stamp = Date.now().toString(36);
 const marker = `MONITORS_E2E_${stamp}`;
-const spaceId = `monitors-e2e-${stamp}`;
+const agentId = `monitors-e2e-${stamp}`;
 const fixtureUrls = new Set([
   `https://example.com/?${marker}-fixture-a`,
   `https://example.com/?${marker}-fixture-b`,
@@ -28,7 +28,7 @@ const modelUrl = `https://example.com/?${marker}-model`;
 let token;
 let baselineMonitors;
 let baselineIds = new Set();
-let spaceMayExist = false;
+let agentMayExist = false;
 let activeRun;
 let initialVersion;
 let failure;
@@ -50,7 +50,7 @@ const pass = (name, extra = {}) => {
   checks.push({ name, ...extra });
   console.log('PASS', name);
 };
-const phase = (name, extra = {}) => write('context.json', { phase: name, base, marker, spaceId, controlId, externalId, modelId, ...extra });
+const phase = (name, extra = {}) => write('context.json', { phase: name, base, marker, agentId, controlId, externalId, modelId, ...extra });
 
 async function until(predicate, label, timeout = 300_000) {
   const end = Date.now() + timeout;
@@ -85,17 +85,17 @@ async function deployment(suffix) {
 
 function isOwn(monitor) {
   return !baselineIds.has(monitor.id) && (
-    monitor.originSpaceId === spaceId || fixtureUrls.has(monitor.url) || monitor.url === modelUrl
+    monitor.originAgentId === agentId || fixtureUrls.has(monitor.url) || monitor.url === modelUrl
   );
 }
 
 async function postFixture(url, title) {
   // ApiClient 有意不暴露创建入口；夹具仅用权威 REST POST，响应仍走生产白名单解析。
-  spaceMayExist = true;
+  agentMayExist = true;
   const response = await fetch(`${base}/api/monitors`, {
     method: 'POST',
     headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), 'content-type': 'application/json' },
-    body: JSON.stringify({ url, title, condition: 'change', intervalMinutes: 5, originSpaceId: spaceId }),
+    body: JSON.stringify({ url, title, condition: 'change', intervalMinutes: 5, originAgentId: agentId }),
     redirect: 'error',
     signal: AbortSignal.timeout(15_000),
   });
@@ -137,8 +137,8 @@ async function storeStatus(id, status) {
 }
 
 async function runModelCreate() {
-  const before = new Set((await api.listMonitors({ spaceId })).map((monitor) => monitor.id));
-  const history = await api.getConversation(spaceId);
+  const before = new Set((await api.listMonitors({ agentId })).map((monitor) => monitor.id));
+  const history = await api.getConversation(agentId);
   const runId = `monitors-e2e-model-${stamp}`;
   activeRun = runId;
   const eventTypes = [];
@@ -146,7 +146,7 @@ async function runModelCreate() {
   const toolResults = [];
   let runError;
   await api.runAgent({
-    spaceId,
+    agentId,
     runId,
     expectedRevision: history.revision,
     message: {
@@ -164,7 +164,7 @@ async function runModelCreate() {
   assert.ok(eventTypes.includes('RUN_STARTED'));
   assert.ok(eventTypes.includes('RUN_FINISHED'));
 
-  const created = (await api.listMonitors({ spaceId, sort: 'createdAt', order: 'asc' }))
+  const created = (await api.listMonitors({ agentId, sort: 'createdAt', order: 'asc' }))
     .filter((monitor) => !before.has(monitor.id));
   if (created.length !== 1) {
     write('model-creation-failure.json', { eventTypes, tools, toolResults, created, before: [...before] });
@@ -174,13 +174,13 @@ async function runModelCreate() {
   modelId = modelMonitor.id;
   ownIds.add(modelId);
   assert.equal(modelMonitor.url, modelUrl);
-  assert.equal(modelMonitor.originSpaceId, spaceId);
+  assert.equal(modelMonitor.originAgentId, agentId);
   assert.equal(modelMonitor.condition, 'change');
   assert.equal(modelMonitor.status, 'active');
   assert.ok(modelMonitor.title.length > 0, 'Server defaults omitted titles to URL; empty title is malformed');
   assert.deepEqual(await api.getMonitor(modelId), modelMonitor);
 
-  const conversation = await api.getConversation(spaceId);
+  const conversation = await api.getConversation(agentId);
   const userIndex = conversation.messages.findIndex((message) => message.id === `${runId}-message`);
   assert.ok(userIndex >= 0 && conversation.messages[userIndex].content?.includes(modelUrl), 'Persisted history must contain the exact user request');
   const reply = conversation.messages.slice(userIndex + 1).find((message) => message.role === 'assistant' && message.content);
@@ -205,14 +205,14 @@ try {
   assert.equal(auth.mode, 'live', 'Real model backend is required');
   token = auth.token;
 
-  const missingHistory = await api.getConversation(spaceId);
+  const missingHistory = await api.getConversation(agentId);
   assert.deepEqual(missingHistory, { messages: [], revision: 'empty' });
   baselineMonitors = await api.listMonitors();
   baselineIds = new Set(baselineMonitors.map((monitor) => monitor.id));
-  const baselineSpaces = (await api.listSpaces()).map((space) => space.id);
-  assert.ok(!baselineSpaces.includes(spaceId));
-  assert.ok(!baselineMonitors.some((monitor) => monitor.originSpaceId === spaceId || monitor.url.includes(marker)));
-  pass('dedicated space starts absent with empty revision and no marker data', { baselineCount: baselineMonitors.length });
+  const baselineAgents = (await api.listAgents()).map((agent) => agent.id);
+  assert.ok(!baselineAgents.includes(agentId));
+  assert.ok(!baselineMonitors.some((monitor) => monitor.originAgentId === agentId || monitor.url.includes(marker)));
+  pass('dedicated agent starts absent with empty revision and no marker data', { baselineCount: baselineMonitors.length });
 
   phase('fixtures');
   fixtureA = await postFixture([...fixtureUrls][0], `${marker}-fixture-a`);
@@ -223,16 +223,16 @@ try {
   fixtureC = await postFixture([...fixtureUrls][2], `${marker}-fixture-c`);
   controlId = fixtureC.id;
   externalId = fixtureB.id;
-  assert.deepEqual(new Set((await api.listMonitors({ spaceId })).map((monitor) => monitor.id)), new Set([fixtureA.id, fixtureB.id, fixtureC.id]));
-  pass('real REST fixtures bind one dedicated space and first check persists lastCheckedAt');
+  assert.deepEqual(new Set((await api.listMonitors({ agentId })).map((monitor) => monitor.id)), new Set([fixtureA.id, fixtureB.id, fixtureC.id]));
+  pass('real REST fixtures bind one dedicated agent and first check persists lastCheckedAt');
 
   await runModelCreate();
-  const scoped = await api.listMonitors({ spaceId });
+  const scoped = await api.listMonitors({ agentId });
   assert.deepEqual(new Set(scoped.map((monitor) => monitor.id)), ownIds);
   assert.ok((await api.listMonitors()).some((monitor) => ownIds.has(monitor.id)));
   for (const sort of ['createdAt', 'lastCheckedAt', 'status']) {
     for (const order of ['asc', 'desc']) {
-      const sorted = await api.listMonitors({ spaceId, sort, order });
+      const sorted = await api.listMonitors({ agentId, sort, order });
       assert.deepEqual(new Set(sorted.map((monitor) => monitor.id)), ownIds);
       assertSorted(sorted, sort, order);
     }
@@ -243,7 +243,7 @@ try {
 
   phase('store');
   store.setActive(true);
-  store.setQuery({ spaceId, sort: 'createdAt', order: 'desc' });
+  store.setQuery({ agentId, sort: 'createdAt', order: 'desc' });
   store.open();
   await storeLoaded();
   assert.deepEqual(new Set(store.getSnapshot().monitors.map((monitor) => monitor.id)), ownIds);
@@ -257,7 +257,7 @@ try {
   await storeStatus(controlId, 'stopped');
   assert.equal(await store.control(controlId, 'resume'), false);
   await assert.rejects(api.controlMonitor(controlId, 'resume'), (error) => error instanceof ApiError && error.status === 409);
-  store.setQuery({ spaceId, sort: 'status', order: 'asc' });
+  store.setQuery({ agentId, sort: 'status', order: 'asc' });
   await storeLoaded();
   assertSorted([...store.getSnapshot().monitors], 'status', 'asc');
   pass('pause/resume/stop persists through store; stopped is terminal and server resume returns409');
@@ -309,7 +309,7 @@ try {
 } finally {
   store.dispose();
   try {
-    if (activeRun) await api.stopRun(spaceId, activeRun).catch(() => undefined);
+    if (activeRun) await api.stopRun(agentId, activeRun).catch(() => undefined);
     if (baselineMonitors) {
       const current = await api.listMonitors();
       const own = current.filter(isOwn);
@@ -319,15 +319,15 @@ try {
           if (!(error instanceof ApiError && error.status === 404)) throw error;
         });
       }
-      if (spaceMayExist) {
-        await api.deleteSpace(spaceId).catch((error) => {
+      if (agentMayExist) {
+        await api.deleteAgent(agentId).catch((error) => {
           if (!(error instanceof ApiError && error.status === 404)) throw error;
         });
       }
       const remaining = await api.listMonitors();
       assert.ok(!remaining.some(isOwn));
       write('cleanup.json', { baselineCount: baselineMonitors.length, removedCount: own.length, remainingCount: remaining.length });
-      pass('cleanup removes only dedicated monitors/space; baseline data untouched by cleanup');
+      pass('cleanup removes only dedicated monitors/agent; baseline data untouched by cleanup');
     }
     if (initialVersion) {
       assert.deepEqual(await deployment('end'), initialVersion);
@@ -342,7 +342,7 @@ try {
     passed: !failure,
     base,
     marker,
-    spaceId,
+    agentId,
     checks,
     error: failure?.message,
     completedAt: new Date().toISOString(),

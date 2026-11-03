@@ -59,7 +59,7 @@ UI 基线已获用户明确认可，亮暗主题均须保留：
 
 - `src/api/{contracts,types,http-client,sse}.ts`：旧 HTTP／聊天 SSE 契约与实现。
 - `src/connection/`：连接状态机、地址／凭据绑定存储、安全逻辑。
-- `src/threads/`：会话 store、Provider 与 hooks。
+- `src/agents/`：会话 store、Provider 与 hooks。
 - `src/chat/{useConversation,chat-state,tool-presentation,file-scope}.ts`：历史、流式聚合及纯展示逻辑。
 - `src/workspace/useWorkspaceSnapshot.ts`：保留但不挂载。
 - `src/update/`：与业务凭据隔离的 Android 更新，保持原有签名、授权和安装确认边界。
@@ -82,7 +82,7 @@ UI 基线已获用户明确认可，亮暗主题均须保留：
 | 事件 | 原草案载荷／语义 |
 | --- | --- |
 | `ready` | `{serverTime, agentStatuses, pendingApprovals}`；每条连接首帧，当前完整集合，重连替换，空数组清空，不含历史或7天过滤 |
-| `agent_status_updated` | 对应 `threadId + runId` 的完整执行对象，含活动关联、来源、标题、状态、阶段、短说明、工具、子代理、待审批ID与时间 |
+| `agent_status_updated` | 对应 `agentId + runId` 的完整执行对象，含活动关联、来源、标题、状态、阶段、短说明、工具、子代理、待审批ID与时间 |
 | `approval_pending` | 完整待审批：ID、会话／运行、kind、title、preview.path/before/after、创建／过期时间 |
 | `approval_updated` | 审批ID、会话／运行、approved/denied/expired/cancelled 与处理时间，不重复正文 |
 
@@ -134,7 +134,7 @@ UI 基线已获用户明确认可，亮暗主题均须保留：
 
 - `src/api/sse.ts` 现有 `parseSseFrames` 是聊天 AG-UI 解析器：按 `data: ` 行独立解析 JSON，忽略 `event:`，不能直接用于新全局命名SSE；新增解析器或隔离升级，保留原聊天契约与测试。
 - 旧审批读取为 `GET /api/actions/pending`，决定为 `POST /api/actions/{id}/decide`，返回旧 `ApprovalNotification`；不能认为它等同于草案 `/api/approvals/{id}/decision`。
-- 全局状态按 `threadId/runId` 归属保存；切会话不应串状态。会话信息区只取当前会话，不取全局第一条。
+- 全局状态按 `agentId/runId` 归属保存；切会话不应串状态。会话信息区只取当前会话，不取全局第一条。
 - 认证与流生命周期继续遵守地址／Token绑定、401单独处理、请求代次与abort、回前台重同步等安全边界；不能把 token 放URL。
 - 新版没有真实连接入口／Provider挂载。接入时需要明确恢复其生命周期，但不能为此恢复旧UI或重新引入双界面。
 - 不用旧 TaskKind（job/task）猜新 source，不恢复已下线的后台 worker／delegate_task。
@@ -153,7 +153,7 @@ src/api/contracts.ts
 src/api/http-client.ts
 src/api/types.ts
 src/chat/useConversation.ts
-src/threads/useThreads.ts
+src/agents/useAgents.ts
 tests/demo-api.test.mjs
 tests/helpers/demo-api-client.ts
 tests/helpers/demo-fixtures.ts
@@ -167,12 +167,12 @@ tests/http-api.test.mjs
 docs/HANDOFF-SSE-APPROVALS.md
 src/activity/task-source.ts
 src/chat/file-scope.ts
-src/threads/ThreadSessionProvider.tsx
-src/threads/thread-session-store.ts
+src/agents/AgentSessionProvider.tsx
+src/agents/agent-session-store.ts
 tests/file-scope.test.mjs
-tests/helpers/demo-thread-settings.ts
+tests/helpers/demo-agent-settings.ts
 tests/task-source.test.mjs
-tests/thread-session-store.test.mjs
+tests/agent-session-store.test.mjs
 ```
 
 本文及 `docs/HANDOFF.md` 入口指针是本次交接新增内容，生成后未重新提交。接手以实时 `git status` 为准；`.idea/` 不纳入业务提交。

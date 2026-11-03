@@ -4,7 +4,7 @@ import './helpers/register-conversation-tests.mjs';
 import { readFileSync } from 'node:fs';
 import { conversationRefreshKey, reconcileConversationOwners } from '../src/workspace/conversation-host-state.ts';
 
-const { SpaceStore } = await import('../src/spaces/space-store.ts');
+const { AgentStore } = await import('../src/agents/agent-store.ts');
 const { createMockApi } = await import('./helpers/conversation-test-harness.ts');
 const { renderConversationHook } = await import('./helpers/hook-runner.ts');
 
@@ -18,7 +18,7 @@ const waitFor = async (predicate) => {
 };
 
 test('conversation_updated 触发的权威历史刷新保留草稿，流式运行结束后不漏刷新', async () => {
-  const store = new SpaceStore();
+  const store = new AgentStore();
   const reads = [];
   const run = (() => {
     let resolveRun;
@@ -41,12 +41,12 @@ test('conversation_updated 触发的权威历史刷新保留草稿，流式运�
     },
     runAgent: () => run.promise,
   });
-  const hook = await renderConversationHook('space-a', api, store);
+  const hook = await renderConversationHook('agent-a', api, store);
   await waitFor(() => hook.result.current.views.some((message) => message.id === 'old-message'));
 
   const sending = hook.result.current.send('streaming');
   await waitFor(() => hook.result.current.running);
-  store.setDraft('space-a', 'draft-after-notification');
+  store.setDraft('agent-a', 'draft-after-notification');
   await hook.rerender(1);
   assert.equal(reads.length, 1);
 
@@ -54,40 +54,40 @@ test('conversation_updated 触发的权威历史刷新保留草稿，流式运�
   await sending;
   await waitFor(() => hook.result.current.views.some((message) => message.id === 'notification-message'));
   assert.equal(hook.result.current.running, false);
-  assert.equal(store.get('space-a').draft, 'draft-after-notification');
+  assert.equal(store.get('agent-a').draft, 'draft-after-notification');
   hook.unmount();
 });
 
-test('空间切换后的历史读取只归属新空间，不回写旧空间消息', async () => {
-  const store = new SpaceStore();
+test('智能体切换后的历史读取只归属新智能体，不回写旧智能体消息', async () => {
+  const store = new AgentStore();
   const reads = [];
-  const snapshot = (spaceId) => ({
-    sessionId: `session-${spaceId}`,
-    revision: `rev-${spaceId}`,
+  const snapshot = (agentId) => ({
+    sessionId: `session-${agentId}`,
+    revision: `rev-${agentId}`,
     messages: [{
-      id: `message-${spaceId}`, role: 'assistant', content: spaceId, metadata: {
+      id: `message-${agentId}`, role: 'assistant', content: agentId, metadata: {
         createdAt: '2026-10-29T00:00:00.000Z', source: 'chat', runId: 'run-a', jobId: null, notificationId: null, feedbackAvailable: false,
       }, feedback: { reaction: null, comments: [] },
     }],
   });
   const api = createMockApi({
-    getConversation: async (spaceId) => {
-      reads.push(spaceId);
-      return snapshot(spaceId);
+    getConversation: async (agentId) => {
+      reads.push(agentId);
+      return snapshot(agentId);
     },
   });
-  const oldSpace = await renderConversationHook('space-a', api, store);
-  await waitFor(() => oldSpace.result.current.views.some((message) => message.id === 'message-space-a'));
-  oldSpace.unmount();
+  const oldAgent = await renderConversationHook('agent-a', api, store);
+  await waitFor(() => oldAgent.result.current.views.some((message) => message.id === 'message-agent-a'));
+  oldAgent.unmount();
 
-  const nextSpace = await renderConversationHook('space-b', api, store);
-  await waitFor(() => nextSpace.result.current.views.some((message) => message.id === 'message-space-b'));
-  assert.deepEqual(reads, ['space-a', 'space-b']);
-  assert.equal(nextSpace.result.current.sessionId, 'session-space-b');
-  nextSpace.unmount();
+  const nextAgent = await renderConversationHook('agent-b', api, store);
+  await waitFor(() => nextAgent.result.current.views.some((message) => message.id === 'message-agent-b'));
+  assert.deepEqual(reads, ['agent-a', 'agent-b']);
+  assert.equal(nextAgent.result.current.sessionId, 'session-agent-b');
+  nextAgent.unmount();
 });
 
-test('已访问空间切换后保留原 SSE 所有者；删除空间才释放所有者', () => {
+test('已访问智能体切换后保留原 SSE 所有者；删除智能体才释放所有者', () => {
   const first = reconcileConversationOwners(['local-main'], 'side-a', ['local-main', 'side-a']);
   const second = reconcileConversationOwners(first, 'local-main', ['local-main', 'side-a']);
   assert.deepEqual(second, ['local-main', 'side-a']);
@@ -95,7 +95,7 @@ test('已访问空间切换后保留原 SSE 所有者；删除空间才释放所
   assert.deepEqual(reconcileConversationOwners(second, 'local-main', ['local-main']), ['local-main']);
 });
 
-test('每空间失效只接受自己的 session，未同步时不会消费旧失效版本', () => {
+test('每智能体失效只接受自己的 session，未同步时不会消费旧失效版本', () => {
   const runtime = { synchronized: true, conversationSyncVersion: 4, conversationInvalidationVersion: 8, conversationInvalidationSessionId: 'session-a' };
   assert.equal(conversationRefreshKey(2, runtime, 'session-a'), '2:4:8');
   assert.equal(conversationRefreshKey(2, runtime, 'session-b'), '2:4:0');

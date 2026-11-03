@@ -30,7 +30,7 @@ const TABS: readonly { value: SessionTab; label: string; icon: LucideIcon; testI
 ];
 
 export interface SessionPanelProps {
-  spaceId: string;
+  agentId: string;
   tab: SessionTab;
   onTab: (tab: SessionTab) => void;
   onSettled?: () => void;
@@ -73,7 +73,7 @@ function createStyles(colors: WorkspaceColors) {
 }
 
 export function SessionPanel({
-  spaceId,
+  agentId,
   tab,
   onTab,
   onSettled,
@@ -99,9 +99,9 @@ export function SessionPanel({
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
-            {tab === 'activity' && <CurrentExecution spaceId={spaceId} onSettled={onSettled} onApprovals={() => onTab('approvals')} onHistory={(id) => { setHistoryActivityId(id); onTab('history'); }} />}
-            {tab === 'approvals' && <ApprovalPanel key={spaceId} spaceId={spaceId} />}
-            {tab === 'history' && <ActivityPanel key={spaceId} spaceId={spaceId} initialActivityId={historyActivityId} showHeading={false} />}
+            {tab === 'activity' && <CurrentExecution agentId={agentId} onSettled={onSettled} onApprovals={() => onTab('approvals')} onHistory={(id) => { setHistoryActivityId(id); onTab('history'); }} />}
+            {tab === 'approvals' && <ApprovalPanel key={agentId} agentId={agentId} />}
+            {tab === 'history' && <ActivityPanel key={agentId} agentId={agentId} initialActivityId={historyActivityId} showHeading={false} />}
           </ScrollView>
         </View>
     </View>

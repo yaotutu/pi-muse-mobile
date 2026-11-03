@@ -12,7 +12,7 @@ const deferred = () => { let resolve; const promise = new Promise((done) => { re
 function fixture(record) {
   const values = new Map(record ? [[CONNECTION_KEY, JSON.stringify(record)]] : []);
   const events = []; const clients = []; const calls = [];
-  const control = { failWrite: false, failFinal: false, failClear: false, clearGate: undefined, session: undefined, spaces: undefined, cache: 'old-business-cache' };
+  const control = { failWrite: false, failFinal: false, failClear: false, clearGate: undefined, session: undefined, agents: undefined, cache: 'old-business-cache' };
   const store = createConnectionStore({
     getItem: async (key) => {
       if (control.failRead) throw new Error('read error');
@@ -39,9 +39,9 @@ function fixture(record) {
         if (control.session) return control.session(client, key);
         return { token: url === B ? 'token-b' : 'token-a', mode: 'live' };
       },
-      listSpaces: async () => {
-        calls.push({ type: 'spaces', url, token: getToken() });
-        if (control.spaces) return control.spaces(client);
+      listAgents: async () => {
+        calls.push({ type: 'agents', url, token: getToken() });
+        if (control.agents) return control.agents(client);
         return [{ id: 'local-main', updatedAt: '2026-10-17T00:00:00Z' }];
       },
       cancelPending: () => { events.push(['cancel', url]); },
@@ -75,7 +75,7 @@ test('直接保存先认证核对，成功后只落盘地址与Token', async () 
   await f.manager.saveConnection(A, 'private-input-key');
   assert.deepEqual(f.calls.map(({ type, url, key, token }) => ({ type, url, key, token })), [
     { type: 'session', url: A, key: 'private-input-key', token: undefined },
-    { type: 'spaces', url: A, key: undefined, token: 'token-a' },
+    { type: 'agents', url: A, key: undefined, token: 'token-a' },
   ]);
   assert.deepEqual(f.record(), { serverUrl: A, token: 'token-a' });
   assert.equal(f.manager.getSnapshot().status, 'online');
@@ -84,13 +84,13 @@ test('直接保存先认证核对，成功后只落盘地址与Token', async () 
   assert.equal(JSON.stringify(f.record()).includes('private-input-key'), false);
 });
 
-test('同址空Key保存沿用当前Token，但必须实际listSpaces核对', async () => {
+test('同址空Key保存沿用当前Token，但必须实际listAgents核对', async () => {
   const f = fixture({ serverUrl: A, token: 'token-a' }); await f.boot();
   f.manager.setActive(false);
   await f.manager.saveConnection('https://A.example:443/', '');
   assert.deepEqual(f.calls, [
-    { type: 'spaces', url: A, token: 'token-a' },
-    { type: 'spaces', url: 'https://a.example', token: 'token-a' },
+    { type: 'agents', url: A, token: 'token-a' },
+    { type: 'agents', url: 'https://a.example', token: 'token-a' },
   ]);
   assert.deepEqual(f.record(), { serverUrl: 'https://a.example', token: 'token-a' });
   assert.equal(f.clearCount(), 0);
@@ -119,7 +119,7 @@ test('新Key必须重新交换Token，旧proof不能保存新输入', async () =
   f.control.session = async () => ({ token: 'token-a-new', mode: 'live' });
   await f.manager.saveConnection(A, 'new-key');
   assert.deepEqual(f.calls.at(-2), { type: 'session', url: A, key: 'new-key' });
-  assert.deepEqual(f.calls.at(-1), { type: 'spaces', url: A, token: 'token-a-new' });
+  assert.deepEqual(f.calls.at(-1), { type: 'agents', url: A, token: 'token-a-new' });
   assert.deepEqual(f.record(), { serverUrl: A, token: 'token-a-new' });
   assert.equal(f.clearCount(), 0);
 });
@@ -136,7 +136,7 @@ test('恢复已有永久Token只做只读探测，不交换Key或解析过期时
 test('原址断网或5xx保留Token、业务数据域和缓存，重试恢复不重放写请求', async () => {
   const f = fixture({ serverUrl: A, token: 'token-a' }); await f.boot();
   const key = f.manager.getSnapshot().workspaceKey; const client = f.manager.getClient();
-  f.control.spaces = async () => { throw new ApiError(503, 'service down'); };
+  f.control.agents = async () => { throw new ApiError(503, 'service down'); };
   await f.manager.retry();
   assert.equal(f.manager.getSnapshot().status, 'offline');
   assert.equal(f.manager.getSnapshot().hasToken, true);
@@ -146,9 +146,9 @@ test('原址断网或5xx保留Token、业务数据域和缓存，重试恢复不
   assert.equal(f.record().token, 'token-a');
   assert.equal(f.control.cache, 'old-business-cache');
   assert.equal(f.clearCount(), 0);
-  f.control.spaces = undefined; await f.manager.retry();
+  f.control.agents = undefined; await f.manager.retry();
   assert.equal(f.manager.getSnapshot().status, 'online');
-  assert.equal(f.calls.every((call) => call.type === 'spaces'), true);
+  assert.equal(f.calls.every((call) => call.type === 'agents'), true);
   assert.equal(f.writes().length, 0);
 });
 
@@ -225,7 +225,7 @@ test('取消直接保存后，迟到认证结果不能写盘或清理', async ()
   gate.resolve({ token: 'token-b', mode: 'live' });
   await rejected;
   assert.deepEqual(f.record(), { serverUrl: A, token: 'token-a' });
-  assert.equal(f.calls.some((call) => call.url === B && call.type === 'spaces'), false);
+  assert.equal(f.calls.some((call) => call.url === B && call.type === 'agents'), false);
   assert.equal(f.clearCount(), 0);
 });
 

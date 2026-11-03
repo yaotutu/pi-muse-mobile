@@ -17,7 +17,7 @@ assert.ok(process.env.E2E_API_BASE_URL, 'E2E_API_BASE_URL must explicitly select
 const base = process.env.E2E_API_BASE_URL.replace(/\/$/, '');
 const output = mkdtempSync(join(tmpdir(), 'pimuse-activity-e2e-run.'));
 const stamp = Date.now().toString(36);
-const spaceId = `activity-e2e-${stamp}`;
+const agentId = `activity-e2e-${stamp}`;
 const title = `ACTIVITY_E2E_${stamp}`;
 const secondTitle = `ACTIVITY_SECOND_${stamp}`;
 const delivery = `DELIVERED_${stamp}`;
@@ -27,14 +27,14 @@ let token; let created = false; let baseline = []; let initialVersion; let failu
 const api = new HttpApiClient(base, () => token, () => { throw new Error('Real service rejected authentication'); });
 const activities = new ActivityStore(api);
 const runtime = new RuntimeStore(api, { onEvent: (event) => {
-  if (event.event === 'ready') readySets.push(event.data.activities.filter((item) => item.spaceId === spaceId));
-  if (event.event === 'activity_updated' && event.data.spaceId === spaceId) activityEvents.push(event.data);
+  if (event.event === 'ready') readySets.push(event.data.activities.filter((item) => item.agentId === agentId));
+  if (event.event === 'activity_updated' && event.data.agentId === agentId) activityEvents.push(event.data);
   activities.receive(event);
 }, onConnection: activities.setConnection });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const record = (name, data = {}) => { checks.push({ name, ...data }); console.log('PASS', name); };
 function write(name, data) { writeFileSync(join(output, name), JSON.stringify(data, null, 2)); }
-function phase(name, data = {}) { write('context.json', { phase: name, base, spaceId, title, secondTitle, delivery, ...data }); }
+function phase(name, data = {}) { write('context.json', { phase: name, base, agentId, title, secondTitle, delivery, ...data }); }
 async function until(predicate, label, timeout = 120_000) {
   const end = Date.now() + timeout;
   while (Date.now() < end) { if (await predicate()) return; if (driverExit !== undefined && driverExit !== 0) throw new Error('Native driver failed; see native-results.json'); await sleep(200); }
@@ -52,9 +52,9 @@ async function docs(suffix) {
   return health.serviceVersion;
 }
 async function run(message) {
-  const history = await api.getConversation(spaceId); const runId = `activity-run-${stamp}-${runs.length + 1}`;
+  const history = await api.getConversation(agentId); const runId = `activity-run-${stamp}-${runs.length + 1}`;
   const item = { runId, eventTypes: [], tools: [], settled: false }; runs.push(item);
-  item.promise = api.runAgent({ spaceId, runId, expectedRevision: history.revision, message: { id: `message-${runId}`, content: message } }, (event) => {
+  item.promise = api.runAgent({ agentId, runId, expectedRevision: history.revision, message: { id: `message-${runId}`, content: message } }, (event) => {
     item.eventTypes.push(event.type);
     if (event.type === 'TOOL_CALL_START') item.tools.push(event.toolCallName);
     if (event.type === 'RUN_ERROR') item.error = event.message ?? event.code ?? 'RUN_ERROR';
@@ -80,12 +80,12 @@ try {
   assert.match(await metro.text(), /packager-status:running/); record('Android, Python and Metro preflight before real model calls');
   initialVersion = await docs('start'); record('docs, OpenAPI and deployment identity match', { serviceVersion: initialVersion });
   const auth = await api.createSession(process.env.E2E_ACCESS_KEY); assert.equal(auth.mode, 'live'); token = auth.token;
-  baseline = (await api.listSpaces()).map((t) => t.id);
+  baseline = (await api.listAgents()).map((t) => t.id);
   // 此 API 创建专用会话；不动设备凭据、不改用户已有规则和会话。
-  await api.saveSpaceInstructions(spaceId, 'Dedicated mobile activity history acceptance only. Register only the explicitly requested activities. Only use the activity lifecycle tool and currentTime. Never use files, shared workspaces, subagents, jobs, monitors, goals or memories. Stage one must leave work unfinished until an explicit continuation. Never call a completion tool before actually delivering the requested final summary.'); created = true;
+  await api.saveAgentInstructions(agentId, 'Dedicated mobile activity history acceptance only. Register only the explicitly requested activities. Only use the activity lifecycle tool and currentTime. Never use files, shared workspaces, subagents, jobs, monitors, goals or memories. Stage one must leave work unfinished until an explicit continuation. Never call a completion tool before actually delivering the requested final summary.'); created = true;
   activities.setActive(true); runtime.setActive(true);
   await until(() => runtime.getSnapshot().connection === 'live', 'shared workspace SSE ready', 20_000);
-  activities.open({ spaceId }); assert.deepEqual(await storeList(), []); record('dedicated empty list is actual HTTP data');
+  activities.open({ agentId }); assert.deepEqual(await storeList(), []); record('dedicated empty list is actual HTTP data');
   const first = await run(`Begin a TWO-STAGE work item titled exactly ${title}. Explicitly register it with your activity lifecycle tool now, with goal "Verify two-stage execution history" and deliverable "A final summary containing ${delivery}". In this first stage call currentTime exactly once, report the observed time, and END THIS TURN with the work still unfinished. Do not complete the activity, do not ask for missing information or mark waiting_user. Wait for my explicit continuation before the second stage and final delivery.`);
   let list = await storeList(); assert.equal(list.length, 1, 'model must explicitly register exactly one activity');
   const id = list[0].id; ownActivityIds.push(id);
@@ -96,7 +96,7 @@ try {
   assert.ok(activityEvents.some((event) => event.id === id && event.status === 'running'));
   let readyCount = readySets.length; runtime.retry();
   await until(() => readySets.length > readyCount, 'reconnect ready includes unfinished activity');
-  assert.deepEqual(activities.getSnapshot().activeActivities.filter((item) => item.spaceId === spaceId).map((item) => item.id), [id]);
+  assert.deepEqual(activities.getSnapshot().activeActivities.filter((item) => item.agentId === agentId).map((item) => item.id), [id]);
   assert.deepEqual(readySets.at(-1).map((item) => item.id), [id]);
   record('actual activity_updated status frames and reconnect ready current-set replacement');
   record('real tool/model/execution steps; run success does not complete work', { activityId: id, runId: first.runId });
@@ -124,11 +124,11 @@ try {
   const second = await run(`Start a NEW independent work item titled exactly ${secondTitle}. Explicitly register a new activity, goal "Check pagination", deliverable "A current-time summary". Call currentTime once, deliver its time as a summary, then explicitly mark this NEW activity completed with the delivered summary as result. Do not change the earlier completed activity.`);
   list = await storeList(); assert.equal(list.length, 2); const secondId = list.find((a) => a.id !== id)?.id; assert.ok(secondId); ownActivityIds.push(secondId);
   assert.equal(list[0].id, secondId); assert.equal(list[0].title, secondTitle); assert.equal(list[0].status, 'completed'); assert.deepEqual(list[0].runIds, [second.runId]);
-  const page1 = await api.listActivities({ spaceId, status: 'completed', limit: 1 }); assert.equal(page1.hasMore, true); assert.equal(page1.activities[0].id, secondId);
-  const page2 = await api.listActivities({ spaceId, status: 'completed', limit: 1, cursor: page1.nextCursor }); assert.equal(page2.activities[0].id, id); assert.equal(page2.hasMore, false);
-  assert.equal((await api.listActivities({ spaceId, status: 'awaiting_continuation' })).activities.length, 0);
+  const page1 = await api.listActivities({ agentId, status: 'completed', limit: 1 }); assert.equal(page1.hasMore, true); assert.equal(page1.activities[0].id, secondId);
+  const page2 = await api.listActivities({ agentId, status: 'completed', limit: 1, cursor: page1.nextCursor }); assert.equal(page2.activities[0].id, id); assert.equal(page2.hasMore, false);
+  assert.equal((await api.listActivities({ agentId, status: 'awaiting_continuation' })).activities.length, 0);
   await assert.rejects(api.getActivity(`missing-${stamp}`), (e) => e.status === 404);
-  write('pagination.json', { page1, page2 }); record('real nonempty pagination, opaque cursor, status/space filters and missing detail');
+  write('pagination.json', { page1, page2 }); record('real nonempty pagination, opaque cursor, status/agent filters and missing detail');
   phase('second', { id, secondId, expectedIds: list.map((a) => a.id) });
   await until(() => existsSync(join(output, 'native-done')), 'native filters, task entry and final screenshots', 240_000);
   await until(() => driverExit === 0, 'native driver exits', 10_000);
@@ -140,14 +140,14 @@ try {
   if (driver && driverExit === undefined) { driver.kill('SIGTERM'); await sleep(500); }
   activities.dispose(); runtime.dispose();
   try {
-    for (const item of runs) if (!item.settled) { await api.stopRun(spaceId, item.runId); await item.promise; }
+    for (const item of runs) if (!item.settled) { await api.stopRun(agentId, item.runId); await item.promise; }
     if (created) {
-      const removed = await api.deleteSpace(spaceId); assert.equal(removed.ok, true);
-      assert.equal((await api.listActivities({ spaceId })).activities.length, 0);
+      const removed = await api.deleteAgent(agentId); assert.equal(removed.ok, true);
+      assert.equal((await api.listActivities({ agentId })).activities.length, 0);
       for (const id of ownActivityIds) await assert.rejects(api.getActivity(id), (e) => e.status === 404);
-      const remaining = (await api.listSpaces()).map((t) => t.id);
-      assert.ok(!remaining.includes(spaceId)); assert.ok(baseline.every((id) => remaining.includes(id)), 'preexisting sessions must remain');
-      assert.equal((await api.getPendingApprovals()).filter((a) => a.spaceId === spaceId).length, 0);
+      const remaining = (await api.listAgents()).map((t) => t.id);
+      assert.ok(!remaining.includes(agentId)); assert.ok(baseline.every((id) => remaining.includes(id)), 'preexisting sessions must remain');
+      assert.equal((await api.getPendingApprovals()).filter((a) => a.agentId === agentId).length, 0);
       record('API cleanup removes only dedicated session/activities; existing sessions retained');
     }
     if (initialVersion) {
@@ -155,7 +155,7 @@ try {
     }
   } catch (e) { failure ??= e; console.error('FAIL cleanup/audit:', e.message); }
   token = undefined;
-  write('results.json', { passed: !failure, base, spaceId, checks, runs: runs.map(({ promise: _, ...item }) => item), error: failure?.message, completedAt: new Date().toISOString() });
+  write('results.json', { passed: !failure, base, agentId, checks, runs: runs.map(({ promise: _, ...item }) => item), error: failure?.message, completedAt: new Date().toISOString() });
   console.log('Evidence:', output);
 }
 if (failure) process.exitCode = 1;

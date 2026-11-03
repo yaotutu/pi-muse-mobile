@@ -8,7 +8,7 @@
 
 **The official React Native client for [Pi Muse](https://github.com/yaotutu/pi-muse), a self-hosted personal agent built on [pi](https://github.com/earendil-works/pi)**
 
-Keep conversations, isolated spaces, approvals, recurring jobs, web monitors, goals, memory, and workspace files within reach—without moving your model credentials from your own server.
+Keep conversations, isolated agents, approvals, recurring jobs, web monitors, goals, memory, and workspace files within reach—without moving your model credentials from your own server.
 
 [Features](#features) · [Quick start](#quick-start) · [Develop from source](#develop-from-source) · [Security](#security-and-data-handling) · [Documentation](#documentation)
 
@@ -26,13 +26,13 @@ Keep conversations, isolated spaces, approvals, recurring jobs, web monitors, go
 
 ---
 
-Pi Muse Mobile is a native mobile interface, not a standalone assistant. It connects to a Pi Muse server over the product's public HTTP/SSE API; the server owns agent execution, model access, spaces, files, schedules, approvals, and other persistent state.
+Pi Muse Mobile is a native mobile interface, not a standalone assistant. It connects to a Pi Muse server over the product's public HTTP/SSE API; the server owns agent execution, model access, agents, files, schedules, approvals, and other persistent state.
 
 The release workflow builds a signed Android APK and an unsigned iOS IPA for users who have their own iOS signing credentials. Check the assets attached to your chosen Release; the IPA is not directly installable. iOS otherwise remains a source-development target, and the Expo web output is a development preview rather than the official Pi Muse web client.
 
 ## Features
 
-### Chat and isolated spaces
+### Chat and isolated agents
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/yaotutu/pi-muse/main/docs/assets/chat-preview.png" width="88%" alt="Chat with Markdown and tool cards in an earlier version">
@@ -42,7 +42,7 @@ The release workflow builds a signed Android APK and an unsigned iOS IPA for use
 - **Persistent message feedback.** Long-press a saved user or assistant message bubble for a nearby reaction pill and a compact Comments/Copy menu. A small badge on the bubble edge shows an existing Like/Dislike or comment count; messages without feedback have no badge. Reactions are mutually exclusive and undoable, while comments open in a separate view for adding, editing, and deleting. Edited and deleted comment text remains in the server ledger. Feedback never starts a model run or writes model preferences. Incomplete streaming messages are not eligible, and resetting or deleting a conversation clears its feedback.
 - **Purposeful Markdown rendering.** Assistant messages render headings, emphasis, lists, quotations, tables, and copyable code blocks with native React Native components. Markdown images are not loaded, HTML is shown as literal text, and message/search links are restricted to credential-free HTTP(S).
 - **Transparent tool cards.** Tool activity displays the projections returned by the server. The client does not infer hidden details or mark a result as saved or approved merely because a tool returned.
-- **Isolated spaces.** Create, search, and switch contexts such as Work, Life, or Study. Each space has its own conversation, instructions, skills, and private files.
+- **Isolated agents.** Create, search, and switch contexts such as Work, Life, or Study. Each agent has its own conversation, instructions, skills, and private files.
 - **Useful attachments.** A message can contain up to four attachments: PNG, JPEG, GIF, or WebP images and recognized UTF-8 text/code files. The total attachment limit is 8 MiB, and text attachments together may contain at most 100,000 bytes. PDF, Office, archives, and other binary formats are not supported. Image understanding requires the server's configured model to support vision; the client does not silently switch models.
 
 ### Jobs, activity, and web monitoring
@@ -67,10 +67,10 @@ The release workflow builds a signed Android APK and an unsigned iOS IPA for use
 
 ### Session panel, approvals, and workspace files
 
-- **One full-screen session center.** Open the private chat's top-right Space Settings, then Activity and Approvals to open the current session panel. Its Activity, Approvals, and execution History switch in place while the chat remains mounted behind it.
+- **One full-screen session center.** Open the private chat's top-right Agent Settings, then Activity and Approvals to open the current session panel. Its Activity, Approvals, and execution History switch in place while the chat remains mounted behind it.
 - **Current execution and activity history.** Follow the current run, tool work, model-registered activities, progress, results, and related steps. Activity is not hidden model reasoning and is not represented as an archive of every chat run.
 - **Human-in-the-loop approvals.** Agent-initiated file writes and edits require full before/after review and explicit confirmation. A stale approval cannot overwrite content that changed after the approval was created.
-- **Space files.** Open a member profile → Files to browse the current space's private directories and files, read complete text, preview supported images, and download files to a chosen Android directory without overwriting same-name files. Manual text saves require complete-content review and confirmation.
+- **Agent files.** Open a member profile → Files to browse the current agent's private directories and files, read complete text, preview supported images, and download files to a chosen Android directory without overwriting same-name files. Manual text saves require complete-content review and confirmation.
 
 Current source uses member profiles for private files, direct Markdown/text editing, rules, skills, and maintenance. Tap an avatar to open its profile, then Send Message for a separate private chat. News and SMS own their settings; background notifications default to main and can be explicitly rebound. Global settings open from the message list’s top-right gear. Cold launch opens the shared group timeline: no `@` routes only to main, while an explicit `@` sends only to that member. Group and private contexts stay separate; the group top-right opens group information. The current group is text-only, without message feedback or background-notification delivery; those remain in private chats.
 
@@ -78,8 +78,8 @@ Current source uses member profiles for private files, direct Markdown/text edit
 
 - **Server connection management.** Save one reachable Pi Muse address, authenticate with the server AccessKey, and keep the resulting session token on the device. The plaintext AccessKey is not persisted by the client.
 - **Assistant and user profiles.** Edit the assistant name and tone plus global SOUL and USER profiles. Profile changes take effect on later conversations.
-- **Global long-term memory.** Search, create, edit, and delete memories shared across spaces. Refreshes happen when the page opens or returns to the foreground, after successful writes, or manually.
-- **Dream memory maintenance.** Inspect Dream's global and per-space status, review pending suggestions, adjust prompts and cycles, trigger maintenance, and explicitly apply or dismiss suggestions.
+- **Global long-term memory.** Search, create, edit, and delete memories shared across agents. Refreshes happen when the page opens or returns to the foreground, after successful writes, or manually.
+- **Dream memory maintenance.** Inspect Dream's global and per-agent status, review pending suggestions, adjust prompts and cycles, trigger maintenance, and explicitly apply or dismiss suggestions.
 - **Three complete themes.** Choose Classic Blue, Morning Light, or Midnight Black. The selection is local, survives restarts, and never encodes server credentials.
 - **Android app updates.** The packaged Android app checks public GitHub releases, downloads stable APK assets, and hands installation to the Android system installer. If a check fails, including GitHub rate limiting, the update panel provides the official APK URL and a manual download button. Updates are not Expo OTA and are unavailable in Expo Go, web, or iOS builds.
 - **Current boundaries.** Voice input/transcription and lock-screen push notifications are not implemented. The client uses foreground SSE reconnection rather than claiming always-on background delivery.
@@ -159,7 +159,7 @@ These are local development gates. `npm test` uses local protocol and state fixt
 
 - Cold launch opens group chat directly, without bottom tabs. One conversation list provides the default group, member private chats, avatar profiles, a bottom-right group shortcut, and top-right global settings. News reading lives inside the News member; Goals remains hidden. Navigation uses in-app state; the project does not use React Navigation or Expo Router.
 - The chat stream uses AG-UI SSE through `expo/fetch`, with custom framing and aggregation implemented in the client.
-- Runtime status, approvals, activities, and job invalidation share the server's notification SSE. Spaces, files, memory, goals, jobs, monitors, profiles, and Dream use documented REST endpoints.
+- Runtime status, approvals, activities, and job invalidation share the server's notification SSE. Agents, files, memory, goals, jobs, monitors, profiles, and Dream use documented REST endpoints.
 - Business state is kept in focused providers and stores around React context. The UI renders native React Native components rather than embedding a web app.
 - The source is purpose-written for this client; it is not a CopilotKit SDK wrapper.
 

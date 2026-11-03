@@ -9,7 +9,7 @@ test('管理子页共用滚动区外的固定标题与返回设置入口，不�
   const screen = read('WorkspaceScreen.tsx');
   const management = screen.slice(screen.indexOf('const management ='), screen.indexOf('return <ScrollView key="settings"'));
   for (const title of ['长期记忆', '助手与用户资料', 'Dream 记忆整理']) assert.ok(management.includes(title), title);
-  assert.match(management, /<SpaceHeader title=\{management.title\} backLabel="返回设置" onBack=\{\(\) => onSubpage\(null\)\} \/>\s*<ScrollView/);
+  assert.match(management, /<AgentHeader title=\{management.title\} backLabel="返回设置" onBack=\{\(\) => onSubpage\(null\)\} \/>\s*<ScrollView/);
   assert.match(management, /\{management.content\}<\/ScrollView>/);
   for (const name of ['ProfilePanel.tsx', 'MemoryPanel.tsx', 'DreamPanel.tsx']) {
     const source = read(name);
@@ -20,9 +20,9 @@ test('管理子页共用滚动区外的固定标题与返回设置入口，不�
 test('动态与审批覆盖原成员页面，打开时不切私聊且总从动态开始', () => {
   const screen = read('WorkspaceScreen.tsx');
   assert.match(screen, /onActivity=\{\(\) => openSession\('activity'\)\}/);
-  const close = screen.slice(screen.indexOf('const closeSession ='), screen.indexOf('const leaveSpaceChild ='));
+  const close = screen.slice(screen.indexOf('const closeSession ='), screen.indexOf('const leaveAgentChild ='));
   assert.match(close, /setSessionOpen\(false\)/);
-  assert.doesNotMatch(close, /setPage|setSpaceView|setProfileReturn|setSpaceSection/);
+  assert.doesNotMatch(close, /setPage|setAgentView|setProfileReturn|setAgentSection/);
   assert.match(screen, /else if \(action === 'session'\) closeSession\(\)/);
   assert.match(screen, /onPress=\{sessionOpen \? closeSession : openSession\}/);
 });
@@ -57,28 +57,28 @@ test('Dream 常用操作先于折叠配置，保留独立保存、切换确认�
   const source = read('DreamPanel.tsx');
   assert.doesNotMatch(source, /SectionHeading|eyebrow="DREAM"/);
   assert.match(source, /styles\.topRow/);
-  for (const label of ['全局整理提示词', '选择整理空间', '当前空间设置', '最近整理', '待决建议', '保存全局Dream提示词', '取消全局Dream提示词修改', '保存当前空间Dream设置', '取消当前空间Dream设置修改', '立即整理当前Dream空间']) {
+  for (const label of ['全局整理提示词', '选择整理智能体', '当前智能体设置', '最近整理', '待决建议', '保存全局Dream提示词', '取消全局Dream提示词修改', '保存当前智能体Dream设置', '取消当前智能体Dream设置修改', '立即整理当前Dream智能体']) {
     assert.ok(source.includes(label), label);
   }
-  assert.match(source, /if \(snapshot\.spaceDirty\) \{ setNextSpaceId\(spaceId\); return; \}/);
+  assert.match(source, /if \(snapshot\.agentDirty\) \{ setNextAgentId\(agentId\); return; \}/);
   assert.match(source, /accessibilityRole="switch"[^>]+accessibilityState=\{\{ checked: selected, disabled \}\}/);
   assert.match(source, /\['user', 'soul', 'instructions', 'memory'\]/);
-  assert.match(source, /当前目标：\{targetText\(chosen, current\.spaceId\)\}/);
+  assert.match(source, /当前目标：\{targetText\(chosen, current\.agentId\)\}/);
   assert.match(source, /<Text selectable style=\{styles\.fullText\}>\{item\.text\}/);
   assert.match(source, /确认应用Dream建议/);
   assert.match(source, /确认忽略Dream建议/);
   assert.match(source, /showDefault && <Text selectable/);
   assert.match(source, /<ActionButton label="保存全局Dream提示词"[^>]+wide/);
-  const order = ['>选择整理空间</Text>', '>最近整理</Text>', '>待决建议 ·', '>当前空间设置</Text>', '>全局整理提示词</Text>'];
+  const order = ['>选择整理智能体</Text>', '>最近整理</Text>', '>待决建议 ·', '>当前智能体设置</Text>', '>全局整理提示词</Text>'];
   assert.deepEqual([...order].sort((a, b) => source.indexOf(a) - source.indexOf(b)), order);
-  for (const name of ['GlobalSettings', 'SpaceSettings']) {
+  for (const name of ['GlobalSettings', 'AgentSettings']) {
     assert.match(source, new RegExp(`const \\[show${name}, setShow${name}\\] = useState\\(false\\)`));
     assert.match(source, new RegExp(`expanded=\\{show${name}\\}`));
     assert.match(source, new RegExp(`\\{show${name} && <>`));
     assert.match(source, new RegExp(`setShow${name}\\(!show${name}\\)`));
   }
   assert.match(source, /snapshot\.globalDirty \? '有未保存修改'/);
-  assert.match(source, /snapshot\.spaceDirty \? '有未保存修改'/);
+  assert.match(source, /snapshot\.agentDirty \? '有未保存修改'/);
   assert.match(source, /disabled=\{!canRun\}/);
   assert.doesNotMatch(source, /setShow\w+\([^;]+;\s*(?:store\.discard|void store\.save|void store\.run)/);
 });

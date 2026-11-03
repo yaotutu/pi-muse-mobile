@@ -1,8 +1,8 @@
-export type WorkspaceFileScope = 'space' | 'shared';
+export type WorkspaceFileScope = 'agent' | 'shared';
 
 export type WorkspaceFileSelector = {
   scope: WorkspaceFileScope;
-  spaceId: string | null;
+  agentId: string | null;
 };
 
 export type WorkspaceFileTarget = WorkspaceFileSelector & { path: string };
@@ -67,7 +67,7 @@ export type FilesEditor = {
 export type FilesSavePreview = {
   mode: 'create' | 'update';
   scope: WorkspaceFileScope;
-  spaceId: string | null;
+  agentId: string | null;
   path: string;
   before: string;
   after: string;
@@ -76,15 +76,15 @@ export type FilesSavePreview = {
 export type FilesUncertainOperation = {
   kind: FilesWriteKind;
   scope: WorkspaceFileScope;
-  spaceId: string | null;
+  agentId: string | null;
   path: string;
   content?: string;
 };
 
 export type FilesSnapshot = {
   scope: WorkspaceFileScope;
-  selectedSpaceId?: string;
-  pendingSpaceId?: string;
+  selectedAgentId?: string;
+  pendingAgentId?: string;
   directoryPath: string;
   entries: readonly WorkspaceListEntry[];
   loaded: boolean;

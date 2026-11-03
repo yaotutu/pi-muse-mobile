@@ -41,7 +41,7 @@ function makeStream() {
 
 const agentStatus = (overrides = {}) => ({
   activityId: null,
-  spaceId: 'thread-a',
+  agentId: 'agent-a',
   runId: 'run-a',
   revision: 1,
   source: 'chat',
@@ -81,7 +81,7 @@ test('subscribeRuntime ready 当前活动与 activity_updated 概览独立解析
 
 test('subscribeRuntime 解析严格的 conversation_updated，未知字段或跨实例帧断流', async () => {
   const ready = { instanceId: 'inst-1', serverTime: 't', agentStatuses: [] };
-  const valid = { instanceId: 'inst-1', spaceId: 'thread-a', sessionId: 'session-1' };
+  const valid = { instanceId: 'inst-1', agentId: 'agent-a', sessionId: 'session-1' };
   const stream = makeStream();
   await withFetch(async () => {
     stream.push(frame('ready', ready));
@@ -96,7 +96,7 @@ test('subscribeRuntime 解析严格的 conversation_updated，未知字段或跨
 
   for (const payload of [
     { ...valid, extra: true },
-    { instanceId: 'inst-1', spaceId: 'thread-a' },
+    { instanceId: 'inst-1', agentId: 'agent-a' },
     { ...valid, instanceId: 'other' },
   ]) {
     const invalid = makeStream();
@@ -134,18 +134,18 @@ test('subscribeRuntime 缺活动集合、重复/终态 ready、坏活动或跨�
 // getAgentStatus
 // ---------------------------------------------------------------------------
 
-test('getAgentStatus 编码 spaceId/runId 并解析响应结构', async () => {
+test('getAgentStatus 编码 agentId/runId 并解析响应结构', async () => {
   let observed;
   await withFetch(async (url, init) => {
     observed = { url, headers: init.headers };
-    return json({ instanceId: 'inst-1', status: agentStatus({ spaceId: 'thread/一', runId: 'run/一' }) });
+    return json({ instanceId: 'inst-1', status: agentStatus({ agentId: 'agent/一', runId: 'run/一' }) });
   }, async () => {
     const api = new HttpApiClient(BASE, () => 'token-1', () => {});
-    const result = await api.getAgentStatus('thread/一', 'run/一');
-    assert.equal(observed.url, `${BASE}/api/agent/status?spaceId=thread%2F%E4%B8%80&runId=run%2F%E4%B8%80`);
+    const result = await api.getAgentStatus('agent/一', 'run/一');
+    assert.equal(observed.url, `${BASE}/api/runs/status?agentId=agent%2F%E4%B8%80&runId=run%2F%E4%B8%80`);
     assert.equal(observed.headers.authorization, 'Bearer token-1');
     assert.equal(result.instanceId, 'inst-1');
-    assert.equal(result.status.spaceId, 'thread/一');
+    assert.equal(result.status.agentId, 'agent/一');
     assert.equal(result.status.runId, 'run/一');
   });
 });
@@ -154,7 +154,7 @@ test('getAgentStatus 401 触发失效回调并抛 ApiError(401)', async () => {
   let unauthorized = 0;
   await withFetch(async () => json({ error: 'expired' }, 401), async () => {
     const api = new HttpApiClient(BASE, () => 'token-1', () => { unauthorized += 1; });
-    await assert.rejects(api.getAgentStatus('thread-a', 'run-a'), (e) => e.status === 401);
+    await assert.rejects(api.getAgentStatus('agent-a', 'run-a'), (e) => e.status === 401);
     assert.equal(unauthorized, 1);
   });
 });
@@ -163,7 +163,7 @@ test('getAgentStatus 404 保留 ApiError(404) 语义且不重试', async () => {
   let calls = 0;
   await withFetch(async () => { calls += 1; return json({ error: '运行已清理' }, 404); }, async () => {
     const api = new HttpApiClient(BASE, () => 'token-1', () => {});
-    await assert.rejects(api.getAgentStatus('thread-a', 'run-a'), (e) => {
+    await assert.rejects(api.getAgentStatus('agent-a', 'run-a'), (e) => {
       assert.ok(e instanceof ApiError);
       assert.equal(e.status, 404);
       assert.equal(e.message, '运行已清理');
@@ -177,8 +177,8 @@ test('getAgentStatus 200 响应坏结构抛 502', async () => {
   const cases = [
     null,
     { instanceId: 'i' },
-    { instanceId: 'i', status: { spaceId: 'a' } },
-    { instanceId: 'i', status: agentStatus({ spaceId: 'other-thread' }) },
+    { instanceId: 'i', status: { agentId: 'a' } },
+    { instanceId: 'i', status: agentStatus({ agentId: 'other-agent' }) },
     { instanceId: 'i', status: agentStatus({ runId: 'other-run' }) },
     { instanceId: 'i', status: agentStatus({ revision: 0 }) },
     { instanceId: 'i', status: agentStatus({ source: 'unknown' }) },
@@ -193,7 +193,7 @@ test('getAgentStatus 200 响应坏结构抛 502', async () => {
   for (const body of cases) {
     await withFetch(async () => json(body), async () => {
       const api = new HttpApiClient(BASE, () => 'token-1', () => {});
-      await assert.rejects(api.getAgentStatus('thread-a', 'run-a'), (e) => e.status === 502);
+      await assert.rejects(api.getAgentStatus('agent-a', 'run-a'), (e) => e.status === 502);
     });
   }
 });

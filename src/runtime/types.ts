@@ -1,5 +1,5 @@
 /**
- * 运行状态流（GET /api/events）+ 单点状态查询（GET /api/agent/status）契约。
+ * 运行状态流（GET /api/events）+ 单点状态查询（GET /api/runs/status）契约。
  *
  * 数据来源是服务端工作区推送；与聊天 AG-UI 流（POST /api/conversation/run）独立。
  * 运行与审批共用一条通知连接，分别交给各自的内存 store；用户决定仍走独立 HTTP。
@@ -57,7 +57,7 @@ export type SubagentState = {
 
 export type AgentStatus = {
   activityId: string | null;
-  spaceId: string;
+  agentId: string;
   runId: string;
   revision: number;
   source: RunSource;
@@ -74,7 +74,7 @@ export type AgentStatus = {
   endedAt: string | null;
 };
 
-/** GET /api/agent/status 响应；instanceId 由服务端进程决定。 */
+/** GET /api/runs/status 响应；instanceId 由服务端进程决定。 */
 export type AgentStatusResponse = {
   instanceId: string;
   status: AgentStatus;
@@ -99,7 +99,7 @@ export type RuntimeAgentStatusUpdatedEvent = {
 
 /** 通知已落盘的瞬时历史失效信号；不含消息正文，也不得推导 agent 状态。 */
 export type ConversationInvalidation = {
-  spaceId: string;
+  agentId: string;
   sessionId: string;
 };
 

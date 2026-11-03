@@ -3,7 +3,7 @@
  * 评论面板打开、前台历史刷新和结果未明后的核对由父级/用户显式触发。
  *
  * 写入结果未明时保留旧反馈并锁住后续写入，只有一次成功的完整回读才能解除；
- * 不自动重发。所有迟到响应都按连接/空间/会话/消息代次与卸载状态丢弃。
+ * 不自动重发。所有迟到响应都按连接/智能体/会话/消息代次与卸载状态丢弃。
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApi } from '../api/ApiProvider';
@@ -12,7 +12,7 @@ import { ApiError, isRequestCancelled } from '../api/errors';
 import type { MessageFeedback, MessageReaction } from './types';
 
 export type MessageFeedbackInput = {
-  spaceId: string;
+  agentId: string;
   sessionId: string;
   messageId: string;
   initialFeedback: MessageFeedback;
@@ -20,7 +20,7 @@ export type MessageFeedbackInput = {
 
 type FeedbackState = {
   api: ApiClient;
-  spaceId: string;
+  agentId: string;
   sessionId: string;
   messageId: string;
   feedback: MessageFeedback;
@@ -49,7 +49,7 @@ const uncertainWrite = (error: unknown) =>
 
 const UNCERTAIN_MESSAGE = '反馈提交结果未明；请完整刷新核对后再修改，不会自动重试。';
 
-export function useMessageFeedback({ spaceId, sessionId, messageId, initialFeedback }: MessageFeedbackInput) {
+export function useMessageFeedback({ agentId, sessionId, messageId, initialFeedback }: MessageFeedbackInput) {
   const api = useApi();
   const [state, setState] = useState<FeedbackState | null>(null);
   const mountedRef = useRef(true);
@@ -73,16 +73,16 @@ export function useMessageFeedback({ spaceId, sessionId, messageId, initialFeedb
     };
   }, []);
 
-  // 连接、空间、会话或消息切换后，旧请求不得写回新目标；新目标直接使用自己的权威初值。
+  // 连接、智能体、会话或消息切换后，旧请求不得写回新目标；新目标直接使用自己的权威初值。
   useEffect(() => {
     generationRef.current += 1;
     requestRef.current?.abort();
     requestRef.current = null;
     busyRef.current = false;
     uncertainRef.current = false;
-  }, [api, spaceId, sessionId, messageId]);
+  }, [api, agentId, sessionId, messageId]);
 
-  const local = state && state.api === api && state.spaceId === spaceId &&
+  const local = state && state.api === api && state.agentId === agentId &&
     state.sessionId === sessionId && state.messageId === messageId ? state : null;
   // 写入中/结果未明时，本地结果优先；空闲时父级的新权威初值立即覆盖旧本地值。
   const feedback = local && (local.busy || local.uncertain || local.sourceInitial === initialFeedback)
@@ -96,7 +96,7 @@ export function useMessageFeedback({ spaceId, sessionId, messageId, initialFeedb
   const publish = useCallback((patch: Partial<FeedbackState>) => {
     setState({
       api,
-      spaceId,
+      agentId,
       sessionId,
       messageId,
       feedback,
@@ -108,7 +108,7 @@ export function useMessageFeedback({ spaceId, sessionId, messageId, initialFeedb
       ...patch,
     });
   }, [
-    api, busy, error, feedback, initialFeedback, loading, messageId, sessionId, spaceId, uncertain,
+    api, busy, error, feedback, initialFeedback, loading, messageId, sessionId, agentId, uncertain,
   ]);
 
   const refresh = useCallback(async (): Promise<void> => {
@@ -120,7 +120,7 @@ export function useMessageFeedback({ spaceId, sessionId, messageId, initialFeedb
     requestRef.current = controller;
     publish({ feedback: startFeedback, sourceInitial: startInitial, loading: true, error: null });
     try {
-      const next = await api.getMessageFeedback(spaceId, messageId, sessionId, controller.signal);
+      const next = await api.getMessageFeedback(agentId, messageId, sessionId, controller.signal);
       if (!mountedRef.current || generation !== generationRef.current || requestRef.current !== controller) return;
       uncertainRef.current = false;
       publish({
@@ -144,7 +144,7 @@ export function useMessageFeedback({ spaceId, sessionId, messageId, initialFeedb
         requestRef.current = null;
       }
     }
-  }, [api, feedback, initialFeedback, messageId, publish, sessionId, spaceId]);
+  }, [api, feedback, initialFeedback, messageId, publish, sessionId, agentId]);
 
   const write = useCallback(async (
     operation: (signal: AbortSignal) => Promise<MessageFeedback>,
@@ -210,24 +210,24 @@ export function useMessageFeedback({ spaceId, sessionId, messageId, initialFeedb
   }, [publish]);
 
   const setReaction = useCallback((reaction: MessageReaction | null) =>
-    write((signal) => api.setMessageReaction(spaceId, messageId, sessionId, reaction, signal)),
-  [api, messageId, sessionId, spaceId, write]);
+    write((signal) => api.setMessageReaction(agentId, messageId, sessionId, reaction, signal)),
+  [api, messageId, sessionId, agentId, write]);
 
   const addComment = useCallback((raw: string) => {
     if (!mountedRef.current || rejectText(raw)) return Promise.resolve(false);
     const text = raw.trim();
-    return write((signal) => api.addMessageComment(spaceId, messageId, sessionId, text, signal));
-  }, [api, messageId, rejectText, sessionId, spaceId, write]);
+    return write((signal) => api.addMessageComment(agentId, messageId, sessionId, text, signal));
+  }, [api, messageId, rejectText, sessionId, agentId, write]);
 
   const editComment = useCallback((id: string, raw: string) => {
     if (!mountedRef.current || rejectText(raw)) return Promise.resolve(false);
     const text = raw.trim();
-    return write((signal) => api.editMessageComment(spaceId, messageId, id, sessionId, text, signal));
-  }, [api, messageId, rejectText, sessionId, spaceId, write]);
+    return write((signal) => api.editMessageComment(agentId, messageId, id, sessionId, text, signal));
+  }, [api, messageId, rejectText, sessionId, agentId, write]);
 
   const deleteComment = useCallback((id: string) =>
-    write((signal) => api.deleteMessageComment(spaceId, messageId, id, sessionId, signal)),
-  [api, messageId, sessionId, spaceId, write]);
+    write((signal) => api.deleteMessageComment(agentId, messageId, id, sessionId, signal)),
+  [api, messageId, sessionId, agentId, write]);
 
   return {
     feedback,

@@ -88,7 +88,7 @@ test('设置页真实挂载记忆入口，不用工作区快照、模拟数据�
   const store = readFileSync(new URL('../src/memories/memory-store.ts', import.meta.url), 'utf8');
   assert.match(screen, /打开长期记忆/); assert.match(screen, /<MemoryPanel/);
   assert.match(screen, /subpage === 'memory' && memoryAvailable/); assert.match(screen, /disabled=\{!memoryAvailable\}/);
-  assert.match(panel, /所有空间共用/); assert.match(panel, /确认删除记忆/); assert.match(panel, /提交结果未明/);
+  assert.match(panel, /所有智能体共用/); assert.match(panel, /确认删除记忆/); assert.match(panel, /提交结果未明/);
   assert.doesNotMatch(store, /client\.(getSnapshot|subscribeRuntime)|setInterval\(/);
   assert.doesNotMatch(panel, /dangerouslySetInnerHTML|Linking\.openURL|sample|demoWorkspace/);
 });

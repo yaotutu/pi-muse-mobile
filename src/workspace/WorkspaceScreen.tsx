@@ -16,13 +16,13 @@ import { ConnectionProvider, useServiceConnection } from '../connection/Connecti
 import { useConnection } from '../connection/useConnection';
 import type { ConnectionManager } from '../connection/connection-manager';
 import type { ConnectionSnapshot } from '../connection/types';
-import { RuntimeProvider, useRuntimeStore, useSpaceRuntime } from '../runtime/RuntimeProvider';
+import { RuntimeProvider, useRuntimeStore, useAgentRuntime } from '../runtime/RuntimeProvider';
 import { useActivityStore } from '../activities/ActivityProvider';
 import { useApprovals } from '../approvals/ApprovalProvider';
-import { SpaceProvider, useSpaceState, useSpaceStore } from '../spaces/SpaceProvider';
-import { equalSwitches } from '../spaces/space-store';
-import { MAIN_SPACE } from '../spaces/space-state';
-import { useSpaces } from '../spaces/useSpaces';
+import { AgentProvider, useAgentState, useAgentStore } from '../agents/AgentProvider';
+import { equalSwitches } from '../agents/agent-store';
+import { MAIN_AGENT } from '../agents/agent-state';
+import { useAgents } from '../agents/useAgents';
 import { useAppUpdate } from '../update/UpdateProvider';
 import { spacing, sizing, workspaceTheme, type WorkspaceColors } from '../ui/tokens';
 import { ConnectionPanel } from './ConnectionPanel';
@@ -40,14 +40,14 @@ import { ProfileProvider } from '../profile/ProfileProvider';
 import { DreamProvider } from '../dream/DreamProvider';
 import { DreamPanel } from './DreamPanel';
 import { ConversationHost } from './ConversationHost';
-import { SpaceLabels, headerSpaceNames, isBuiltinMember } from './space-labels';
+import { AgentLabels, headerAgentNames, isBuiltinMember } from './agent-labels';
 import { workspaceBackAction } from './workspace-back';
 import { SessionPanel, type SessionTab } from './SessionPanel';
 import { ResetSessionDialog } from './ResetSessionDialog';
 import { AvatarBloomTransition } from './AvatarBloomTransition';
-import { SpacePage } from './SpacePage';
-import { SpaceHeader } from './SpaceHeader';
-import { filesBackAction, hasFileWork, type SpaceSection } from './space-navigation';
+import { AgentPage } from './AgentPage';
+import { AgentHeader } from './AgentHeader';
+import { filesBackAction, hasFileWork, type AgentSection } from './agent-navigation';
 import { useTheme } from '../theme/ThemeProvider';
 import { ThemePicker } from '../theme/ThemePicker';
 import { IconControl, MuseAvatar, StatusPill, useReducedMotion } from './primitives';
@@ -58,7 +58,7 @@ import { MemberAvatar } from './MemberAvatar';
 import { BrowserPanel } from '../browser/BrowserPanel';
 import { createBrowserStore } from '../browser/browser-store';
 
-type WorkspacePage = 'group' | 'group-info' | 'inbox' | 'chat' | 'news' | 'goals' | 'settings' | 'space' | 'feature';
+type WorkspacePage = 'group' | 'group-info' | 'inbox' | 'chat' | 'news' | 'goals' | 'settings' | 'agent' | 'feature';
 type SettingsSubpage = 'memory' | 'profile' | 'dream' | 'news-sources' | FeatureSection | null;
 type WorkspaceNotice = { text: string; tone: 'success' | 'error' };
 const { layout: l, radius: r, typography: t } = workspaceTheme;
@@ -77,8 +77,8 @@ function ConnectedWorkspace() {
   }), [connection.snapshot, connection.enabled, connection.manager, openConnection]);
   const content = connection.client && connection.snapshot.workspaceReady
     ? <ApiProvider client={connection.client} key={connection.snapshot.workspaceKey}>
-      {/* 资料与空间同属当前连接；Provider 先于页面挂载，主会话名称可直接消费已读取身份。 */}
-      <DreamProvider><ProfileProvider><SpaceProvider><RuntimeProvider><LiveWorkspace manager={connection.manager} snapshot={connection.snapshot} openConnection={openConnection} /></RuntimeProvider></SpaceProvider></ProfileProvider></DreamProvider>
+      {/* 资料与智能体同属当前连接；Provider 先于页面挂载，主会话名称可直接消费已读取身份。 */}
+      <DreamProvider><ProfileProvider><AgentProvider><RuntimeProvider><LiveWorkspace manager={connection.manager} snapshot={connection.snapshot} openConnection={openConnection} /></RuntimeProvider></AgentProvider></ProfileProvider></DreamProvider>
     </ApiProvider>
     : <DisconnectedWorkspace manager={connection.manager} snapshot={connection.snapshot} openConnection={openConnection} />;
   return <ConnectionProvider value={value}>
@@ -136,15 +136,15 @@ function AnimatedSubpage({ children }: { children: ReactNode }) {
   );
 }
 
-function SettingsPage({ snapshot, openConnection, openBrowser, memoryAvailable = false, profileAvailable = false, dreamAvailable = false, currentSpaceId, subpage, onSubpage }: Pick<WorkspaceConnectionProps, 'snapshot' | 'openConnection'> & { openBrowser?: () => void; memoryAvailable?: boolean; profileAvailable?: boolean; dreamAvailable?: boolean; currentSpaceId?: string; subpage: SettingsSubpage; onSubpage: (page: SettingsSubpage) => void }) {
+function SettingsPage({ snapshot, openConnection, openBrowser, memoryAvailable = false, profileAvailable = false, dreamAvailable = false, currentAgentId, subpage, onSubpage }: Pick<WorkspaceConnectionProps, 'snapshot' | 'openConnection'> & { openBrowser?: () => void; memoryAvailable?: boolean; profileAvailable?: boolean; dreamAvailable?: boolean; currentAgentId?: string; subpage: SettingsSubpage; onSubpage: (page: SettingsSubpage) => void }) {
   const styles = useStyles(); const update = useAppUpdate();
   const management = subpage === 'memory' && memoryAvailable ? { title: '长期记忆', content: <MemoryPanel /> }
     : subpage === 'profile' && profileAvailable ? { title: '助手与用户资料', content: <ProfilePanel /> }
-    : subpage === 'dream' && dreamAvailable && currentSpaceId ? { title: 'Dream 记忆整理', content: <DreamPanel currentSpaceId={currentSpaceId} /> }
+    : subpage === 'dream' && dreamAvailable && currentAgentId ? { title: 'Dream 记忆整理', content: <DreamPanel currentAgentId={currentAgentId} /> }
     : undefined;
   // 返回属于页面层级，不随表单滚走；领域面板仍只负责自己的读取、草稿和保存。
   if (management) return <AnimatedSubpage key={subpage}>
-    <SpaceHeader title={management.title} backLabel="返回设置" onBack={() => onSubpage(null)} />
+    <AgentHeader title={management.title} backLabel="返回设置" onBack={() => onSubpage(null)} />
     <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}>{management.content}</ScrollView>
   </AnimatedSubpage>;
   return <ScrollView key="settings" contentContainerStyle={[styles.otherPage, styles.settingsPage]}>
@@ -186,13 +186,13 @@ function DisconnectedWorkspace({ snapshot, openConnection }: WorkspaceConnection
 }
 function LiveWorkspace(props: WorkspaceConnectionProps) {
   const connection = useServiceConnection();
-  const spaces = useSpaces(!!connection?.enabled, props.snapshot.refreshVersion);
-  return <SmsProvider><FilesProvider currentSpaceId={spaces.currentSpace}><WorkspaceContent {...props} spaces={spaces} /></FilesProvider></SmsProvider>;
+  const agents = useAgents(!!connection?.enabled, props.snapshot.refreshVersion);
+  return <SmsProvider><FilesProvider currentAgentId={agents.currentAgent}><WorkspaceContent {...props} agents={agents} /></FilesProvider></SmsProvider>;
 }
 
-function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnectionProps & { spaces: ReturnType<typeof useSpaces> }) {
+function WorkspaceContent({ snapshot, openConnection, agents }: WorkspaceConnectionProps & { agents: ReturnType<typeof useAgents> }) {
   const api = useApi();
-  // 连接键改变会卸载整层；新闻 Store 在此持续挂载，切空间与重置会话不会丢草稿。
+  // 连接键改变会卸载整层；新闻 Store 在此持续挂载，切智能体与重置会话不会丢草稿。
   const [news] = useState(() => createNewsStore(api));
   const [newsPreferences] = useState(() => new NewsPreferencesStore(api));
   // Store 随 ApiProvider 的连接键创建和销毁，票据不会跨服务地址复用。
@@ -200,16 +200,16 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
   const [browserOpen, setBrowserOpen] = useState(false);
   const connection = useServiceConnection();
   const { store: files } = useFiles();
-  const [spaceView, setSpaceView] = useState<'profile' | 'settings'>('profile');
-  const [spaceSection, setSpaceSection] = useState<SpaceSection>('home');
-  const session = useSpaceState(spaces.currentSpace);
-  const sessions = useSpaceStore(); const runtimeStore = useRuntimeStore();
+  const [agentView, setAgentView] = useState<'profile' | 'settings'>('profile');
+  const [agentSection, setAgentSection] = useState<AgentSection>('home');
+  const session = useAgentState(agents.currentAgent);
+  const sessions = useAgentStore(); const runtimeStore = useRuntimeStore();
   const activities = useActivityStore();
   const { store: jobs } = useJobs();
   const { store: monitors } = useMonitors();
   const { store: approvals } = useApprovals();
   const { store: goals } = useGoals();
-  const runtime = useSpaceRuntime(spaces.currentSpace);
+  const runtime = useAgentRuntime(agents.currentAgent);
   const [page, setPage] = useState<WorkspacePage>('group');
   const [groupPreview, setGroupPreview] = useState<GroupPreview>({});
   const [newsManaging, setNewsManaging] = useState(false);
@@ -226,7 +226,7 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
   const [notice, setNotice] = useState<WorkspaceNotice>();
   const reducedMotion = useReducedMotion();
   const [historyRefresh, setHistoryRefresh] = useState<Record<string, number>>({});
-  const [labelState, setLabelState] = useState(() => ({ ids: '', labels: new SpaceLabels() }));
+  const [labelState, setLabelState] = useState(() => ({ ids: '', labels: new AgentLabels() }));
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const { colors } = useTheme(); const styles = useStyles();
   const { width, height } = useWindowDimensions(); const contentWidth = Math.min(width, l.maxWidth);
@@ -237,13 +237,13 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
   const newsVisible = page === 'news' || (page === 'feature' && settingsSubpage === 'news-sources');
   const statusLabel = snapshot.status === 'authentication-required' || snapshot.status === 'reset-error' || snapshot.status === 'storage-error'
     ? connectionLabel(snapshot) : runtime.label;
-  const labelIds = spaces.spaces.map((space) => space.id).sort().join('|');
-  if (labelState.ids !== labelIds) setLabelState({ ids: labelIds, labels: labelState.labels.sync(spaces.spaces) });
-  const labels = labelState.ids === labelIds ? labelState.labels : labelState.labels.sync(spaces.spaces);
-  const groupMembers = spaces.spaces.filter((space) => space.sessionId || space.id === MAIN_SPACE || isBuiltinMember(space.id)).map((space) => ({ id: space.id, name: labels.title(space.id) }));
-  const headerNames = headerSpaceNames(labels, spaces.currentSpace, keyboardVisible);
-  const reloadSpaces = spaces.reload;
-  const refresh = useCallback((spaceId = spaces.currentSpace) => { void reloadSpaces(); activities.invalidate(); jobs.invalidate(); monitors.invalidate(); goals.invalidate(); setHistoryRefresh((value) => ({ ...value, [spaceId]: (value[spaceId] ?? 0) + 1 })); }, [reloadSpaces, activities, jobs, monitors, goals, spaces.currentSpace]);
+  const labelIds = agents.agents.map((agent) => agent.id).sort().join('|');
+  if (labelState.ids !== labelIds) setLabelState({ ids: labelIds, labels: labelState.labels.sync(agents.agents) });
+  const labels = labelState.ids === labelIds ? labelState.labels : labelState.labels.sync(agents.agents);
+  const groupMembers = agents.agents.filter((agent) => agent.sessionId || agent.id === MAIN_AGENT || isBuiltinMember(agent.id)).map((agent) => ({ id: agent.id, name: labels.title(agent.id) }));
+  const headerNames = headerAgentNames(labels, agents.currentAgent, keyboardVisible);
+  const reloadAgents = agents.reload;
+  const refresh = useCallback((agentId = agents.currentAgent) => { void reloadAgents(); activities.invalidate(); jobs.invalidate(); monitors.invalidate(); goals.invalidate(); setHistoryRefresh((value) => ({ ...value, [agentId]: (value[agentId] ?? 0) + 1 })); }, [reloadAgents, activities, jobs, monitors, goals, agents.currentAgent]);
   useEffect(() => {
     news.setActive(AppState.currentState === 'active');
     newsPreferences.setActive(AppState.currentState === 'active');
@@ -268,11 +268,11 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
     else news.close();
   }, [news, newsVisible]);
   useEffect(() => {
-    // ready 不重放通知历史；空间绑定与当前聊天都要回到服务端权威事实。
-    if (runtime.synchronized) void reloadSpaces();
-  }, [runtime.synchronized, reloadSpaces]);
+    // ready 不重放通知历史；智能体绑定与当前聊天都要回到服务端权威事实。
+    if (runtime.synchronized) void reloadAgents();
+  }, [runtime.synchronized, reloadAgents]);
   useEffect(() => {
-    // 原生键盘出现时让出阅读空间；系统 Back 收起键盘后恢复完整头像浮层。
+    // 原生键盘出现时让出阅读智能体；系统 Back 收起键盘后恢复完整头像浮层。
     const show = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => setKeyboardVisible(true));
     const hide = Keyboard.addListener('keyboardDidHide', () => {
       setKeyboardVisible(false);
@@ -293,33 +293,33 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
     pendingSessionOpen.current = false;
     setSessionOpen(false);
   }, [session.deleting, session.resetting]);
-  const leaveSpaceChild = useCallback(() => {
-    if (sessions.hasSettingsWrite(spaces.currentSpace)) return;
-    if ((spaceSection === 'rules' && session.instructions.draft !== session.instructions.saved) || (spaceSection === 'skills' && !equalSwitches(session.skills.draft, session.skills.saved))) {
-      Alert.alert('有未保存的空间设置', '草稿只保留在本次连接中。', [
+  const leaveAgentChild = useCallback(() => {
+    if (sessions.hasSettingsWrite(agents.currentAgent)) return;
+    if ((agentSection === 'rules' && session.instructions.draft !== session.instructions.saved) || (agentSection === 'skills' && !equalSwitches(session.skills.draft, session.skills.saved))) {
+      Alert.alert('有未保存的智能体设置', '草稿只保留在本次连接中。', [
         { text: '继续编辑', style: 'cancel' },
-        { text: '保留草稿并返回', onPress: () => setSpaceSection('home') },
-        { text: '丢弃并返回', style: 'destructive', onPress: () => { sessions.discardSettings(spaces.currentSpace, spaceSection === 'rules' ? 'instructions' : 'skills'); setSpaceSection('home'); } },
+        { text: '保留草稿并返回', onPress: () => setAgentSection('home') },
+        { text: '丢弃并返回', style: 'destructive', onPress: () => { sessions.discardSettings(agents.currentAgent, agentSection === 'rules' ? 'instructions' : 'skills'); setAgentSection('home'); } },
       ]);
-    } else setSpaceSection('home');
-  }, [sessions, spaces.currentSpace, spaceSection, session.instructions.draft, session.instructions.saved, session.skills.draft, session.skills.saved]);
-  const backSpace = useCallback(() => {
-    if (spaceSection === 'home') { setPage(profileReturn); return; }
-    if (spaceSection !== 'files') { leaveSpaceChild(); return; }
+    } else setAgentSection('home');
+  }, [sessions, agents.currentAgent, agentSection, session.instructions.draft, session.instructions.saved, session.skills.draft, session.skills.saved]);
+  const backAgent = useCallback(() => {
+    if (agentSection === 'home') { setPage(profileReturn); return; }
+    if (agentSection !== 'files') { leaveAgentChild(); return; }
     const action = filesBackAction(files.getSnapshot());
     if (action === 'locked') {
       Alert.alert('文件操作尚未收口', '写入期间请等待；结果未明时请先回读核对，不会自动重发。');
     } else if (action === 'preview') files.cancelSavePreview();
     else if (action === 'delete') files.cancelDelete();
-    else if (action === 'draft') Alert.alert('保留文件草稿？', '草稿属于当前空间，只保留在本次连接中。', [
+    else if (action === 'draft') Alert.alert('保留文件草稿？', '草稿属于当前智能体，只保留在本次连接中。', [
       { text: '继续编辑', style: 'cancel' },
-      { text: '保留草稿并返回', onPress: () => setSpaceSection('home') },
+      { text: '保留草稿并返回', onPress: () => setAgentSection('home') },
       { text: '丢弃草稿', style: 'destructive', onPress: () => files.cancelEditor() },
     ]);
     else if (action === 'detail') files.closeFile();
     else if (action === 'directory') files.goUp();
-    else setSpaceSection('home');
-  }, [files, leaveSpaceChild, spaceSection, profileReturn]);
+    else setAgentSection('home');
+  }, [files, leaveAgentChild, agentSection, profileReturn]);
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
       const action = workspaceBackAction({ keyboardVisible, browserOpen, sessionMounted, page, newsArticleOpen: !!news.getSnapshot().selectedArticleId,
@@ -329,108 +329,108 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
       else if (action === 'session') closeSession();
       else if (action === 'news-article') news.closeArticle();
       else if (action === 'news-sources') setNewsManaging(false);
-      else if (action === 'news-owner') setPage('space');
+      else if (action === 'news-owner') setPage('agent');
       else if (action === 'group') setPage('group');
       else if (action === 'inbox') setPage('inbox');
-      else if (action === 'feature') { if (settingsSubpage === 'news-sources') setSettingsSubpage('news-feature'); else { setPage('space'); setSettingsSubpage(null); } }
+      else if (action === 'feature') { if (settingsSubpage === 'news-sources') setSettingsSubpage('news-feature'); else { setPage('agent'); setSettingsSubpage(null); } }
       else if (action === 'settings') setSettingsSubpage(settingsSubpage === 'news-sources' ? 'news-feature' : null);
-      else if (action === 'space') backSpace();
+      else if (action === 'agent') backAgent();
       else if (action === 'goal' && !goals.getSnapshot().writing) goals.cancelCreate();
       return action !== 'none';
     });
     return () => subscription.remove();
-  }, [keyboardVisible, browserOpen, closeBrowser, sessionMounted, closeSession, page, news, newsManaging, settingsSubpage, goals, backSpace]);
+  }, [keyboardVisible, browserOpen, closeBrowser, sessionMounted, closeSession, page, news, newsManaging, settingsSubpage, goals, backAgent]);
   const openSession = useCallback((tab?: unknown) => {
     if (typeof tab === 'string') setSessionTab(tab as SessionTab);
     if (keyboardVisible) { pendingSessionOpen.current = true; Keyboard.dismiss(); return; }
     setSessionMounted(true); setSessionOpen(true);
   }, [keyboardVisible]);
-  const openInbox = useCallback(() => { Keyboard.dismiss(); setPage('inbox'); void reloadSpaces(); }, [reloadSpaces]);
-  const changeSpace = (action: () => void) => {
+  const openInbox = useCallback(() => { Keyboard.dismiss(); setPage('inbox'); void reloadAgents(); }, [reloadAgents]);
+  const changeAgent = (action: () => void) => {
     const state = files.getSnapshot();
     if (!hasFileWork(state)) { action(); return; }
     const busy = state.writing !== false || state.uncertain;
-    Alert.alert('请先处理当前空间文件', busy ? '文件操作进行中或结果未明，请进入文件页核对后再切换。' : '切换空间前请保存或丢弃文件草稿，避免混淆文件归属。', [
+    Alert.alert('请先处理当前智能体文件', busy ? '文件操作进行中或结果未明，请进入文件页核对后再切换。' : '切换智能体前请保存或丢弃文件草稿，避免混淆文件归属。', [
       { text: '取消', style: 'cancel' },
-      { text: '返回文件', onPress: () => { setPage('space'); setSpaceSection('files'); } },
+      { text: '返回文件', onPress: () => { setPage('agent'); setAgentSection('files'); } },
       ...(!busy ? [{ text: '丢弃并继续', style: 'destructive' as const, onPress: () => { files.cancelSavePreview(); files.cancelDelete(); files.cancelEditor(); action(); } }] : []),
     ]);
   };
-  const select = (id: string) => changeSpace(() => { Keyboard.dismiss(); spaces.selectSpace(id); setSessionOpen(false); setPage('chat'); setSpaceSection('home'); setDeleteConfirm(false); setNotice(undefined); });
-  // 主页与空间设置共用同一批领域状态；只区分入口呈现，子页返回不丢当前空间。
-  const openGroup = () => changeSpace(() => { Keyboard.dismiss(); setSessionOpen(false); setPage('group'); });
-  const openProfile = (id: string, view: 'profile' | 'settings' = 'profile') => changeSpace(() => { Keyboard.dismiss(); spaces.selectSpace(id); setSpaceView(view); setProfileReturn(page === 'chat' || page === 'group' || page === 'group-info' ? page : 'inbox'); setPage('space'); setSpaceSection('home'); setSessionOpen(false); setDeleteConfirm(false); });
+  const select = (id: string) => changeAgent(() => { Keyboard.dismiss(); agents.selectAgent(id); setSessionOpen(false); setPage('chat'); setAgentSection('home'); setDeleteConfirm(false); setNotice(undefined); });
+  // 主页与智能体设置共用同一批领域状态；只区分入口呈现，子页返回不丢当前智能体。
+  const openGroup = () => changeAgent(() => { Keyboard.dismiss(); setSessionOpen(false); setPage('group'); });
+  const openProfile = (id: string, view: 'profile' | 'settings' = 'profile') => changeAgent(() => { Keyboard.dismiss(); agents.selectAgent(id); setAgentView(view); setProfileReturn(page === 'chat' || page === 'group' || page === 'group-info' ? page : 'inbox'); setPage('agent'); setAgentSection('home'); setSessionOpen(false); setDeleteConfirm(false); });
   const openNews = () => { Keyboard.dismiss(); setNewsManaging(false); news.closeArticle(); setPage('news'); };
-  const discussion = useNewsDiscussion((spaceId) => { refresh(spaceId); select(spaceId); });
+  const discussion = useNewsDiscussion((agentId) => { refresh(agentId); select(agentId); });
   const remove = async () => {
-    const id = spaces.currentSpace;
+    const id = agents.currentAgent;
     try {
-      const result = await sessions.deleteSpace(id);
+      const result = await sessions.deleteAgent(id);
       if (!result) return;
-      runtimeStore.forgetSpace(id); activities.forgetSpace(id); jobs.invalidate(); monitors.invalidate(); spaces.removeSpace(id);
-      setSessionOpen(false); setDeleteConfirm(false); setNotice(undefined); setSpaceSection('home'); setPage('inbox');
-      await spaces.reload();
+      runtimeStore.forgetAgent(id); activities.forgetAgent(id); jobs.invalidate(); monitors.invalidate(); agents.removeAgent(id);
+      setSessionOpen(false); setDeleteConfirm(false); setNotice(undefined); setAgentSection('home'); setPage('inbox');
+      await agents.reload();
     } catch (error) { setNotice({ text: error instanceof Error ? error.message : String(error), tone: 'error' }); }
   };
   const reset = async (id: string, clearSchedules: boolean) => {
     if (!connection?.enabled) { setResetError('服务器连接不可用，请重新连接后再操作。'); return; }
     try {
-      const result = await sessions.resetSpace(id, clearSchedules);
-      if (!result) { setResetError('当前无法重置此会话，请核对连接与空间状态。'); return; }
-      // 重置不删除空间或活动历史；通知重连获取权威审批集合，不凭 cancelledApprovals 猜具体审批 ID。
-      runtimeStore.forgetSpace(id);
+      const result = await sessions.resetAgent(id, clearSchedules);
+      if (!result) { setResetError('当前无法重置此会话，请核对连接与智能体状态。'); return; }
+      // 重置不删除智能体或活动历史；通知重连获取权威审批集合，不凭 cancelledApprovals 猜具体审批 ID。
+      runtimeStore.forgetAgent(id);
       activities.invalidate(id);
       await approvals.refreshPending();
       setResetTarget(undefined); setResetError(undefined); setSessionOpen(false); setPage('chat');
-      setNotice({ text: '会话已重置，可开启全新对话。空间规则、技能与工作区文件已保留。', tone: 'success' });
+      setNotice({ text: '会话已重置，可开启全新对话。智能体规则、技能与工作区文件已保留。', tone: 'success' });
       refresh();
     } catch (error) {
       setResetError(error instanceof Error ? error.message : String(error));
       // 列表回读仅核对新 sessionId，不重发 reset；未确认期间禁止继续发送旧上下文。
-      void spaces.reload();
+      void agents.reload();
     }
   };
   const maintenance = <>
-    <Card style={styles.exampleCard}><Text style={styles.itemTitle}>重置当前会话</Text><Text style={styles.mutedText}>开启全新对话，保留这个空间的文件、规则与技能。</Text>
-      <ActionButton label="重置当前会话" text="重置会话" icon={RotateCcw} disabled={!connection?.enabled || hasFileWork(files.getSnapshot())} onPress={() => { setResetError(undefined); setResetTarget(spaces.currentSpace); }} />
+    <Card style={styles.exampleCard}><Text style={styles.itemTitle}>重置当前会话</Text><Text style={styles.mutedText}>开启全新对话，保留这个智能体的文件、规则与技能。</Text>
+      <ActionButton label="重置当前会话" text="重置会话" icon={RotateCcw} disabled={!connection?.enabled || hasFileWork(files.getSnapshot())} onPress={() => { setResetError(undefined); setResetTarget(agents.currentAgent); }} />
     </Card>
-    {spaces.currentSpace !== MAIN_SPACE && !isBuiltinMember(spaces.currentSpace) && <Card style={styles.exampleCard} tone="danger">
-      <Text style={styles.itemTitle}>{deleteConfirm ? '确认删除当前空间？' : '删除当前空间'}</Text>
+    {agents.currentAgent !== MAIN_AGENT && !isBuiltinMember(agents.currentAgent) && <Card style={styles.exampleCard} tone="danger">
+      <Text style={styles.itemTitle}>{deleteConfirm ? '确认删除当前智能体？' : '删除当前智能体'}</Text>
       <Text style={styles.mutedText}>本成员的私聊历史、群聊讨论与显示记录、消息反馈、工作区文件、规则、技能及绑定任务将被彻底删除，无法撤销；其他成员的历史不受影响。</Text>
       <View style={styles.confirmActions}>
-        <ActionButton label={deleteConfirm ? '确认删除空间' : '删除当前空间'} text={deleteConfirm ? '确认删除' : '删除空间'} tone="danger" busy={session.deleting} disabled={hasFileWork(files.getSnapshot())} onPress={() => deleteConfirm ? void remove() : setDeleteConfirm(true)} />
-        {deleteConfirm && <ActionButton label="取消删除空间" text="取消" disabled={session.deleting} onPress={() => setDeleteConfirm(false)} />}
+        <ActionButton label={deleteConfirm ? '确认删除智能体' : '删除当前智能体'} text={deleteConfirm ? '确认删除' : '删除智能体'} tone="danger" busy={session.deleting} disabled={hasFileWork(files.getSnapshot())} onPress={() => deleteConfirm ? void remove() : setDeleteConfirm(true)} />
+        {deleteConfirm && <ActionButton label="取消删除智能体" text="取消" disabled={session.deleting} onPress={() => setDeleteConfirm(false)} />}
       </View>
     </Card>}
   </>;
   // 页面只组织入口；会话所有者与领域 Store 持续挂载，成员主页不会复制状态。
   let otherPage: ReactNode = null;
   if (page === 'inbox') {
-    otherPage = <MemberDirectory spaces={spaces.spaces} labels={labels} error={spaces.error}
-      onReload={() => void reloadSpaces()} onChat={select} onProfile={openProfile} onGroup={openGroup}
+    otherPage = <MemberDirectory agents={agents.agents} labels={labels} error={agents.error}
+      onReload={() => void reloadAgents()} onChat={select} onProfile={openProfile} onGroup={openGroup}
       onSettings={() => { setPage('settings'); setSettingsSubpage(null); }}
-      creating={spaces.creating} groupPreview={groupPreview}
-      onCreate={() => changeSpace(() => { void spaces.createSpace().then((id) => { if (!id) return; setSpaceView('profile'); setProfileReturn('inbox'); setPage('space'); setSpaceSection('home'); }); })} />;
+      creating={agents.creating} groupPreview={groupPreview}
+      onCreate={() => changeAgent(() => { void agents.createAgent().then((id) => { if (!id) return; setAgentView('profile'); setProfileReturn('inbox'); setPage('agent'); setAgentSection('home'); }); })} />;
   } else if (page === 'group-info') {
     otherPage = <GroupInfo members={groupMembers} onBack={() => setPage('group')} onProfile={openProfile} />;
   } else if (page === 'feature' && settingsSubpage === 'news-sources') {
     otherPage = <NewsSourcesPage store={news} onBack={() => setSettingsSubpage('news-feature')} />;
   } else if (page === 'feature' && (settingsSubpage === 'sms' || settingsSubpage === 'news-feature')) {
-    otherPage = <FeaturePage newsPreferences={newsPreferences} section={settingsSubpage} backLabel={spaceView === 'settings' ? '返回空间设置' : '返回成员主页'} onBack={() => { setSettingsSubpage(null); setPage('space'); }}
-      spaces={spaces.sourceSpaces.filter((space) => !!space.sessionId).map((space) => ({ id: space.id, title: labels.title(space.id) }))}
+    otherPage = <FeaturePage newsPreferences={newsPreferences} section={settingsSubpage} backLabel={agentView === 'settings' ? '返回智能体设置' : '返回成员主页'} onBack={() => { setSettingsSubpage(null); setPage('agent'); }}
+      agents={agents.sourceAgents.filter((agent) => !!agent.sessionId).map((agent) => ({ id: agent.id, title: labels.title(agent.id) }))}
       onNewsSettings={() => setSettingsSubpage('news-sources')} />;
-  } else if (page === 'space') {
-    otherPage = <SpacePage view={spaceView} spaceId={spaces.currentSpace} name={labels.title(spaces.currentSpace)} section={spaceSection}
-      onSection={(next) => { setDeleteConfirm(false); setSpaceSection(next); }} onBack={backSpace}
-      onChat={() => select(spaces.currentSpace)} onActivity={() => openSession('activity')}
-      onFeatureSettings={() => { setPage('feature'); setSettingsSubpage(spaces.currentSpace === 'sms-internal' ? 'sms' : 'news-feature'); }}
+  } else if (page === 'agent') {
+    otherPage = <AgentPage view={agentView} agentId={agents.currentAgent} name={labels.title(agents.currentAgent)} section={agentSection}
+      onSection={(next) => { setDeleteConfirm(false); setAgentSection(next); }} onBack={backAgent}
+      onChat={() => select(agents.currentAgent)} onActivity={() => openSession('activity')}
+      onFeatureSettings={() => { setPage('feature'); setSettingsSubpage(agents.currentAgent === 'sms-internal' ? 'sms' : 'news-feature'); }}
       onReadNews={openNews} onSaved={refresh} maintenance={maintenance} />;
   } else if (page === 'settings') {
     otherPage = <SettingsPage snapshot={snapshot} openConnection={openConnection} memoryAvailable profileAvailable dreamAvailable
-      currentSpaceId={spaces.currentSpace} openBrowser={openBrowser} subpage={settingsSubpage} onSubpage={setSettingsSubpage} />;
+      currentAgentId={agents.currentAgent} openBrowser={openBrowser} subpage={settingsSubpage} onSubpage={setSettingsSubpage} />;
   } else if (page === 'news') {
-    otherPage = <NewsPage store={news} managing={newsManaging} onManaging={setNewsManaging} onBack={() => setPage('space')}
-      onDiscuss={(id) => changeSpace(() => void discussion.discuss(id))} discussing={discussion.busy} discussionError={discussion.error}
+    otherPage = <NewsPage store={news} managing={newsManaging} onManaging={setNewsManaging} onBack={() => setPage('agent')}
+      onDiscuss={(id) => changeAgent(() => void discussion.discuss(id))} discussing={discussion.busy} discussionError={discussion.error}
       uncertainDiscussion={!!discussion.uncertainTarget} onCheckDiscussion={() => { if (discussion.uncertainTarget) select(discussion.uncertainTarget); }}
       onConfirmDiscussion={() => Alert.alert('确认已核对承接会话？', '恢复后不会重发上一次讨论。请先确认会话里是否已经收到这条新闻。', [
         { text: '取消', style: 'cancel' }, { text: '已核对', onPress: () => void discussion.confirmChecked() },
@@ -450,12 +450,12 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
             {/* 头像与左右操作浮在聊天层上方，不占正文高度；触控只落在实际控件。 */}
             {page === 'chat' && <View pointerEvents="box-none" style={[styles.chatHeader, keyboardVisible && styles.chatHeaderCompact]}>
               <View style={styles.headerLeft}><IconControl icon={ArrowLeft} label="返回消息列表" testID="workspace-back-inbox" onPress={openInbox} /></View>
-              <Pressable accessibilityRole="button" accessibilityLabel={`查看${labels.title(spaces.currentSpace)}的主页`} accessibilityHint={`当前空间：${labels.title(spaces.currentSpace)}；当前状态：${statusLabel}。查看成员资料、发消息与管理专属文件`} accessibilityState={{ disabled: sessionMounted }} disabled={sessionMounted} testID="workspace-open-member" style={[styles.identity, keyboardVisible && styles.identityCompact]}
-                onPress={() => openProfile(spaces.currentSpace)}>
-                <MemberAvatar spaceId={spaces.currentSpace} size={keyboardVisible ? l.compactHeaderAvatar : l.headerAvatar} />
+              <Pressable accessibilityRole="button" accessibilityLabel={`查看${labels.title(agents.currentAgent)}的主页`} accessibilityHint={`当前智能体：${labels.title(agents.currentAgent)}；当前状态：${statusLabel}。查看成员资料、发消息与管理专属文件`} accessibilityState={{ disabled: sessionMounted }} disabled={sessionMounted} testID="workspace-open-member" style={[styles.identity, keyboardVisible && styles.identityCompact]}
+                onPress={() => openProfile(agents.currentAgent)}>
+                <MemberAvatar agentId={agents.currentAgent} size={keyboardVisible ? l.compactHeaderAvatar : l.headerAvatar} />
                 {headerNames.chat && <View style={[styles.identityLabel, styles.identityLabelSurface]}><Text numberOfLines={1} style={styles.identityName}>{headerNames.chat}</Text></View>}
               </Pressable>
-              <View style={styles.headerRight}><IconControl icon={Settings} label={`打开${labels.title(spaces.currentSpace)}的空间设置`} testID="workspace-open-space-settings" onPress={() => openProfile(spaces.currentSpace, 'settings')} /></View>
+              <View style={styles.headerRight}><IconControl icon={Settings} label={`打开${labels.title(agents.currentAgent)}的智能体设置`} testID="workspace-open-agent-settings" onPress={() => openProfile(agents.currentAgent, 'settings')} /></View>
             </View>}
             {/* 群聊顶栏占据正常文档流；历史再长也不会穿过标题和操作按钮。 */}
             {page === 'group' && <View style={styles.groupHeader}>
@@ -472,9 +472,9 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
                   pointerEvents={sessionMounted ? 'none' : 'auto'} aria-hidden={sessionMounted}
                   {...(Platform.OS === 'web' && sessionMounted ? { inert: true } : {})}
                   accessibilityElementsHidden={sessionMounted} importantForAccessibility={sessionMounted ? 'no-hide-descendants' : 'auto'}>
-                  <View style={[styles.bodyStage, page === 'group' && { display: 'none' }]}><ConversationHost currentSpaceId={spaces.currentSpace} spaceIds={spaces.spaces.map((space) => space.id)} chatVisible={page === 'chat'} compactHeader={keyboardVisible} otherPage={otherPage}
-                    refreshVersions={historyRefresh} onSettled={refresh} onBindingMismatch={reloadSpaces} openConnection={openConnection} onOpenApprovals={() => openSession('approvals')} /></View>
-                  <GroupChat visible={page === 'group'} members={groupMembers} onProfile={openProfile} onPrivateChat={select} onSummary={setGroupPreview} onApprovals={(spaceId) => { spaces.selectSpace(spaceId); openSession('approvals'); }} />
+                  <View style={[styles.bodyStage, page === 'group' && { display: 'none' }]}><ConversationHost currentAgentId={agents.currentAgent} agentIds={agents.agents.map((agent) => agent.id)} chatVisible={page === 'chat'} compactHeader={keyboardVisible} otherPage={otherPage}
+                    refreshVersions={historyRefresh} onSettled={refresh} onBindingMismatch={reloadAgents} openConnection={openConnection} onOpenApprovals={() => openSession('approvals')} /></View>
+                  <GroupChat visible={page === 'group'} members={groupMembers} onProfile={openProfile} onPrivateChat={select} onSummary={setGroupPreview} onApprovals={(agentId) => { agents.selectAgent(agentId); openSession('approvals'); }} />
                   {!!notice && <Text accessibilityRole="alert" style={[styles.notice, notice.tone === 'error' && styles.error]}>{notice.text}</Text>}
                 </View>
               </BlurTargetView>
@@ -504,7 +504,7 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
                 }
                 headerCenter={
                   <View style={styles.identity}>
-                    <MemberAvatar spaceId={spaces.currentSpace} size={l.headerAvatar} />
+                    <MemberAvatar agentId={agents.currentAgent} size={l.headerAvatar} />
                     <View style={[styles.identityLabel, styles.sessionIdentityLabel]}>{headerNames.session && <Text numberOfLines={1} style={styles.identityName}>{headerNames.session}</Text>}<StatusPill label={statusLabel} testID="workspace-session-status" tone={!runtime.synchronized ? 'warning' : runtime.running ? 'accent' : 'neutral'} /></View>
                   </View>
                 }
@@ -515,7 +515,7 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
                   </FrostedSurface>
                 )}
               >
-                <SessionPanel spaceId={spaces.currentSpace}
+                <SessionPanel agentId={agents.currentAgent}
                   tab={sessionTab}
                   onTab={(next) => {
                     if (session.resetting || session.deleting) return;
@@ -532,7 +532,7 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
       </View>
     </View>
     {browserOpen && <BrowserPanel store={browser} baseUrl={snapshot.serverUrl ?? ''} onClose={closeBrowser} />}
-    {resetTarget && <ResetSessionDialog key={resetTarget} spaceId={resetTarget} available={!!connection?.enabled} error={resetError}
+    {resetTarget && <ResetSessionDialog key={resetTarget} agentId={resetTarget} available={!!connection?.enabled} error={resetError}
       onCancel={() => { setResetTarget(undefined); setResetError(undefined); }} onConfirm={reset} />}
   </View>;
 }
@@ -554,7 +554,7 @@ const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   groupIdentity: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing[8], minHeight: l.controlSize, flexShrink: 1 },
   identityCompact: { height: l.controlSize, flexDirection: 'row', gap: spacing[8] },
   identityLabel: { paddingHorizontal: spacing[8], paddingTop: spacing[6], gap: spacing[3], alignItems: 'center', maxWidth: '100%' },
-  // 只覆盖非主空间聊天名称自身，不给透明顶栏增加整条背景或正文占位。
+  // 只覆盖非主智能体聊天名称自身，不给透明顶栏增加整条背景或正文占位。
   identityLabelSurface: { backgroundColor: c.floatingSurface, borderColor: c.floatingLine, borderWidth: StyleSheet.hairlineWidth, borderRadius: r.field, paddingBottom: spacing[6] },
   identityName: { ...t.name, color: c.ink, maxWidth: '100%', textAlign: 'center' },
   headerSideButtonSpacer: { width: l.controlSize, height: l.controlSize },

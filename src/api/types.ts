@@ -13,15 +13,14 @@ import type { MessageFeedback } from '../feedback/types';
 // 会话与历史
 // ---------------------------------------------------------------------------
 
-/** 空间持有配置与文件；sessionId 是当前聊天绑定，重置时改变，不能作为空间 ID 发请求。 */
-export type MemberInfo = SpaceEntry & { kind: 'workspace' | 'feature'; name?: string };
-export type SpaceInfo = { id: string; sessionId: string; updatedAt: string };
-/** 未持久化的本地空间草稿不伪造服务端 sessionId。 */
-export type SpaceEntry = Omit<SpaceInfo, 'sessionId'> & { sessionId: string | null };
+/** 智能体持有配置与文件；sessionId 是当前聊天绑定，重置时改变，不能作为智能体 ID 发请求。 */
+export type AgentInfo = { id: string; sessionId: string; updatedAt: string; name?: string; extensions: ('news' | 'sms')[] };
+/** 未持久化的本地智能体草稿不伪造服务端 sessionId。 */
+export type AgentEntry = Omit<AgentInfo, 'sessionId' | 'extensions'> & { sessionId: string | null; extensions?: ('news' | 'sms')[] };
 
-export type ResetSpaceResult = {
+export type ResetAgentResult = {
   ok: true;
-  spaceId: string;
+  agentId: string;
   sessionId: string;
   cancelledApprovals: number;
   removed: { jobs: number; monitors: number };
@@ -103,7 +102,7 @@ export type ConversationMessage =
   | ConversationAssistantMessage
   | ConversationToolMessage;
 
-/** 历史、版本与当前会话必须同时保存；sessionId=null 表示空间合法但当前无绑定。 */
+/** 历史、版本与当前会话必须同时保存；sessionId=null 表示智能体合法但当前无绑定。 */
 export type ConversationSnapshot = {
   sessionId: string | null;
   revision: string;
@@ -121,8 +120,8 @@ export type ConversationSnapshot = {
 export type AgUiEvent = {
   type: string;
   /** RUN_STARTED / RUN_FINISHED */
-  spaceId?: string;
-  /** 本轮运行 ID；停止请求以 spaceId 与 runId 双重匹配 */
+  agentId?: string;
+  /** 本轮运行 ID；停止请求以 agentId 与 runId 双重匹配 */
   runId?: string;
   /** TEXT_MESSAGE_START */
   role?: string;
@@ -174,8 +173,8 @@ export type JobItem = {
   lastResult?: string;
   /** 错误信息（上次执行失败时非 null） */
   error: string | null;
-  /** 所属空间 ID */
-  originSpaceId?: string;
+  /** 所属智能体 ID */
+  originAgentId?: string;
 };
 
 /** 定时任务详情时间线条目（GET /api/jobs/:id） */
@@ -202,7 +201,7 @@ export type JobDetail = { job: JobItem; events: JobEvent[] };
 
 /** GET /api/jobs 查询参数 */
 export type JobsQuery = {
-  spaceId?: string;
+  agentId?: string;
   sort?: 'nextRunAt' | 'updatedAt' | 'createdAt';
   order?: 'asc' | 'desc';
 };
@@ -215,7 +214,7 @@ export type UpdateJobInput = {
   prompt?: string;
   daily?: boolean;
   at?: string;
-  originSpaceId?: string;
+  originAgentId?: string;
 };
 
 /** DELETE /api/jobs/:id 响应契约 */
@@ -259,7 +258,7 @@ export type DeleteGoalResult = {
 
 /** GET /api/monitors 查询参数 */
 export type MonitorsQuery = {
-  spaceId?: string;
+  agentId?: string;
   sort?: 'createdAt' | 'lastCheckedAt' | 'status';
   order?: 'asc' | 'desc';
 };
@@ -278,8 +277,8 @@ export type Monitor = {
   lastCheckedAt?: string;
   checks: number;
   error?: string;
-  /** 服务端回填来源空间 ID；未提供来源时缺省 */
-  originSpaceId?: string;
+  /** 服务端回填来源智能体 ID；未提供来源时缺省 */
+  originAgentId?: string;
   lastNotifiedAt?: string;
   lastMatched?: boolean;
 };
@@ -290,25 +289,25 @@ export type DeleteMonitorResult = {
   id: string;
 };
 
-/** 空间专属规则；重置聊天会话时保留，空串表示清空规则内容。 */
-export type SpaceInstructions = { instructions: string };
+/** 智能体专属规则；重置聊天会话时保留，空串表示清空规则内容。 */
+export type AgentInstructions = { instructions: string };
 
-/** 单条空间级技能；name 为后端注册键，defaultEnabled 来自服务端列表，enabled 为当前生效值。 */
-export type SpaceSkill = {
+/** 单条智能体级技能；name 为后端注册键，defaultEnabled 来自服务端列表，enabled 为当前生效值。 */
+export type AgentSkill = {
   name: string;
   description: string;
   defaultEnabled: boolean;
   enabled: boolean;
 };
 
-/** GET /api/spaces/:id/skills 返回结果：技能列表 + 服务端可选诊断（如本地 YAML 读取失败等） */
-export type SpaceSkills = {
-  skills: SpaceSkill[];
+/** GET /api/agents/:id/skills 返回结果：技能列表 + 服务端可选诊断（如本地 YAML 读取失败等） */
+export type AgentSkills = {
+  skills: AgentSkill[];
   diagnostics?: { path: string; message: string }[];
 };
 
-/** 删除空间的响应仅清点级联移除的定时任务与监控，不代表只删除这两类数据。 */
-export type DeleteSpaceResult = {
+/** 删除智能体的响应仅清点级联移除的定时任务与监控，不代表只删除这两类数据。 */
+export type DeleteAgentResult = {
   ok: true;
   removed: { jobs: number; monitors: number };
 };

@@ -84,9 +84,9 @@ export function parseMonitor(value: unknown, expectedId?: string): Monitor {
     error = text(item.error);
   }
 
-  let originSpaceId: string | undefined;
-  if (item.originSpaceId !== undefined) {
-    originSpaceId = text(item.originSpaceId, true);
+  let originAgentId: string | undefined;
+  if (item.originAgentId !== undefined) {
+    originAgentId = text(item.originAgentId, true);
   }
 
   let lastNotifiedAt: string | undefined;
@@ -112,7 +112,7 @@ export function parseMonitor(value: unknown, expectedId?: string): Monitor {
     ...(lastCheckedAt !== undefined ? { lastCheckedAt } : {}),
     checks,
     ...(error !== undefined ? { error } : {}),
-    ...(originSpaceId !== undefined ? { originSpaceId } : {}),
+    ...(originAgentId !== undefined ? { originAgentId } : {}),
     ...(lastNotifiedAt !== undefined ? { lastNotifiedAt } : {}),
     ...(lastMatched !== undefined ? { lastMatched } : {}),
   };

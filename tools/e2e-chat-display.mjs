@@ -1,5 +1,5 @@
 /**
- * 聊天展示纯逻辑的真实回归：专用空间、真实外部模型、currentTime、
+ * 聊天展示纯逻辑的真实回归：专用智能体、真实外部模型、currentTime、
  * SSE 聚合与权威历史全部走生产 HttpApiClient；不拦截响应、不使用替身。
  */
 import assert from 'node:assert/strict';
@@ -13,12 +13,12 @@ import { safeMessageUrl } from '../src/chat/message-links.ts';
 
 assert.equal(process.env.E2E_ALLOW_LIVE, '1', 'Explicit E2E_ALLOW_LIVE=1 required for real model and live data');
 assert.ok(process.env.E2E_API_BASE_URL, 'Explicit confirmed real E2E_API_BASE_URL required');
-const keepSpace = process.env.E2E_KEEP_SPACE === '1';
+const keepAgent = process.env.E2E_KEEP_AGENT === '1';
 const base = process.env.E2E_API_BASE_URL.replace(/\/$/, '');
 const output = mkdtempSync(join(tmpdir(), 'pimuse-chat-display-e2e-run.'));
 const stamp = Date.now().toString(36);
 const marker = `CHAT_DISPLAY_E2E_${stamp}`;
-const spaceId = `chat-display-e2e-${stamp}`;
+const agentId = `chat-display-e2e-${stamp}`;
 const runId = `chat-display-run-${stamp}`;
 const messageId = `${runId}-message`;
 const linkUrl = `https://example.com/?${marker}`;
@@ -28,7 +28,7 @@ let cleanupRequired = false;
 let initialVersion;
 let failure;
 let history;
-let baselineSpaces;
+let baselineAgents;
 const checks = [];
 const api = new HttpApiClient(base, () => token, () => { throw new Error('Real authentication rejected'); });
 
@@ -42,9 +42,9 @@ const phase = (name, extra = {}) => write('context.json', {
   phase: name,
   base,
   marker,
-  spaceId,
+  agentId,
   runId,
-  keepSpace,
+  keepAgent,
   ...extra,
 });
 
@@ -62,9 +62,9 @@ async function deployment(label) {
   for (const [path, methods] of Object.entries({
     '/api/conversation': ['get'],
     '/api/conversation/run': ['post'],
-    '/api/spaces': ['get'],
-    '/api/spaces/{spaceId}': ['delete'],
-    '/api/spaces/{spaceId}/instructions': ['get', 'put'],
+    '/api/agents': ['get'],
+    '/api/agents/{agentId}': ['delete'],
+    '/api/agents/{agentId}/instructions': ['get', 'put'],
   })) {
     for (const method of methods) assert.ok(schema.paths[path]?.[method], `${method} ${path}`);
   }
@@ -95,7 +95,7 @@ function assertMarkdown(content) {
 }
 
 async function runModel() {
-  const before = await api.getConversation(spaceId);
+  const before = await api.getConversation(agentId);
   assert.equal(before.revision, 'empty');
   const eventTypes = [];
   const tools = [];
@@ -104,7 +104,7 @@ async function runModel() {
   let streamedMarkdown = '';
   let runError;
   await api.runAgent({
-    spaceId,
+    agentId,
     runId,
     expectedRevision: before.revision,
     message: {
@@ -142,7 +142,7 @@ async function runModel() {
   assert.equal(liveDisplay.title, '当前时间');
   assert.equal(liveDisplay.status, 'finished');
 
-  history = await api.getConversation(spaceId);
+  history = await api.getConversation(agentId);
   const userIndex = history.messages.findIndex((message) => message.id === messageId);
   assert.ok(userIndex >= 0, 'Persisted history must contain the exact user request');
   const assistant = history.messages.slice(userIndex + 1).find((message) => message.role === 'assistant' && message.content);
@@ -182,11 +182,11 @@ try {
   assert.equal(auth.mode, 'live', 'Real model backend is required');
   token = auth.token;
 
-  baselineSpaces = (await api.listSpaces()).map((space) => space.id);
-  assert.ok(!baselineSpaces.includes(spaceId), 'Dedicated chat-display space must start absent');
+  baselineAgents = (await api.listAgents()).map((agent) => agent.id);
+  assert.ok(!baselineAgents.includes(agentId), 'Dedicated chat-display agent must start absent');
   cleanupRequired = true;
-  await api.saveSpaceInstructions(
-    spaceId,
+  await api.saveAgentInstructions(
+    agentId,
     'Dedicated mobile chat display acceptance. Follow the explicit user request. Only use currentTime when requested; never write files or create other resources.',
   );
   phase('model-run');
@@ -201,23 +201,23 @@ try {
 } finally {
   try {
     if (cleanupRequired) {
-      if (keepSpace) {
-        write('keep-space.json', { spaceId, marker, runId });
-        pass('dedicated space retained for native acceptance', { spaceId });
+      if (keepAgent) {
+        write('keep-agent.json', { agentId, marker, runId });
+        pass('dedicated agent retained for native acceptance', { agentId });
       } else if (token) {
-        await api.deleteSpace(spaceId).catch((error) => {
+        await api.deleteAgent(agentId).catch((error) => {
           if (error?.status !== 404) throw error;
         });
-        const remaining = (await api.listSpaces()).map((space) => space.id);
-        assert.ok(!remaining.includes(spaceId), 'Cleanup must remove only the dedicated chat-display space');
-        const missingBaseline = baselineSpaces?.filter((id) => !remaining.includes(id)) ?? [];
-        assert.deepEqual(missingBaseline, [], 'Cleanup must not remove any pre-existing space');
+        const remaining = (await api.listAgents()).map((agent) => agent.id);
+        assert.ok(!remaining.includes(agentId), 'Cleanup must remove only the dedicated chat-display agent');
+        const missingBaseline = baselineAgents?.filter((id) => !remaining.includes(id)) ?? [];
+        assert.deepEqual(missingBaseline, [], 'Cleanup must not remove any pre-existing agent');
         write('cleanup.json', {
-          removedSpaceId: spaceId,
-          baselineCount: baselineSpaces?.length ?? 0,
+          removedAgentId: agentId,
+          baselineCount: baselineAgents?.length ?? 0,
           baselineUntouched: true,
         });
-        pass('cleanup removes the dedicated space through the API');
+        pass('cleanup removes the dedicated agent through the API');
       } else {
         throw new Error('Cleanup is required but no authenticated session is available');
       }

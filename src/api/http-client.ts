@@ -17,7 +17,7 @@ import type {
   DeleteGoalResult,
   DeleteJobResult,
   DeleteMonitorResult,
-  DeleteSpaceResult,
+  DeleteAgentResult,
   Goal,
   GoalStatus,
   GoalsQuery,
@@ -29,10 +29,10 @@ import type {
   MemoryItem,
   Monitor,
   MonitorsQuery,
-  SpaceInfo,
-  SpaceInstructions,
-  SpaceSkill,
-  SpaceSkills,
+  AgentInfo,
+  AgentInstructions,
+  AgentSkill,
+  AgentSkills,
   UpdateGoalInput,
   UpdateJobInput,
   WorkspaceSnapshot,
@@ -53,7 +53,7 @@ import {
 import { attachmentUploadOf, validateOutgoingMessage } from '../attachments/validation';
 import { ApiError, isRequestCancelled, requestCancelled, responseError } from './errors';
 import { parseSseFrames } from './sse';
-import { parseCreatedSpace, parseResetSpace, parseMembers, parseSpaces } from './space-contracts';
+import { parseCreatedAgent, parseResetAgent, parseAgents } from './agent-contracts';
 import { parseGoal, parseGoals, parseMilestoneToggle, parseGoalRemoval } from './goal-contracts';
 import { parseDeleteMonitorResult, parseMonitor, parseMonitors } from './monitor-contracts';
 import type {
@@ -75,8 +75,8 @@ import type { MemoryQuery } from '../memories/types';
 import { parseMemoryItem, parseMemoryPage, parseMemoryRemoval } from '../memories/contracts';
 import { parseJob, parseJobDetail, parseJobRemoval, parseJobs, parseServerTimeZone } from './job-contracts';
 import { parseIdentity, parseProfile, parseWorkspaceSnapshot } from './profile-contracts';
-import { parseDreamOverview, parseDreamSpace } from '../dream/contracts';
-import { DREAM_RUN_TIMEOUT_MS, type DreamPendingDecision, type DreamSpaceSettingsInput } from '../dream/types';
+import { parseDreamOverview, parseDreamAgent } from '../dream/contracts';
+import { DREAM_RUN_TIMEOUT_MS, type DreamPendingDecision, type DreamAgentSettingsInput } from '../dream/types';
 import {
   parseWorkspaceDelete,
   parseWorkspaceFileDetail,
@@ -141,8 +141,8 @@ type RequestControl = {
   assertActive: () => void;
 };
 
-const messageFeedbackPath = (spaceId: string, messageId: string, suffix = '') =>
-  `/api/spaces/${encodeURIComponent(spaceId)}/messages/${encodeURIComponent(messageId)}/feedback${suffix}`;
+const messageFeedbackPath = (agentId: string, messageId: string, suffix = '') =>
+  `/api/agents/${encodeURIComponent(agentId)}/messages/${encodeURIComponent(messageId)}/feedback${suffix}`;
 const sessionQuery = (sessionId: string) => `?sessionId=${encodeURIComponent(sessionId)}`;
 const normalizedComment = (text: string): string => {
   const trimmed = text.trim();
@@ -157,7 +157,7 @@ export class HttpApiClient implements ApiClient {
   private retired = false;
   private paused = false;
   private pending = new Set<AbortController>();
-  private activeRuns = new Set<{ spaceId: string; runId: string; token?: string }>();
+  private activeRuns = new Set<{ agentId: string; runId: string; token?: string }>();
 
   constructor(
     private readonly baseUrl: string,
@@ -212,7 +212,7 @@ export class HttpApiClient implements ApiClient {
     this.generation++;
     for (const controller of this.pending) controller.abort();
     for (const run of runs) {
-      void this.request('/api/conversation/stop', { method: 'POST', body: { spaceId: run.spaceId, runId: run.runId }, tokenOverride: { value: run.token } }).catch(() => {});
+      void this.request('/api/conversation/stop', { method: 'POST', body: { agentId: run.agentId, runId: run.runId }, tokenOverride: { value: run.token } }).catch(() => {});
     }
   }
 
@@ -337,19 +337,18 @@ export class HttpApiClient implements ApiClient {
     return parseServerTimeZone(await this.request('/api/health', { anonymous: true, signal }));
   }
 
-  async listMembers(signal?: AbortSignal) { return parseMembers(await this.request('/api/members', { signal })); }
-  async listSpaces(signal?: AbortSignal): Promise<SpaceInfo[]> {
-    return parseSpaces(await this.request('/api/spaces', { signal }));
+  async listAgents(signal?: AbortSignal): Promise<AgentInfo[]> {
+    return parseAgents(await this.request('/api/agents', { signal }));
   }
 
-  async createSpace(spaceId: string, signal?: AbortSignal): Promise<SpaceInfo> {
-    return parseCreatedSpace(await this.request('/api/spaces', { method: 'POST', body: { spaceId }, signal }), spaceId);
+  async createAgent(agentId: string, signal?: AbortSignal): Promise<AgentInfo> {
+    return parseCreatedAgent(await this.request('/api/agents', { method: 'POST', body: { agentId }, signal }), agentId);
   }
 
-  async resetSpace(spaceId: string, options: { clearSchedules?: boolean } = {}, signal?: AbortSignal) {
-    return parseResetSpace(await this.request(`/api/spaces/${encodeURIComponent(spaceId)}/reset`, {
+  async resetAgent(agentId: string, options: { clearSchedules?: boolean } = {}, signal?: AbortSignal) {
+    return parseResetAgent(await this.request(`/api/agents/${encodeURIComponent(agentId)}/reset`, {
       method: 'POST', body: { clearSchedules: options.clearSchedules ?? false }, signal,
-    }), spaceId);
+    }), agentId);
   }
 
   /** 只读活动接口；游标绑定筛选，原样编码传输，绝不解析/拼造游标。 */
@@ -357,7 +356,7 @@ export class HttpApiClient implements ApiClient {
     const params = new URLSearchParams();
     if (query.limit !== undefined) params.set('limit', String(query.limit));
     if (query.cursor !== undefined) params.set('cursor', query.cursor);
-    if (query.spaceId !== undefined) params.set('spaceId', query.spaceId);
+    if (query.agentId !== undefined) params.set('agentId', query.agentId);
     if (query.status !== undefined) params.set('status', query.status);
     const suffix = params.toString();
     return parseActivityPage(await this.request(`/api/activities${suffix ? `?${suffix}` : ''}`, { signal }));
@@ -367,64 +366,64 @@ export class HttpApiClient implements ApiClient {
     return parseActivityDetail(await this.request(`/api/activities/${encodeURIComponent(id)}`, { signal }), id);
   }
 
-  async getConversation(spaceId: string, signal?: AbortSignal): Promise<ConversationSnapshot> {
+  async getConversation(agentId: string, signal?: AbortSignal): Promise<ConversationSnapshot> {
     return parseConversationSnapshot(
-      await this.request<unknown>(`/api/conversation?spaceId=${encodeURIComponent(spaceId)}`, { signal }),
+      await this.request<unknown>(`/api/conversation?agentId=${encodeURIComponent(agentId)}`, { signal }),
     );
   }
 
   async getMessageFeedback(
-    spaceId: string,
+    agentId: string,
     messageId: string,
     sessionId: string,
     signal?: AbortSignal,
   ): Promise<MessageFeedback> {
     return parseMessageFeedback(await this.request<unknown>(
-      `${messageFeedbackPath(spaceId, messageId)}${sessionQuery(sessionId)}`,
+      `${messageFeedbackPath(agentId, messageId)}${sessionQuery(sessionId)}`,
       { signal },
     ));
   }
 
   async getMessageFeedbackEvents(
-    spaceId: string,
+    agentId: string,
     messageId: string,
     sessionId: string,
     signal?: AbortSignal,
   ): Promise<MessageFeedbackEvents> {
     return parseMessageFeedbackEvents(await this.request<unknown>(
-      `${messageFeedbackPath(spaceId, messageId, '/events')}${sessionQuery(sessionId)}`,
+      `${messageFeedbackPath(agentId, messageId, '/events')}${sessionQuery(sessionId)}`,
       { signal },
     ));
   }
 
   async setMessageReaction(
-    spaceId: string,
+    agentId: string,
     messageId: string,
     sessionId: string,
     reaction: MessageReaction | null,
     signal?: AbortSignal,
   ): Promise<MessageFeedback> {
     return parseMessageFeedback(await this.request<unknown>(
-      messageFeedbackPath(spaceId, messageId, '/reaction'),
+      messageFeedbackPath(agentId, messageId, '/reaction'),
       { method: 'PUT', body: { sessionId, reaction }, signal },
     ));
   }
 
   async addMessageComment(
-    spaceId: string,
+    agentId: string,
     messageId: string,
     sessionId: string,
     text: string,
     signal?: AbortSignal,
   ): Promise<MessageFeedback> {
     return parseMessageFeedback(await this.request<unknown>(
-      messageFeedbackPath(spaceId, messageId, '/comments'),
+      messageFeedbackPath(agentId, messageId, '/comments'),
       { method: 'POST', body: { sessionId, text: normalizedComment(text) }, signal },
     ));
   }
 
   async editMessageComment(
-    spaceId: string,
+    agentId: string,
     messageId: string,
     commentId: string,
     sessionId: string,
@@ -432,78 +431,78 @@ export class HttpApiClient implements ApiClient {
     signal?: AbortSignal,
   ): Promise<MessageFeedback> {
     return parseMessageFeedback(await this.request<unknown>(
-      messageFeedbackPath(spaceId, messageId, `/comments/${encodeURIComponent(commentId)}`),
+      messageFeedbackPath(agentId, messageId, `/comments/${encodeURIComponent(commentId)}`),
       { method: 'PATCH', body: { sessionId, text: normalizedComment(text) }, signal },
     ));
   }
 
   async deleteMessageComment(
-    spaceId: string,
+    agentId: string,
     messageId: string,
     commentId: string,
     sessionId: string,
     signal?: AbortSignal,
   ): Promise<MessageFeedback> {
     return parseMessageFeedback(await this.request<unknown>(
-      `${messageFeedbackPath(spaceId, messageId, `/comments/${encodeURIComponent(commentId)}`)}` +
+      `${messageFeedbackPath(agentId, messageId, `/comments/${encodeURIComponent(commentId)}`)}` +
         sessionQuery(sessionId),
       { method: 'DELETE', signal },
     ));
   }
 
-  // --- 空间配置：响应字段必须存在且类型正确，200 但结构错位报 502（与服务端快照校验一致） ---
+  // --- 智能体配置：响应字段必须存在且类型正确，200 但结构错位报 502（与服务端快照校验一致） ---
 
-  async getSpaceInstructions(spaceId: string, signal?: AbortSignal): Promise<SpaceInstructions> {
-    const path = `/api/spaces/${encodeURIComponent(spaceId)}/instructions`;
-    const data = await this.request<SpaceInstructions>(path, { signal });
+  async getAgentInstructions(agentId: string, signal?: AbortSignal): Promise<AgentInstructions> {
+    const path = `/api/agents/${encodeURIComponent(agentId)}/instructions`;
+    const data = await this.request<AgentInstructions>(path, { signal });
     if (typeof data?.instructions !== 'string') {
-      throw new ApiError(502, '服务器没有返回有效空间指令，请确认服务器版本与地址');
+      throw new ApiError(502, '服务器没有返回有效智能体指令，请确认服务器版本与地址');
     }
     return data;
   }
 
-  async saveSpaceInstructions(spaceId: string, instructions: string, signal?: AbortSignal): Promise<SpaceInstructions> {
-    const path = `/api/spaces/${encodeURIComponent(spaceId)}/instructions`;
-    const data = await this.request<SpaceInstructions>(path, { method: 'PUT', body: { instructions }, signal });
+  async saveAgentInstructions(agentId: string, instructions: string, signal?: AbortSignal): Promise<AgentInstructions> {
+    const path = `/api/agents/${encodeURIComponent(agentId)}/instructions`;
+    const data = await this.request<AgentInstructions>(path, { method: 'PUT', body: { instructions }, signal });
     if (typeof data?.instructions !== 'string') {
-      throw new ApiError(502, '服务器没有返回有效空间指令，请确认服务器版本与地址');
+      throw new ApiError(502, '服务器没有返回有效智能体指令，请确认服务器版本与地址');
     }
     return data;
   }
 
   // diagnostics 可缺省；skills 字段必须为条目数组，每条字段类型严格。
-  async getSpaceSkills(spaceId: string, signal?: AbortSignal): Promise<SpaceSkills> {
-    const path = `/api/spaces/${encodeURIComponent(spaceId)}/skills`;
-    const data = await this.request<SpaceSkills>(path, { signal });
-    if (!Array.isArray(data?.skills) || data.skills.some((item) => !this.isValidSpaceSkill(item))) {
-      throw new ApiError(502, '服务器没有返回有效空间技能列表，请确认服务器版本与地址');
+  async getAgentSkills(agentId: string, signal?: AbortSignal): Promise<AgentSkills> {
+    const path = `/api/agents/${encodeURIComponent(agentId)}/skills`;
+    const data = await this.request<AgentSkills>(path, { signal });
+    if (!Array.isArray(data?.skills) || data.skills.some((item) => !this.isValidAgentSkill(item))) {
+      throw new ApiError(502, '服务器没有返回有效智能体技能列表，请确认服务器版本与地址');
     }
     if (data.diagnostics !== undefined && (!Array.isArray(data.diagnostics) || data.diagnostics.some((item) => typeof item?.path !== 'string' || typeof item?.message !== 'string'))) {
-      throw new ApiError(502, '服务器没有返回有效空间技能列表，请确认服务器版本与地址');
+      throw new ApiError(502, '服务器没有返回有效智能体技能列表，请确认服务器版本与地址');
     }
     return data;
   }
 
-  async saveSpaceSkills(
-    spaceId: string,
+  async saveAgentSkills(
+    agentId: string,
     overrides: Record<string, boolean>,
     signal?: AbortSignal,
-  ): Promise<SpaceSkills> {
-    const path = `/api/spaces/${encodeURIComponent(spaceId)}/skills`;
-    const data = await this.request<SpaceSkills>(path, { method: 'PUT', body: { overrides }, signal });
-    if (!Array.isArray(data?.skills) || data.skills.some((item) => !this.isValidSpaceSkill(item))) {
-      throw new ApiError(502, '服务器没有返回有效空间技能列表，请确认服务器版本与地址');
+  ): Promise<AgentSkills> {
+    const path = `/api/agents/${encodeURIComponent(agentId)}/skills`;
+    const data = await this.request<AgentSkills>(path, { method: 'PUT', body: { overrides }, signal });
+    if (!Array.isArray(data?.skills) || data.skills.some((item) => !this.isValidAgentSkill(item))) {
+      throw new ApiError(502, '服务器没有返回有效智能体技能列表，请确认服务器版本与地址');
     }
     if (data.diagnostics !== undefined && (!Array.isArray(data.diagnostics) || data.diagnostics.some((item) => typeof item?.path !== 'string' || typeof item?.message !== 'string'))) {
-      throw new ApiError(502, '服务器没有返回有效空间技能列表，请确认服务器版本与地址');
+      throw new ApiError(502, '服务器没有返回有效智能体技能列表，请确认服务器版本与地址');
     }
     return data;
   }
 
   // DELETE 必须无 body；服务端 404/409 语义保留，不做自动重试副作用。
-  async deleteSpace(spaceId: string, signal?: AbortSignal): Promise<DeleteSpaceResult> {
-    const path = `/api/spaces/${encodeURIComponent(spaceId)}`;
-    const data = await this.request<DeleteSpaceResult>(path, { method: 'DELETE', signal });
+  async deleteAgent(agentId: string, signal?: AbortSignal): Promise<DeleteAgentResult> {
+    const path = `/api/agents/${encodeURIComponent(agentId)}`;
+    const data = await this.request<DeleteAgentResult>(path, { method: 'DELETE', signal });
     const removed = data?.removed;
     if (
       data?.ok !== true ||
@@ -511,14 +510,14 @@ export class HttpApiClient implements ApiClient {
       !Number.isSafeInteger(removed.jobs) || removed.jobs < 0 ||
       !Number.isSafeInteger(removed.monitors) || removed.monitors < 0
     ) {
-      throw new ApiError(502, '服务器没有返回有效空间删除结果，请确认服务器版本与地址');
+      throw new ApiError(502, '服务器没有返回有效智能体删除结果，请确认服务器版本与地址');
     }
     return data;
   }
 
-  private isValidSpaceSkill(item: unknown): item is SpaceSkill {
+  private isValidAgentSkill(item: unknown): item is AgentSkill {
     if (!item || typeof item !== 'object') return false;
-    const skill = item as SpaceSkill;
+    const skill = item as AgentSkill;
     return typeof skill.name === 'string'
       && typeof skill.description === 'string'
       && typeof skill.defaultEnabled === 'boolean'
@@ -535,7 +534,7 @@ export class HttpApiClient implements ApiClient {
     if (!outgoing.ok) throw new ApiError(400, outgoing.error);
     const token = this.getToken();
     const control = this.control(this.options.headerTimeoutMs ?? this.options.timeoutMs ?? 15_000, signal);
-    const run = { spaceId: input.spaceId, runId: input.runId, token };
+    const run = { agentId: input.agentId, runId: input.runId, token };
     this.activeRuns.add(run);
     let callbackFailed = false;
     try {
@@ -560,7 +559,7 @@ export class HttpApiClient implements ApiClient {
         throw new ApiError(401, '当前凭证未被服务器接受，请重新认证');
       }
       if (!response.ok) {
-        // 删除中的空间与普通版本冲突必须保留区别，不能引导重试旧 ID。
+        // 删除中的智能体与普通版本冲突必须保留区别，不能引导重试旧 ID。
         const payload = await response.json().catch(() => undefined);
         control.assertActive();
         const fallback = response.status === 409 ? '会话状态已更新或仍在运行，请重新加载后重试' : undefined;
@@ -607,26 +606,26 @@ export class HttpApiClient implements ApiClient {
     }
   }
 
-  async stopRun(spaceId: string, runId: string): Promise<boolean> {
+  async stopRun(agentId: string, runId: string): Promise<boolean> {
     const data = await this.request<{ stopped: boolean }>(
       '/api/conversation/stop',
-      { method: 'POST', body: { spaceId, runId } },
+      { method: 'POST', body: { agentId, runId } },
     );
     return data.stopped;
   }
 
   async getSnapshot(signal?: AbortSignal): Promise<WorkspaceSnapshot> {
     // 审批由 GET /api/events 与 /api/approvals/* 独立同步，不再请求已下线的 /api/actions/pending。
-    // 定时任务已迁移至独立 /api/jobs 接口，/api/agent 响应体中不再包含 tasks 字段。
+    // 定时任务已迁移至独立 /api/jobs 接口，/api/identity 响应体中不再包含 tasks 字段。
     // monitors、memories 与 goals 亦已迁移至独立接口，快照权威提供 identity。
-    return parseWorkspaceSnapshot(await this.request<unknown>('/api/agent', { signal }));
+    return parseWorkspaceSnapshot(await this.request<unknown>('/api/identity', { signal }));
   }
 
   // --- 定时任务（/api/jobs） ---
 
   async listJobs(query?: JobsQuery, signal?: AbortSignal): Promise<JobItem[]> {
     const params = new URLSearchParams();
-    if (query?.spaceId) params.set('spaceId', query.spaceId);
+    if (query?.agentId) params.set('agentId', query.agentId);
     if (query?.sort) params.set('sort', query.sort);
     if (query?.order) params.set('order', query.order);
     const suffix = params.toString() ? `?${params.toString()}` : '';
@@ -663,7 +662,7 @@ export class HttpApiClient implements ApiClient {
   async listMonitors(query: MonitorsQuery = {}, signal?: AbortSignal): Promise<Monitor[]> {
     const params = new URLSearchParams();
     // 显式传入的筛选字段必须原样上送；空串/非法值交给服务端 400，不能静默扩大查询范围。
-    if (query.spaceId !== undefined) params.set('spaceId', query.spaceId);
+    if (query.agentId !== undefined) params.set('agentId', query.agentId);
     if (query.sort !== undefined) params.set('sort', query.sort);
     if (query.order !== undefined) params.set('order', query.order);
     const suffix = params.toString();
@@ -695,7 +694,7 @@ export class HttpApiClient implements ApiClient {
 
   async listApprovals(query: ApprovalQuery = {}, signal?: AbortSignal): Promise<ApprovalPage> {
     const params = new URLSearchParams();
-    for (const key of ['limit', 'cursor', 'status', 'spaceId', 'activityId'] as const) {
+    for (const key of ['limit', 'cursor', 'status', 'agentId', 'activityId'] as const) {
       const value = query[key];
       if (value !== undefined) params.set(key, String(value));
     }
@@ -785,7 +784,7 @@ export class HttpApiClient implements ApiClient {
   }
 
   async saveIdentity(input: IdentityInput, signal?: AbortSignal): Promise<Identity> {
-    return parseIdentity(await this.request<unknown>('/api/agent/identity', {
+    return parseIdentity(await this.request<unknown>('/api/identity', {
       method: 'POST', body: input, signal,
     }));
   }
@@ -838,7 +837,7 @@ export class HttpApiClient implements ApiClient {
     }));
   }
 
-  // --- 新闻 V1（/api/news）；全部接口鉴权，不携带 spaceId ---
+  // --- 新闻 V1（/api/news）；全部接口鉴权，不携带 agentId ---
 
   async getNewsStatus(signal?: AbortSignal) {
     return parseNewsStatus(await this.request<unknown>('/api/news/status', { signal }));
@@ -929,7 +928,7 @@ export class HttpApiClient implements ApiClient {
     selector: WorkspaceFileSelector & { path?: string },
     signal?: AbortSignal,
   ): Promise<WorkspaceListResult> {
-    const target = workspaceFileTarget(selector.scope, selector.spaceId, selector.path ?? '.', 'read');
+    const target = workspaceFileTarget(selector.scope, selector.agentId, selector.path ?? '.', 'read');
     return parseWorkspaceList(
       await this.request<unknown>(`/api/workspace/files?${workspaceFileQuery(target)}`, { signal }),
       target,
@@ -940,7 +939,7 @@ export class HttpApiClient implements ApiClient {
     target: WorkspaceFileTarget,
     signal?: AbortSignal,
   ): Promise<WorkspaceFileDetail & WorkspaceFileSelector> {
-    const selected = workspaceFileTarget(target.scope, target.spaceId, target.path, 'file');
+    const selected = workspaceFileTarget(target.scope, target.agentId, target.path, 'file');
     return parseWorkspaceFileDetail(
       await this.request<unknown>(`/api/workspace/files/content?${workspaceFileQuery(selected)}`, { signal }),
       selected,
@@ -952,13 +951,13 @@ export class HttpApiClient implements ApiClient {
     content: string,
     signal?: AbortSignal,
   ): Promise<WorkspaceTextDetail & WorkspaceFileSelector> {
-    const selected = workspaceFileTarget(target.scope, target.spaceId, target.path, 'write');
+    const selected = workspaceFileTarget(target.scope, target.agentId, target.path, 'write');
     assertWorkspaceTextForWrite(content);
     return parseWorkspaceTextDetail(await this.request<unknown>('/api/workspace/files/text', {
       method: 'POST',
       body: {
         scope: selected.scope,
-        ...(selected.scope === 'space' ? { spaceId: selected.spaceId } : {}),
+        ...(selected.scope === 'agent' ? { agentId: selected.agentId } : {}),
         path: selected.path,
         content,
         confirmed: true,
@@ -972,13 +971,13 @@ export class HttpApiClient implements ApiClient {
     content: string,
     signal?: AbortSignal,
   ): Promise<WorkspaceTextDetail & WorkspaceFileSelector> {
-    const selected = workspaceFileTarget(target.scope, target.spaceId, target.path, 'write');
+    const selected = workspaceFileTarget(target.scope, target.agentId, target.path, 'write');
     assertWorkspaceTextForWrite(content);
     return parseWorkspaceTextDetail(await this.request<unknown>('/api/workspace/files/text', {
       method: 'PUT',
       body: {
         scope: selected.scope,
-        ...(selected.scope === 'space' ? { spaceId: selected.spaceId } : {}),
+        ...(selected.scope === 'agent' ? { agentId: selected.agentId } : {}),
         path: selected.path,
         content,
         confirmed: true,
@@ -991,74 +990,74 @@ export class HttpApiClient implements ApiClient {
     target: WorkspaceFileTarget,
     signal?: AbortSignal,
   ) {
-    const selected = workspaceFileTarget(target.scope, target.spaceId, target.path, 'write');
+    const selected = workspaceFileTarget(target.scope, target.agentId, target.path, 'write');
     return parseWorkspaceDelete(await this.request<unknown>(`/api/workspace/files?${workspaceFileQuery(selected)}`, {
       method: 'DELETE',
       signal,
     }), selected);
   }
 
-  // --- Dream（/api/agent/dream + /api/spaces/:id/dream） ---
+  // --- Dream（/api/dream + /api/agents/:id/dream） ---
 
   async getDreamOverview(signal?: AbortSignal) {
-    return parseDreamOverview(await this.request<unknown>('/api/agent/dream', { signal }));
+    return parseDreamOverview(await this.request<unknown>('/api/dream', { signal }));
   }
 
   async saveGlobalDreamPrompt(prompt: string, signal?: AbortSignal) {
-    return parseDreamOverview(await this.request<unknown>('/api/agent/dream', {
+    return parseDreamOverview(await this.request<unknown>('/api/dream', {
       method: 'PUT',
       body: { globalPrompt: prompt },
       signal,
     }));
   }
 
-  async getSpaceDream(spaceId: string, signal?: AbortSignal) {
-    const path = `/api/spaces/${encodeURIComponent(spaceId)}/dream`;
-    return parseDreamSpace(await this.request<unknown>(path, { signal }), spaceId);
+  async getAgentDream(agentId: string, signal?: AbortSignal) {
+    const path = `/api/agents/${encodeURIComponent(agentId)}/dream`;
+    return parseDreamAgent(await this.request<unknown>(path, { signal }), agentId);
   }
 
-  async updateSpaceDream(spaceId: string, settings: DreamSpaceSettingsInput, signal?: AbortSignal) {
-    const path = `/api/spaces/${encodeURIComponent(spaceId)}/dream`;
-    return parseDreamSpace(await this.request<unknown>(path, {
+  async updateAgentDream(agentId: string, settings: DreamAgentSettingsInput, signal?: AbortSignal) {
+    const path = `/api/agents/${encodeURIComponent(agentId)}/dream`;
+    return parseDreamAgent(await this.request<unknown>(path, {
       method: 'PUT',
       body: settings,
       signal,
-    }), spaceId);
+    }), agentId);
   }
 
-  async runSpaceDream(spaceId: string, signal?: AbortSignal) {
-    const path = `/api/spaces/${encodeURIComponent(spaceId)}/dream/run`;
+  async runAgentDream(agentId: string, signal?: AbortSignal) {
+    const path = `/api/agents/${encodeURIComponent(agentId)}/dream/run`;
     // 同步等待受限模型轮；300 秒只作用于本请求，不改变全局 HTTP 预算。
-    return parseDreamSpace(await this.request<unknown>(path, {
+    return parseDreamAgent(await this.request<unknown>(path, {
       method: 'POST',
       body: {},
       signal,
       timeoutMs: DREAM_RUN_TIMEOUT_MS,
-    }), spaceId);
+    }), agentId);
   }
 
-  async resolveSpaceDreamPending(
-    spaceId: string,
+  async resolveAgentDreamPending(
+    agentId: string,
     pendingId: string,
     decision: DreamPendingDecision,
     signal?: AbortSignal,
   ) {
-    const path = `/api/spaces/${encodeURIComponent(spaceId)}/dream/pending/${encodeURIComponent(pendingId)}`;
-    return parseDreamSpace(await this.request<unknown>(path, {
+    const path = `/api/agents/${encodeURIComponent(agentId)}/dream/pending/${encodeURIComponent(pendingId)}`;
+    return parseDreamAgent(await this.request<unknown>(path, {
       method: 'POST',
       body: decision,
       signal,
-    }), spaceId);
+    }), agentId);
   }
 
-  // --- 运行状态（GET /api/agent/status + GET /api/events） ---
+  // --- 运行状态（GET /api/runs/status + GET /api/events） ---
 
-  async getAgentStatus(spaceId: string, runId: string, signal?: AbortSignal): Promise<AgentStatusResponse> {
-    // 单点查询：spaceId 与 runId 都必填，服务端 400 透传，404 表示运行不存在或已被清理。
-    const path = `/api/agent/status?spaceId=${encodeURIComponent(spaceId)}&runId=${encodeURIComponent(runId)}`;
+  async getAgentStatus(agentId: string, runId: string, signal?: AbortSignal): Promise<AgentStatusResponse> {
+    // 单点查询：agentId 与 runId 都必填，服务端 400 透传，404 表示运行不存在或已被清理。
+    const path = `/api/runs/status?agentId=${encodeURIComponent(agentId)}&runId=${encodeURIComponent(runId)}`;
     const raw = await this.request<unknown>(path, { signal });
     const response = parseAgentStatusResponse(raw);
-    if (response.status.spaceId !== spaceId || response.status.runId !== runId) throw new ApiError(502, '服务器返回的运行状态归属不正确');
+    if (response.status.agentId !== agentId || response.status.runId !== runId) throw new ApiError(502, '服务器返回的运行状态归属不正确');
     return response;
   }
 
@@ -1203,17 +1202,17 @@ export class HttpApiClient implements ApiClient {
     );
   }
 
-  // --- 信息后台与短信（/api/spaces/:spaceId/information/*） ---
+  // --- 信息后台与短信（/api/agents/:agentId/information/*） ---
 
-  async getInformationSettings(spaceId: string, signal?: AbortSignal): Promise<InformationSettings> {
+  async getInformationSettings(agentId: string, signal?: AbortSignal): Promise<InformationSettings> {
     return parseInformationSettings(
-      await this.request<unknown>(`/api/spaces/${encodeURIComponent(spaceId)}/information/settings`, { signal }),
+      await this.request<unknown>(`/api/agents/${encodeURIComponent(agentId)}/information/settings`, { signal }),
     );
   }
 
-  async saveInformationSettings(spaceId: string, settings: InformationSettings, signal?: AbortSignal): Promise<InformationSettings> {
+  async saveInformationSettings(agentId: string, settings: InformationSettings, signal?: AbortSignal): Promise<InformationSettings> {
     return parseInformationSettings(
-      await this.request<unknown>(`/api/spaces/${encodeURIComponent(spaceId)}/information/settings`, {
+      await this.request<unknown>(`/api/agents/${encodeURIComponent(agentId)}/information/settings`, {
         method: 'PUT',
         body: settings,
         signal,
@@ -1221,15 +1220,15 @@ export class HttpApiClient implements ApiClient {
     );
   }
 
-  async getInformationPreferences(spaceId: string, signal?: AbortSignal): Promise<InformationPreferences> {
+  async getInformationPreferences(agentId: string, signal?: AbortSignal): Promise<InformationPreferences> {
     return parseInformationPreferences(
-      await this.request<unknown>(`/api/spaces/${encodeURIComponent(spaceId)}/information/preferences`, { signal }),
+      await this.request<unknown>(`/api/agents/${encodeURIComponent(agentId)}/information/preferences`, { signal }),
     );
   }
 
-  async saveInformationPreferences(spaceId: string, preferences: { notes: string }, signal?: AbortSignal): Promise<InformationPreferences> {
+  async saveInformationPreferences(agentId: string, preferences: { notes: string }, signal?: AbortSignal): Promise<InformationPreferences> {
     return parseInformationPreferences(
-      await this.request<unknown>(`/api/spaces/${encodeURIComponent(spaceId)}/information/preferences`, {
+      await this.request<unknown>(`/api/agents/${encodeURIComponent(agentId)}/information/preferences`, {
         method: 'PUT',
         body: preferences,
         signal,
@@ -1237,9 +1236,9 @@ export class HttpApiClient implements ApiClient {
     );
   }
 
-  async ingestInformationItems(spaceId: string, items: InformationInputItem[], signal?: AbortSignal): Promise<InformationItem[]> {
+  async ingestInformationItems(agentId: string, items: InformationInputItem[], signal?: AbortSignal): Promise<InformationItem[]> {
     return parseInformationIngestResult(
-      await this.request<unknown>(`/api/spaces/${encodeURIComponent(spaceId)}/information/items`, {
+      await this.request<unknown>(`/api/agents/${encodeURIComponent(agentId)}/information/items`, {
         method: 'POST',
         body: { items },
         signal,
@@ -1247,28 +1246,28 @@ export class HttpApiClient implements ApiClient {
     );
   }
 
-  async listInformationItems(spaceId: string, query?: InformationItemsQuery, signal?: AbortSignal): Promise<InformationItemsPage> {
+  async listInformationItems(agentId: string, query?: InformationItemsQuery, signal?: AbortSignal): Promise<InformationItemsPage> {
     const params = new URLSearchParams();
     if (query?.limit !== undefined) params.set('limit', String(query.limit));
     if (query?.cursor) params.set('cursor', query.cursor);
     if (query?.status) params.set('status', query.status);
     const qs = params.toString() ? `?${params.toString()}` : '';
     return parseInformationItemsPage(
-      await this.request<unknown>(`/api/spaces/${encodeURIComponent(spaceId)}/information/items${qs}`, { signal }),
+      await this.request<unknown>(`/api/agents/${encodeURIComponent(agentId)}/information/items${qs}`, { signal }),
     );
   }
 
-  async triggerInformationRun(spaceId: string, signal?: AbortSignal): Promise<void> {
-    await this.request<unknown>(`/api/spaces/${encodeURIComponent(spaceId)}/information/runs`, {
+  async triggerInformationRun(agentId: string, signal?: AbortSignal): Promise<void> {
+    await this.request<unknown>(`/api/agents/${encodeURIComponent(agentId)}/information/runs`, {
       method: 'POST',
       body: {},
       signal,
     });
   }
   async listFeatures(signal?: AbortSignal) { return parseFeatures(await this.request<unknown>('/api/features', { signal })); }
-  async bindFeature(id: FeatureId, spaceId: string, signal?: AbortSignal) { return parseFeature(await this.request<unknown>(`/api/features/${id}/binding`, { method: 'PUT', body: { spaceId }, signal })); }
+  async bindFeature(id: FeatureId, agentId: string, signal?: AbortSignal) { return parseFeature(await this.request<unknown>(`/api/features/${id}/binding`, { method: 'PUT', body: { agentId }, signal })); }
   async discussNews(articleId: string, signal?: AbortSignal) { return parseDiscussion(await this.request<unknown>('/api/features/news/discussions', { method: 'POST', body: { articleId }, signal })); }
-  // --- 独立短信功能：不接收当前工作空间 ID ---
+  // --- 独立短信功能：不接收当前智能体 ID ---
 
   async getSmsSettings(signal?: AbortSignal): Promise<InformationSettings> {
     return parseInformationSettings(

@@ -12,7 +12,7 @@ const {
   parseMessageFeedbackEvents,
   parseMessagesSnapshotEvent,
 } = await import('../src/api/contracts.ts');
-const { SpaceStore } = await import('../src/spaces/space-store.ts');
+const { AgentStore } = await import('../src/agents/agent-store.ts');
 const { createMockApi } = await import('./helpers/conversation-test-harness.ts');
 const { renderConversationHook } = await import('./helpers/hook-runner.ts');
 const { renderMessageFeedbackHook } = await import('./helpers/message-feedback-hook-runner.ts');
@@ -135,32 +135,32 @@ test('HttpApiClient 使用真实反馈路径、完整响应解析与本地输入
   };
   try {
     const client = new HttpApiClient('https://api.example', () => 'secret', () => {});
-    assert.deepEqual(await client.getMessageFeedback('space-1', 'message-1', 'session-1'), fullFeedback);
-    assert.deepEqual(await client.setMessageReaction('space-1', 'message-1', 'session-1', 'like'), fullFeedback);
-    assert.deepEqual(await client.addMessageComment('space-1', 'message-1', 'session-1', '  已保存  '), fullFeedback);
+    assert.deepEqual(await client.getMessageFeedback('agent-1', 'message-1', 'session-1'), fullFeedback);
+    assert.deepEqual(await client.setMessageReaction('agent-1', 'message-1', 'session-1', 'like'), fullFeedback);
+    assert.deepEqual(await client.addMessageComment('agent-1', 'message-1', 'session-1', '  已保存  '), fullFeedback);
     assert.deepEqual(await client.editMessageComment(
-      'space-1', 'message-1', COMMENT_ID, 'session-1', ' 新文本 ',
+      'agent-1', 'message-1', COMMENT_ID, 'session-1', ' 新文本 ',
     ), fullFeedback);
     assert.deepEqual(await client.deleteMessageComment(
-      'space-1', 'message-1', COMMENT_ID, 'session-1',
+      'agent-1', 'message-1', COMMENT_ID, 'session-1',
     ), fullFeedback);
-    assert.deepEqual(await client.getMessageFeedbackEvents('space-1', 'message-1', 'session-1'), events);
+    assert.deepEqual(await client.getMessageFeedbackEvents('agent-1', 'message-1', 'session-1'), events);
 
-    assert.equal(calls[0].url, 'https://api.example/api/spaces/space-1/messages/message-1/feedback?sessionId=session-1');
+    assert.equal(calls[0].url, 'https://api.example/api/agents/agent-1/messages/message-1/feedback?sessionId=session-1');
     assert.equal(calls[0].method, 'GET');
-    assert.equal(calls[1].url, 'https://api.example/api/spaces/space-1/messages/message-1/feedback/reaction');
+    assert.equal(calls[1].url, 'https://api.example/api/agents/agent-1/messages/message-1/feedback/reaction');
     assert.equal(calls[1].method, 'PUT');
     assert.deepEqual(calls[1].body, { sessionId: 'session-1', reaction: 'like' });
     assert.deepEqual(calls[2].body, { sessionId: 'session-1', text: '已保存' });
     assert.equal(calls[3].method, 'PATCH');
     assert.deepEqual(calls[3].body, { sessionId: 'session-1', text: '新文本' });
     assert.equal(calls[4].method, 'DELETE');
-    assert.equal(calls[4].url, `https://api.example/api/spaces/space-1/messages/message-1/feedback/comments/${COMMENT_ID}?sessionId=session-1`);
-    assert.equal(calls[5].url, 'https://api.example/api/spaces/space-1/messages/message-1/feedback/events?sessionId=session-1');
+    assert.equal(calls[4].url, `https://api.example/api/agents/agent-1/messages/message-1/feedback/comments/${COMMENT_ID}?sessionId=session-1`);
+    assert.equal(calls[5].url, 'https://api.example/api/agents/agent-1/messages/message-1/feedback/events?sessionId=session-1');
 
     const beforeInvalid = calls.length;
     await assert.rejects(
-      client.addMessageComment('space-1', 'message-1', 'session-1', '   '),
+      client.addMessageComment('agent-1', 'message-1', 'session-1', '   '),
       (error) => error instanceof ApiError && error.status === 400,
     );
     assert.equal(calls.length, beforeInvalid, '非法评论不得发送 HTTP');
@@ -172,7 +172,7 @@ test('HttpApiClient 使用真实反馈路径、完整响应解析与本地输入
   try {
     const client = new HttpApiClient('https://api.example', () => 'secret', () => {});
     await assert.rejects(
-      client.getMessageFeedback('space-1', 'message-1', 'session-1'),
+      client.getMessageFeedback('agent-1', 'message-1', 'session-1'),
       (error) => error instanceof ApiError && error.status === 502,
     );
   } finally {
@@ -201,16 +201,16 @@ test('useConversation 只从权威历史或 MESSAGES_SNAPSHOT 公布 sessionId �
       await run.promise;
     },
   });
-  const store = new SpaceStore(api);
-  const hook = await renderConversationHook('space-1', api, store);
+  const store = new AgentStore(api);
+  const hook = await renderConversationHook('agent-1', api, store);
   try {
     assert.equal(hook.result.current.sessionId, 'session-authority');
     assert.deepEqual([...hook.result.current.persistedMessageIds], ['u-existing']);
 
-    store.setDraft('space-1', '新问题');
-    const sending = hook.result.current.send('新问题', () => store.setDraft('space-1', ''));
+    store.setDraft('agent-1', '新问题');
+    const sending = hook.result.current.send('新问题', () => store.setDraft('agent-1', ''));
     await waitFor(() => onEvent !== undefined, 'run callback');
-    const optimisticId = store.get('space-1').pendingSubmission.messageId;
+    const optimisticId = store.get('agent-1').pendingSubmission.messageId;
     assert.equal(hook.result.current.persistedMessageIds.has(optimisticId), false);
 
     onEvent({
@@ -247,7 +247,7 @@ test('useMessageFeedback 挂载不 GET，写入未明锁定且只由完整刷新
     deleteMessageComment: async () => initial,
   };
   const hook = await renderMessageFeedbackHook(api, {
-    spaceId: 'space-1', sessionId: 'session-1', messageId: 'message-1', initialFeedback: initial,
+    agentId: 'agent-1', sessionId: 'session-1', messageId: 'message-1', initialFeedback: initial,
   });
   try {
     assert.equal(getCalls, 0, '每条消息挂载不得产生 N+1 GET');
@@ -256,7 +256,7 @@ test('useMessageFeedback 挂载不 GET，写入未明锁定且只由完整刷新
 
     // 写入中到达的旧初值不能覆盖本轮结果。
     await hook.update({
-      spaceId: 'space-1', sessionId: 'session-1', messageId: 'message-1',
+      agentId: 'agent-1', sessionId: 'session-1', messageId: 'message-1',
       initialFeedback: { reaction: 'dislike', comments: [] },
     });
     write.resolve(like);
@@ -282,7 +282,7 @@ test('useMessageFeedback 挂载不 GET，写入未明锁定且只由完整刷新
     assert.equal(hook.result.current.feedback.reaction, 'dislike');
 
     await hook.update({
-      spaceId: 'space-1', sessionId: 'session-1', messageId: 'message-1', initialFeedback: initial,
+      agentId: 'agent-1', sessionId: 'session-1', messageId: 'message-1', initialFeedback: initial,
     });
     assert.equal(hook.result.current.feedback.reaction, null, '空闲时同步新的权威初值');
   } finally {
@@ -295,7 +295,7 @@ test('反馈读取失败保留旧值，切换消息后迟到结果不污染新�
   const oldRead = deferred();
   let readMessageId = '';
   const api = {
-    getMessageFeedback: async (_spaceId, messageId) => {
+    getMessageFeedback: async (_agentId, messageId) => {
       readMessageId = messageId;
       return oldRead.promise;
     },
@@ -305,13 +305,13 @@ test('反馈读取失败保留旧值，切换消息后迟到结果不污染新�
     deleteMessageComment: async () => initial,
   };
   const hook = await renderMessageFeedbackHook(api, {
-    spaceId: 'space-1', sessionId: 'session-1', messageId: 'message-old', initialFeedback: initial,
+    agentId: 'agent-1', sessionId: 'session-1', messageId: 'message-old', initialFeedback: initial,
   });
   try {
     const reading = hook.result.current.refresh();
     await waitFor(() => readMessageId === 'message-old', 'old read started');
     await hook.update({
-      spaceId: 'space-1', sessionId: 'session-1', messageId: 'message-new',
+      agentId: 'agent-1', sessionId: 'session-1', messageId: 'message-new',
       initialFeedback: { reaction: null, comments: [] },
     });
     oldRead.resolve({ reaction: 'dislike', comments: [] });
@@ -326,7 +326,7 @@ test('反馈读取失败保留旧值，切换消息后迟到结果不污染新�
     getMessageFeedback: async () => { throw new ApiError(500, '读取失败'); },
   };
   const second = await renderMessageFeedbackHook(failing, {
-    spaceId: 'space-1', sessionId: 'session-1', messageId: 'message-1', initialFeedback: initial,
+    agentId: 'agent-1', sessionId: 'session-1', messageId: 'message-1', initialFeedback: initial,
   });
   try {
     await second.result.current.refresh();

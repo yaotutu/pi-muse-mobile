@@ -1,5 +1,4 @@
 import { ApiError } from '../api/errors';
-import { assertSpaceAlias } from '../api/space-contracts';
 import { activityStatuses, stepKinds, stepStatuses, type ActivityDetail, type ActivityOverview, type ActivityPage, type ActivityStep } from './types';
 
 const invalid = (): never => { throw new ApiError(502, '服务器活动响应格式不正确，请刷新后核对'); };
@@ -16,17 +15,16 @@ const nullableDate = (v: unknown): string | null => v === null ? null : date(v);
 
 export function parseActivityOverview(value: unknown): ActivityOverview {
   const v = object(value);
-  assertSpaceAlias(v);
   if (!activityStatuses.includes(v.status as ActivityOverview['status']) || !Array.isArray(v.runIds)) return invalid();
   const runIds = (v.runIds as unknown[]).map((id) => text(id, true));
   const currentRunId = v.currentRunId === null ? null : text(v.currentRunId, true);
   if (new Set(runIds).size !== runIds.length || currentRunId !== null && !runIds.includes(currentRunId)) return invalid();
   const result = nullableText(v.result);
   if (v.status !== 'completed' && result !== null) return invalid();
-  const spaceId = text(v.spaceId, true);
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(spaceId)) return invalid();
+  const agentId = text(v.agentId, true);
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(agentId)) return invalid();
   // 只挑选公开安全投影，额外字段绝不透传给 UI 或缓存。
-  return { id: text(v.id, true), spaceId, title: text(v.title), goal: text(v.goal), deliverable: text(v.deliverable),
+  return { id: text(v.id, true), agentId, title: text(v.title), goal: text(v.goal), deliverable: text(v.deliverable),
     status: v.status as ActivityOverview['status'], progress: text(v.progress), result, runIds, currentRunId,
     createdAt: date(v.createdAt), updatedAt: date(v.updatedAt), finishedAt: nullableDate(v.finishedAt) };
 }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { useApi } from '../api/ApiProvider';
-import { useSpaceState, useSpaceStore } from '../spaces/SpaceProvider';
+import { useAgentState, useAgentStore } from '../agents/AgentProvider';
 import { ApiError, isRequestCancelled, requestCancelled } from '../api/errors';
 import { useServiceConnection } from '../connection/ConnectionProvider';
 import { StreamAggregator, projectHistory, type MessageView } from './chat-state';
@@ -9,14 +9,14 @@ import type { ConversationMessage, ConversationSnapshot } from '../api/types';
 import type { ApiClient } from '../api/contracts';
 import { validateOutgoingDraftMessage } from '../attachments/validation';
 import type { AttachmentDraft } from '../attachments/types';
-import type { PendingSubmission } from '../spaces/space-store';
+import type { PendingSubmission } from '../agents/agent-store';
 
 let clientSequence = 0;
 const nextClientId = (prefix: string) => `${prefix}-${Date.now()}-${++clientSequence}`;
 const EMPTY_MESSAGE_IDS: ReadonlySet<string> = new Set();
 type ConversationAuthority = {
   api: ApiClient;
-  spaceId: string;
+  agentId: string;
   epoch: number;
   sessionId: string | null;
   persistedMessageIds: ReadonlySet<string>;
@@ -31,9 +31,9 @@ const PRE_RUN_REJECTS: Record<string, { status: number; conflictsWithPersisted?:
   MODEL_NOT_CONFIGURED: { status: 503 },
   SHUTDOWN: { status: 503 },
   INVALID_INPUT: { status: 400 },
-  UNSUPPORTED_SPACE: { status: 400 },
+  UNSUPPORTED_AGENT: { status: 400 },
   REQUEST_TOO_LARGE: { status: 413 },
-  agent_thread_locked: { status: 409 },
+  agent_locked: { status: 409 },
   HISTORY_CONFLICT: { status: 409 },
   RUN_ID_CONFLICT: { status: 409, conflictsWithPersisted: true },
   MESSAGE_ID_CONFLICT: { status: 409, conflictsWithPersisted: true },
@@ -52,20 +52,20 @@ const preRunRejectMessage = (error: ApiError) =>
     : error.message || '服务端拒绝执行，消息未发送';
 
 /**
- * 单次挂载仅服务一个空间的一个聊天代次；父级以 spaceId + epoch 隔离重置前的请求。
+ * 单次挂载仅服务一个智能体的一个聊天代次；父级以 agentId + epoch 隔离重置前的请求。
  *
  * A01 所有权契约：消息出现在权威历史（role=user 且原 messageId 匹配）之前，
- * 正文所有权在客户端（SpaceStore.pendingSubmission）；确认落盘后才移交服务端。
+ * 正文所有权在客户端（AgentStore.pendingSubmission）；确认落盘后才移交服务端。
  * 任何终态判断只依据确切证据（权威历史包含原 ID、或终态运行证据后的完整历史核对），
  * 网络错误、404、仍 running 一律保持 unconfirmed，绝不自动重发。
  */
-export function useConversation(spaceId: string, refreshKey: string | number = 0) {
+export function useConversation(agentId: string, refreshKey: string | number = 0) {
   const api = useApi();
-  const sessions = useSpaceStore();
-  const spaceState = useSpaceState(spaceId);
-  const epoch = spaceState.epoch;
-  const pendingSubmission = spaceState.pendingSubmission;
-  const writable = sessions.canWrite(spaceId);
+  const sessions = useAgentStore();
+  const agentState = useAgentState(agentId);
+  const epoch = agentState.epoch;
+  const pendingSubmission = agentState.pendingSubmission;
+  const writable = sessions.canWrite(agentId);
   const connection = useServiceConnection();
   const enabled = connection?.enabled ?? true;
   const refreshVersion = connection?.snapshot.refreshVersion ?? 0;
@@ -73,7 +73,7 @@ export function useConversation(spaceId: string, refreshKey: string | number = 0
   const [views, setViews] = useState<MessageView[]>([]);
   const [authorityState, setAuthorityState] = useState<ConversationAuthority>(() => ({
     api,
-    spaceId,
+    agentId,
     epoch,
     sessionId: null,
     persistedMessageIds: EMPTY_MESSAGE_IDS,
@@ -89,8 +89,8 @@ export function useConversation(spaceId: string, refreshKey: string | number = 0
   const aliveRef = useRef(false);
   const historyRequest = useRef<AbortController | null>(null);
   const submissionPromiseRef = useRef<Promise<void> | null>(null);
-  const current = () => aliveRef.current && sessions.isCurrent(spaceId, epoch);
-  const authority = authorityState.api === api && authorityState.spaceId === spaceId && authorityState.epoch === epoch
+  const current = () => aliveRef.current && sessions.isCurrent(agentId, epoch);
+  const authority = authorityState.api === api && authorityState.agentId === agentId && authorityState.epoch === epoch
     ? authorityState
     : null;
   const sessionId = authority?.sessionId ?? null;
@@ -100,13 +100,13 @@ export function useConversation(spaceId: string, refreshKey: string | number = 0
   const adoptHistory = useCallback((history: ConversationSnapshot) => {
     setAuthorityState({
       api,
-      spaceId,
+      agentId,
       epoch,
       sessionId: history.sessionId,
       persistedMessageIds: new Set(history.messages.map((message) => message.id)),
     });
     setViews(projectHistory(history.messages));
-  }, [api, epoch, spaceId]);
+  }, [api, epoch, agentId]);
 
   /** 权威历史核对：原 ID 已落盘则释放暂存；缺失且持有终态证据（含条目内存的流内 RUN_ERROR 记录）才可判定未发送。 */
   const reconcilePendingWithHistory = useCallback(
@@ -118,19 +118,19 @@ export function useConversation(spaceId: string, refreshKey: string | number = 0
     ): boolean => {
       const persisted = messages.some((m) => m.role === 'user' && m.id === messageId);
       if (persisted) {
-        sessions.clearPendingSubmission(spaceId, epoch, messageId);
+        sessions.clearPendingSubmission(agentId, epoch, messageId);
         return true;
       }
-      const terminalSeen = sessions.get(spaceId).pendingSubmission?.terminalError != null;
+      const terminalSeen = sessions.get(agentId).pendingSubmission?.terminalError != null;
       if (allowFail || terminalSeen) {
-        sessions.updatePendingSubmissionStatus(spaceId, epoch, messageId, {
+        sessions.updatePendingSubmissionStatus(agentId, epoch, messageId, {
           status: 'failed',
-          error: failError ?? sessions.get(spaceId).pendingSubmission?.terminalError ?? '消息未送达服务端',
+          error: failError ?? sessions.get(agentId).pendingSubmission?.terminalError ?? '消息未送达服务端',
         });
       }
       return false;
     },
-    [sessions, spaceId, epoch],
+    [sessions, agentId, epoch],
   );
 
   /**
@@ -144,16 +144,16 @@ export function useConversation(spaceId: string, refreshKey: string | number = 0
       runId: string,
     ): Promise<{ terminal: true; message?: string; latest: ConversationSnapshot } | null> => {
       try {
-        const response = await api.getAgentStatus(spaceId, runId);
+        const response = await api.getAgentStatus(agentId, runId);
         const status = response.status.status;
         if (status === 'running') return null;
-        const fresh = await api.getConversation(spaceId);
+        const fresh = await api.getConversation(agentId);
         return { terminal: true, message: status === 'failed' ? '消息未送达服务端' : undefined, latest: fresh };
       } catch {
         return null;
       }
     },
-    [api, spaceId],
+    [api, agentId],
   );
 
   useEffect(() => {
@@ -165,7 +165,7 @@ export function useConversation(spaceId: string, refreshKey: string | number = 0
     return () => subscription.remove();
   }, []);
 
-  // 本 Hook 实例卸载仍取消旧流；正文与附件暂存由同连接 SpaceStore 持有，重挂后继续可见。
+  // 本 Hook 实例卸载仍取消旧流；正文与附件暂存由同连接 AgentStore 持有，重挂后继续可见。
   // reset/delete/logout/dispose 才是必须释放这些数据的生命周期边界。
   useEffect(() => {
     aliveRef.current = true;
@@ -174,10 +174,10 @@ export function useConversation(spaceId: string, refreshKey: string | number = 0
       historyRequest.current?.abort();
       if (abortRef.current) {
         abortRef.current.abort();
-        if (runIdRef.current) void api.stopRun(spaceId, runIdRef.current).catch(() => {});
+        if (runIdRef.current) void api.stopRun(agentId, runIdRef.current).catch(() => {});
       }
     };
-  }, [api, spaceId]);
+  }, [api, agentId]);
 
   useEffect(() => {
     enabledRef.current = enabled;
@@ -195,10 +195,10 @@ export function useConversation(spaceId: string, refreshKey: string | number = 0
       if (!alive) return;
       setLoading(true);
       try {
-        const history = await api.getConversation(spaceId, controller.signal);
-        if (alive && sessions.isCurrent(spaceId, epoch)) {
+        const history = await api.getConversation(agentId, controller.signal);
+        if (alive && sessions.isCurrent(agentId, epoch)) {
           revisionRef.current = history.revision;
-          const pending = sessions.get(spaceId).pendingSubmission;
+          const pending = sessions.get(agentId).pendingSubmission;
           if (pending && pending.epoch === epoch) {
             const persisted = history.messages.some((m) => m.role === 'user' && m.id === pending.messageId);
             if (!persisted && pending.status === 'unconfirmed') {
@@ -206,9 +206,9 @@ export function useConversation(spaceId: string, refreshKey: string | number = 0
               const probe = pending.terminalError != null
                 ? { terminal: true as const, message: pending.terminalError, latest: history }
                 : await probeRunTerminal(pending.runId);
-              if (!alive || !sessions.isCurrent(spaceId, epoch)) return;
+              if (!alive || !sessions.isCurrent(agentId, epoch)) return;
               // 卸载/取消期间不得写 Hook 状态；代次与 messageId 校验后 probe 可能已被新提交替换。
-              if (sessions.get(spaceId).pendingSubmission?.messageId !== pending.messageId) return;
+              if (sessions.get(agentId).pendingSubmission?.messageId !== pending.messageId) return;
               if (probe) {
                 revisionRef.current = probe.latest.revision;
                 reconcilePendingWithHistory(probe.latest.messages, pending.messageId, true, probe.message);
@@ -232,30 +232,30 @@ export function useConversation(spaceId: string, refreshKey: string | number = 0
           setError(undefined);
         }
       } catch (e) {
-        if (alive && sessions.isCurrent(spaceId, epoch) && !isRequestCancelled(e)) {
+        if (alive && sessions.isCurrent(agentId, epoch) && !isRequestCancelled(e)) {
           setHistoryFailed(true);
           setError(e instanceof Error ? e.message : String(e));
         }
       } finally {
-        if (alive && sessions.isCurrent(spaceId, epoch)) setLoading(false);
+        if (alive && sessions.isCurrent(agentId, epoch)) setLoading(false);
       }
     })();
     return () => { alive = false; controller.abort(); if (historyRequest.current === controller) historyRequest.current = null; };
-  }, [api, spaceId, historyVersion, enabled, refreshVersion, refreshKey, epoch, sessions, writable, probeRunTerminal, reconcilePendingWithHistory, adoptHistory]);
+  }, [api, agentId, historyVersion, enabled, refreshVersion, refreshKey, epoch, sessions, writable, probeRunTerminal, reconcilePendingWithHistory, adoptHistory]);
 
   useEffect(() => {
     if (!writable) {
       historyRequest.current?.abort();
       revisionRef.current = null;
     }
-  }, [sessions, spaceId, epoch, writable]);
+  }, [sessions, agentId, epoch, writable]);
 
   const syncAfterRun = async () => {
     if (!current()) throw requestCancelled();
     const controller = new AbortController();
     historyRequest.current?.abort();
     historyRequest.current = controller;
-    try { return await api.getConversation(spaceId, controller.signal); }
+    try { return await api.getConversation(agentId, controller.signal); }
     finally { if (historyRequest.current === controller) historyRequest.current = null; }
   };
 
@@ -289,7 +289,7 @@ export function useConversation(spaceId: string, refreshKey: string | number = 0
     try {
       await api.runAgent(
         {
-          spaceId,
+          agentId,
           runId: submission.runId,
           expectedRevision: revisionRef.current!,
           message: {
@@ -305,9 +305,9 @@ export function useConversation(spaceId: string, refreshKey: string | number = 0
             const snapshotIds = new Set(event.messages.map((message) => message.id));
             setAuthorityState((previous) => ({
               api,
-              spaceId,
+              agentId,
               epoch,
-              sessionId: previous.api === api && previous.spaceId === spaceId && previous.epoch === epoch
+              sessionId: previous.api === api && previous.agentId === agentId && previous.epoch === epoch
                 ? previous.sessionId
                 : null,
               persistedMessageIds: snapshotIds,
@@ -318,7 +318,7 @@ export function useConversation(spaceId: string, refreshKey: string | number = 0
             runErrorMessage = event.message ?? '助手运行失败，请重试';
             // 终态证据持久在暂存条目内存：卸载/切回后首次完整历史对账仍可判定未发送。
             if (event.code !== 'STOPPED') {
-              sessions.updatePendingSubmissionStatus(spaceId, epoch, submission.messageId, {
+              sessions.updatePendingSubmissionStatus(agentId, epoch, submission.messageId, {
                 status: 'sending',
                 terminalError: runErrorMessage,
               });
@@ -333,8 +333,8 @@ export function useConversation(spaceId: string, refreshKey: string | number = 0
       if (!current()) {
         // 组件已卸载但代次仍有效：只能保守标记待确认，交给重新挂载后的历史同步对账。
         // terminalError 已在 RUN_ERROR 事件回调写入条目，此处状态降级不丢终态证据。
-        if (sessions.isCurrent(spaceId, epoch)) {
-          sessions.updatePendingSubmissionStatus(spaceId, epoch, submission.messageId, { status: 'unconfirmed' });
+        if (sessions.isCurrent(agentId, epoch)) {
+          sessions.updatePendingSubmissionStatus(agentId, epoch, submission.messageId, { status: 'unconfirmed' });
         }
         return;
       }
@@ -345,7 +345,7 @@ export function useConversation(spaceId: string, refreshKey: string | number = 0
           if (current()) {
             setViews([...aggregator.messages]);
             setHistoryFailed(true);
-            sessions.updatePendingSubmissionStatus(spaceId, epoch, submission.messageId, { status: 'unconfirmed' });
+            sessions.updatePendingSubmissionStatus(agentId, epoch, submission.messageId, { status: 'unconfirmed' });
           }
           return;
         }
@@ -366,7 +366,7 @@ export function useConversation(spaceId: string, refreshKey: string | number = 0
             setHistoryFailed(false);
             setError(runErrorMessage);
           } else {
-            sessions.updatePendingSubmissionStatus(spaceId, epoch, submission.messageId, {
+            sessions.updatePendingSubmissionStatus(agentId, epoch, submission.messageId, {
               status: 'unconfirmed',
               error: '消息保存状态未明，请重新同步核对',
             });
@@ -381,7 +381,7 @@ export function useConversation(spaceId: string, refreshKey: string | number = 0
           setViews([...aggregator.messages]);
           // 内容可以保留展示，但没有新版本不能安全发送下一轮。
           setHistoryFailed(true);
-          sessions.updatePendingSubmissionStatus(spaceId, epoch, submission.messageId, {
+          sessions.updatePendingSubmissionStatus(agentId, epoch, submission.messageId, {
             status: 'unconfirmed',
             error: '回复已结束，但会话同步失败，请重新加载后继续',
           });
@@ -395,7 +395,7 @@ export function useConversation(spaceId: string, refreshKey: string | number = 0
       if (current() && (controller.signal.aborted || isRequestCancelled(e))) {
         if (!enabledRef.current) {
           setHistoryFailed(true);
-          sessions.updatePendingSubmissionStatus(spaceId, epoch, submission.messageId, { status: 'unconfirmed' });
+          sessions.updatePendingSubmissionStatus(agentId, epoch, submission.messageId, { status: 'unconfirmed' });
           return;
         }
         // 停止也可能已落盘部分回复；恢复服务端历史与版本后才允许发送下一轮。
@@ -407,7 +407,7 @@ export function useConversation(spaceId: string, refreshKey: string | number = 0
             if (released) {
               adoptHistory(history);
             } else {
-              sessions.updatePendingSubmissionStatus(spaceId, epoch, submission.messageId, {
+              sessions.updatePendingSubmissionStatus(agentId, epoch, submission.messageId, {
                 status: 'unconfirmed',
                 error: '已停止但保存状态未确认',
               });
@@ -418,14 +418,14 @@ export function useConversation(spaceId: string, refreshKey: string | number = 0
         } catch (syncError) {
           if (current()) {
             setHistoryFailed(true);
-            sessions.updatePendingSubmissionStatus(spaceId, epoch, submission.messageId, { status: 'unconfirmed' });
+            sessions.updatePendingSubmissionStatus(agentId, epoch, submission.messageId, { status: 'unconfirmed' });
             if (!isRequestCancelled(syncError)) setError('停止后无法同步会话，请重新加载');
           }
         }
       } else if (preRunRejectOf(e)) {
         // 契约明确的前置拒绝（SSE 开启前返回）：先与权威历史对账/刷新 revision，绝不清空旧历史。
         const message = e instanceof ApiError ? preRunRejectMessage(e) : '服务端拒绝执行，消息未发送';
-        sessions.updatePendingSubmissionStatus(spaceId, epoch, submission.messageId, { status: 'sending', terminalError: message });
+        sessions.updatePendingSubmissionStatus(agentId, epoch, submission.messageId, { status: 'sending', terminalError: message });
         try {
           if (!current()) throw requestCancelled();
           const history = await syncAfterRun();
@@ -442,7 +442,7 @@ export function useConversation(spaceId: string, refreshKey: string | number = 0
           // 前置拒绝后历史回读失败：保守待确认并锁定发送，后续 reload 可解锁。
           if (current()) {
             setHistoryFailed(true);
-            sessions.updatePendingSubmissionStatus(spaceId, epoch, submission.messageId, {
+            sessions.updatePendingSubmissionStatus(agentId, epoch, submission.messageId, {
               status: 'unconfirmed',
               error: message,
             });
@@ -456,21 +456,21 @@ export function useConversation(spaceId: string, refreshKey: string | number = 0
           setError(errText);
           setHistoryFailed(true);
         }
-        if (sessions.isCurrent(spaceId, epoch)) {
-          sessions.updatePendingSubmissionStatus(spaceId, epoch, submission.messageId, {
+        if (sessions.isCurrent(agentId, epoch)) {
+          sessions.updatePendingSubmissionStatus(agentId, epoch, submission.messageId, {
             status: 'unconfirmed',
             error: errText,
           });
         }
       }
     } finally {
-      const stale = !sessions.isCurrent(spaceId, epoch);
+      const stale = !sessions.isCurrent(agentId, epoch);
       if (stale && aliveRef.current) setHistoryFailed(true);
       abortRef.current = null;
       runIdRef.current = null;
       if (aliveRef.current) {
         setRunning(false);
-        if (stale && sessions.canWrite(spaceId)) setHistoryVersion((value) => value + 1);
+        if (stale && sessions.canWrite(agentId)) setHistoryVersion((value) => value + 1);
       }
     }
     })();
@@ -490,10 +490,10 @@ export function useConversation(spaceId: string, refreshKey: string | number = 0
     attachments?: readonly AttachmentDraft[],
   ) => {
     const text = raw.trim();
-    if (!enabled || sessions.isDisposed() || !sessions.isCurrent(spaceId, epoch) || loading || historyFailed || abortRef.current || !revisionRef.current) return;
-    if (sessions.get(spaceId).pendingSubmission) return; // 上一条未确认提交未处理前，禁止重复发送或覆盖
+    if (!enabled || sessions.isDisposed() || !sessions.isCurrent(agentId, epoch) || loading || historyFailed || abortRef.current || !revisionRef.current) return;
+    if (sessions.get(agentId).pendingSubmission) return; // 上一条未确认提交未处理前，禁止重复发送或覆盖
 
-    const selectedAttachments = attachments ?? sessions.get(spaceId).draftAttachments;
+    const selectedAttachments = attachments ?? sessions.get(agentId).draftAttachments;
     const validated = validateOutgoingDraftMessage(text, selectedAttachments);
     if (!validated.ok) {
       setError(validated.error);
@@ -505,7 +505,7 @@ export function useConversation(spaceId: string, refreshKey: string | number = 0
     const runId = nextClientId('run');
 
     // 发送前先暂存完整正文与附件，再清输入框（A01 核心契约：权威历史保存前客户端持有所有权）。
-    sessions.setPendingSubmission(spaceId, epoch, {
+    sessions.setPendingSubmission(agentId, epoch, {
       messageId,
       runId,
       text: validated.text,
@@ -515,15 +515,15 @@ export function useConversation(spaceId: string, refreshKey: string | number = 0
     });
     onAccepted?.();
     setError(undefined);
-    await executeSubmission(sessions.get(spaceId).pendingSubmission!);
+    await executeSubmission(sessions.get(agentId).pendingSubmission!);
   };
 
   /** 只允许用户显式重试 failed 轮；复用原 ID 与原始附件，避免把失败轮改写成新消息。 */
   const retry = async (): Promise<boolean> => {
-    if (!enabled || sessions.isDisposed() || !sessions.isCurrent(spaceId, epoch) || loading || historyFailed || abortRef.current || !revisionRef.current) return false;
-    const pending = sessions.get(spaceId).pendingSubmission;
+    if (!enabled || sessions.isDisposed() || !sessions.isCurrent(agentId, epoch) || loading || historyFailed || abortRef.current || !revisionRef.current) return false;
+    const pending = sessions.get(agentId).pendingSubmission;
     if (!pending || pending.epoch !== epoch || pending.status !== 'failed') return false;
-    if (!sessions.retryPendingSubmission(spaceId, epoch, pending.messageId)) return false;
+    if (!sessions.retryPendingSubmission(agentId, epoch, pending.messageId)) return false;
     setError(undefined);
     await executeSubmission({ ...pending, status: 'sending', error: undefined, terminalError: undefined });
     return true;
@@ -536,7 +536,7 @@ export function useConversation(spaceId: string, refreshKey: string | number = 0
     if (!controller || !runId) return false;
     try {
       // 捕获本轮 controller：迟到的停止响应不能中断下一轮；false 也不能伪装停止成功。
-      const stopped = await api.stopRun(spaceId, runId);
+      const stopped = await api.stopRun(agentId, runId);
       if (stopped && abortRef.current === controller) {
         controller.abort();
       }
@@ -561,7 +561,7 @@ export function useConversation(spaceId: string, refreshKey: string | number = 0
     attachments?: readonly AttachmentDraft[],
   ): Promise<boolean> => {
     const text = raw.trim();
-    const selectedAttachments = attachments ?? sessions.get(spaceId).draftAttachments;
+    const selectedAttachments = attachments ?? sessions.get(agentId).draftAttachments;
     const validated = validateOutgoingDraftMessage(text, selectedAttachments);
     if (!validated.ok) {
       setError(validated.error);
@@ -575,12 +575,12 @@ export function useConversation(spaceId: string, refreshKey: string | number = 0
     if (
       !enabled ||
       sessions.isDisposed() ||
-      !sessions.isCurrent(spaceId, epoch) ||
+      !sessions.isCurrent(agentId, epoch) ||
       loading ||
       historyFailed ||
       abortRef.current ||
       !revisionRef.current ||
-      sessions.get(spaceId).pendingSubmission
+      sessions.get(agentId).pendingSubmission
     ) {
       return false;
     }
@@ -590,7 +590,7 @@ export function useConversation(spaceId: string, refreshKey: string | number = 0
   };
 
   const reload = () => {
-    if (abortRef.current || !sessions.canWrite(spaceId)) return;
+    if (abortRef.current || !sessions.canWrite(agentId)) return;
     setLoading(true);
     setHistoryVersion((value) => value + 1);
   };

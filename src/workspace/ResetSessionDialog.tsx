@@ -1,9 +1,9 @@
-/** 会话重置只在设置页发起；独立原生窗口隔离背景触控与读屏，并固定本次操作的目标空间。 */
+/** 会话重置只在设置页发起；独立原生窗口隔离背景触控与读屏，并固定本次操作的目标智能体。 */
 import { useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Square, SquareCheck } from 'lucide-react-native';
-import { useSpaceState, useSpaceStore } from '../spaces/SpaceProvider';
-import { MAIN_SPACE } from '../spaces/space-state';
+import { useAgentState, useAgentStore } from '../agents/AgentProvider';
+import { MAIN_AGENT } from '../agents/agent-state';
 import { ThemeStatusBar } from '../theme/ThemeStatusBar';
 import { useTheme } from '../theme/ThemeProvider';
 import { spacing, workspaceTheme, type WorkspaceColors } from '../ui/tokens';
@@ -11,28 +11,28 @@ import { ActionButton } from '../ui/ActionButton';
 import { Card } from '../ui/Surfaces';
 import { useReducedMotion } from './primitives';
 
-export function ResetSessionDialog({ spaceId, available, error, onCancel, onConfirm }: {
-  spaceId: string;
+export function ResetSessionDialog({ agentId, available, error, onCancel, onConfirm }: {
+  agentId: string;
   available: boolean;
   error?: string;
   onCancel: () => void;
-  onConfirm: (spaceId: string, clearSchedules: boolean) => Promise<void>;
+  onConfirm: (agentId: string, clearSchedules: boolean) => Promise<void>;
 }) {
   const [clearSchedules, setClearSchedules] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const session = useSpaceState(spaceId);
-  const sessions = useSpaceStore();
+  const session = useAgentState(agentId);
+  const sessions = useAgentStore();
   const reducedMotion = useReducedMotion();
   const { colors } = useTheme();
   const styles = createStyles(colors);
   const busy = submitting || session.resetting;
-  const disabled = busy || !available || session.resetUncertain || !sessions.canWrite(spaceId) || sessions.hasSettingsWrite(spaceId);
+  const disabled = busy || !available || session.resetUncertain || !sessions.canWrite(agentId) || sessions.hasSettingsWrite(agentId);
   const CheckIcon = clearSchedules ? SquareCheck : Square;
   const cancel = () => { if (!busy) onCancel(); };
   const confirm = async () => {
     if (disabled) return;
     setSubmitting(true);
-    try { await onConfirm(spaceId, clearSchedules); } finally { setSubmitting(false); }
+    try { await onConfirm(agentId, clearSchedules); } finally { setSubmitting(false); }
   };
 
   return <Modal visible transparent animationType={reducedMotion ? 'none' : 'fade'} onRequestClose={cancel} testID="workspace-reset-dialog">
@@ -42,16 +42,16 @@ export function ResetSessionDialog({ spaceId, available, error, onCancel, onConf
       <Card style={styles.dialog} tone="warning" accessibilityViewIsModal>
         <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <Text accessibilityRole="header" style={styles.title}>重置当前会话？</Text>
-          <Text selectable style={styles.target}>目标空间：{spaceId === MAIN_SPACE ? '主空间' : spaceId}</Text>
-          <Text style={styles.detail}>重置将停止当前运行，清空本成员的私聊历史、群聊讨论与显示记录、消息反馈（喜欢/不喜欢/评论及操作记录）及未完成的审批，开启全新对话。其他成员的历史不受影响；空间规则、技能开关与已保存的工作区文件都会保留。</Text>
+          <Text selectable style={styles.target}>目标智能体：{agentId === MAIN_AGENT ? '主智能体' : agentId}</Text>
+          <Text style={styles.detail}>重置将停止当前运行，清空本成员的私聊历史、群聊讨论与显示记录、消息反馈（喜欢/不喜欢/评论及操作记录）及未完成的审批，开启全新对话。其他成员的历史不受影响；智能体规则、技能开关与已保存的工作区文件都会保留。</Text>
           <Pressable accessibilityRole="checkbox" accessibilityLabel="同时清理定时任务与网页监控"
             accessibilityState={{ checked: clearSchedules, disabled: busy }} disabled={busy}
             onPress={() => setClearSchedules((value) => !value)} style={styles.option}>
             <CheckIcon size={workspaceTheme.layout.iconSize} color={clearSchedules ? colors.blue : colors.faint} />
-            <Text style={styles.optionText}>{clearSchedules ? '已选择：' : '未选择：'}同时清理此空间下的定时任务与网页监控</Text>
+            <Text style={styles.optionText}>{clearSchedules ? '已选择：' : '未选择：'}同时清理此智能体下的定时任务与网页监控</Text>
           </Pressable>
           <Text style={styles.caption}>默认保留定时任务与监控，并由服务端绑定到新会话。清空的聊天历史与消息反馈无法恢复。</Text>
-          {session.resetUncertain && <Text accessibilityRole="alert" style={styles.error}>重置结果未确认，请关闭对话框并刷新空间列表核对；不会自动重试。</Text>}
+          {session.resetUncertain && <Text accessibilityRole="alert" style={styles.error}>重置结果未确认，请关闭对话框并刷新智能体列表核对；不会自动重试。</Text>}
           {!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
           <View style={styles.actions}>
             <ActionButton label="确认重置会话" text={busy ? '正在重置…' : '确认重置'} tone="primary" busy={busy} disabled={disabled} onPress={() => void confirm()} />

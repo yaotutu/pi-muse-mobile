@@ -1,5 +1,4 @@
 import { ApiError } from '../api/errors';
-import { assertSpaceAlias } from '../api/space-contracts';
 import type { ApprovalExecution, ApprovalPage, ApprovalResolution, ApprovalState, ApprovalSummary, ApprovalView } from './types';
 
 const statuses = ['pending', 'approved', 'denied', 'expired', 'cancelled'];
@@ -35,14 +34,12 @@ function execution(value: unknown): ApprovalExecution | null {
 
 function state(value: unknown): ApprovalState {
   const entry = object(value);
-  assertSpaceAlias(entry);
-  assertSpaceAlias(entry, 'workspaceSpaceId', 'workspaceThreadId');
   if (!Number.isSafeInteger(entry.revision) || (entry.revision as number) < 1 || !statuses.includes(entry.status as string)) invalid();
   const result: ApprovalState = {
     id: text(entry.id, true), revision: entry.revision as number,
-    spaceId: nullableText(entry.spaceId), runId: nullableText(entry.runId),
+    agentId: nullableText(entry.agentId), runId: nullableText(entry.runId),
     toolCallId: nullableText(entry.toolCallId), subagentId: nullableText(entry.subagentId),
-    workspaceSpaceId: nullableText(entry.workspaceSpaceId), activityId: nullableText(entry.activityId),
+    workspaceAgentId: nullableText(entry.workspaceAgentId), activityId: nullableText(entry.activityId),
     status: entry.status as ApprovalState['status'], execution: execution(entry.execution),
     createdAt: date(entry.createdAt), expiresAt: date(entry.expiresAt),
     resolvedAt: nullableDate(entry.resolvedAt), decidedAt: nullableDate(entry.decidedAt),
@@ -61,15 +58,14 @@ export function parseApprovalSummary(value: unknown): ApprovalSummary {
 export function parseApprovalView(value: unknown): ApprovalView {
   const entry = object(value);
   const preview = object(entry.preview);
-  assertSpaceAlias(preview, 'ownerSpaceId', 'ownerThreadId');
-  const ownerSpaceId = nullableText(preview.ownerSpaceId);
-  if (preview.scope !== 'space' && preview.scope !== 'shared' && preview.scope !== 'skill') invalid();
-  if (preview.scope === 'space' ? ownerSpaceId === null : ownerSpaceId !== null) invalid();
+  const ownerAgentId = nullableText(preview.ownerAgentId);
+  if (preview.scope !== 'agent' && preview.scope !== 'shared' && preview.scope !== 'skill') invalid();
+  if (preview.scope === 'agent' ? ownerAgentId === null : ownerAgentId !== null) invalid();
   if (typeof preview.beforeExists !== 'boolean') invalid();
   return {
     ...parseApprovalSummary(entry),
     preview: {
-      scope: preview.scope as 'space' | 'shared' | 'skill', ownerSpaceId,
+      scope: preview.scope as 'agent' | 'shared' | 'skill', ownerAgentId,
       path: text(preview.path, true), before: text(preview.before), after: text(preview.after),
       beforeExists: preview.beforeExists as boolean,
     },

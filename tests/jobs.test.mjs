@@ -7,7 +7,7 @@ import { parseJob, parseJobs, parseJobDetail, parseJobRemoval, parseServerTimeZo
 import { HttpApiClient } from '../src/api/http-client.ts';
 import { ApiError } from '../src/api/errors.ts';
 
-const fixture = (patch = {}) => ({ id: 'job-1', kind: 'job', title: 'Reminder', prompt: 'Only reply hello', daily: true, at: '09:00', enabled: true, status: 'scheduled', createdAt: '2026-10-20T00:00:00Z', updatedAt: '2026-10-20T00:00:00Z', nextRunAt: '2026-10-22T01:00:00.000Z', error: null, originSpaceId: 'space-1', ...patch });
+const fixture = (patch = {}) => ({ id: 'job-1', kind: 'job', title: 'Reminder', prompt: 'Only reply hello', daily: true, at: '09:00', enabled: true, status: 'scheduled', createdAt: '2026-10-20T00:00:00Z', updatedAt: '2026-10-20T00:00:00Z', nextRunAt: '2026-10-22T01:00:00.000Z', error: null, originAgentId: 'agent-1', ...patch });
 const event = { id: 'ev-1', taskId: 'job-1', date: '2026-10-20T00:00:00Z', kind: 'status', title: 'Created', detail: '' };
 const settle = async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
@@ -28,7 +28,7 @@ async function opened(options) { const context = setup(options); context.store.s
 
 test('Jobs strict contract rejects wrong kinds, missing fields, null optionals and foreign event/identity', () => {
   assert.deepEqual(parseJob(fixture()), fixture());
-  for (const patch of [{ id: '' }, { kind: 'task' }, { daily: 'true' }, { enabled: 1 }, { status: 'completed' }, { error: undefined }, { nextRunAt: null }, { originSpaceId: 12 }]) assert.throws(() => parseJob(fixture(patch)), (error) => error.status === 502);
+  for (const patch of [{ id: '' }, { kind: 'task' }, { daily: 'true' }, { enabled: 1 }, { status: 'completed' }, { error: undefined }, { nextRunAt: null }, { originAgentId: 12 }]) assert.throws(() => parseJob(fixture(patch)), (error) => error.status === 502);
   for (const field of ['id', 'title', 'prompt', 'at', 'createdAt', 'updatedAt']) { const job = fixture(); delete job[field]; assert.throws(() => parseJob(job)); }
   assert.throws(() => parseJob(fixture(), 'another'));
   assert.throws(() => parseJobs({ jobs: [fixture(), fixture()] }));
@@ -70,8 +70,8 @@ test('Health is truly anonymous; encoded ID and Jobs query use only documented f
   try {
     const client = new HttpApiClient('https://api.example', () => 'secret', () => {});
     assert.equal(await client.getServerTimeZone(), 'Asia/Shanghai'); assert.equal(requests[0][1].headers.authorization, undefined);
-    await client.listJobs({ spaceId: 'sp/one', threadId: 'forbidden', sort: 'createdAt', order: 'desc' });
-    assert.equal(requests[1][0], 'https://api.example/api/jobs?spaceId=sp%2Fone&sort=createdAt&order=desc');
+    await client.listJobs({ agentId: 'sp/one', sort: 'createdAt', order: 'desc' });
+    assert.equal(requests[1][0], 'https://api.example/api/jobs?agentId=sp%2Fone&sort=createdAt&order=desc');
   } finally { globalThis.fetch = original; }
 });
 
@@ -146,8 +146,8 @@ test('Writes are serialized; closing page does not falsely cancel authorized rem
 test('A stale scoped request cannot replace a newer filter; background expires a pending confirmation', async () => {
   const pending = deferred(); let count = 0;
   const { store } = setup({ listJobs: async () => ++count === 1 ? pending.promise : [] });
-  store.setActive(true); store.open(); store.setQuery({ spaceId: 'new-space', sort: 'updatedAt', order: 'desc' }); await settle();
-  pending.resolve([fixture()]); await settle(); assert.deepEqual(store.getSnapshot().jobs, []); assert.equal(store.getSnapshot().query.spaceId, 'new-space'); store.dispose();
+  store.setActive(true); store.open(); store.setQuery({ agentId: 'new-agent', sort: 'updatedAt', order: 'desc' }); await settle();
+  pending.resolve([fixture()]); await settle(); assert.deepEqual(store.getSnapshot().jobs, []); assert.equal(store.getSnapshot().query.agentId, 'new-agent'); store.dispose();
   const other = await opened(); other.store.requestAction('delete'); other.store.setActive(false); other.store.setActive(true); await settle(); assert.equal(await other.store.confirmAction(), false); other.store.dispose();
 });
 

@@ -1,7 +1,7 @@
 /**
  * 聊天会话主视图：消息列表、工具调用卡片、输入框与运行终态历史同步。
  *
- * 边界：单实例绑定单个空间的聊天代次（父级以 spaceId + epoch 隔离生命周期）；
+ * 边界：单实例绑定单个智能体的聊天代次（父级以 agentId + epoch 隔离生命周期）；
  * assistant Markdown 与工具专用展示由独立组件负责，不猜测审批决定。
  */
 import { ArrowDown, ArrowUp, ShieldAlert, Square } from 'lucide-react-native';
@@ -14,8 +14,8 @@ import type { MessageView } from '../chat/chat-state';
 import { useApprovals } from '../approvals/ApprovalProvider';
 import { useConversation } from '../chat/useConversation';
 import { useServiceConnection } from '../connection/ConnectionProvider';
-import { useSpaceRuntime } from '../runtime/RuntimeProvider';
-import { useSpaceState, useSpaceStore } from '../spaces/SpaceProvider';
+import { useAgentRuntime } from '../runtime/RuntimeProvider';
+import { useAgentState, useAgentStore } from '../agents/AgentProvider';
 import { sizing, spacing, workspaceTheme, type WorkspaceColors } from '../ui/tokens';
 import { useTheme } from '../theme/ThemeProvider';
 import { TypingIndicator } from './primitives';
@@ -34,7 +34,7 @@ function useStyles() {
 }
 
 export type ConversationViewProps = {
-  spaceId: string;
+  agentId: string;
   visible: boolean;
   compactHeader: boolean;
   refreshKey: string | number;
@@ -44,7 +44,7 @@ export type ConversationViewProps = {
 };
 
 export function ConversationView({
-  spaceId,
+  agentId,
   visible,
   compactHeader,
   refreshKey,
@@ -53,14 +53,14 @@ export function ConversationView({
   onOpenApprovals,
 }: ConversationViewProps) {
   const approvals = useApprovals();
-  const spacePendingApprovals = approvals.snapshot.pendingIds
+  const agentPendingApprovals = approvals.snapshot.pendingIds
     .map((id) => approvals.snapshot.records[id])
-    .filter((record) => record && record.spaceId === spaceId);
+    .filter((record) => record && record.agentId === agentId);
   const api = useApi();
-  const conversation = useConversation(spaceId, refreshKey);
-  const sessions = useSpaceStore();
-  const session = useSpaceState(spaceId);
-  const runtime = useSpaceRuntime(spaceId);
+  const conversation = useConversation(agentId, refreshKey);
+  const sessions = useAgentStore();
+  const session = useAgentState(agentId);
+  const runtime = useAgentRuntime(agentId);
   const connection = useServiceConnection();
   const styles = useStyles();
   const { colors } = useTheme();
@@ -79,7 +79,7 @@ export function ConversationView({
   const pickerInFlight = useRef(false);
   const pickerRequest = useRef(0);
   const mounted = useRef(true);
-  const currentOwner = useRef({ sessions, spaceId, epoch: session.epoch });
+  const currentOwner = useRef({ sessions, agentId, epoch: session.epoch });
   const anchorFrame = useRef<ScrollAnchorFrame | null>(null);
 
   useLayoutEffect(() => {
@@ -93,8 +93,8 @@ export function ConversationView({
   }, []);
 
   useLayoutEffect(() => {
-    currentOwner.current = { sessions, spaceId, epoch: session.epoch };
-  }, [sessions, spaceId, session.epoch]);
+    currentOwner.current = { sessions, agentId, epoch: session.epoch };
+  }, [sessions, agentId, session.epoch]);
 
   useEffect(() => {
     mounted.current = true;
@@ -104,7 +104,7 @@ export function ConversationView({
   useLayoutEffect(() => {
     visibleRef.current = visible;
     if (!visible) anchorFrame.current?.cancel();
-    // 隐藏空间继续接收流；重新显示后在下一布局帧锚到最新。
+    // 隐藏智能体继续接收流；重新显示后在下一布局帧锚到最新。
     else if (scrollFollow.current.shouldAnchor()) anchorFrame.current?.schedule();
   }, [visible]);
 
@@ -156,10 +156,10 @@ export function ConversationView({
       await conversation.stop();
       return;
     }
-    const run = runtime.runs.find((item) => item.status === 'running' && item.spaceId === spaceId);
+    const run = runtime.runs.find((item) => item.status === 'running' && item.agentId === agentId);
     if (!run || !runtime.synchronized) return;
     try {
-      const stopped = await api.stopRun(spaceId, run.runId);
+      const stopped = await api.stopRun(agentId, run.runId);
       if (!stopped) {
         setStopError('该运行已结束或已变化，正在重新同步');
         runtime.retry();
@@ -180,8 +180,8 @@ export function ConversationView({
       session.draft,
       // send 只在消息已进入 pending 后同步调用此回调；失败或结果未明时原件仍由 pending 持有。
       () => {
-        sessions.setDraft(spaceId, '');
-        sessions.clearDraftAttachments(spaceId, session.epoch);
+        sessions.setDraft(agentId, '');
+        sessions.clearDraftAttachments(agentId, session.epoch);
         setAttachmentError('');
       },
       session.draftAttachments,
@@ -199,8 +199,8 @@ export function ConversationView({
       .interruptAndSend(
         session.draft,
         () => {
-          sessions.setDraft(spaceId, '');
-          sessions.clearDraftAttachments(spaceId, session.epoch);
+          sessions.setDraft(agentId, '');
+          sessions.clearDraftAttachments(agentId, session.epoch);
           setAttachmentError('');
         },
         session.draftAttachments,
@@ -214,14 +214,14 @@ export function ConversationView({
   };
 
   const selectAttachments = async () => {
-    if (pickerInFlight.current || busy || pending || !sessions.canWrite(spaceId)) return;
+    if (pickerInFlight.current || busy || pending || !sessions.canWrite(agentId)) return;
     pickerInFlight.current = true;
     const request = ++pickerRequest.current;
-    const owner = { sessions, spaceId, epoch: session.epoch, lifecycle: sessions.getLifecycleVersion() };
+    const owner = { sessions, agentId, epoch: session.epoch, lifecycle: sessions.getLifecycleVersion() };
     const ownsResult = () => mounted.current && pickerRequest.current === request &&
-      currentOwner.current.sessions === owner.sessions && currentOwner.current.spaceId === owner.spaceId &&
+      currentOwner.current.sessions === owner.sessions && currentOwner.current.agentId === owner.agentId &&
       currentOwner.current.epoch === owner.epoch && owner.sessions.getLifecycleVersion() === owner.lifecycle &&
-      owner.sessions.get(owner.spaceId).epoch === owner.epoch && owner.sessions.canWrite(owner.spaceId);
+      owner.sessions.get(owner.agentId).epoch === owner.epoch && owner.sessions.canWrite(owner.agentId);
     setSelecting(true);
     setAttachmentError('');
     try {
@@ -230,7 +230,7 @@ export function ConversationView({
       if (!ownsResult()) return;
       if (result.status === 'error') setAttachmentError(result.message);
       else if (result.status === 'selected') {
-        const appended = owner.sessions.appendDraftAttachments(owner.spaceId, owner.epoch, result.attachments);
+        const appended = owner.sessions.appendDraftAttachments(owner.agentId, owner.epoch, result.attachments);
         if (!appended.ok) setAttachmentError(appended.error);
       }
     } catch (error) {
@@ -290,7 +290,7 @@ export function ConversationView({
               pendingStatus={pending && pending.messageId === message.id ? pending.status : undefined}
               feedbackScope={message.feedbackAvailable === true && conversation.sessionId &&
                 conversation.persistedMessageIds.has(message.id) && message.feedback
-                ? { spaceId, sessionId: conversation.sessionId, initialFeedback: message.feedback }
+                ? { agentId, sessionId: conversation.sessionId, initialFeedback: message.feedback }
                 : undefined}
             />
           ))}
@@ -305,14 +305,14 @@ export function ConversationView({
                   {discardTarget === pending.messageId ? <>
                     <Text style={styles.error}>确认放弃未发送消息，保留当前草稿？此操作无法撤销。</Text>
                     <ActionButton label="放弃未发送消息，保留当前草稿" tone="danger" onPress={() => {
-                      if (sessions.discardFailedSubmission(spaceId, session.epoch, pending.messageId)) conversation.reload();
+                      if (sessions.discardFailedSubmission(agentId, session.epoch, pending.messageId)) conversation.reload();
                       setDiscardTarget(undefined);
                     }} />
                     <ActionButton label="取消放弃未发送消息" onPress={() => setDiscardTarget(undefined)} />
                   </> : <ActionButton label="放弃未发送消息" onPress={() => setDiscardTarget(pending.messageId)} />}
                 </>
               ) : (
-                <ActionButton label="恢复到输入框" onPress={() => sessions.restorePendingSubmissionToDraft(spaceId)} />
+                <ActionButton label="恢复到输入框" onPress={() => sessions.restorePendingSubmissionToDraft(agentId)} />
               )}
             </View>
           )}
@@ -327,7 +327,7 @@ export function ConversationView({
           {!!stopError && <Text accessibilityRole="alert" style={styles.error}>{stopError}</Text>}
           {!!conversation.error && <Text accessibilityRole="alert" style={styles.error}>{conversation.error}</Text>}
           {session.resetUncertain && <>
-            <Text accessibilityRole="alert" style={styles.error}>重置结果未确认，已暂停发送。请核对空间列表中的当前会话，不会自动重发重置。</Text>
+            <Text accessibilityRole="alert" style={styles.error}>重置结果未确认，已暂停发送。请核对智能体列表中的当前会话，不会自动重发重置。</Text>
             <ActionButton label="核对重置结果" onPress={onSettled} />
           </>}
           {(conversation.historyFailed || pending?.status === 'unconfirmed' || connection?.snapshot.status === 'authentication-required') && (
@@ -345,7 +345,7 @@ export function ConversationView({
         {showLatest && <Pressable accessibilityRole="button" accessibilityLabel="回到最新消息" onPress={() => { scrollFollow.current.returnLatest(); setShowLatest(false); scroll.current?.scrollToEnd({ animated: true }); }} style={styles.latestButton}><ArrowDown size={sizing[18]} color={colors.ink} /><Text style={styles.caption}>回到最新</Text></Pressable>}
       </View>
       {visible && <>
-        {spacePendingApprovals.length > 0 && onOpenApprovals && (
+        {agentPendingApprovals.length > 0 && onOpenApprovals && (
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="查看待处理审批"
@@ -355,28 +355,28 @@ export function ConversationView({
             <View style={styles.approvalBannerContent}>
               <ShieldAlert size={16} color={colors.warning} />
               <Text style={styles.approvalBannerText}>
-                模型发起了操作，等待你的审批（{spacePendingApprovals.length} 项）
+                模型发起了操作，等待你的审批（{agentPendingApprovals.length} 项）
               </Text>
             </View>
             <Text style={styles.approvalBannerAction}>查看并决定 →</Text>
           </Pressable>
         )}
         {(session.draftAttachments.length > 0 || !!attachmentError) && <View style={styles.attachmentArea}>
-          <AttachmentStrip items={session.draftAttachments} disabled={selecting || !!pending || busy || !sessions.canWrite(spaceId)} onRemove={(id) => {
-            sessions.removeDraftAttachment(spaceId, session.epoch, id);
+          <AttachmentStrip items={session.draftAttachments} disabled={selecting || !!pending || busy || !sessions.canWrite(agentId)} onRemove={(id) => {
+            sessions.removeDraftAttachment(agentId, session.epoch, id);
             setAttachmentError('');
           }} />
           {!!attachmentError && <Text accessibilityRole="alert" style={styles.error}>{attachmentError}</Text>}
         </View>}
         <View style={[styles.composer, focused && styles.composerFocused]}>
-          <AttachmentAction disabled={busy || !!pending || !sessions.canWrite(spaceId)} selecting={selecting} onPress={() => void selectAttachments()} />
+          <AttachmentAction disabled={busy || !!pending || !sessions.canWrite(agentId)} selecting={selecting} onPress={() => void selectAttachments()} />
           {/* 聊天输入与发送/停止共用动态高度胶囊；保留专用 TextInput 以维持光标、键盘和流式操作。 */}
           <TextInput
             accessibilityLabel="消息输入框"
             placeholder="消息"
             placeholderTextColor={colors.faint}
             value={session.draft}
-            onChangeText={(text) => sessions.setDraft(spaceId, text)}
+            onChangeText={(text) => sessions.setDraft(agentId, text)}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
             editable={!session.deleting && !session.deleted && !session.resetting && !session.resetUncertain}
@@ -461,15 +461,15 @@ export function Message({ message, pendingStatus, feedbackScope, layout = 'priva
   layout?: 'private' | 'group';
   recipient?: string;
   pendingStatus?: 'sending' | 'failed' | 'unconfirmed';
-  feedbackScope?: { spaceId: string; sessionId: string; initialFeedback: NonNullable<MessageView['feedback']> };
+  feedbackScope?: { agentId: string; sessionId: string; initialFeedback: NonNullable<MessageView['feedback']> };
 }) {
   const styles = useStyles();
   const hasText = layout === 'group' ? !!message.text.trim() : !!message.text;
   const bubbleRef = useRef<ViewInstance>(null);
   const [bubbleLayout, setBubbleLayout] = useState<LayoutRectangle | null>(null);
   const [anchor, setAnchor] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
-  // 整条消息保持原有 key；弹层按空间和会话归属开启，测量迟到也不能打开新目标。
-  const feedbackOwner = feedbackScope ? `${feedbackScope.spaceId}:${feedbackScope.sessionId}` : null;
+  // 整条消息保持原有 key；弹层按智能体和会话归属开启，测量迟到也不能打开新目标。
+  const feedbackOwner = feedbackScope ? `${feedbackScope.agentId}:${feedbackScope.sessionId}` : null;
   const latestFeedbackOwner = useRef(feedbackOwner);
   useLayoutEffect(() => { latestFeedbackOwner.current = feedbackOwner; }, [feedbackOwner]);
   const [feedbackOpenOwner, setFeedbackOpenOwner] = useState<string | null>(null);
@@ -518,13 +518,13 @@ export function Message({ message, pendingStatus, feedbackScope, layout = 'priva
           {bubbleContent}
         </Pressable>
         {feedbackScope && <MessageFeedbackControls
-          key={`${feedbackScope.spaceId}:${feedbackScope.sessionId}:${message.id}`}
+          key={`${feedbackScope.agentId}:${feedbackScope.sessionId}:${message.id}`}
           visible={feedbackOpenOwner === feedbackOwner && !!anchor}
           anchor={anchor}
           bubbleLayout={bubbleLayout}
           onClose={() => { setFeedbackOpenOwner(null); setAnchor(null); }}
           onOpen={openFeedback}
-          spaceId={feedbackScope.spaceId}
+          agentId={feedbackScope.agentId}
           sessionId={feedbackScope.sessionId}
           messageId={message.id}
           messageText={message.text}

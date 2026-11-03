@@ -3,14 +3,14 @@ import type { AgentStatus, AgentStatusResponse, ConversationInvalidation, Runtim
 
 export type RuntimeClient = {
   subscribeRuntime: (onEvent: (event: RuntimeEvent) => void, signal?: AbortSignal) => Promise<void>;
-  getAgentStatus: (spaceId: string, runId: string, signal?: AbortSignal) => Promise<AgentStatusResponse>;
+  getAgentStatus: (agentId: string, runId: string, signal?: AbortSignal) => Promise<AgentStatusResponse>;
 };
 export type RuntimeConnection = 'paused' | 'connecting' | 'live' | 'reconnecting' | 'authentication-required';
 export type RuntimeSnapshot = {
   connection: RuntimeConnection;
   instanceId?: string;
   runs: readonly AgentStatus[];
-  unknownSpaceIds?: readonly string[];
+  unknownAgentIds?: readonly string[];
   /** ready 的同步序号；客户端用它恢复断线期间漏掉的历史失效。 */
   conversationSyncVersion: number;
   conversationInvalidations: readonly (ConversationInvalidation & { version: number })[];
@@ -22,7 +22,7 @@ export type RuntimeStoreOptions = {
   onEvent?: (event: RuntimeEvent) => void;
   onConnection?: (connection: RuntimeConnection) => void;
 };
-const keyFor = (spaceId: string, runId: string) => JSON.stringify([spaceId, runId]);
+const keyFor = (agentId: string, runId: string) => JSON.stringify([agentId, runId]);
 const MAX_REMEMBERED_RUNS = 128;
 const MAX_REMEMBERED_INVALIDATIONS = 32;
 
@@ -36,8 +36,8 @@ export class RuntimeStore {
   private timer?: ReturnType<typeof setTimeout>;
   private generation = 0;
   private attempt = 0;
-  private unresolved = new Map<string, { spaceId: string; runId: string }>();
-  private blockedSpaces = new Set<string>();
+  private unresolved = new Map<string, { agentId: string; runId: string }>();
+  private blockedAgents = new Set<string>();
   private active = false;
   private conversationVersion = 0;
 
@@ -87,20 +87,20 @@ export class RuntimeStore {
         if (event.event === 'ready') {
           this.attempt = 0;
           const previous = [...this.unresolved.values(), ...this.state.runs.filter((run) => run.status === 'running')];
-          const missing = previous.filter((run) => !event.data.agentStatuses.some((next) => keyFor(next.spaceId, next.runId) === keyFor(run.spaceId, run.runId)));
-          this.blockedSpaces.clear();
-          this.unresolved = new Map(missing.map((run) => [keyFor(run.spaceId, run.runId), { spaceId: run.spaceId, runId: run.runId }]));
+          const missing = previous.filter((run) => !event.data.agentStatuses.some((next) => keyFor(next.agentId, next.runId) === keyFor(run.agentId, run.runId)));
+          this.blockedAgents.clear();
+          this.unresolved = new Map(missing.map((run) => [keyFor(run.agentId, run.runId), { agentId: run.agentId, runId: run.runId }]));
           this.publish({
             instanceId: event.data.instanceId,
             connection: 'live',
             runs: [...event.data.agentStatuses],
-            unknownSpaceIds: [...new Set(missing.map((run) => run.spaceId))],
+            unknownAgentIds: [...new Set(missing.map((run) => run.agentId))],
             conversationSyncVersion: this.state.conversationSyncVersion + 1,
             conversationInvalidations: [],
             error: undefined,
           });
           // ready 不含历史；消失的运行只能补查终态，不能因缺席就猜成功。
-          for (const run of missing) void this.reconcile(run.spaceId, run.runId, generation, controller.signal);
+          for (const run of missing) void this.reconcile(run.agentId, run.runId, generation, controller.signal);
         } else {
           if (event.data.instanceId !== this.state.instanceId) throw new ApiError(502, '运行状态实例已变化，请重新同步');
           if (event.event === 'conversation_updated') {
@@ -127,11 +127,11 @@ export class RuntimeStore {
     }
   }
   private merge(run: AgentStatus) {
-    if (this.blockedSpaces.has(run.spaceId)) return;
-    const identity = keyFor(run.spaceId, run.runId);
-    const previous = this.state.runs.find((item) => keyFor(item.spaceId, item.runId) === identity);
+    if (this.blockedAgents.has(run.agentId)) return;
+    const identity = keyFor(run.agentId, run.runId);
+    const previous = this.state.runs.find((item) => keyFor(item.agentId, item.runId) === identity);
     if (previous && previous.revision >= run.revision) return;
-    const runs = this.state.runs.filter((item) => keyFor(item.spaceId, item.runId) !== identity);
+    const runs = this.state.runs.filter((item) => keyFor(item.agentId, item.runId) !== identity);
     runs.push(run);
     // 内存只保留有界的最近观测结果；所有进行中项必须保留，历史仍由服务端负责。
     while (runs.length > MAX_REMEMBERED_RUNS) {
@@ -140,16 +140,16 @@ export class RuntimeStore {
       runs.splice(index, 1);
     }
     this.unresolved.delete(identity);
-    this.publish({ runs, unknownSpaceIds: [...new Set([...this.unresolved.values()].map((item) => item.spaceId))] });
+    this.publish({ runs, unknownAgentIds: [...new Set([...this.unresolved.values()].map((item) => item.agentId))] });
   }
-  private async reconcile(spaceId: string, runId: string, generation: number, signal: AbortSignal) {
+  private async reconcile(agentId: string, runId: string, generation: number, signal: AbortSignal) {
     try {
-      const response = await this.client.getAgentStatus(spaceId, runId, signal);
+      const response = await this.client.getAgentStatus(agentId, runId, signal);
       if (!this.current(generation, signal) || response.instanceId !== this.state.instanceId) return;
-      if (response.status.spaceId !== spaceId || response.status.runId !== runId) throw new ApiError(502, '运行查询返回了其他会话或运行');
-      if (this.state.runs.some((run) => run.spaceId === spaceId && run.runId !== runId)) {
-        this.unresolved.delete(keyFor(spaceId, runId));
-        this.publish({ unknownSpaceIds: [...new Set([...this.unresolved.values()].map((item) => item.spaceId))] });
+      if (response.status.agentId !== agentId || response.status.runId !== runId) throw new ApiError(502, '运行查询返回了其他会话或运行');
+      if (this.state.runs.some((run) => run.agentId === agentId && run.runId !== runId)) {
+        this.unresolved.delete(keyFor(agentId, runId));
+        this.publish({ unknownAgentIds: [...new Set([...this.unresolved.values()].map((item) => item.agentId))] });
         return;
       }
       this.merge(response.status);
@@ -157,16 +157,16 @@ export class RuntimeStore {
       if (!this.current(generation, signal)) return;
       if (isRequestCancelled(error)) return;
       if (error instanceof ApiError && error.status === 404) {
-        this.unresolved.delete(keyFor(spaceId, runId));
-        this.publish({ unknownSpaceIds: [...new Set([...this.unresolved.values()].map((item) => item.spaceId))] });
+        this.unresolved.delete(keyFor(agentId, runId));
+        this.publish({ unknownAgentIds: [...new Set([...this.unresolved.values()].map((item) => item.agentId))] });
       } else this.publish({ error: '部分执行结果暂未同步，请重试同步' });
     }
   }
-  forgetSpace(spaceId: string) {
-    this.blockedSpaces.add(spaceId);
-    for (const [key, run] of this.unresolved) if (run.spaceId === spaceId) this.unresolved.delete(key);
-    this.publish({ runs: this.state.runs.filter((run) => run.spaceId !== spaceId), unknownSpaceIds: this.state.unknownSpaceIds?.filter((id) => id !== spaceId) });
-    this.publish({ conversationInvalidations: this.state.conversationInvalidations.filter((item) => item.spaceId !== spaceId) });
+  forgetAgent(agentId: string) {
+    this.blockedAgents.add(agentId);
+    for (const [key, run] of this.unresolved) if (run.agentId === agentId) this.unresolved.delete(key);
+    this.publish({ runs: this.state.runs.filter((run) => run.agentId !== agentId), unknownAgentIds: this.state.unknownAgentIds?.filter((id) => id !== agentId) });
+    this.publish({ conversationInvalidations: this.state.conversationInvalidations.filter((item) => item.agentId !== agentId) });
     this.retry();
   }
   dispose() {
@@ -175,13 +175,13 @@ export class RuntimeStore {
   }
 }
 
-export function spaceRuntime(snapshot: RuntimeSnapshot, spaceId: string) {
-  const runs = snapshot.runs.filter((run) => run.spaceId === spaceId);
+export function agentRuntime(snapshot: RuntimeSnapshot, agentId: string) {
+  const runs = snapshot.runs.filter((run) => run.agentId === agentId);
   const active = runs.filter((run) => run.status === 'running');
   const last = runs.at(-1);
-  const unresolved = snapshot.unknownSpaceIds?.includes(spaceId) ?? false;
+  const unresolved = snapshot.unknownAgentIds?.includes(agentId) ?? false;
   const synchronized = snapshot.connection === 'live' && !unresolved;
-  const conversationInvalidations = snapshot.conversationInvalidations.filter((item) => item.spaceId === spaceId);
+  const conversationInvalidations = snapshot.conversationInvalidations.filter((item) => item.agentId === agentId);
   const label = unresolved && snapshot.connection === 'live' ? '执行结果待同步' : !synchronized
     ? snapshot.connection === 'authentication-required' ? '需要重新认证'
       : snapshot.connection === 'connecting' ? '正在同步运行状态' : '连接已断开，状态待同步'

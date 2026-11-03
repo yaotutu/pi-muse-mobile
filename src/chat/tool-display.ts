@@ -42,6 +42,7 @@ const toolMeta: Record<string, { kind: ToolDisplay['kind']; title: string }> = {
   monitor: { kind: 'monitor', title: '网页监控' },
   subagent: { kind: 'subagent', title: '子代理' },
   activity: { kind: 'generic', title: '工作登记' },
+  agent: { kind: 'generic', title: '智能体通信' },
   instructions: { kind: 'generic', title: '会话指令' },
 };
 

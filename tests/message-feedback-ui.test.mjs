@@ -16,10 +16,10 @@ const within = ({ x, y }) => {
 test('锚定菜单在 320dp、首尾与长消息下不越界，并优先贴近消息', () => {
   const top = positionFeedbackMenu({ x: 220, y: 30, width: 90, height: 44 }, menu, viewport, safe, 'right', 8, 8, 0);
   within(top);
-  assert.ok(top.y >= 82, '首条消息空间不足时放在下方');
+  assert.ok(top.y >= 82, '首条消息智能体不足时放在下方');
   const bottom = positionFeedbackMenu({ x: 12, y: 540, width: 250, height: 48 }, menu, viewport, safe, 'left', 8, 8, 0);
   within(bottom);
-  assert.ok(bottom.y < 540, '尾条消息空间不足时放在上方');
+  assert.ok(bottom.y < 540, '尾条消息智能体不足时放在上方');
   const long = positionFeedbackMenu({ x: -6, y: -100, width: 300, height: 900 }, menu, viewport, safe, 'right', 8, 8, 0);
   within(long);
 });

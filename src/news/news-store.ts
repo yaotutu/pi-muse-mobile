@@ -84,7 +84,7 @@ const feedbackBusy = (work: NewsArticleWork) =>
   work.reactionUncertain || work.savedUncertain || work.commentUncertain;
 
 /**
- * 当前连接内的新闻页状态。新闻不绑定聊天空间，也不读取聊天 reset/选中空间。
+ * 当前连接内的新闻页状态。新闻不绑定聊天智能体，也不读取聊天 reset/选中智能体。
  * 页面关闭或应用后台只停止读取与轮询；列表、详情、源和草稿留在当前连接，直到上层 dispose。
  */
 export class NewsStore {

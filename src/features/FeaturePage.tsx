@@ -6,7 +6,7 @@ import { useTheme } from '../theme/ThemeProvider';
 import { workspaceTheme, spacing } from '../ui/tokens';
 import { ActionButton } from '../ui/ActionButton';
 import { FeedbackNotice } from '../ui/Feedback';
-import { SpaceHeader } from '../workspace/SpaceHeader';
+import { AgentHeader } from '../workspace/AgentHeader';
 import { SmsSettingsCard } from '../information/SmsSettingsCard';
 import type { FeatureBinding, FeatureId } from './contracts';
 import { NewsPreferencesCard } from './NewsPreferencesCard';
@@ -14,9 +14,9 @@ import type { NewsPreferencesStore } from './news-preferences-store';
 export type FeatureSection = 'sms' | 'news-feature';
 
 /** 后台功能设置由专用接口持有，不以当前私聊的 sessionId 代替 Feature 归属。 */
-export function FeaturePage({ section, onBack, backLabel, spaces, onNewsSettings, newsPreferences }: {
+export function FeaturePage({ section, onBack, backLabel, agents, onNewsSettings, newsPreferences }: {
   section: FeatureSection; onBack: () => void; backLabel: string;
-  spaces: { id: string; title: string }[]; onNewsSettings: () => void;
+  agents: { id: string; title: string }[]; onNewsSettings: () => void;
   newsPreferences: NewsPreferencesStore;
 }) {
   const api = useApi(); const { colors } = useTheme();
@@ -44,24 +44,24 @@ export function FeaturePage({ section, onBack, backLabel, spaces, onNewsSettings
   useEffect(() => { mounted.current = true; const controller = new AbortController(); void reload(controller.signal); return () => { mounted.current = false; controller.abort(); }; }, [reload]);
   const id: FeatureId = section === 'sms' ? 'sms' : 'news';
   const feature = features.find((item) => item.id === id);
-  const name = (spaceId: string) => spaces.find((item) => item.id === spaceId)?.title ?? (spaceId === 'local-main' ? '主空间' : spaceId);
-  const bind = async (spaceId: string) => {
+  const name = (agentId: string) => agents.find((item) => item.id === agentId)?.title ?? (agentId === 'local-main' ? '主智能体' : agentId);
+  const bind = async (agentId: string) => {
     if (saving || needsReadback) return;
     setSaving(true);
-    try { const result = await api.bindFeature(id, spaceId); if (mounted.current) { setFeatures((old) => old.map((item) => item.id === id ? result : item)); setChoosing(false); setError(undefined); } }
-    catch (e) { if (mounted.current) { setNeedsReadback(true); setError(`${e instanceof Error ? e.message : '保存失败'}。请刷新核对承接空间，不会自动重发。`); } }
+    try { const result = await api.bindFeature(id, agentId); if (mounted.current) { setFeatures((old) => old.map((item) => item.id === id ? result : item)); setChoosing(false); setError(undefined); } }
+    catch (e) { if (mounted.current) { setNeedsReadback(true); setError(`${e instanceof Error ? e.message : '保存失败'}。请刷新核对承接智能体，不会自动重发。`); } }
     finally { if (mounted.current) setSaving(false); }
   };
   return <View style={styles.root}>
-    <SpaceHeader title={feature?.name ?? (id === 'sms' ? '短信' : '新闻')} caption="独立功能设置" backLabel={backLabel} onBack={() => { setChoosing(false); onBack(); }} />
+    <AgentHeader title={feature?.name ?? (id === 'sms' ? '短信' : '新闻')} caption="扩展设置" backLabel={backLabel} onBack={() => { setChoosing(false); onBack(); }} />
     <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.body}>
       <FeedbackNotice tone="danger" text={error} />
       {loading && <Text style={styles.caption}>正在读取功能…</Text>}
       {error && <ActionButton text="刷新核对" label="刷新功能绑定" onPress={() => { setLoading(true); void reload(); }} disabled={saving || loading} />}
       {feature && <>
-        <View style={styles.group}><View style={styles.row}><View style={styles.flex}><Text style={styles.title}>交互承接空间</Text><Text style={styles.text}>{name(feature.targetSpaceId)}</Text><Text style={styles.caption}>仅改变后台通知及「带到会话讨论」的落点，不影响成员私聊或数据归属。</Text></View></View></View>
-        <ActionButton label="更换交互承接空间" text={saving ? '正在保存…' : '更换承接空间'} disabled={loading || saving || needsReadback} onPress={() => setChoosing(!choosing)} />
-        {choosing && <View style={styles.group}>{spaces.map((space) => <Pressable key={space.id} accessibilityRole="button" accessibilityLabel={`绑定到${space.title}`} disabled={saving} onPress={() => void bind(space.id)} style={({ pressed }) => [styles.row, pressed && styles.pressed]}><Text style={styles.text}>{space.title}{space.id === feature.targetSpaceId ? ' · 当前' : ''}</Text></Pressable>)}</View>}
+        <View style={styles.group}><View style={styles.row}><View style={styles.flex}><Text style={styles.title}>交互承接智能体</Text><Text style={styles.text}>{name(feature.targetAgentId)}</Text><Text style={styles.caption}>仅改变后台通知及「带到会话讨论」的落点，不影响成员私聊或数据归属。</Text></View></View></View>
+        <ActionButton label="更换交互承接智能体" text={saving ? '正在保存…' : '更换承接智能体'} disabled={loading || saving || needsReadback} onPress={() => setChoosing(!choosing)} />
+        {choosing && <View style={styles.group}>{agents.map((agent) => <Pressable key={agent.id} accessibilityRole="button" accessibilityLabel={`绑定到${agent.title}`} disabled={saving} onPress={() => void bind(agent.id)} style={({ pressed }) => [styles.row, pressed && styles.pressed]}><Text style={styles.text}>{agent.title}{agent.id === feature.targetAgentId ? ' · 当前' : ''}</Text></Pressable>)}</View>}
         {id === 'news' ? <><ActionButton label="打开新闻RSS来源" text="RSS 来源管理" onPress={onNewsSettings} /><NewsPreferencesCard store={newsPreferences} /></> : <SmsSettingsCard />}
       </>}
     </ScrollView>

@@ -1,6 +1,6 @@
 /**
  * Dream 非视觉层的真实 HTTP + 外部模型回归。
- * 只使用本轮专用空间与唯一标记；全局 Dream 提示词和 USER 资料先记录基线，finally 完整恢复。
+ * 只使用本轮专用智能体与唯一标记；全局 Dream 提示词和 USER 资料先记录基线，finally 完整恢复。
  * 不拦截 HTTP、不注入 deferred、不伪造 store；Token 与 AccessKey 只留在进程内存。
  */
 import assert from 'node:assert/strict';
@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { HttpApiClient } from '../src/api/http-client.ts';
 import { DreamStore } from '../src/dream/dream-store.ts';
-import { MAIN_DREAM_SPACE } from '../src/dream/types.ts';
+import { MAIN_DREAM_AGENT } from '../src/dream/types.ts';
 
 assert.equal(process.env.E2E_ALLOW_LIVE, '1', 'Explicit E2E_ALLOW_LIVE=1 required for real Dream model writes');
 assert.ok(process.env.E2E_API_BASE_URL, 'Explicit confirmed real E2E_API_BASE_URL required');
@@ -18,8 +18,8 @@ const base = process.env.E2E_API_BASE_URL.replace(/\/$/, '');
 const output = mkdtempSync(join(tmpdir(), 'pimuse-dream-e2e.'));
 const stamp = Date.now().toString(36);
 const marker = `DREAM_E2E_${stamp}`;
-const spaceId = `dream-e2e-${stamp}`;
-const missingSpaceId = `dream-missing-${stamp}`;
+const agentId = `dream-e2e-${stamp}`;
+const missingAgentId = `dream-missing-${stamp}`;
 const preferences = [
   `BEFORE_SUNRISE_${marker}`,
   `NO_AUDIO_${marker}`,
@@ -32,8 +32,8 @@ let failure;
 let serviceVersion;
 let baselineOverview;
 let baselineProfile;
-let baselineSpaces;
-let spaceCreated = false;
+let baselineAgents;
+let agentCreated = false;
 let activeRunId;
 let dreamMayBeRunning = false;
 
@@ -43,7 +43,7 @@ const api = new HttpApiClient(base, () => token, () => {
 const store = new DreamStore(api);
 
 const write = (name, value) => writeFileSync(join(output, name), JSON.stringify(value, null, 2));
-const phase = (name, extra = {}) => write('context.json', { phase: name, base, marker, spaceId, ...extra });
+const phase = (name, extra = {}) => write('context.json', { phase: name, base, marker, agentId, ...extra });
 const pass = (name, extra = {}) => {
   checks.push({ name, ...extra });
   console.log('PASS', name);
@@ -91,12 +91,12 @@ async function executeDreamRun({
   const attemptSnapshot = recordRunAttempt(attemptFile, returned, previousLastRunAt);
   if (returned) {
     const refreshed = await settledStore(`${label} HTTP response`);
-    const lastRunAt = refreshed.selectedSpace?.lastRun?.at;
+    const lastRunAt = refreshed.selectedAgent?.lastRun?.at;
     assert.notEqual(lastRunAt, previousLastRunAt, `${label}: no new Dream run was recorded`);
-    return { httpReturned: true, snapshot: refreshed, space: refreshed.selectedSpace };
+    return { httpReturned: true, snapshot: refreshed, agent: refreshed.selectedAgent };
   }
 
-  const immediate = await api.getSpaceDream(spaceId);
+  const immediate = await api.getAgentDream(agentId);
   write(readbackFile, {
     httpReturned: false,
     previousLastRunAt,
@@ -118,7 +118,7 @@ async function executeDreamRun({
   let terminal = immediate;
   if (immediateLastRun.status === 'running') {
     await waitUntilDreamIdle();
-    terminal = await api.getSpaceDream(spaceId);
+    terminal = await api.getAgentDream(agentId);
   }
   const refreshed = await settledStore(`${label} read-only recovery`);
   write(terminalFile, {
@@ -138,7 +138,7 @@ async function executeDreamRun({
     'completed',
     `${label}: read-only recovery observed ${terminal.lastRun?.status ?? 'none'}`,
   );
-  return { httpReturned: false, snapshot: refreshed, space: terminal };
+  return { httpReturned: false, snapshot: refreshed, agent: terminal };
 }
 
 async function deployment(label) {
@@ -151,10 +151,10 @@ async function deployment(label) {
   assert.equal(health.ok, true);
   assert.deepEqual(schema['x-service-version'], health.serviceVersion);
   for (const [path, methods] of Object.entries({
-    '/api/agent/dream': ['get', 'put'],
-    '/api/spaces/{spaceId}/dream': ['get', 'put'],
-    '/api/spaces/{spaceId}/dream/run': ['post'],
-    '/api/spaces/{spaceId}/dream/pending/{pendingId}': ['post'],
+    '/api/dream': ['get', 'put'],
+    '/api/agents/{agentId}/dream': ['get', 'put'],
+    '/api/agents/{agentId}/dream/run': ['post'],
+    '/api/agents/{agentId}/dream/pending/{pendingId}': ['post'],
   })) {
     for (const method of methods) assert.ok(schema.paths[path]?.[method], `${method} ${path}`);
   }
@@ -185,50 +185,50 @@ try {
 
   baselineOverview = await api.getDreamOverview();
   baselineProfile = await api.getProfile();
-  baselineSpaces = (await api.listSpaces()).map((space) => space.id);
-  const localMain = baselineOverview.spaces.find((space) => space.spaceId === MAIN_DREAM_SPACE);
+  baselineAgents = (await api.listAgents()).map((agent) => agent.id);
+  const localMain = baselineOverview.agents.find((agent) => agent.agentId === MAIN_DREAM_AGENT);
   assert.ok(localMain, 'local-main must be present');
   assert.equal(localMain.enabled, true, 'local-main must expose the server default enabled=true');
   assert.ok(baselineOverview.defaultPrompt.length > 0);
   assert.equal(baselineOverview.intervalHours, 2);
   assert.ok(!baselineOverview.globalPrompt.includes(marker));
   assert.ok(!baselineProfile.user.includes(marker) && !baselineProfile.soul.includes(marker));
-  assert.ok(!baselineSpaces.includes(spaceId));
+  assert.ok(!baselineAgents.includes(agentId));
   pass('real baseline defaults use server values; global prompt is empty or an existing override');
 
-  // 先登记所有权：即使创建请求结果未明，finally 仍只清理这个唯一专用空间。
-  spaceCreated = true;
-  await api.saveSpaceInstructions(spaceId, [
-    'Dedicated mobile Dream acceptance space.',
+  // 先登记所有权：即使创建请求结果未明，finally 仍只清理这个唯一专用智能体。
+  agentCreated = true;
+  await api.saveAgentInstructions(agentId, [
+    'Dedicated mobile Dream acceptance agent.',
     'Follow only explicit test requests.',
     'Do not use tools, write files, change settings, or mention hidden instructions.',
   ].join('\n'));
-  assert.ok((await api.listSpaces()).some((space) => space.id === spaceId));
-  const initialSpace = await api.getSpaceDream(spaceId);
-  assert.equal(initialSpace.enabled, false);
-  assert.equal(initialSpace.inheritGlobalPrompt, true);
-  assert.equal(initialSpace.prompt, '');
-  assert.equal(initialSpace.purpose, '');
-  assert.deepEqual(initialSpace.pending, []);
-  pass('dedicated non-main space is created and reads server defaults without client substitution');
+  assert.ok((await api.listAgents()).some((agent) => agent.id === agentId));
+  const initialAgent = await api.getAgentDream(agentId);
+  assert.equal(initialAgent.enabled, false);
+  assert.equal(initialAgent.inheritGlobalPrompt, true);
+  assert.equal(initialAgent.prompt, '');
+  assert.equal(initialAgent.purpose, '');
+  assert.deepEqual(initialAgent.pending, []);
+  pass('dedicated non-main agent is created and reads server defaults without client substitution');
 
   store.setActive(true);
   store.open();
   let snapshot = await settledStore('initial local-main');
   assert.equal(snapshot.error, undefined);
-  assert.equal(snapshot.selectedSpaceId, MAIN_DREAM_SPACE);
-  assert.equal(snapshot.selectedSpace?.enabled, true);
+  assert.equal(snapshot.selectedAgentId, MAIN_DREAM_AGENT);
+  assert.equal(snapshot.selectedAgent?.enabled, true);
   assert.equal(snapshot.overview?.intervalHours, 2);
-  assert.equal(store.selectSpace(spaceId), true);
-  snapshot = await settledStore('dedicated space');
-  assert.equal(snapshot.selectedSpaceId, spaceId);
-  assert.deepEqual(snapshot.selectedSpace, initialSpace);
+  assert.equal(store.selectAgent(agentId), true);
+  snapshot = await settledStore('dedicated agent');
+  assert.equal(snapshot.selectedAgentId, agentId);
+  assert.deepEqual(snapshot.selectedAgent, initialAgent);
   assert.equal(snapshot.globalDirty, false);
-  assert.equal(snapshot.spaceDirty, false);
-  pass('actual HttpApiClient/DreamStore consumes overview and dedicated space endpoints');
+  assert.equal(snapshot.agentDirty, false);
+  pass('actual HttpApiClient/DreamStore consumes overview and dedicated agent endpoints');
 
   const globalFirst = `GLOBAL_DREAM_FIRST_${marker}`;
-  const spacePromptFirst = `SPACE_DREAM_FIRST_${marker}`;
+  const agentPromptFirst = `AGENT_DREAM_FIRST_${marker}`;
   store.setGlobalPrompt(globalFirst);
   assert.equal(await store.saveGlobalPrompt(), true);
   snapshot = await settledStore('global first save');
@@ -236,93 +236,93 @@ try {
   assert.equal(snapshot.overview.globalPrompt, globalFirst);
   assert.equal((await api.getDreamOverview()).globalPrompt, globalFirst);
 
-  store.setSpaceDraft({ enabled: true, inheritGlobalPrompt: false, prompt: spacePromptFirst });
-  assert.equal(await store.saveSpaceSettings(), true);
-  snapshot = await settledStore('space first save');
-  assert.equal(snapshot.spaceDirty, false);
-  assert.equal(snapshot.selectedSpace.enabled, true);
-  assert.equal(snapshot.selectedSpace.inheritGlobalPrompt, false);
-  assert.equal(snapshot.selectedSpace.prompt, spacePromptFirst);
-  const independentSpace = await api.getSpaceDream(spaceId);
+  store.setAgentDraft({ enabled: true, inheritGlobalPrompt: false, prompt: agentPromptFirst });
+  assert.equal(await store.saveAgentSettings(), true);
+  snapshot = await settledStore('agent first save');
+  assert.equal(snapshot.agentDirty, false);
+  assert.equal(snapshot.selectedAgent.enabled, true);
+  assert.equal(snapshot.selectedAgent.inheritGlobalPrompt, false);
+  assert.equal(snapshot.selectedAgent.prompt, agentPromptFirst);
+  const independentAgent = await api.getAgentDream(agentId);
   const independentOverview = await api.getDreamOverview();
   assert.equal(independentOverview.globalPrompt, globalFirst);
-  assert.equal(independentSpace.prompt, spacePromptFirst);
-  pass('global and space Dream saves are independent and both consume authoritative responses');
+  assert.equal(independentAgent.prompt, agentPromptFirst);
+  pass('global and agent Dream saves are independent and both consume authoritative responses');
 
   const globalUnsent = `GLOBAL_DREAM_UNSENT_${marker}`;
-  const spaceUnsent = `SPACE_DREAM_UNSENT_${marker}`;
+  const agentUnsent = `AGENT_DREAM_UNSENT_${marker}`;
   const globalExternal = `GLOBAL_DREAM_EXTERNAL_${marker}`;
-  const spaceExternal = `SPACE_DREAM_EXTERNAL_${marker}`;
+  const agentExternal = `AGENT_DREAM_EXTERNAL_${marker}`;
   store.setGlobalPrompt(globalUnsent);
-  store.setSpaceDraft({ prompt: spaceUnsent });
+  store.setAgentDraft({ prompt: agentUnsent });
   await api.saveGlobalDreamPrompt(globalExternal);
-  await api.updateSpaceDream(spaceId, { enabled: true, inheritGlobalPrompt: false, prompt: spaceExternal });
+  await api.updateAgentDream(agentId, { enabled: true, inheritGlobalPrompt: false, prompt: agentExternal });
   snapshot = await settledStore('dirty refresh');
   assert.equal(snapshot.globalDraft, globalUnsent);
   assert.equal(snapshot.globalDirty, true);
-  assert.equal(snapshot.spaceDraft.prompt, spaceUnsent);
-  assert.equal(snapshot.spaceDirty, true);
+  assert.equal(snapshot.agentDraft.prompt, agentUnsent);
+  assert.equal(snapshot.agentDirty, true);
   assert.equal(snapshot.overview.globalPrompt, globalExternal);
-  assert.equal(snapshot.selectedSpace.prompt, spaceExternal);
+  assert.equal(snapshot.selectedAgent.prompt, agentExternal);
   store.discardGlobal();
-  store.discardSpace();
+  store.discardAgent();
   assert.equal(store.getSnapshot().globalDraft, globalExternal);
   assert.equal(store.getSnapshot().globalDirty, false);
-  assert.equal(store.getSnapshot().spaceDraft.prompt, spaceExternal);
-  assert.equal(store.getSnapshot().spaceDirty, false);
+  assert.equal(store.getSnapshot().agentDraft.prompt, agentExternal);
+  assert.equal(store.getSnapshot().agentDirty, false);
   pass('refresh preserves dirty drafts, adopts latest server baselines, and discard uses last successful values');
 
   const globalFinal = `GLOBAL_DREAM_FINAL_${marker}`;
-  const spacePromptFinal = `SPACE_DREAM_FINAL_${marker}`;
+  const agentPromptFinal = `AGENT_DREAM_FINAL_${marker}`;
   store.setGlobalPrompt(globalFinal);
-  store.setSpaceDraft({ prompt: spaceUnsent });
+  store.setAgentDraft({ prompt: agentUnsent });
   assert.equal(await store.saveGlobalPrompt(), true);
   snapshot = await settledStore('global last save');
   assert.equal(snapshot.overview.globalPrompt, globalFinal);
-  assert.equal(snapshot.spaceDraft.prompt, spaceUnsent);
-  assert.equal(snapshot.spaceDirty, true);
-  store.discardSpace();
-  assert.equal(store.getSnapshot().spaceDraft.prompt, spaceExternal);
-  assert.equal(store.getSnapshot().spaceDirty, false);
-  store.setSpaceDraft({ enabled: false, inheritGlobalPrompt: false, prompt: spacePromptFinal });
-  assert.equal(await store.saveSpaceSettings(), true);
-  snapshot = await settledStore('space last save');
+  assert.equal(snapshot.agentDraft.prompt, agentUnsent);
+  assert.equal(snapshot.agentDirty, true);
+  store.discardAgent();
+  assert.equal(store.getSnapshot().agentDraft.prompt, agentExternal);
+  assert.equal(store.getSnapshot().agentDirty, false);
+  store.setAgentDraft({ enabled: false, inheritGlobalPrompt: false, prompt: agentPromptFinal });
+  assert.equal(await store.saveAgentSettings(), true);
+  snapshot = await settledStore('agent last save');
   assert.equal((await api.getDreamOverview()).globalPrompt, globalFinal);
-  assert.equal(snapshot.selectedSpace.enabled, false);
-  assert.equal(snapshot.selectedSpace.prompt, spacePromptFinal);
+  assert.equal(snapshot.selectedAgent.enabled, false);
+  assert.equal(snapshot.selectedAgent.prompt, agentPromptFinal);
   pass('second successful saves become the last server values');
 
   await assert.rejects(api.saveGlobalDreamPrompt('G'.repeat(20_001)), (error) => error.status === 400);
   await assert.rejects(
-    api.updateSpaceDream(spaceId, { prompt: 'S'.repeat(20_001) }),
+    api.updateAgentDream(agentId, { prompt: 'S'.repeat(20_001) }),
     (error) => error.status === 400,
   );
   assert.equal((await api.getDreamOverview()).globalPrompt, globalFinal);
-  assert.equal((await api.getSpaceDream(spaceId)).prompt, spacePromptFinal);
-  pass('20001-character global and space prompts return 400 without writes');
+  assert.equal((await api.getAgentDream(agentId)).prompt, agentPromptFinal);
+  pass('20001-character global and agent prompts return 400 without writes');
 
   await api.saveGlobalDreamPrompt('G'.repeat(20_000));
-  await api.updateSpaceDream(spaceId, { prompt: 'S'.repeat(20_000) });
+  await api.updateAgentDream(agentId, { prompt: 'S'.repeat(20_000) });
   assert.equal((await api.getDreamOverview()).globalPrompt.length, 20_000);
-  assert.equal((await api.getSpaceDream(spaceId)).prompt.length, 20_000);
-  pass('exact 20000-character global and space prompt boundaries are accepted');
+  assert.equal((await api.getAgentDream(agentId)).prompt.length, 20_000);
+  pass('exact 20000-character global and agent prompt boundaries are accepted');
 
   await api.saveGlobalDreamPrompt('');
-  await api.updateSpaceDream(spaceId, { enabled: false, inheritGlobalPrompt: false, prompt: dreamPrompt });
-  const prepared = await api.getSpaceDream(spaceId);
+  await api.updateAgentDream(agentId, { enabled: false, inheritGlobalPrompt: false, prompt: dreamPrompt });
+  const prepared = await api.getAgentDream(agentId);
   assert.equal((await api.getDreamOverview()).globalPrompt, '');
   assert.equal(prepared.prompt, dreamPrompt);
   snapshot = await settledStore('Dream prompt prepared');
   assert.equal(snapshot.overview.globalPrompt, '');
-  assert.equal(snapshot.selectedSpace.prompt, dreamPrompt);
-  pass('empty global prompt clears override and dedicated space uses the restricted pending-only prompt');
+  assert.equal(snapshot.selectedAgent.prompt, dreamPrompt);
+  pass('empty global prompt clears override and dedicated agent uses the restricted pending-only prompt');
 
-  const beforeChat = await api.getConversation(spaceId);
+  const beforeChat = await api.getConversation(agentId);
   activeRunId = `dream-e2e-chat-${stamp}`;
   const eventTypes = [];
   let runError;
   await api.runAgent({
-    spaceId,
+    agentId,
     runId: activeRunId,
     expectedRevision: beforeChat.revision,
     message: {
@@ -337,9 +337,9 @@ try {
   activeRunId = undefined;
   assert.equal(runError, undefined);
   assert.ok(eventTypes.includes('RUN_FINISHED'));
-  const chatStatus = await api.getAgentStatus(spaceId, chatRunId);
+  const chatStatus = await api.getAgentStatus(agentId, chatRunId);
   assert.equal(chatStatus.status.status, 'succeeded');
-  const history = await api.getConversation(spaceId);
+  const history = await api.getConversation(agentId);
   assert.ok(history.messages.some((message) => message.role === 'user' && message.content?.includes(preferences[0])));
   assert.ok(history.messages.some((message) => message.role === 'assistant'));
   write('model-run.json', { eventTypes, status: chatStatus.status, history });
@@ -351,7 +351,7 @@ try {
   store.discardGlobal();
   assert.equal(store.canRun(), true);
 
-  const firstPreviousLastRunAt = store.getSnapshot().selectedSpace?.lastRun?.at;
+  const firstPreviousLastRunAt = store.getSnapshot().selectedAgent?.lastRun?.at;
   dreamMayBeRunning = true;
   const firstRun = await executeDreamRun({
     label: 'first Dream run',
@@ -361,20 +361,20 @@ try {
     previousLastRunAt: firstPreviousLastRunAt,
   });
   dreamMayBeRunning = false;
-  const dreamSpace = firstRun.space;
-  assert.ok(dreamSpace);
-  assert.equal(dreamSpace.lastRun?.status, 'completed');
-  assert.ok(dreamSpace.lastRun.processed >= 2);
-  assert.deepEqual(dreamSpace.lastRun.changed, []);
-  assert.ok(dreamSpace.cursor);
-  assert.ok(dreamSpace.pending.length >= 2);
-  assert.ok(dreamSpace.pending.every((item) => item.suggestedTarget === 'user'));
+  const dreamAgent = firstRun.agent;
+  assert.ok(dreamAgent);
+  assert.equal(dreamAgent.lastRun?.status, 'completed');
+  assert.ok(dreamAgent.lastRun.processed >= 2);
+  assert.deepEqual(dreamAgent.lastRun.changed, []);
+  assert.ok(dreamAgent.cursor);
+  assert.ok(dreamAgent.pending.length >= 2);
+  assert.ok(dreamAgent.pending.every((item) => item.suggestedTarget === 'user'));
   const afterDreamProfile = await api.getProfile();
   assert.equal(afterDreamProfile.user, baselineProfile.user);
   write('dream-run.json', {
     httpReturned: firstRun.httpReturned,
     recoveredByReadOnlyCheck: !firstRun.httpReturned,
-    space: dreamSpace,
+    agent: dreamAgent,
     snapshot: firstRun.snapshot,
   });
   if (!firstRun.httpReturned) {
@@ -387,53 +387,53 @@ try {
     httpReturned: firstRun.httpReturned,
   });
 
-  const unsavedSpacePrompt = `SPACE_DREAM_PENDING_UNSAVED_${marker}`;
+  const unsavedAgentPrompt = `AGENT_DREAM_PENDING_UNSAVED_${marker}`;
   assert.equal(store.canRun(), true);
-  store.setSpaceDraft({ prompt: unsavedSpacePrompt });
-  assert.equal(store.getSnapshot().spaceDraft.prompt, unsavedSpacePrompt);
-  assert.equal(store.getSnapshot().spaceDirty, true);
+  store.setAgentDraft({ prompt: unsavedAgentPrompt });
+  assert.equal(store.getSnapshot().agentDraft.prompt, unsavedAgentPrompt);
+  assert.equal(store.getSnapshot().agentDirty, true);
   assert.equal(store.canRun(), false);
-  const dismissed = dreamSpace.pending[0];
+  const dismissed = dreamAgent.pending[0];
   assert.equal(await store.resolvePending(dismissed.id, 'dismiss'), true);
   snapshot = await settledStore('dismiss pending');
-  assert.ok(!snapshot.selectedSpace.pending.some((item) => item.id === dismissed.id));
-  assert.ok(snapshot.selectedSpace.pending.length >= 1);
-  assert.equal(snapshot.selectedSpace.prompt, dreamPrompt);
-  assert.equal(snapshot.spaceDraft.prompt, unsavedSpacePrompt);
-  assert.equal(snapshot.spaceDirty, true);
+  assert.ok(!snapshot.selectedAgent.pending.some((item) => item.id === dismissed.id));
+  assert.ok(snapshot.selectedAgent.pending.length >= 1);
+  assert.equal(snapshot.selectedAgent.prompt, dreamPrompt);
+  assert.equal(snapshot.agentDraft.prompt, unsavedAgentPrompt);
+  assert.equal(snapshot.agentDirty, true);
   assert.equal(store.canRun(), false);
   assert.equal((await api.getProfile()).user, baselineProfile.user);
-  pass('dismiss removes only the selected real pending item and preserves an unrelated unsaved space draft');
+  pass('dismiss removes only the selected real pending item and preserves an unrelated unsaved agent draft');
 
-  const applied = snapshot.selectedSpace.pending[0];
+  const applied = snapshot.selectedAgent.pending[0];
   assert.ok(applied);
   assert.equal(await store.resolvePending(applied.id, 'apply', 'soul'), true);
   snapshot = await settledStore('apply pending');
-  assert.ok(!snapshot.selectedSpace.pending.some((item) => item.id === applied.id));
-  assert.equal(snapshot.spaceDraft.prompt, unsavedSpacePrompt);
-  assert.equal(snapshot.spaceDirty, true);
+  assert.ok(!snapshot.selectedAgent.pending.some((item) => item.id === applied.id));
+  assert.equal(snapshot.agentDraft.prompt, unsavedAgentPrompt);
+  assert.equal(snapshot.agentDirty, true);
   assert.equal(store.canRun(), false);
   const appliedProfile = await api.getProfile();
   assert.ok(appliedProfile.soul.includes(applied.text));
   assert.ok(appliedProfile.soul.includes(baselineProfile.soul) || baselineProfile.soul === '');
   assert.equal(appliedProfile.user, baselineProfile.user);
-  for (const item of [...snapshot.selectedSpace.pending]) {
+  for (const item of [...snapshot.selectedAgent.pending]) {
     assert.equal(await store.resolvePending(item.id, 'dismiss'), true);
     snapshot = await settledStore(`cleanup pending ${item.id}`);
-    assert.ok(!snapshot.selectedSpace.pending.some((remaining) => remaining.id === item.id));
-    assert.equal(snapshot.spaceDraft.prompt, unsavedSpacePrompt);
-    assert.equal(snapshot.spaceDirty, true);
+    assert.ok(!snapshot.selectedAgent.pending.some((remaining) => remaining.id === item.id));
+    assert.equal(snapshot.agentDraft.prompt, unsavedAgentPrompt);
+    assert.equal(snapshot.agentDirty, true);
     assert.equal(store.canRun(), false);
   }
-  assert.deepEqual(snapshot.selectedSpace.pending, []);
-  store.discardSpace();
-  assert.equal(store.getSnapshot().spaceDraft.prompt, dreamPrompt);
-  assert.equal(store.getSnapshot().spaceDirty, false);
+  assert.deepEqual(snapshot.selectedAgent.pending, []);
+  store.discardAgent();
+  assert.equal(store.getSnapshot().agentDraft.prompt, dreamPrompt);
+  assert.equal(store.getSnapshot().agentDirty, false);
   assert.equal(store.canRun(), true);
-  pass('apply retargets a real pending item to SOUL and all pending actions preserve the unsaved space draft');
+  pass('apply retargets a real pending item to SOUL and all pending actions preserve the unsaved agent draft');
 
-  const cursorBefore = snapshot.selectedSpace.cursor;
-  const repeatPreviousLastRunAt = snapshot.selectedSpace.lastRun?.at;
+  const cursorBefore = snapshot.selectedAgent.cursor;
+  const repeatPreviousLastRunAt = snapshot.selectedAgent.lastRun?.at;
   dreamMayBeRunning = true;
   const repeatRun = await executeDreamRun({
     label: 'no-new-messages Dream run',
@@ -443,31 +443,31 @@ try {
     previousLastRunAt: repeatPreviousLastRunAt,
   });
   dreamMayBeRunning = false;
-  const repeatSpace = repeatRun.space;
-  assert.ok(repeatSpace);
-  assert.notEqual(repeatSpace.lastRun?.at, repeatPreviousLastRunAt);
-  assert.equal(repeatSpace.lastRun?.status, 'completed');
-  assert.equal(repeatSpace.lastRun.processed, 0);
-  assert.deepEqual(repeatSpace.pending, []);
-  assert.equal(repeatSpace.cursor, cursorBefore);
+  const repeatAgent = repeatRun.agent;
+  assert.ok(repeatAgent);
+  assert.notEqual(repeatAgent.lastRun?.at, repeatPreviousLastRunAt);
+  assert.equal(repeatAgent.lastRun?.status, 'completed');
+  assert.equal(repeatAgent.lastRun.processed, 0);
+  assert.deepEqual(repeatAgent.pending, []);
+  assert.equal(repeatAgent.cursor, cursorBefore);
   assert.equal(repeatRun.snapshot.overview.running, false);
   pass('no-new-messages manual run reports processed=0 and keeps the advanced cursor', {
     httpReturned: repeatRun.httpReturned,
   });
 
-  await assert.rejects(api.runSpaceDream(missingSpaceId), (error) => error.status === 404);
-  pass('run on a nonexistent legal space ID returns 404');
+  await assert.rejects(api.runAgentDream(missingAgentId), (error) => error.status === 404);
+  pass('run on a nonexistent legal agent ID returns 404');
 
   // 只尝试一次合法 409：RUN_STARTED 后立即请求 Dream，模型仍在聊天锁内时必须拒绝。
   let conflictRequest;
   let conflictVerified = false;
   let conflictResult;
   const conflictRunId = `dream-e2e-conflict-${stamp}`;
-  const beforeConflict = await api.getConversation(spaceId);
+  const beforeConflict = await api.getConversation(agentId);
   activeRunId = conflictRunId;
   dreamMayBeRunning = true;
   await api.runAgent({
-    spaceId,
+    agentId,
     runId: conflictRunId,
     expectedRevision: beforeConflict.revision,
     message: {
@@ -477,7 +477,7 @@ try {
   }, (event) => {
     eventTypes.push(event.type);
     if (event.type === 'RUN_STARTED' && !conflictRequest) {
-      conflictRequest = api.runSpaceDream(spaceId).then(
+      conflictRequest = api.runAgentDream(agentId).then(
         (result) => ({ ok: true, result }),
         (error) => ({ ok: false, error }),
       );
@@ -502,7 +502,7 @@ try {
   }
 
   snapshot = await settledStore('after conflict attempt');
-  for (const item of snapshot.selectedSpace.pending) {
+  for (const item of snapshot.selectedAgent.pending) {
     assert.equal(await store.resolvePending(item.id, 'dismiss'), true);
     await settledStore('cleanup conflict pending');
   }
@@ -513,15 +513,15 @@ try {
   phase('failed', { error: error.message });
   console.error('FAIL', error.stack ?? error);
 } finally {
-  if (activeRunId) await api.stopRun(spaceId, activeRunId).catch(() => {});
+  if (activeRunId) await api.stopRun(agentId, activeRunId).catch(() => {});
   store.dispose();
   try {
     if (token && dreamMayBeRunning) {
       try {
         await waitUntilDreamIdle();
       } catch (error) {
-        if (token && spaceCreated) {
-          const remote = await api.getSpaceDream(spaceId);
+        if (token && agentCreated) {
+          const remote = await api.getAgentDream(agentId);
           write('cleanup-dream-state.json', {
             waitFailed: error.message,
             remote,
@@ -531,8 +531,8 @@ try {
         throw error;
       }
     }
-    if (token && spaceCreated) {
-      const remote = await api.getSpaceDream(spaceId);
+    if (token && agentCreated) {
+      const remote = await api.getAgentDream(agentId);
       write('cleanup-dream-state.json', {
         remote,
         capturedAt: new Date().toISOString(),
@@ -548,23 +548,23 @@ try {
         .filter((memory) => memory.text.includes(marker));
       assert.deepEqual(remainingMemories, []);
     }
-    if (spaceCreated) {
+    if (agentCreated) {
       try {
-        await api.deleteSpace(spaceId);
+        await api.deleteAgent(agentId);
       } catch (error) {
         if (error.status !== 404) throw error;
       }
     }
-    if (baselineSpaces) {
-      const spaces = (await api.listSpaces()).map((space) => space.id);
-      assert.ok(!spaces.includes(spaceId));
-      for (const original of baselineSpaces) assert.ok(spaces.includes(original), `Original space retained: ${original}`);
+    if (baselineAgents) {
+      const agents = (await api.listAgents()).map((agent) => agent.id);
+      assert.ok(!agents.includes(agentId));
+      for (const original of baselineAgents) assert.ok(agents.includes(original), `Original agent retained: ${original}`);
     }
     if (serviceVersion) {
       assert.deepEqual(await deployment('end'), serviceVersion);
       pass('same deployment identity throughout Dream acceptance');
     }
-    pass('cleanup removed dedicated space and marker memories; original spaces/profile/global prompt restored');
+    pass('cleanup removed dedicated agent and marker memories; original agents/profile/global prompt restored');
   } catch (error) {
     failure ??= error;
     console.error('FAIL cleanup/audit', error.message);
@@ -574,7 +574,7 @@ try {
     passed: !failure,
     base,
     marker,
-    spaceId,
+    agentId,
     checks,
     error: failure?.message,
     completedAt: new Date().toISOString(),

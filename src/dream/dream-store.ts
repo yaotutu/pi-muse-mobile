@@ -1,51 +1,51 @@
 import { ApiError, isRequestCancelled } from '../api/errors';
 import {
   DREAM_PROMPT_LIMIT,
-  MAIN_DREAM_SPACE,
+  MAIN_DREAM_AGENT,
   type DreamClient,
   type DreamOverview,
   type DreamPending,
   type DreamPendingDecision,
   type DreamRunStatus,
-  type DreamSpace,
-  type DreamSpaceDraft,
+  type DreamAgent,
+  type DreamAgentDraft,
   type DreamTarget,
 } from './types';
 
-export type DreamWriteKind = false | 'global' | 'space' | 'run' | 'pending';
+export type DreamWriteKind = false | 'global' | 'agent' | 'run' | 'pending';
 
 export type DreamSnapshot = {
   overview?: DreamOverview;
-  selectedSpaceId: string;
-  selectedSpace?: DreamSpace;
+  selectedAgentId: string;
+  selectedAgent?: DreamAgent;
   loaded: boolean;
   loading: boolean;
   stale: boolean;
   writing: DreamWriteKind;
   globalDraft: string;
   globalDirty: boolean;
-  spaceDraft: DreamSpaceDraft;
-  spaceDirty: boolean;
+  agentDraft: DreamAgentDraft;
+  agentDirty: boolean;
   error?: string;
   notice?: string;
 };
 
-const emptySpaceDraft = (): DreamSpaceDraft => ({
+const emptyAgentDraft = (): DreamAgentDraft => ({
   enabled: false,
   inheritGlobalPrompt: true,
   prompt: '',
 });
 
 const initial = (): DreamSnapshot => ({
-  selectedSpaceId: MAIN_DREAM_SPACE,
+  selectedAgentId: MAIN_DREAM_AGENT,
   loaded: false,
   loading: false,
   stale: true,
   writing: false,
   globalDraft: '',
   globalDirty: false,
-  spaceDraft: emptySpaceDraft(),
-  spaceDirty: false,
+  agentDraft: emptyAgentDraft(),
+  agentDirty: false,
 });
 
 const message = (error: unknown, fallback: string): string =>
@@ -55,18 +55,18 @@ const uncertainWrite = (error: unknown): boolean =>
   isRequestCancelled(error) || !(error instanceof ApiError) ||
   error.status === 0 || error.status === 408 || error.status >= 500;
 
-const spaceDraftFrom = (space: DreamSpace): DreamSpaceDraft => ({
-  enabled: space.enabled,
-  inheritGlobalPrompt: space.inheritGlobalPrompt,
-  prompt: space.prompt,
+const agentDraftFrom = (agent: DreamAgent): DreamAgentDraft => ({
+  enabled: agent.enabled,
+  inheritGlobalPrompt: agent.inheritGlobalPrompt,
+  prompt: agent.prompt,
 });
 
-const dirtySpace = (draft: DreamSpaceDraft, space: DreamSpace): boolean =>
-  draft.enabled !== space.enabled ||
-  draft.inheritGlobalPrompt !== space.inheritGlobalPrompt ||
-  draft.prompt !== space.prompt;
+const dirtyAgent = (draft: DreamAgentDraft, agent: DreamAgent): boolean =>
+  draft.enabled !== agent.enabled ||
+  draft.inheritGlobalPrompt !== agent.inheritGlobalPrompt ||
+  draft.prompt !== agent.prompt;
 
-const promptLimitError = (scope: '全局' | '空间') =>
+const promptLimitError = (scope: '全局' | '智能体') =>
   `${scope} Dream 提示词不能超过 ${DREAM_PROMPT_LIMIT} 字符`;
 
 function runFeedback(status: DreamRunStatus, processed: number, error?: string): { notice?: string; error?: string } {
@@ -84,8 +84,8 @@ function runFeedback(status: DreamRunStatus, processed: number, error?: string):
 }
 
 /**
- * Dream 连接内状态。刷新只读一次全局概览，再按当前选择投影空间；
- * 读取失败保留旧值，不伪造空列表，也不重复请求当前空间。
+ * Dream 连接内状态。刷新只读一次全局概览，再按当前选择投影智能体；
+ * 读取失败保留旧值，不伪造空列表，也不重复请求当前智能体。
  */
 export class DreamStore {
   private state = initial();
@@ -118,28 +118,28 @@ export class DreamStore {
     overview: DreamOverview,
     globalDraft = this.state.globalDirty ? this.state.globalDraft : overview.globalPrompt,
   ): Partial<DreamSnapshot> {
-    const selected = overview.spaces.find((space) => space.spaceId === this.state.selectedSpaceId);
-    const spaceDraft = this.state.spaceDirty && selected ? this.state.spaceDraft
-      : selected ? spaceDraftFrom(selected)
-        : emptySpaceDraft();
+    const selected = overview.agents.find((agent) => agent.agentId === this.state.selectedAgentId);
+    const agentDraft = this.state.agentDirty && selected ? this.state.agentDraft
+      : selected ? agentDraftFrom(selected)
+        : emptyAgentDraft();
     return {
       overview,
-      selectedSpace: selected,
+      selectedAgent: selected,
       globalDraft,
       globalDirty: globalDraft !== overview.globalPrompt,
-      spaceDraft,
-      spaceDirty: selected ? dirtySpace(spaceDraft, selected) : false,
+      agentDraft,
+      agentDirty: selected ? dirtyAgent(agentDraft, selected) : false,
     };
   }
 
-  private spacePatch(
-    space: DreamSpace,
-    spaceDraft = this.state.spaceDirty ? this.state.spaceDraft : spaceDraftFrom(space),
+  private agentPatch(
+    agent: DreamAgent,
+    agentDraft = this.state.agentDirty ? this.state.agentDraft : agentDraftFrom(agent),
   ): Partial<DreamSnapshot> {
     return {
-      selectedSpace: space,
-      spaceDraft,
-      spaceDirty: dirtySpace(spaceDraft, space),
+      selectedAgent: agent,
+      agentDraft,
+      agentDirty: dirtyAgent(agentDraft, agent),
     };
   }
 
@@ -190,27 +190,27 @@ export class DreamStore {
 
   /** 草稿不阻止处理 pending，但必须保存或取消后才能 run，避免误以为未保存提示词已生效。 */
   canRun() {
-    const selected = this.state.selectedSpace;
+    const selected = this.state.selectedAgent;
     return this.canWrite() && !!selected &&
-      !this.state.globalDirty && !this.state.spaceDirty &&
+      !this.state.globalDirty && !this.state.agentDirty &&
       this.state.overview?.running !== true &&
       selected.lastRun?.status !== 'running';
   }
 
-  selectSpace = (spaceId: string): boolean => {
+  selectAgent = (agentId: string): boolean => {
     if (this.disposed || this.state.writing !== false) return false;
-    if (spaceId === this.state.selectedSpaceId) return true;
-    const space = this.state.overview?.spaces.find((item) => item.spaceId === spaceId);
-    if (!space) {
-      this.publish({ error: '请从当前 Dream 概览中选择已有空间；未知空间不会创建。' });
+    if (agentId === this.state.selectedAgentId) return true;
+    const agent = this.state.overview?.agents.find((item) => item.agentId === agentId);
+    if (!agent) {
+      this.publish({ error: '请从当前 Dream 概览中选择已有智能体；未知智能体不会创建。' });
       return false;
     }
-    // 空间草稿只跟随当前选择；切换即丢弃旧空间草稿，由 UI 在调用前自行确认。
+    // 智能体草稿只跟随当前选择；切换即丢弃旧智能体草稿，由 UI 在调用前自行确认。
     this.publish({
-      selectedSpaceId: spaceId,
-      selectedSpace: space,
-      spaceDraft: spaceDraftFrom(space),
-      spaceDirty: false,
+      selectedAgentId: agentId,
+      selectedAgent: agent,
+      agentDraft: agentDraftFrom(agent),
+      agentDirty: false,
       error: undefined,
       notice: undefined,
     });
@@ -231,16 +231,16 @@ export class DreamStore {
     });
   };
 
-  setSpaceDraft = (patch: Partial<DreamSpaceDraft>) => {
+  setAgentDraft = (patch: Partial<DreamAgentDraft>) => {
     if (this.state.writing !== false) return;
-    const draft = { ...this.state.spaceDraft, ...patch };
+    const draft = { ...this.state.agentDraft, ...patch };
     if (draft.prompt.length > DREAM_PROMPT_LIMIT) {
-      this.publish({ error: promptLimitError('空间') });
+      this.publish({ error: promptLimitError('智能体') });
       return;
     }
     this.publish({
-      spaceDraft: draft,
-      spaceDirty: !!this.state.selectedSpace && dirtySpace(draft, this.state.selectedSpace),
+      agentDraft: draft,
+      agentDirty: !!this.state.selectedAgent && dirtyAgent(draft, this.state.selectedAgent),
       error: undefined,
       notice: undefined,
     });
@@ -256,11 +256,11 @@ export class DreamStore {
     });
   };
 
-  discardSpace = () => {
-    if (!this.canWrite() || !this.state.selectedSpace) return;
+  discardAgent = () => {
+    if (!this.canWrite() || !this.state.selectedAgent) return;
     this.publish({
-      spaceDraft: spaceDraftFrom(this.state.selectedSpace),
-      spaceDirty: false,
+      agentDraft: agentDraftFrom(this.state.selectedAgent),
+      agentDirty: false,
       error: undefined,
       notice: undefined,
     });
@@ -286,7 +286,7 @@ export class DreamStore {
         loaded: true,
         stale: false,
         loading: false,
-        ...(patch.selectedSpace ? {} : { error: '所选空间不在最新 Dream 概览中，请重新选择。' }),
+        ...(patch.selectedAgent ? {} : { error: '所选智能体不在最新 Dream 概览中，请重新选择。' }),
       });
     } catch (error) {
       if (generation !== this.readGeneration || controller.signal.aborted || this.disposed || isRequestCancelled(error)) return;
@@ -309,51 +309,51 @@ export class DreamStore {
     const submitted = this.state.globalDraft;
     return this.write('global', (signal) => this.client.saveGlobalDreamPrompt(submitted, signal), (overview) => ({
       ...this.overviewPatch(overview, overview.globalPrompt),
-      ...(overview.spaces.some((space) => space.spaceId === this.state.selectedSpaceId) ? {}
-        : { error: '所选空间不在最新 Dream 概览中，请重新选择。' }),
+      ...(overview.agents.some((agent) => agent.agentId === this.state.selectedAgentId) ? {}
+        : { error: '所选智能体不在最新 Dream 概览中，请重新选择。' }),
       notice: '全局 Dream 提示词已保存',
     }), '全局 Dream 提示词保存结果未明，请刷新核对；确认后可再次明确保存。');
   };
 
-  saveSpaceSettings = async () => {
-    if (!this.canWrite() || !this.state.selectedSpace || !this.state.spaceDirty) return false;
-    const spaceId = this.state.selectedSpaceId;
-    const submitted = this.state.spaceDraft;
+  saveAgentSettings = async () => {
+    if (!this.canWrite() || !this.state.selectedAgent || !this.state.agentDirty) return false;
+    const agentId = this.state.selectedAgentId;
+    const submitted = this.state.agentDraft;
     if (submitted.prompt.length > DREAM_PROMPT_LIMIT) {
-      this.publish({ error: promptLimitError('空间') });
+      this.publish({ error: promptLimitError('智能体') });
       return false;
     }
-    return this.write('space', (signal) => this.client.updateSpaceDream(spaceId, submitted, signal), (space) => ({
-      ...this.spacePatch(space, spaceDraftFrom(space)),
-      notice: '空间 Dream 设置已保存',
-    }), '空间 Dream 设置保存结果未明，请刷新核对；确认后可再次明确保存。');
+    return this.write('agent', (signal) => this.client.updateAgentDream(agentId, submitted, signal), (agent) => ({
+      ...this.agentPatch(agent, agentDraftFrom(agent)),
+      notice: '智能体 Dream 设置已保存',
+    }), '智能体 Dream 设置保存结果未明，请刷新核对；确认后可再次明确保存。');
   };
 
   runNow = async () => {
-    if (!this.canRun() || !this.state.selectedSpace) return false;
-    const spaceId = this.state.selectedSpaceId;
-    return this.write('run', (signal) => this.client.runSpaceDream(spaceId, signal), (space) => {
-      const feedback = runFeedback(space.lastRun?.status ?? 'running', space.lastRun?.processed ?? 0, space.lastRun?.error);
+    if (!this.canRun() || !this.state.selectedAgent) return false;
+    const agentId = this.state.selectedAgentId;
+    return this.write('run', (signal) => this.client.runAgentDream(agentId, signal), (agent) => {
+      const feedback = runFeedback(agent.lastRun?.status ?? 'running', agent.lastRun?.processed ?? 0, agent.lastRun?.error);
       return {
-        ...this.spacePatch(space),
+        ...this.agentPatch(agent),
         ...feedback,
       };
     }, 'Dream 请求已中断，远端整理可能仍在执行；请刷新核对，未确认前不会重发。');
   };
 
   resolvePending = async (id: string, action: 'apply' | 'dismiss', target?: DreamTarget): Promise<boolean> => {
-    if (!this.canWrite() || !this.state.selectedSpace) return false;
-    const item: DreamPending | undefined = this.state.selectedSpace.pending.find((pending) => pending.id === id);
+    if (!this.canWrite() || !this.state.selectedAgent) return false;
+    const item: DreamPending | undefined = this.state.selectedAgent.pending.find((pending) => pending.id === id);
     if (!item) {
       this.publish({ error: '待决建议不存在；请刷新后只处理服务端仍返回的条目。' });
       return false;
     }
-    const spaceId = this.state.selectedSpaceId;
+    const agentId = this.state.selectedAgentId;
     const decision: DreamPendingDecision = action === 'apply' ? { action, target } : { action };
-    return this.write('pending', (signal) => this.client.resolveSpaceDreamPending(spaceId, id, decision, signal), (space) => {
-      // 待决项操作与保存配置无关；未保存的空间草稿必须原样保留。
+    return this.write('pending', (signal) => this.client.resolveAgentDreamPending(agentId, id, decision, signal), (agent) => {
+      // 待决项操作与保存配置无关；未保存的智能体草稿必须原样保留。
       return {
-        ...this.spacePatch(space),
+        ...this.agentPatch(agent),
         notice: action === 'apply' ? '待决建议已按选定目标写入' : '待决建议已忽略',
       };
     }, '待决建议处理结果未明，请刷新核对；确认后可再次明确操作。');

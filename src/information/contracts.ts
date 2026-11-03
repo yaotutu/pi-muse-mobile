@@ -82,7 +82,7 @@ export function parseInformationItem(value: unknown): InformationItem {
   if (!isRecord(value)) return invalid();
   return {
     id: text(value.id, { min: 1, max: 128 }),
-    spaceId: text(value.spaceId, { min: 1, max: 128 }),
+    agentId: text(value.agentId, { min: 1, max: 128 }),
     source: text(value.source, { min: 1, max: 128 }),
     externalId: text(value.externalId, { min: 1, max: 256 }),
     title: value.title !== undefined ? text(value.title) : undefined,
@@ -108,11 +108,11 @@ export function parseInformationItemsPage(value: unknown): InformationItemsPage 
 }
 
 export interface InformationClient {
-  getInformationSettings(spaceId: string, signal?: AbortSignal): Promise<InformationSettings>;
-  saveInformationSettings(spaceId: string, settings: InformationSettings, signal?: AbortSignal): Promise<InformationSettings>;
-  getInformationPreferences(spaceId: string, signal?: AbortSignal): Promise<InformationPreferences>;
-  saveInformationPreferences(spaceId: string, preferences: { notes: string }, signal?: AbortSignal): Promise<InformationPreferences>;
-  ingestInformationItems(spaceId: string, items: InformationInputItem[], signal?: AbortSignal): Promise<InformationItem[]>;
-  listInformationItems(spaceId: string, query?: InformationItemsQuery, signal?: AbortSignal): Promise<InformationItemsPage>;
-  triggerInformationRun(spaceId: string, signal?: AbortSignal): Promise<void>;
+  getInformationSettings(agentId: string, signal?: AbortSignal): Promise<InformationSettings>;
+  saveInformationSettings(agentId: string, settings: InformationSettings, signal?: AbortSignal): Promise<InformationSettings>;
+  getInformationPreferences(agentId: string, signal?: AbortSignal): Promise<InformationPreferences>;
+  saveInformationPreferences(agentId: string, preferences: { notes: string }, signal?: AbortSignal): Promise<InformationPreferences>;
+  ingestInformationItems(agentId: string, items: InformationInputItem[], signal?: AbortSignal): Promise<InformationItem[]>;
+  listInformationItems(agentId: string, query?: InformationItemsQuery, signal?: AbortSignal): Promise<InformationItemsPage>;
+  triggerInformationRun(agentId: string, signal?: AbortSignal): Promise<void>;
 }

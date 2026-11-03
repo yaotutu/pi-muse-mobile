@@ -6,7 +6,7 @@ const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf
 
 test('连接页只有测试和保存主流程，保留换址确认、取消和迟到响应守卫', () => {
   const source = read('src/workspace/ConnectionPanel.tsx');
-  assert.doesNotMatch(source, /YOUR OWN SPACE|连接你的 Pi Muse/);
+  assert.doesNotMatch(source, /YOUR OWN AGENT|连接你的 Pi Muse/);
   assert.match(source, /连接正常/);
   assert.match(source, /保存后生效/);
   assert.match(source, /const saveState = connectionSaveAvailability\(/);

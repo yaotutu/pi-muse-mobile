@@ -9,13 +9,13 @@ function object(value: unknown): Record<string, unknown> {
 const statuses = ['scheduled', 'running', 'paused', 'succeeded', 'failed', 'cancelled', 'queued'];
 const kinds = ['plan', 'step', 'observation', 'approval', 'result', 'error', 'status'];
 
-/** 只接纳独立 Jobs 契约；不再用旧 task/threadId 别名掩盖部署不匹配。 */
+/** 只接纳独立 Jobs 契约；不再用旧 task/agentId 别名掩盖部署不匹配。 */
 export function parseJob(value: unknown, expectedId?: string): JobItem {
   const item = object(value);
   for (const field of ['id', 'title', 'prompt', 'at', 'createdAt', 'updatedAt']) if (typeof item[field] !== 'string') invalid();
   if (!item.id || (expectedId !== undefined && item.id !== expectedId) || item.kind !== 'job' || typeof item.daily !== 'boolean' || typeof item.enabled !== 'boolean' || !statuses.includes(item.status as string)) invalid();
   if (item.error !== null && typeof item.error !== 'string') invalid();
-  for (const field of ['nextRunAt', 'lastRunAt', 'lastResult', 'originSpaceId']) if (item[field] !== undefined && typeof item[field] !== 'string') invalid();
+  for (const field of ['nextRunAt', 'lastRunAt', 'lastResult', 'originAgentId']) if (item[field] !== undefined && typeof item[field] !== 'string') invalid();
   // 响应只按文档检查结构，历史任务的 at 不重新解释；所有新提交由表单严格校验。
   return item as JobItem;
 }

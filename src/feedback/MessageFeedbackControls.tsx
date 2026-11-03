@@ -25,9 +25,9 @@ const { layout: l, radius: r, typography: t, messageFeedback: m } = workspaceThe
 type Reaction = MessageFeedback['reaction'];
 
 export function MessageFeedbackControls({
-  spaceId, sessionId, messageId, messageText, role, initialFeedback, visible, anchor, bubbleLayout, onClose, onOpen,
+  agentId, sessionId, messageId, messageText, role, initialFeedback, visible, anchor, bubbleLayout, onClose, onOpen,
 }: {
-  spaceId: string;
+  agentId: string;
   sessionId: string;
   messageId: string;
   messageText: string;
@@ -43,7 +43,7 @@ export function MessageFeedbackControls({
   const styles = useMemo(() => createStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const { feedback, loading, busy, error, uncertain, refresh, setReaction, addComment, editComment, deleteComment } =
-    useMessageFeedback({ spaceId, sessionId, messageId, initialFeedback });
+    useMessageFeedback({ agentId, sessionId, messageId, initialFeedback });
   const [section, setSection] = useState<'actions' | 'comments'>('actions');
   const [copyError, setCopyError] = useState(false);
   const [draft, setDraft] = useState('');

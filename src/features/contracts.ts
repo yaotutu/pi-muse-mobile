@@ -1,14 +1,14 @@
 import { ApiError } from '../api/errors';
 import type { InformationClient } from '../information/contracts';
 export type FeatureId = 'news' | 'sms';
-export type FeatureBinding = { id: FeatureId; name: string; targetSpaceId: string };
+export type FeatureBinding = { id: FeatureId; name: string; targetAgentId: string };
 export type FeatureSource = { featureId: FeatureId; itemIds: string[] };
-export type FeatureDiscussion = { spaceId: string; sessionId: string; messageId: string; notificationId: string };
+export type FeatureDiscussion = { agentId: string; sessionId: string; messageId: string; notificationId: string };
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object';
 const invalid = () => new ApiError(502, '服务器返回的功能数据不正确，请刷新核对');
 export function parseFeature(value: unknown): FeatureBinding {
-  if (!record(value) || (value.id !== 'news' && value.id !== 'sms') || typeof value.name !== 'string' || typeof value.targetSpaceId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(value.targetSpaceId) || ['news-internal', 'sms-internal'].includes(value.targetSpaceId)) throw invalid();
-  return { id: value.id, name: value.name, targetSpaceId: value.targetSpaceId };
+  if (!record(value) || (value.id !== 'news' && value.id !== 'sms') || typeof value.name !== 'string' || typeof value.targetAgentId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(value.targetAgentId)) throw invalid();
+  return { id: value.id, name: value.name, targetAgentId: value.targetAgentId };
 }
 export function parseFeatures(value: unknown): FeatureBinding[] {
   if (!record(value) || !Array.isArray(value.features)) throw invalid();
@@ -21,13 +21,12 @@ export function parseFeatureSource(value: unknown): FeatureSource {
   return { featureId: value.featureId, itemIds: value.itemIds as string[] };
 }
 export function parseDiscussion(value: unknown): FeatureDiscussion {
-  if (!record(value) || !['spaceId', 'sessionId', 'messageId', 'notificationId'].every((key) => typeof value[key] === 'string' && value[key])) throw invalid();
-  if (['news-internal', 'sms-internal'].includes(value.spaceId as string)) throw invalid();
-  return { spaceId: value.spaceId as string, sessionId: value.sessionId as string, messageId: value.messageId as string, notificationId: value.notificationId as string };
+  if (!record(value) || !['agentId', 'sessionId', 'messageId', 'notificationId'].every((key) => typeof value[key] === 'string' && value[key])) throw invalid();
+  return { agentId: value.agentId as string, sessionId: value.sessionId as string, messageId: value.messageId as string, notificationId: value.notificationId as string };
 }
 export interface FeatureClient {
   listFeatures(signal?: AbortSignal): Promise<FeatureBinding[]>;
-  bindFeature(id: FeatureId, spaceId: string, signal?: AbortSignal): Promise<FeatureBinding>;
+  bindFeature(id: FeatureId, agentId: string, signal?: AbortSignal): Promise<FeatureBinding>;
   discussNews(articleId: string, signal?: AbortSignal): Promise<FeatureDiscussion>;
   getSmsSettings: (signal?: AbortSignal) => ReturnType<InformationClient['getInformationSettings']>;
   saveSmsSettings: (settings: Parameters<InformationClient['saveInformationSettings']>[1], signal?: AbortSignal) => ReturnType<InformationClient['saveInformationSettings']>;

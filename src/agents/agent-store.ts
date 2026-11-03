@@ -1,13 +1,13 @@
 import type { ApiClient } from '../api/contracts';
 import { ApiError, isRequestCancelled } from '../api/errors';
-import type { DeleteSpaceResult, ResetSpaceResult, SpaceSkills } from '../api/types';
+import type { DeleteAgentResult, ResetAgentResult, AgentSkills } from '../api/types';
 import { validateAttachmentDrafts } from '../attachments/validation';
 import type { AttachmentDraft, AttachmentDraftUpdateResult } from '../attachments/types';
-import { MAIN_SPACE } from './space-state';
+import { MAIN_AGENT } from './agent-state';
 
 export const INSTRUCTIONS_LIMIT = 20_000;
 
-/** A01: 客户端未确认提交条目（内存持有，随空间与 epoch 隔离，连接销毁即释放，不持久化正文）。 */
+/** A01: 客户端未确认提交条目（内存持有，随智能体与 epoch 隔离，连接销毁即释放，不持久化正文）。 */
 export type PendingSubmission = {
   messageId: string;
   runId: string;
@@ -29,32 +29,32 @@ type Field<T> = {
   draft: T;
   error?: string;
 };
-export type SpaceState = {
+export type AgentState = {
   epoch: number;
-  /** 仅作聊天上下文失效边界；HTTP 始终以空间 ID 寻址。 */
+  /** 仅作聊天上下文失效边界；HTTP 始终以智能体 ID 寻址。 */
   sessionId: string | null;
   deleted: boolean;
   deleting: boolean;
   resetting: boolean;
   resetUncertain: boolean;
   draft: string;
-  /** 本空间输入框当前附件；离线与系统选择器短暂失焦时保留。 */
+  /** 本智能体输入框当前附件；离线与系统选择器短暂失焦时保留。 */
   draftAttachments: AttachmentDraft[];
-  /** A01: 单空间单epoch独占一条未确认提交，收到权威历史包含原user ID前始终保留 */
+  /** A01: 单智能体单epoch独占一条未确认提交，收到权威历史包含原user ID前始终保留 */
   pendingSubmission: PendingSubmission | null;
   instructions: Field<string>;
-  skills: Field<Record<string, boolean>> & { catalog: SpaceSkills['skills']; diagnostics: NonNullable<SpaceSkills['diagnostics']>; notice?: string };
+  skills: Field<Record<string, boolean>> & { catalog: AgentSkills['skills']; diagnostics: NonNullable<AgentSkills['diagnostics']>; notice?: string };
 };
 type ReadKind = 'instructions' | 'skills';
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
 const field = <T,>(value: T): Field<T> => ({ loaded: false, loading: false, saving: false, saved: value, draft: value });
-const effective = (data: SpaceSkills) => Object.fromEntries(data.skills.map((skill) => [skill.name, skill.enabled]));
+const effective = (data: AgentSkills) => Object.fromEntries(data.skills.map((skill) => [skill.name, skill.enabled]));
 export const equalSwitches = (a: Record<string, boolean>, b: Record<string, boolean>) =>
   Object.keys(a).length === Object.keys(b).length && Object.keys(a).every((name) => a[name] === b[name]);
 
 /** 每个连接工作区独占内存；不持久化正文、凭据或服务端路径。 */
-export class SpaceStore {
-  private sessions = new Map<string, SpaceState>();
+export class AgentStore {
+  private sessions = new Map<string, AgentState>();
   private reads = new Map<string, AbortController>();
   private listeners = new Set<() => void>();
   private version = 0;
@@ -72,7 +72,7 @@ export class SpaceStore {
   getVersion = () => this.version;
   getLifecycleVersion = () => this.lifecycleVersion;
   private changed() { this.version++; for (const listener of this.listeners) listener(); }
-  get(id: string): SpaceState {
+  get(id: string): AgentState {
     let entry = this.sessions.get(id);
     if (!entry) {
       entry = { epoch: 0, sessionId: null, deleted: false, deleting: false, resetting: false, resetUncertain: false, draft: '', draftAttachments: [], pendingSubmission: null, instructions: field(''), skills: { ...field<Record<string, boolean>>({}), catalog: [], diagnostics: [] } };
@@ -212,7 +212,7 @@ export class SpaceStore {
     this.changed();
   }
 
-  /** 列表观察到另一设备重置时，只失效聊天，不能销毁空间规则与未保存的设置草稿。 */
+  /** 列表观察到另一设备重置时，只失效聊天，不能销毁智能体规则与未保存的设置草稿。 */
   bindSession(id: string, sessionId: string) {
     const entry = this.get(id);
     if (entry.deleted || entry.resetting || entry.sessionId === sessionId) return;
@@ -228,11 +228,11 @@ export class SpaceStore {
     this.changed();
   }
 
-  async resetSpace(id: string, clearSchedules = false): Promise<ResetSpaceResult | undefined> {
+  async resetAgent(id: string, clearSchedules = false): Promise<ResetAgentResult | undefined> {
     const entry = this.get(id);
     if (!this.available(id) || this.hasSettingsWrite(id)) return undefined;
     // 先切本地代次再请求：旧 SSE、历史回读和迟到 finally 都不能写入新上下文。
-    // 与删除不同，空间设置（包括未保存草稿）和私有工作区必须保留。
+    // 与删除不同，智能体设置（包括未保存草稿）和私有工作区必须保留。
     entry.resetting = true;
     entry.epoch++;
     entry.draftAttachments = [];
@@ -241,7 +241,7 @@ export class SpaceStore {
     this.cancelReads(id);
     this.changed();
     try {
-      const result = await this.api.resetSpace(id, { clearSchedules });
+      const result = await this.api.resetAgent(id, { clearSchedules });
       if (this.get(id) !== entry) return undefined;
       entry.sessionId = result.sessionId;
       entry.draft = '';
@@ -295,7 +295,7 @@ export class SpaceStore {
     }
   }
   loadInstructions(id: string) {
-    return this.read(id, 'instructions', (signal) => this.api.getSpaceInstructions(id, signal), (data) => {
+    return this.read(id, 'instructions', (signal) => this.api.getAgentInstructions(id, signal), (data) => {
       const target = this.get(id).instructions;
       const dirty = target.draft !== target.saved;
       target.saved = data.instructions;
@@ -303,7 +303,7 @@ export class SpaceStore {
       target.loaded = true;
     });
   }
-  private applySkills(id: string, data: SpaceSkills, preserveDraft: boolean) {
+  private applySkills(id: string, data: AgentSkills, preserveDraft: boolean) {
     const target = this.get(id).skills;
     const draft = target.draft;
     const saved = effective(data);
@@ -316,7 +316,7 @@ export class SpaceStore {
     target.loaded = true;
   }
   loadSkills(id: string) {
-    return this.read(id, 'skills', (signal) => this.api.getSpaceSkills(id, signal), (data) => {
+    return this.read(id, 'skills', (signal) => this.api.getAgentSkills(id, signal), (data) => {
       const target = this.get(id).skills;
       this.applySkills(id, data, !equalSwitches(target.draft, target.saved));
     });
@@ -334,7 +334,7 @@ export class SpaceStore {
     target.error = undefined;
     this.changed();
     try {
-      const data = await this.api.saveSpaceInstructions(id, draft);
+      const data = await this.api.saveAgentInstructions(id, draft);
       if (!this.isCurrent(id, epoch)) return false;
       target.saved = data.instructions;
       if (target.draft === draft) target.draft = data.instructions;
@@ -357,7 +357,7 @@ export class SpaceStore {
     this.changed();
     let refreshCatalog = false;
     try {
-      const data = await this.api.saveSpaceSkills(id, overrides);
+      const data = await this.api.saveAgentSkills(id, overrides);
       if (!this.isCurrent(id, epoch)) return false;
       this.applySkills(id, data, false);
       return true;
@@ -378,8 +378,8 @@ export class SpaceStore {
     }
   }
 
-  async deleteSpace(id: string): Promise<DeleteSpaceResult | undefined> {
-    if (id === MAIN_SPACE) throw new ApiError(409, '主空间不可删除');
+  async deleteAgent(id: string): Promise<DeleteAgentResult | undefined> {
+    if (id === MAIN_AGENT) throw new ApiError(409, '主智能体不可删除');
     const entry = this.get(id);
     if (!this.available(id) || this.hasSettingsWrite(id)) return undefined;
     entry.deleting = true;
@@ -387,8 +387,8 @@ export class SpaceStore {
     this.cancelReads(id);
     this.changed();
     try {
-      let result: DeleteSpaceResult;
-      try { result = await this.api.deleteSpace(id); }
+      let result: DeleteAgentResult;
+      try { result = await this.api.deleteAgent(id); }
       catch (error) {
         if (!(error instanceof ApiError) || error.status !== 404) throw error;
         result = { ok: true, removed: { jobs: 0, monitors: 0 } };

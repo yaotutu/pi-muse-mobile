@@ -32,15 +32,15 @@ const markerGoals = (goals) => goals.filter((goal) => !context.baselineIds.goals
 if (phase === 'prepare') {
   assert.equal(statSync(contextPath, { throwIfNoEntry: false }), undefined, 'prepare requires no existing context.json');
   const stamp = Date.now().toString(36), marker = `GOALS_UI_${stamp}`;
-  context = { phase: 'prepare-started', base, marker, spaceId: `goals-ui-${stamp}`, spaceTitle: marker,
-    resourceIds: { goals: [] }, baselineIds: { goals: [], spaces: [] }, modelProof: null };
+  context = { phase: 'prepare-started', base, marker, agentId: `goals-ui-${stamp}`, agentTitle: marker,
+    resourceIds: { goals: [] }, baselineIds: { goals: [], agents: [] }, modelProof: null };
 } else {
   context = JSON.parse(readFileSync(contextPath, 'utf8'));
   assert.equal(context.base, base, 'E2E_API_BASE_URL changed between phases');
   assert.match(context.marker, /^GOALS_UI_[a-z0-9]+$/);
-  assert.match(context.spaceId, /^goals-ui-[a-z0-9]+$/);
-  assert.equal(context.spaceTitle, context.marker);
-  assert.ok(context.resourceIds?.goals instanceof Array && context.baselineIds?.goals instanceof Array && context.baselineIds?.spaces instanceof Array);
+  assert.match(context.agentId, /^goals-ui-[a-z0-9]+$/);
+  assert.equal(context.agentTitle, context.marker);
+  assert.ok(context.resourceIds?.goals instanceof Array && context.baselineIds?.goals instanceof Array && context.baselineIds?.agents instanceof Array);
   assert.match(context.openapiHash, /^[a-f0-9]{64}$/);
   assert.ok(context.serviceVersion);
 }
@@ -69,21 +69,21 @@ async function authenticate() {
 }
 
 async function readResources() {
-  const [goals, spaces] = await Promise.all([api.listGoals(), api.listSpaces()]);
-  return { goals, spaces };
+  const [goals, agents] = await Promise.all([api.listGoals(), api.listAgents()]);
+  return { goals, agents };
 }
 
 function assertBaselineRetained(resources) {
-  const current = { goals: ids(resources.goals), spaces: ids(resources.spaces) };
-  for (const kind of ['goals', 'spaces']) assert.deepEqual(context.baselineIds[kind].filter((id) => !current[kind].includes(id)), [], `Baseline ${kind} retained`);
+  const current = { goals: ids(resources.goals), agents: ids(resources.agents) };
+  for (const kind of ['goals', 'agents']) assert.deepEqual(context.baselineIds[kind].filter((id) => !current[kind].includes(id)), [], `Baseline ${kind} retained`);
   return current;
 }
 
 async function runModel() {
-  const history = await api.getConversation(context.spaceId), runId = `goals-ui-${context.marker.slice(-10)}`;
+  const history = await api.getConversation(context.agentId), runId = `goals-ui-${context.marker.slice(-10)}`;
   const eventTypes = {}, toolCalls = [];
   let runError;
-  await api.runAgent({ spaceId: context.spaceId, runId, expectedRevision: history.revision,
+  await api.runAgent({ agentId: context.agentId, runId, expectedRevision: history.revision,
     message: { id: `${runId}-message`, content: `${context.marker} reply with this marker once and do not call tools.` } },
   (event) => {
     eventTypes[event.type] = (eventTypes[event.type] ?? 0) + 1;
@@ -93,7 +93,7 @@ async function runModel() {
   assert.equal(runError, undefined, `Real model run failed: ${runError}`);
   assert.ok(eventTypes.RUN_STARTED && eventTypes.RUN_FINISHED);
   assert.deepEqual(toolCalls, [], 'Model proof must not mutate resources');
-  const after = await api.getConversation(context.spaceId);
+  const after = await api.getConversation(context.agentId);
   const start = after.messages.findIndex((message) => message.id === `${runId}-message`);
   const assistant = after.messages.slice(start).find((message) => message.role === 'assistant' && message.content);
   assert.ok(start >= 0 && assistant?.content?.includes(context.marker), 'Persisted model reply must contain marker');
@@ -115,7 +115,7 @@ async function verifyGoalApi() {
     description: 'A second status for filtering and sorting checks.' }));
   const temporary = register(await api.createGoal({ title: `${context.marker} temporary delete`, category: context.marker,
     description: 'Delete this goal during prepare.' }));
-  assert.equal(Object.hasOwn(active, 'spaceId'), false, 'Goals are global resources');
+  assert.equal(Object.hasOwn(active, 'agentId'), false, 'Goals are global resources');
   assert.deepEqual([active.status, active.milestones.length, paused.milestones.length, temporary.status], ['active', 2, 0, 'active']);
   const pausedGoal = await api.setGoalStatus(paused.id, 'paused');
   assert.equal((await api.getGoal(paused.id)).status, 'paused');
@@ -142,20 +142,20 @@ async function prepare() {
   Object.assign(context, await deployment('prepare'));
   await authenticate();
   const before = await readResources();
-  context.baselineIds = { goals: ids(before.goals), spaces: ids(before.spaces) };
-  assert.equal(before.spaces.some((space) => space.id === context.spaceId), false);
+  context.baselineIds = { goals: ids(before.goals), agents: ids(before.agents) };
+  assert.equal(before.agents.some((agent) => agent.id === context.agentId), false);
   assert.equal(markerGoals(before.goals).length, 0);
   writeContext();
-  writeJson('baseline-prepare.json', { counts: { goals: before.goals.length, spaces: before.spaces.length }, baselineIds: context.baselineIds });
+  writeJson('baseline-prepare.json', { counts: { goals: before.goals.length, agents: before.agents.length }, baselineIds: context.baselineIds });
   pass('docs OpenAPI health version and clean baseline verified');
-  const rules = `Dedicated goals UI acceptance ${context.marker}. Do not call tools unless explicitly requested. Never write files or modify goals, memories, schedules, monitors, other spaces or existing resources.`;
-  await api.saveSpaceInstructions(context.spaceId, rules);
+  const rules = `Dedicated goals UI acceptance ${context.marker}. Do not call tools unless explicitly requested. Never write files or modify goals, memories, schedules, monitors, other agents or existing resources.`;
+  await api.saveAgentInstructions(context.agentId, rules);
   await runModel();
   await verifyGoalApi();
   context.phase = 'prepared';
   context.preparedAt = new Date().toISOString();
   writeContext();
-  pass('prepare retains two marker goals and dedicated model space for native UI');
+  pass('prepare retains two marker goals and dedicated model agent for native UI');
 }
 
 async function verify() {
@@ -166,7 +166,7 @@ async function verify() {
   const expected = context.resourceIds.goals.slice(0, 2), actual = current.goals.filter((goal) => expected.includes(goal.id));
   sameIds(actual, expected);
   assert.deepEqual(actual.sort((a, b) => expected.indexOf(a.id) - expected.indexOf(b.id)).map((goal) => goal.milestones.length), [2, 0]);
-  for (const goal of actual) assert.equal(goal.title.startsWith(context.marker) && goal.category === context.marker && !Object.hasOwn(goal, 'spaceId'), true);
+  for (const goal of actual) assert.equal(goal.title.startsWith(context.marker) && goal.category === context.marker && !Object.hasOwn(goal, 'agentId'), true);
   writeJson('verify-resources.json', { goals: actual, baseline });
   context.phase = 'verified';
   writeContext();
@@ -181,17 +181,17 @@ async function cleanup() {
   assertBaselineRetained(before);
   const targets = before.goals.filter((goal) => context.resourceIds.goals.includes(goal.id) || markerGoals([goal]).length);
   for (const goal of targets) assert.deepEqual(await api.removeGoal(goal.id), { ok: true, id: goal.id });
-  if (before.spaces.some((space) => space.id === context.spaceId)) {
-    try { await api.deleteSpace(context.spaceId); } catch (error) { if (!(error instanceof ApiError && error.status === 404)) throw error; }
+  if (before.agents.some((agent) => agent.id === context.agentId)) {
+    try { await api.deleteAgent(context.agentId); } catch (error) { if (!(error instanceof ApiError && error.status === 404)) throw error; }
   }
   const after = await readResources(), baseline = assertBaselineRetained(after);
   assert.equal(markerGoals(after.goals).length, 0);
   assert.equal(after.goals.some((goal) => context.resourceIds.goals.includes(goal.id)), false);
-  assert.equal(after.spaces.some((space) => space.id === context.spaceId), false);
-  writeJson('cleanup-result.json', { deletedGoalIds: ids(targets), deletedSpaceId: context.spaceId, baseline });
+  assert.equal(after.agents.some((agent) => agent.id === context.agentId), false);
+  writeJson('cleanup-result.json', { deletedGoalIds: ids(targets), deletedAgentId: context.agentId, baseline });
   context.phase = 'cleaned';
   writeContext();
-  pass('cleanup removes only registered marker goals and dedicated space; baseline retained');
+  pass('cleanup removes only registered marker goals and dedicated agent; baseline retained');
 }
 
 try {
@@ -212,7 +212,7 @@ try {
   token = undefined;
   if (context) {
     writeJson(`${phase}-results.json`, { passed: !failure, phase, base, marker: context.marker,
-      spaceId: context.spaceId, spaceTitle: context.spaceTitle, checks, error: failure?.message, completedAt: new Date().toISOString() });
+      agentId: context.agentId, agentTitle: context.agentTitle, checks, error: failure?.message, completedAt: new Date().toISOString() });
     console.log('Evidence:', output);
   }
 }

@@ -28,7 +28,7 @@ test('冷启动只有新版工作区，更新与安全区仍由根级持有', ()
 test('旧工作区、旧演示与旁路预览源码已移除，不保留可回退的界面', () => {
   for (const path of [
     'src/app/AppShell.tsx',
-    'src/threads',
+    'src/spaces',
     'src/chat/ChatScreen.tsx',
     'src/connection/ConnectionScreen.tsx',
     'src/connection/ServerSettingsScreen.tsx',
@@ -52,23 +52,23 @@ test('新版侧栏职责不变，真实连接与更新从设置页进入', () =>
   assert.match(source, /<SettingRow title="服务器连接"[^\n]*onPress=\{openConnection\}/);
   assert.match(source, /accessibilityLabel=\{label\} accessibilityState=\{\{ disabled \}\} disabled=\{disabled\} onPress=\{onPress\}/);
   assert.match(source, /<RuntimeProvider>/);
-  assert.match(source, /<SpaceProvider>/);
+  assert.match(source, /<AgentProvider>/);
   assert.match(source, /<ApiProvider client=\{connection.client\}/);
   assert.doesNotMatch(source, /useWorkspaceSnapshot/);
 });
 
 test('会话面板当前执行与文件入口消费真实连接，不消费示例数组', () => {
   const source = read('src/workspace/SessionPanel.tsx');
-  assert.doesNotMatch(source, /sample-state|SampleThread|SampleActivity|thread\.approvals|thread\.files|thread\.history/);
-  assert.match(source, /<CurrentExecution spaceId=\{spaceId\}/);
-  assert.match(source, /<ApprovalPanel key=\{spaceId\} spaceId=\{spaceId\}/);
+  assert.doesNotMatch(source, /sample-state|SampleAgent|SampleActivity|agent\.approvals|agent\.files|agent\.history/);
+  assert.match(source, /<CurrentExecution agentId=\{agentId\}/);
+  assert.match(source, /<ApprovalPanel key=\{agentId\} agentId=\{agentId\}/);
   assert.doesNotMatch(source, /审批尚未接入/);
   assert.doesNotMatch(source, /FilesScreen|工作区|onDelete|settings=/);
-  assert.match(read('src/workspace/SpacePage.tsx'), /<FilesScreen currentSpaceId=\{spaceId\} spaceName=\{name\} onBack=\{onBack\} \/>/);
+  assert.match(read('src/workspace/AgentPage.tsx'), /<FilesScreen currentAgentId=\{agentId\} agentName=\{name\} onBack=\{onBack\} \/>/);
   assert.doesNotMatch(source, /工作区文件尚未接入/);
   const screen = read('src/workspace/WorkspaceScreen.tsx');
-  assert.match(screen, /<FilesProvider currentSpaceId=\{spaces\.currentSpace\}>/);
-  assert.ok(screen.indexOf('<FilesProvider currentSpaceId=') < screen.indexOf('<SessionPanel spaceId='));
+  assert.match(screen, /<FilesProvider currentAgentId=\{agents\.currentAgent\}>/);
+  assert.ok(screen.indexOf('<FilesProvider currentAgentId=') < screen.indexOf('<SessionPanel agentId='));
   const files = read('src/workspace/FilesScreen.tsx');
   assert.match(files, /store\.open\(\); return \(\) => store\.close\(\)/);
   assert.match(files, /saveWorkspaceFileToDevice\(file\)/);
@@ -82,7 +82,7 @@ test('设备下载反馈按当前范围和路径保留，详情回读不吞掉�
   assert.match(files, /const selectedKey = snapshot\.selectedPath/);
   assert.match(files, /download\.key === selectedKey/);
   assert.match(files, /current\.selectedPath !== undefined/);
-  assert.match(files, /current\.scope.*current\.selectedSpaceId.*current\.selectedPath/);
+  assert.match(files, /current\.scope.*current\.selectedAgentId.*current\.selectedPath/);
   assert.ok(files.indexOf('{!!shownDownload') < files.indexOf('{(sourceDraft || detail?.kind'));
   assert.match(files, /设备保存结果（下载时读取的内容，不代表服务端当前版本）/);
   assert.doesNotMatch(files, /current\.detail === detail|!current\.detailStale && current\.selectedPath/);

@@ -56,7 +56,7 @@ test('parseInformationPreferences parses valid notes and feedback examples', () 
 test('parseInformationItem and ingest results parse valid items', () => {
   const rawItem = {
     id: 'item-100',
-    spaceId: 'local-main',
+    agentId: 'local-main',
     source: 'sms',
     externalId: 'ext-100',
     title: '银行通知',
@@ -99,7 +99,7 @@ test('HttpApiClient routes information API calls with correct methods and endpoi
     if (url.includes('/information/items') && init?.method === 'POST') {
       return json({ items: [{
         id: 'new-1',
-        spaceId: 'space-test',
+        agentId: 'agent-test',
         source: 'sms',
         externalId: 'ext-1',
         content: '短信内容',
@@ -119,20 +119,20 @@ test('HttpApiClient routes information API calls with correct methods and endpoi
 
   try {
     const client = new HttpApiClient('http://test-server:12330', () => 'test-token', () => {});
-    const settings = await client.getInformationSettings('space-test');
+    const settings = await client.getInformationSettings('agent-test');
     assert.equal(settings.enabled, false);
 
-    const savedSettings = await client.saveInformationSettings('space-test', { enabled: true, batchWindowSeconds: 20 });
+    const savedSettings = await client.saveInformationSettings('agent-test', { enabled: true, batchWindowSeconds: 20 });
     assert.equal(savedSettings.enabled, true);
     assert.equal(savedSettings.batchWindowSeconds, 20);
 
-    const prefs = await client.getInformationPreferences('space-test');
+    const prefs = await client.getInformationPreferences('agent-test');
     assert.equal(prefs.notes, '旧偏好');
 
-    const savedPrefs = await client.saveInformationPreferences('space-test', { notes: '新偏好' });
+    const savedPrefs = await client.saveInformationPreferences('agent-test', { notes: '新偏好' });
     assert.equal(savedPrefs.notes, '新偏好');
 
-    const ingested = await client.ingestInformationItems('space-test', [{
+    const ingested = await client.ingestInformationItems('agent-test', [{
       source: 'sms',
       externalId: 'ext-1',
       content: '短信内容',
@@ -140,18 +140,18 @@ test('HttpApiClient routes information API calls with correct methods and endpoi
     assert.equal(ingested.length, 1);
     assert.equal(ingested[0].id, 'new-1');
 
-    const listed = await client.listInformationItems('space-test', { limit: 10, status: 'pending' });
+    const listed = await client.listInformationItems('agent-test', { limit: 10, status: 'pending' });
     assert.deepEqual(listed.items, []);
 
-    await client.triggerInformationRun('space-test');
+    await client.triggerInformationRun('agent-test');
 
     assert.equal(calls.length, 7);
-    assert.ok(calls[0].url.endsWith('/api/spaces/space-test/information/settings'));
+    assert.ok(calls[0].url.endsWith('/api/agents/agent-test/information/settings'));
     assert.equal(calls[1].method, 'PUT');
-    assert.ok(calls[4].url.endsWith('/api/spaces/space-test/information/items'));
+    assert.ok(calls[4].url.endsWith('/api/agents/agent-test/information/items'));
     assert.equal(calls[4].method, 'POST');
-    assert.ok(calls[5].url.includes('/api/spaces/space-test/information/items?limit=10&status=pending'));
-    assert.ok(calls[6].url.endsWith('/api/spaces/space-test/information/runs'));
+    assert.ok(calls[5].url.includes('/api/agents/agent-test/information/items?limit=10&status=pending'));
+    assert.ok(calls[6].url.endsWith('/api/agents/agent-test/information/runs'));
     assert.equal(calls[6].method, 'POST');
   } finally {
     globalThis.fetch = originalFetch;

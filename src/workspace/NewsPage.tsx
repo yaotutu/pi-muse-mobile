@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Alert, Keyboard, Linking, Pressable, ScrollView, StyleSheet, Text, View, type ScrollViewInstance, type ViewInstance } from 'react-native';
 import { useTheme } from '../theme/ThemeProvider';
 import { spacing, themeTokens } from '../theme/tokens';
-import { SpaceHeader } from './SpaceHeader';
+import { AgentHeader } from './AgentHeader';
 import { ActionButton } from '../ui/ActionButton';
 import { FeedbackNotice } from '../ui/Feedback';
 import { FormInput } from '../ui/FormInput';
@@ -192,7 +192,7 @@ function Sources({ store, snapshot, onBack, backToSettings = false }: { store: N
   // 展开只控制可见性，不清草稿、不解锁未明写入；正在写入和待核对状态始终可见。
   const adding = showAddSource || snapshot.sourceWriting || snapshot.sourceUncertain;
   return <View style={styles.readerContainer}>
-    <SpaceHeader title="RSS 来源" backLabel={backToSettings ? '返回新闻设置' : '返回新闻列表'} onBack={onBack} />
+    <AgentHeader title="RSS 来源" backLabel={backToSettings ? '返回新闻设置' : '返回新闻列表'} onBack={onBack} />
     <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content} testID="news-sources">
       <FeedFeedback snapshot={snapshot} store={store} />
       <NewsNotice notice={snapshot.notice} store={store} success={routineNotice(snapshot.notice)} />

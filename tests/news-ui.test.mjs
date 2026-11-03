@@ -97,7 +97,7 @@ test('详情完整显示原始 RSS 正文与推荐理由，阅读行距不影响
 test('RSS 固定顶栏按入口返回，默认先展示已有来源，添加和精选按需展开', () => {
   const page = read('workspace/NewsPage.tsx');
   const sources = page.split('function Sources(')[1].split('export function NewsPage(')[0];
-  assert.match(sources, /<SpaceHeader title="RSS 来源" backLabel=\{backToSettings \? '返回新闻设置' : '返回新闻列表'\} onBack=\{onBack\} \/>\s*<ScrollView/);
+  assert.match(sources, /<AgentHeader title="RSS 来源" backLabel=\{backToSettings \? '返回新闻设置' : '返回新闻列表'\} onBack=\{onBack\} \/>\s*<ScrollView/);
   assert.doesNotMatch(sources, /styles\.sourceHeading|styles\.sourceTitle|news-sources-back/);
   assert.match(sources, /useState\(!!snapshot\.sourceDraft\.url \|\| !!snapshot\.sourceDraft\.title\)/);
   assert.match(sources, /const adding = showAddSource \|\| snapshot\.sourceWriting \|\| snapshot\.sourceUncertain/);
@@ -118,7 +118,7 @@ test('新闻阅读页使用真实连接状态、共享控件和安全原文入�
   assert.match(page, /useNews\(store\)/);
   assert.match(page, /safeMessageUrl\(article\.url\)/);
   assert.match(page, /Linking\.openURL\(url\)/);
-  assert.doesNotMatch(page, /WebView|dangerouslySetInnerHTML|chatQuery|spaceId/);
+  assert.doesNotMatch(page, /WebView|dangerouslySetInnerHTML|chatQuery|agentId/);
   assert.match(page, /testID=\{`news-view-\$\{view\}`\}/);
   for (const id of ['news-saved-filter', 'news-manage-sources', 'news-refresh-feeds',
     'news-source-url', 'news-source-add', 'news-source-confirm-delete', 'news-comment-input', 'news-comment-submit',
@@ -237,7 +237,7 @@ test('新闻来源支持推荐中文精选 RSS 源并可一键填入', () => {
 test('新闻阅读归属新闻成员，不再有底栏，会话活动保留', () => {
   const workspace = read('workspace/WorkspaceScreen.tsx');
   const session = read('workspace/SessionPanel.tsx');
-  assert.match(read('workspace/SpacePage.tsx'), /accessibilityLabel="阅读新闻"/);
+  assert.match(read('workspace/AgentPage.tsx'), /accessibilityLabel="阅读新闻"/);
   assert.doesNotMatch(workspace, /workspace-read-news/);
   assert.doesNotMatch(workspace, /const NAV:|<Navigation/);
   assert.doesNotMatch(workspace, /\{ id: 'activity', label: '任务'/);

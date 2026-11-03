@@ -5,34 +5,34 @@ import { parseGroup, parseGroupEvent, groupRows, groupPreview, resolveGroupTarge
 import { workspaceBackAction } from '../src/workspace/workspace-back.ts';
 
 const members = [{ id: 'local-main', name: 'Muse' }, { id: 'sms-internal', name: '短信' }, { id: 'news-internal', name: '新闻' }];
-const turn = { id: 'group-one', rootId: 'group-one', sourceSpaceId: null, targetSpaceId: 'local-main', discussionId: '00000000-0000-4000-8000-000000000000', createdAt: '2026-11-02T00:00:00.000Z', finishedAt: '2026-11-02T00:00:02.000Z', status: 'completed', messages: [{ id: 'group-one', role: 'user', content: 'hello' }, { id: 'reply-group-one', role: 'assistant', content: 'hello back' }] };
+const turn = { id: 'group-one', rootId: 'group-one', sourceAgentId: null, targetAgentId: 'local-main', discussionId: '00000000-0000-4000-8000-000000000000', createdAt: '2026-11-02T00:00:00.000Z', finishedAt: '2026-11-02T00:00:02.000Z', status: 'completed', messages: [{ id: 'group-one', role: 'user', content: 'hello' }, { id: 'reply-group-one', role: 'assistant', content: 'hello back' }] };
 
 test('群聊不艾特时不发送目标，显式艾特只发送一个成员，未知目标不回退 main', () => {
   assert.deepEqual(resolveGroupTarget('hello', members), { content: 'hello' });
-  assert.deepEqual(resolveGroupTarget('hello', members, 'sms-internal'), { content: 'hello', targetSpaceId: 'sms-internal' });
-  assert.deepEqual(resolveGroupTarget('@短信 查一下', members), { content: '查一下', targetSpaceId: 'sms-internal' });
-  assert.deepEqual(resolveGroupTarget('@news-internal news please', members), { content: 'news please', targetSpaceId: 'news-internal' });
+  assert.deepEqual(resolveGroupTarget('hello', members, 'sms-internal'), { content: 'hello', targetAgentId: 'sms-internal' });
+  assert.deepEqual(resolveGroupTarget('@短信 查一下', members), { content: '查一下', targetAgentId: 'sms-internal' });
+  assert.deepEqual(resolveGroupTarget('@news-internal news please', members), { content: 'news please', targetAgentId: 'news-internal' });
   assert.throws(() => resolveGroupTarget('@不存在 hello', members));
 });
 test('群聊读取与流事件校验真实归属，重复身份和非法状态拒绝', () => {
-  const snapshot = { id: 'main', defaultSpaceId: 'local-main', running: null, turns: [turn], notifications: [] };
+  const snapshot = { id: 'main', defaultAgentId: 'local-main', running: null, turns: [turn], notifications: [] };
   assert.deepEqual(parseGroup(snapshot), snapshot);
   assert.throws(() => parseGroup({ ...snapshot, turns: [turn, turn] }));
-  assert.throws(() => parseGroup({ ...snapshot, turns: [{ ...turn, targetSpaceId: '../escape' }] }));
+  assert.throws(() => parseGroup({ ...snapshot, turns: [{ ...turn, targetAgentId: '../escape' }] }));
   assert.throws(() => parseGroup({ ...snapshot, turns: [{ ...turn, status: 'success' }] }));
   assert.deepEqual(parseGroupEvent({ type: 'delta', id: 'group-one', text: 'hello' }), { type: 'delta', id: 'group-one', text: 'hello' });
   assert.throws(() => parseGroupEvent({ type: 'guessed-speaker', text: '@短信' }));
 });
-const notification = { id: 'notice-one', featureId: 'sms', targetSpaceId: 'local-main', sessionId: 'private-session', messageId: 'private-notice', createdAt: '2026-11-02T00:00:01.000Z', content: '明天出行请提前准备' };
+const notification = { id: 'notice-one', featureId: 'sms', targetAgentId: 'local-main', sessionId: 'private-session', messageId: 'private-notice', createdAt: '2026-11-02T00:00:01.000Z', content: '明天出行请提前准备' };
 test('功能通知必须有真实来源、归属、时间，旧快照、重复身份和非法归属不能默默接受', () => {
-  const snapshot = { id: 'main', defaultSpaceId: 'local-main', running: null, turns: [], notifications: [notification] };
+  const snapshot = { id: 'main', defaultAgentId: 'local-main', running: null, turns: [], notifications: [notification] };
   assert.deepEqual(parseGroup(snapshot), snapshot);
-  for (const item of [{ ...notification, featureId: 'guessed' }, { ...notification, featureId: ['sms'] }, { ...notification, targetSpaceId: '../escape' }, { ...notification, sessionId: '' }, { ...notification, createdAt: 'unknown' }, { ...notification, messageId: null }]) {
+  for (const item of [{ ...notification, featureId: 'guessed' }, { ...notification, featureId: ['sms'] }, { ...notification, targetAgentId: '../escape' }, { ...notification, sessionId: '' }, { ...notification, createdAt: 'unknown' }, { ...notification, messageId: null }]) {
     assert.throws(() => parseGroup({ ...snapshot, notifications: [item] }));
   }
   assert.throws(() => parseGroup({ ...snapshot, notifications: undefined }));
   assert.throws(() => parseGroup({ ...snapshot, notifications: [notification, notification] }));
-  const other = { ...notification, targetSpaceId: 'other' };
+  const other = { ...notification, targetAgentId: 'other' };
   assert.equal(parseGroup({ ...snapshot, notifications: [notification, other] }).notifications.length, 2);
 });
 test('通知按投递时间合入时间线，头像来自功能而非承接方；只读展示不伪造定向或反馈', () => {
@@ -41,10 +41,10 @@ test('通知按投递时间合入时间线，头像来自功能而非承接方�
   assert.deepEqual(rows.map((row) => row.at), [turn.createdAt, notification.createdAt, turn.finishedAt]);
   const row = rows[1];
   assert.equal(row.sender, 'sms-internal'); assert.equal(row.target, undefined);
-  assert.equal(row.notification.targetSpaceId, 'local-main');
+  assert.equal(row.notification.targetAgentId, 'local-main');
   assert.equal(row.message.feedbackAvailable, false); assert.deepEqual(row.message.toolCalls, []);
   assert.equal(JSON.stringify(notification), before);
-  assert.equal(new Set(groupRows([], [notification, { ...notification, targetSpaceId: 'other' }]).map((item) => item.key)).size, 2);
+  assert.equal(new Set(groupRows([], [notification, { ...notification, targetAgentId: 'other' }]).map((item) => item.key)).size, 2);
 });
 test('会话摘要反映最新通知或群回复，隐藏思考过程，保留失败提示，不修改原始内容', () => {
   assert.deepEqual(groupPreview([], []), {});
@@ -61,7 +61,7 @@ test('功能通知同步共用 Runtime，隐藏到列表仍读快照；跳承接
   assert.match(ui, /useSyncExternalStore\(runtimeStore.subscribe/);
   assert.match(ui, /\[visible, runtime.conversationSyncVersion, notificationVersion, reload\]/);
   assert.match(ui, /if \(!request.current\) void reload\(\)/);
-  assert.match(ui, /onPrivateChat\(row.notification!.targetSpaceId\)/);
+  assert.match(ui, /onPrivateChat\(row.notification!.targetAgentId\)/);
   assert.match(ui, /onSummary\(groupPreview\(turns, snapshot\?\.notifications \?\? \[\], syncError\)\)/);
   assert.doesNotMatch(ui, /subscribeRuntime\(|setInterval\(/);
   assert.match(read('workspace/WorkspaceScreen.tsx'), /onPrivateChat={select} onSummary={setGroupPreview}/);
@@ -71,14 +71,14 @@ test('功能通知同步共用 Runtime，隐藏到列表仍读快照；跳承接
   assert.match(directory, /flex: 1, minWidth: 0, gap: spacing\[6\]/);
 });
 test('群聊按真实发送/回复时序排列，成员请求与回复使用不同发送者，不从正文猜头像', () => {
-  const nested = { ...turn, id: 'child-one', rootId: turn.id, sourceSpaceId: 'local-main', targetSpaceId: 'sms-internal', createdAt: '2026-11-02T00:00:00.500Z', finishedAt: '2026-11-02T00:00:01.000Z', messages: [{ id: 'child-one', role: 'user', content: '查一下' }, { id: 'reply-child-one', role: 'assistant', content: '@新闻 取件码1234' }] };
+  const nested = { ...turn, id: 'child-one', rootId: turn.id, sourceAgentId: 'local-main', targetAgentId: 'sms-internal', createdAt: '2026-11-02T00:00:00.500Z', finishedAt: '2026-11-02T00:00:01.000Z', messages: [{ id: 'child-one', role: 'user', content: '查一下' }, { id: 'reply-child-one', role: 'assistant', content: '@新闻 取件码1234' }] };
   const rows = groupRows([turn, nested]);
   assert.deepEqual(rows.map((row) => row.sender), [null, 'local-main', 'sms-internal', 'local-main']);
   assert.deepEqual(rows.map((row) => row.message.text), ['hello', '查一下', '@新闻 取件码1234', 'hello back']);
 });
 test('停止和失败贴在原回复位置，无正文也保留成员身份；后续成功不重复旧状态', () => {
   const stopped = { ...turn, id: 'stopped', status: 'cancelled', messages: [turn.messages[0]] };
-  const failed = { ...turn, id: 'failed', targetSpaceId: 'sms-internal', status: 'failed', createdAt: '2026-11-02T00:01:00.000Z', finishedAt: '2026-11-02T00:01:02.000Z' };
+  const failed = { ...turn, id: 'failed', targetAgentId: 'sms-internal', status: 'failed', createdAt: '2026-11-02T00:01:00.000Z', finishedAt: '2026-11-02T00:01:02.000Z' };
   const later = { ...turn, id: 'later', createdAt: '2026-11-02T00:02:00.000Z', finishedAt: '2026-11-02T00:02:02.000Z' };
   const rows = groupRows([later, stopped, failed]);
   assert.deepEqual(rows.map((row) => row.key), ['stopped', 'reply-stopped', 'failed', 'reply-failed', 'later', 'reply-later']);
@@ -112,7 +112,7 @@ test('群信息返回群聊，群聊返回列表；群所有者持续挂载，�
   assert.match(root, /useState<WorkspacePage>\('group'\)/);
   assert.match(root, /<GroupChat visible={page === 'group'}/);
   assert.match(root, /label="打开群组信息"/);
-  assert.match(root, /openProfile\(spaces.currentSpace, 'settings'\)/);
+  assert.match(root, /openProfile\(agents.currentAgent, 'settings'\)/);
   assert.match(root, /本成员的私聊历史、群聊讨论与显示记录/);
   assert.match(read('workspace/ResetSessionDialog.tsx'), /本成员的私聊历史、群聊讨论与显示记录/);
   const ui = read('group/GroupChat.tsx');

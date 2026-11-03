@@ -65,7 +65,7 @@ export function SmsSettingsCard() {
         <Text style={styles.section}>短信处理</Text>
       </View>
       <Text style={styles.caption}>
-        短信保存在独立功能中；仅重要结果进入绑定的承接会话，不随当前空间切换。
+        短信由短信智能体保存和处理；仅重要结果进入绑定的承接会话，不随当前页面切换。
       </Text>
       {info.loading && <Text style={styles.caption}>正在读取短信状态…</Text>}
 

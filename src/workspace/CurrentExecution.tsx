@@ -12,23 +12,23 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-nati
 import { Check, ChevronRight, CirclePause, Radio, ShieldAlert, Workflow, Wrench, X } from "lucide-react-native";
 import { workspaceTheme, spacing } from "../ui/tokens";
 import { useTheme } from "../theme/ThemeProvider";
-import { useSpaceRuntime } from "../runtime/RuntimeProvider";
+import { useAgentRuntime } from "../runtime/RuntimeProvider";
 import type { AgentStatus } from "../runtime/types";
 import { useServiceConnection } from "../connection/ConnectionProvider";
 import { ActionButton } from "../ui/ActionButton";
 
 export function CurrentExecution({
-  spaceId,
+  agentId,
   onSettled,
   onApprovals,
   onHistory,
 }: {
-  spaceId: string;
+  agentId: string;
   onSettled?: () => void;
   onApprovals?: () => void;
   onHistory?: (activityId?: string) => void;
 }) {
-  const runtime = useSpaceRuntime(spaceId);
+  const runtime = useAgentRuntime(agentId);
   const connection = useServiceConnection();
   const { colors } = useTheme();
 

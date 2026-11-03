@@ -23,13 +23,13 @@ function useStyles() {
 }
 
 export function ActivityPanel({
-  spaceId,
-  defaultScope = "space",
+  agentId,
+  defaultScope = "agent",
   initialActivityId,
   showHeading = false,
 }: {
-  spaceId: string;
-  defaultScope?: "space" | "all";
+  agentId: string;
+  defaultScope?: "agent" | "all";
   initialActivityId?: string;
   showHeading?: boolean;
 }) {
@@ -39,8 +39,8 @@ export function ActivityPanel({
   const [scope, setScope] = useState(defaultScope);
   const [status, setStatus] = useState<ActivityStatus>();
   const filter = useMemo<ActivityFilter>(
-    () => ({ ...(scope === "space" ? { spaceId } : {}), ...(status ? { status } : {}) }),
-    [scope, spaceId, status]
+    () => ({ ...(scope === "agent" ? { agentId } : {}), ...(status ? { status } : {}) }),
+    [scope, agentId, status]
   );
 
   useEffect(() => {
@@ -52,7 +52,7 @@ export function ActivityPanel({
     if (initialActivityId) store.select(initialActivityId);
   }, [store, initialActivityId]);
 
-  const matches = snapshot.filter.spaceId === filter.spaceId && snapshot.filter.status === filter.status;
+  const matches = snapshot.filter.agentId === filter.agentId && snapshot.filter.status === filter.status;
   const detail = matches ? snapshot.detail : undefined;
 
   return (
@@ -140,8 +140,8 @@ export function ActivityPanel({
         <>
           {defaultScope === "all" && (
             <View style={styles.scopeRow}>
-              <ChoiceChip label="全部空间" selected={scope === "all"} onPress={() => setScope("all")} />
-              <ChoiceChip label="当前空间" selected={scope === "space"} onPress={() => setScope("space")} />
+              <ChoiceChip label="全部智能体" selected={scope === "all"} onPress={() => setScope("all")} />
+              <ChoiceChip label="当前智能体" selected={scope === "agent"} onPress={() => setScope("agent")} />
             </View>
           )}
 

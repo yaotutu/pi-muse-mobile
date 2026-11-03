@@ -53,7 +53,7 @@ export function MarkdownContent({ text, compact = false, inlinePrefix, onMessage
     }
   }, [text]);
   // 前缀属于首段的原生 Text 流，不拼进 Markdown 原文，也不重复到后续段落。
-  const firstToken = tokens.find((token) => token.type !== 'space');
+  const firstToken = tokens.find((token) => token.type !== 'agent');
   const prefixIsInline = firstToken && ['paragraph', 'text', 'heading', 'html'].includes(firstToken.type);
 
   const inline = (parts: MarkdownToken[] | undefined, fallback = ''): ReactNode => {
@@ -93,7 +93,7 @@ export function MarkdownContent({ text, compact = false, inlinePrefix, onMessage
     const key = index;
     const prefix = prefixIsInline && part === firstToken ? inlinePrefix : undefined;
     switch (part.type) {
-      case 'space': return null;
+      case 'agent': return null;
       case 'heading': {
         const headingStyle = part.depth === 1 ? styles.heading1 : part.depth === 2 ? styles.heading2 : styles.heading3;
         return <Text key={key} selectable={!onMessageLongPress} onLongPress={onMessageLongPress}

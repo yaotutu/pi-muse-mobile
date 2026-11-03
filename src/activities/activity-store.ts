@@ -22,7 +22,7 @@ export type ActivitySnapshot = {
   detailError?: string;
   missing: boolean;
 };
-const sameFilter = (a: ActivityFilter, b: ActivityFilter) => a.spaceId === b.spaceId && a.status === b.status;
+const sameFilter = (a: ActivityFilter, b: ActivityFilter) => a.agentId === b.agentId && a.status === b.status;
 const empty = (): ActivitySnapshot => ({ filter: {}, activities: [], activeActivities: [], loaded: false, loading: false, stale: true, hasMore: false, nextCursor: null, detailLoading: false, detailStale: true, missing: false });
 
 /**
@@ -94,9 +94,9 @@ export class ActivityStore {
     void this.loadList(true);
   };
   /** 聊天结束也从这里失效，不把 RUN_FINISHED 翻译成活动 completed。 */
-  invalidate = (spaceId?: string) => {
-    const relevantList = !spaceId || !this.state.filter.spaceId || this.state.filter.spaceId === spaceId;
-    const relevantDetail = !!this.state.selectedId && (!spaceId || !this.state.detail || this.state.detail.activity.spaceId === spaceId);
+  invalidate = (agentId?: string) => {
+    const relevantList = !agentId || !this.state.filter.agentId || this.state.filter.agentId === agentId;
+    const relevantDetail = !!this.state.selectedId && (!agentId || !this.state.detail || this.state.detail.activity.agentId === agentId);
     if (!relevantList && !relevantDetail) return;
     this.listDirty ||= relevantList; this.detailDirty ||= relevantDetail;
     this.publish({ ...(relevantList ? { stale: true } : {}), ...(relevantDetail ? { detailStale: true } : {}) });
@@ -113,17 +113,17 @@ export class ActivityStore {
       const { instanceId: _instanceId, ...activity } = event.data;
       const current = this.state.activeActivities.filter((item) => item.id !== activity.id);
       if (isActiveActivity(activity)) current.push(activity);
-      const matches = (!this.state.filter.spaceId || this.state.filter.spaceId === activity.spaceId)
+      const matches = (!this.state.filter.agentId || this.state.filter.agentId === activity.agentId)
         && (!this.state.filter.status || this.state.filter.status === activity.status);
       // 概览即时替换，不按时间或运行 revision 伪造活动版本。未知项/分页成员及步骤由查询核对。
       this.publish({ activeActivities: current,
         activities: this.state.activities.flatMap((item) => item.id !== activity.id ? [item] : matches ? [activity] : []),
         ...(this.state.detail?.activity.id === activity.id ? { detail: { ...this.state.detail, activity } } : {}),
       });
-      this.invalidate(activity.spaceId);
+      this.invalidate(activity.agentId);
     } else if (event.event !== 'conversation_updated') {
       // 运行与审批变化仍可能带来活动事实；conversation_updated 只失效聊天历史。
-      this.invalidate(event.data.spaceId ?? undefined);
+      this.invalidate(event.data.agentId ?? undefined);
     }
   };
   setConnection = (connection: RuntimeConnection) => {
@@ -149,7 +149,7 @@ export class ActivityStore {
       if (generation !== this.listGeneration || controller.signal.aborted) return;
       // 无活动 revision 时，只以接收代次隔离在途旧 HTTP；旧响应不能短暂抹掉已显示的新推送。
       if (projectionGeneration !== this.projectionGeneration) { this.listDirty = true; return; }
-      if (page.activities.some((item) => filter.spaceId && item.spaceId !== filter.spaceId || filter.status && item.status !== filter.status)) throw new ApiError(502, '活动列表与请求范围不符，请刷新核对');
+      if (page.activities.some((item) => filter.agentId && item.agentId !== filter.agentId || filter.status && item.status !== filter.status)) throw new ApiError(502, '活动列表与请求范围不符，请刷新核对');
       if (page.hasMore && page.nextCursor === cursor) throw new ApiError(502, '活动分页游标没有前进，请刷新列表');
       // 分页不冻结；追加页可包含已读项，按 ID 去重并保留服务端顺序。
       const merged = new Map((append ? this.state.activities : []).map((item) => [item.id, item]));
@@ -185,10 +185,10 @@ export class ActivityStore {
       if (generation === this.detailGeneration) { this.detailController = undefined; this.publish({ detailLoading: false }); if (this.detailDirty) this.schedule(); }
     }
   }
-  forgetSpace(spaceId: string) {
-    if (this.state.detail?.activity.spaceId === spaceId || this.state.filter.spaceId === spaceId) this.select();
-    this.publish({ activities: this.state.activities.filter((item) => item.spaceId !== spaceId), activeActivities: this.state.activeActivities.filter((item) => item.spaceId !== spaceId) });
-    this.invalidate(spaceId);
+  forgetAgent(agentId: string) {
+    if (this.state.detail?.activity.agentId === agentId || this.state.filter.agentId === agentId) this.select();
+    this.publish({ activities: this.state.activities.filter((item) => item.agentId !== agentId), activeActivities: this.state.activeActivities.filter((item) => item.agentId !== agentId) });
+    this.invalidate(agentId);
   }
   dispose() { this.active = false; this.close(); this.state = empty(); this.listeners.clear(); }
 }

@@ -1,4 +1,4 @@
-/** 附件契约、HTTP DTO 投影、空间草稿归属与未确认重试的确定性回归；不代表真实模型验收。 */
+/** 附件契约、HTTP DTO 投影、智能体草稿归属与未确认重试的确定性回归；不代表真实模型验收。 */
 
 import './helpers/register-conversation-tests.mjs';
 import assert from 'node:assert/strict';
@@ -17,7 +17,7 @@ const {
 const { HttpApiClient } = await import('../src/api/http-client.ts');
 const { parseConversationSnapshot, parseMessagesSnapshotEvent } = await import('../src/api/contracts.ts');
 const { ApiError } = await import('../src/api/errors.ts');
-const { SpaceStore } = await import('../src/spaces/space-store.ts');
+const { AgentStore } = await import('../src/agents/agent-store.ts');
 const { createMockApi } = await import('./helpers/conversation-test-harness.ts');
 const { renderConversationHook } = await import('./helpers/hook-runner.ts');
 const { projectHistory } = await import('../src/chat/chat-state.ts');
@@ -162,7 +162,7 @@ test('HttpApiClient 只上传四字段 DTO，并严格解析历史与流快照�
     const client = new HttpApiClient('https://api.example', () => 'token', () => {});
     const events = [];
     await client.runAgent({
-      spaceId: 'space-1',
+      agentId: 'agent-1',
       runId: 'run-1',
       expectedRevision: 'rev-1',
       message: { id: 'message-1', content: '', attachments: [makeDrafts([imageInput])[0]] },
@@ -219,13 +219,13 @@ test('HttpApiClient 文本消息不携带 attachments 字段且本地坏附件�
   try {
     const client = new HttpApiClient('https://api.example', () => undefined, () => {});
     await client.runAgent({
-      spaceId: 'space-1', runId: 'run-1', expectedRevision: 'rev-1',
+      agentId: 'agent-1', runId: 'run-1', expectedRevision: 'rev-1',
       message: { id: 'message-1', content: 'hello' },
     }, () => {});
     assert.equal('attachments' in textBody.message, false);
     assert.equal(called, 1);
     await assert.rejects(client.runAgent({
-      spaceId: 'space-1', runId: 'run-2', expectedRevision: 'rev-1',
+      agentId: 'agent-1', runId: 'run-2', expectedRevision: 'rev-1',
       message: { id: 'message-2', content: 'hello', attachments: [{ ...imageInput, dataBase64: '!!!' }] },
     }, () => {}), (error) => error instanceof ApiError && error.status === 400);
     assert.equal(called, 1, '坏附件必须在 HTTP 前拒绝');
@@ -234,23 +234,23 @@ test('HttpApiClient 文本消息不携带 attachments 字段且本地坏附件�
   }
 });
 
-test('SpaceStore 按空间与 epoch 管理附件草稿、失败载荷和生命周期', () => {
-  const store = new SpaceStore({});
-  const epoch = store.get('space-1').epoch;
+test('AgentStore 按智能体与 epoch 管理附件草稿、失败载荷和生命周期', () => {
+  const store = new AgentStore({});
+  const epoch = store.get('agent-1').epoch;
   const drafts = makeDrafts([imageInput, textInput]);
 
   // 系统选择器返回时常伴随连接短暂 disabled；不能因此丢掉已读到的结果。
   store.setEnabled(false);
-  assert.equal(store.appendDraftAttachments('space-1', epoch, drafts).ok, true);
-  assert.deepEqual(store.get('space-1').draftAttachments, drafts);
-  assert.equal(store.appendDraftAttachments('space-1', epoch, drafts).ok, false, '重复 ID 被拒绝');
-  assert.equal(store.get('space-1').draftAttachments.length, 2);
+  assert.equal(store.appendDraftAttachments('agent-1', epoch, drafts).ok, true);
+  assert.deepEqual(store.get('agent-1').draftAttachments, drafts);
+  assert.equal(store.appendDraftAttachments('agent-1', epoch, drafts).ok, false, '重复 ID 被拒绝');
+  assert.equal(store.get('agent-1').draftAttachments.length, 2);
   store.setEnabled(true);
 
-  assert.equal(store.removeDraftAttachment('space-1', epoch, 'text-1'), true);
-  assert.equal(store.get('space-1').draftAttachments.length, 1);
-  assert.equal(store.clearDraftAttachments('space-1', epoch), true);
-  assert.deepEqual(store.get('space-1').draftAttachments, []);
+  assert.equal(store.removeDraftAttachment('agent-1', epoch, 'text-1'), true);
+  assert.equal(store.get('agent-1').draftAttachments.length, 1);
+  assert.equal(store.clearDraftAttachments('agent-1', epoch), true);
+  assert.deepEqual(store.get('agent-1').draftAttachments, []);
 
   // 回归：两次系统选择各自 60KB 均合法，但追加后文本合计超限时必须保留第一次草稿。
   const firstLargeText = createAttachmentDraftsFromBytes([{
@@ -259,33 +259,33 @@ test('SpaceStore 按空间与 epoch 管理附件草稿、失败载荷和生命�
   const secondLargeText = createAttachmentDraftsFromBytes([{
     id: 'large-text-2', name: 'second.txt', mimeType: 'text/plain', data: Buffer.alloc(60_000, 0x62),
   }]).attachments[0];
-  assert.equal(store.appendDraftAttachments('space-1', epoch, [firstLargeText]).ok, true);
-  const overflow = store.appendDraftAttachments('space-1', epoch, [secondLargeText]);
+  assert.equal(store.appendDraftAttachments('agent-1', epoch, [firstLargeText]).ok, true);
+  const overflow = store.appendDraftAttachments('agent-1', epoch, [secondLargeText]);
   assert.equal(overflow.ok, false);
   assert.match(overflow.error, /文本附件合计/);
-  assert.deepEqual(store.get('space-1').draftAttachments, [firstLargeText]);
-  assert.equal(store.clearDraftAttachments('space-1', epoch), true);
+  assert.deepEqual(store.get('agent-1').draftAttachments, [firstLargeText]);
+  assert.equal(store.clearDraftAttachments('agent-1', epoch), true);
 
-  store.setPendingSubmission('space-1', epoch, {
+  store.setPendingSubmission('agent-1', epoch, {
     messageId: 'message-1', runId: 'run-1', text: '', epoch, status: 'failed',
     error: '失败', attachments: drafts,
   });
-  assert.equal(store.restorePendingSubmissionToDraft('space-1'), true);
-  assert.deepEqual(store.get('space-1').draftAttachments, drafts);
-  assert.equal(store.get('space-1').pendingSubmission, null);
+  assert.equal(store.restorePendingSubmissionToDraft('agent-1'), true);
+  assert.deepEqual(store.get('agent-1').draftAttachments, drafts);
+  assert.equal(store.get('agent-1').pendingSubmission, null);
 
-  store.bindSession('space-1', 'session-1');
-  store.setDraftAttachments('space-1', store.get('space-1').epoch, drafts);
-  store.setPendingSubmission('space-1', store.get('space-1').epoch, {
-    messageId: 'message-2', runId: 'run-2', text: 'x', epoch: store.get('space-1').epoch,
+  store.bindSession('agent-1', 'session-1');
+  store.setDraftAttachments('agent-1', store.get('agent-1').epoch, drafts);
+  store.setPendingSubmission('agent-1', store.get('agent-1').epoch, {
+    messageId: 'message-2', runId: 'run-2', text: 'x', epoch: store.get('agent-1').epoch,
     status: 'unconfirmed', attachments: drafts,
   });
-  const oldEpoch = store.get('space-1').epoch;
-  store.bindSession('space-1', 'session-2');
-  assert.equal(store.get('space-1').epoch, oldEpoch + 1);
-  assert.deepEqual(store.get('space-1').draftAttachments, []);
-  assert.equal(store.get('space-1').pendingSubmission, null);
-  assert.equal(store.appendDraftAttachments('space-1', oldEpoch, drafts).ok, false, '旧 epoch 迟到结果不得写入新会话');
+  const oldEpoch = store.get('agent-1').epoch;
+  store.bindSession('agent-1', 'session-2');
+  assert.equal(store.get('agent-1').epoch, oldEpoch + 1);
+  assert.deepEqual(store.get('agent-1').draftAttachments, []);
+  assert.equal(store.get('agent-1').pendingSubmission, null);
+  assert.equal(store.appendDraftAttachments('agent-1', oldEpoch, drafts).ok, false, '旧 epoch 迟到结果不得写入新会话');
 });
 
 test('useConversation 支持纯附件发送、服务端历史附件替换乐观视图', async () => {
@@ -310,8 +310,8 @@ test('useConversation 支持纯附件发送、服务端历史附件替换乐观�
       onEvent({ type: 'RUN_FINISHED' });
     },
   });
-  const store = new SpaceStore(api);
-  const hook = await renderConversationHook('space-1', api, store);
+  const store = new AgentStore(api);
+  const hook = await renderConversationHook('agent-1', api, store);
   try {
     const drafts = makeDrafts([imageInput]);
     let accepted = false;
@@ -319,7 +319,7 @@ test('useConversation 支持纯附件发送、服务端历史附件替换乐观�
     assert.equal(accepted, true);
     assert.equal(submitted.message.content, '');
     assert.equal(submitted.message.attachments[0].dataBase64, pngBase64);
-    assert.equal(store.get('space-1').pendingSubmission, null);
+    assert.equal(store.get('agent-1').pendingSubmission, null);
     const user = hook.result.current.views.find((view) => view.id === submitted.message.id);
     assert.ok(user);
     assert.equal(user.attachments[0].image.dataBase64, pngBase64);
@@ -348,21 +348,21 @@ test('failed 附件消息显式 retry 复用原 message/run 与原始附件', as
       onEvent({ type: 'RUN_FINISHED' });
     },
   });
-  const store = new SpaceStore(api);
-  const hook = await renderConversationHook('space-1', api, store);
+  const store = new AgentStore(api);
+  const hook = await renderConversationHook('agent-1', api, store);
   try {
     const drafts = makeDrafts([textInput]);
     await hook.result.current.send('', () => {}, drafts);
     assert.equal(calls.length, 1);
-    assert.equal(store.get('space-1').pendingSubmission.status, 'failed');
-    assert.equal(store.get('space-1').pendingSubmission.attachments[0].dataBase64, textBase64);
+    assert.equal(store.get('agent-1').pendingSubmission.status, 'failed');
+    assert.equal(store.get('agent-1').pendingSubmission.attachments[0].dataBase64, textBase64);
 
     assert.equal(await hook.result.current.retry(), true);
     assert.equal(calls.length, 2);
     assert.equal(calls[1].runId, calls[0].runId);
     assert.equal(calls[1].message.id, calls[0].message.id);
     assert.equal(calls[1].message.attachments[0].dataBase64, calls[0].message.attachments[0].dataBase64);
-    assert.equal(store.get('space-1').pendingSubmission, null);
+    assert.equal(store.get('agent-1').pendingSubmission, null);
     assert.equal(hook.result.current.views.filter((view) => view.id === calls[0].message.id).length, 1);
   } finally {
     hook.unmount();
@@ -374,11 +374,11 @@ test('REQUEST_TOO_LARGE 映射为明确的 pre-run 未发送失败', async () =>
     getConversation: async () => ({ revision: 'rev-1', messages: [] }),
     runAgent: async () => { throw new ApiError(413, '请求体过大', 'REQUEST_TOO_LARGE'); },
   });
-  const store = new SpaceStore(api);
-  const hook = await renderConversationHook('space-1', api, store);
+  const store = new AgentStore(api);
+  const hook = await renderConversationHook('agent-1', api, store);
   try {
     await hook.result.current.send('过大消息', () => {});
-    const pending = store.get('space-1').pendingSubmission;
+    const pending = store.get('agent-1').pendingSubmission;
     assert.equal(pending.status, 'failed');
     assert.equal(pending.error, '请求体过大');
     assert.equal(hook.result.current.historyFailed, false);
