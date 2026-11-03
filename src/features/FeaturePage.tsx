@@ -10,12 +10,14 @@ import { SpaceHeader } from '../workspace/SpaceHeader';
 import { SmsSettingsCard } from '../information/SmsSettingsCard';
 import type { FeatureBinding, FeatureId } from './contracts';
 import { NewsPreferencesCard } from './NewsPreferencesCard';
+import type { NewsPreferencesStore } from './news-preferences-store';
 export type FeatureSection = 'sms' | 'news-feature';
 
 /** 后台功能设置由专用接口持有，不以当前私聊的 sessionId 代替 Feature 归属。 */
-export function FeaturePage({ section, onBack, backLabel, spaces, onNewsSettings }: {
+export function FeaturePage({ section, onBack, backLabel, spaces, onNewsSettings, newsPreferences }: {
   section: FeatureSection; onBack: () => void; backLabel: string;
   spaces: { id: string; title: string }[]; onNewsSettings: () => void;
+  newsPreferences: NewsPreferencesStore;
 }) {
   const api = useApi(); const { colors } = useTheme();
   const [features, setFeatures] = useState<FeatureBinding[]>([]);
@@ -60,7 +62,7 @@ export function FeaturePage({ section, onBack, backLabel, spaces, onNewsSettings
         <View style={styles.group}><View style={styles.row}><View style={styles.flex}><Text style={styles.title}>交互承接空间</Text><Text style={styles.text}>{name(feature.targetSpaceId)}</Text><Text style={styles.caption}>仅改变后台通知及「带到会话讨论」的落点，不影响成员私聊或数据归属。</Text></View></View></View>
         <ActionButton label="更换交互承接空间" text={saving ? '正在保存…' : '更换承接空间'} disabled={loading || saving || needsReadback} onPress={() => setChoosing(!choosing)} />
         {choosing && <View style={styles.group}>{spaces.map((space) => <Pressable key={space.id} accessibilityRole="button" accessibilityLabel={`绑定到${space.title}`} disabled={saving} onPress={() => void bind(space.id)} style={({ pressed }) => [styles.row, pressed && styles.pressed]}><Text style={styles.text}>{space.title}{space.id === feature.targetSpaceId ? ' · 当前' : ''}</Text></Pressable>)}</View>}
-        {id === 'news' ? <><ActionButton label="打开新闻RSS来源" text="RSS 来源管理" onPress={onNewsSettings} /><NewsPreferencesCard /></> : <SmsSettingsCard />}
+        {id === 'news' ? <><ActionButton label="打开新闻RSS来源" text="RSS 来源管理" onPress={onNewsSettings} /><NewsPreferencesCard store={newsPreferences} /></> : <SmsSettingsCard />}
       </>}
     </ScrollView>
   </View>;

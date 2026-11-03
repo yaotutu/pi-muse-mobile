@@ -28,6 +28,7 @@ import { spacing, sizing, workspaceTheme, type WorkspaceColors } from '../ui/tok
 import { ConnectionPanel } from './ConnectionPanel';
 import { NewsPage, NewsSourcesPage } from './NewsPage';
 import { createNewsStore } from '../news/news-store';
+import { NewsPreferencesStore } from '../features/news-preferences-store';
 import { useJobs } from '../jobs/JobProvider';
 import { useMonitors } from '../monitors/MonitorProvider';
 import { GoalsPanel } from './GoalsPanel';
@@ -186,6 +187,7 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
   const api = useApi();
   // 连接键改变会卸载整层；新闻 Store 在此持续挂载，切空间与重置会话不会丢草稿。
   const [news] = useState(() => createNewsStore(api));
+  const [newsPreferences] = useState(() => new NewsPreferencesStore(api));
   // Store 随 ApiProvider 的连接键创建和销毁，票据不会跨服务地址复用。
   const [browser] = useState(() => createBrowserStore(api, snapshot.serverUrl ?? ''));
   const [browserOpen, setBrowserOpen] = useState(false);
@@ -237,9 +239,13 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
   const refresh = useCallback((spaceId = spaces.currentSpace) => { void reloadSpaces(); activities.invalidate(); jobs.invalidate(); monitors.invalidate(); goals.invalidate(); setHistoryRefresh((value) => ({ ...value, [spaceId]: (value[spaceId] ?? 0) + 1 })); }, [reloadSpaces, activities, jobs, monitors, goals, spaces.currentSpace]);
   useEffect(() => {
     news.setActive(AppState.currentState === 'active');
-    const subscription = AppState.addEventListener('change', (state) => news.setActive(state === 'active'));
-    return () => { subscription.remove(); news.dispose(); };
-  }, [news]);
+    newsPreferences.setActive(AppState.currentState === 'active');
+    const subscription = AppState.addEventListener('change', (state) => {
+      news.setActive(state === 'active');
+      newsPreferences.setActive(state === 'active');
+    });
+    return () => { subscription.remove(); news.dispose(); newsPreferences.dispose(); };
+  }, [news, newsPreferences]);
   useEffect(() => () => browser.dispose(), [browser]);
   const openBrowser = useCallback(() => {
     Keyboard.dismiss();
@@ -403,7 +409,7 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
   } else if (page === 'feature' && settingsSubpage === 'news-sources') {
     otherPage = <NewsSourcesPage store={news} onBack={() => setSettingsSubpage('news-feature')} />;
   } else if (page === 'feature' && (settingsSubpage === 'sms' || settingsSubpage === 'news-feature')) {
-    otherPage = <FeaturePage section={settingsSubpage} backLabel={spaceView === 'settings' ? '返回空间设置' : '返回成员主页'} onBack={() => { setSettingsSubpage(null); setPage('space'); }}
+    otherPage = <FeaturePage newsPreferences={newsPreferences} section={settingsSubpage} backLabel={spaceView === 'settings' ? '返回空间设置' : '返回成员主页'} onBack={() => { setSettingsSubpage(null); setPage('space'); }}
       spaces={spaces.sourceSpaces.filter((space) => !!space.sessionId).map((space) => ({ id: space.id, title: labels.title(space.id) }))}
       onNewsSettings={() => setSettingsSubpage('news-sources')} />;
   } else if (page === 'space') {
