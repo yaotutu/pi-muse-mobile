@@ -72,3 +72,22 @@ test('群信息返回群聊，群聊返回列表；群所有者持续挂载，�
   assert.doesNotMatch(ui, /getConversation|subscribeRuntime/);
   assert.match(ui, /resolveGroupTarget\(draft, members, target\)/);
 });
+test('定向成员与正文共用原生 Text 流，高亮仅来自真实目标，不另设收件人行', () => {
+  const read = (file) => readFileSync(new URL('../src/' + file, import.meta.url), 'utf8');
+  const view = read('workspace/ConversationView.tsx');
+  assert.match(view, /const mention = recipient \? <Text style={styles.recipient}>/);
+  assert.match(view, /style={\[styles.messageText, styles.userMessageText\]}>\{mention\}\{mention && ' '\}\{message.text\}<\/Text>/);
+  assert.doesNotMatch(view, /!!recipient && <Text|userRecipient/);
+  assert.match(view, /recipient: \{[^\n]*color: c.accentText, backgroundColor: c.blueSoft, fontWeight: '600'/);
+  assert.match(view, /<MessageContent text={message.text} inlinePrefix=/);
+  assert.match(read('workspace/MessageContent.tsx'), /<MarkdownContent text={cleaned} inlinePrefix={inlinePrefix}/);
+});
+test('成员间 Markdown 请求只在首段内联目标，不改正文、代码复制或普通私聊默认值', () => {
+  const markdown = readFileSync(new URL('../src/ui/MarkdownContent.tsx', import.meta.url), 'utf8');
+  assert.match(markdown, /inlinePrefix\?: ReactNode/);
+  assert.match(markdown, /const prefix = prefixIsInline && part === firstToken \? inlinePrefix : undefined/);
+  assert.match(markdown, /style={styles.body}>\{prefix\}\{inline\(part.tokens, value\)\}<\/Text>/);
+  assert.match(markdown, /marked.lexer\(text,/);
+  assert.match(markdown, /<CodeBlock key={key} code={value}/);
+  assert.doesNotMatch(markdown, /text\.replace|inlinePrefix\s*\+/);
+});

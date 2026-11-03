@@ -483,15 +483,15 @@ export function Message({ message, pendingStatus, feedbackScope, layout = 'priva
       setFeedbackOpenOwner(owner);
     });
   };
+  const mention = recipient ? <Text style={styles.recipient}>{`\u00a0${recipient}\u00a0`}</Text> : undefined;
   const bubbleContent = <>
-    {!!recipient && <Text style={[styles.recipient, message.role === 'user' && styles.userRecipient]}>{recipient}</Text>}
     {message.featureSource && <Text style={styles.featureSourceLabel}>来自{message.featureSource.featureId === 'news' ? '新闻' : '短信'}</Text>}
     {!!message.text && (message.role === 'user'
       ? <Text selectable={!feedbackScope} onLongPress={feedbackScope ? openFeedback : undefined}
         accessibilityActions={feedbackScope ? [{ name: 'openMessageActions', label: '打开消息操作' }] : undefined}
         onAccessibilityAction={feedbackScope ? (event) => { if (event.nativeEvent.actionName === 'openMessageActions') openFeedback(); } : undefined}
-        style={[styles.messageText, styles.userMessageText]}>{message.text}</Text>
-      : <MessageContent text={message.text} onMessageLongPress={feedbackScope ? openFeedback : undefined} />)}
+        style={[styles.messageText, styles.userMessageText]}>{mention}{mention && ' '}{message.text}</Text>
+      : <MessageContent text={message.text} inlinePrefix={mention && <>{mention}{' '}</>} onMessageLongPress={feedbackScope ? openFeedback : undefined} />)}
     {message.role === 'user' && !!message.attachments?.length && <MessageAttachments items={message.attachments} />}
     {pendingStatus === 'sending' && <Text style={styles.messageSubtext}>发送中…</Text>}
     {pendingStatus === 'failed' && <Text style={styles.messageSubtext}>未发送</Text>}
@@ -556,8 +556,7 @@ const createStyles = (c: WorkspaceColors) =>
     message: { padding: l.chatMessagePadding, borderRadius: r.message },
     groupMessage: { padding: l.groupMessagePadding, borderRadius: l.groupMessageRadius, gap: spacing[4] },
     groupAssistantMessage: { width: '100%', maxWidth: '100%' },
-    recipient: { ...t.caption, color: c.accentText },
-    userRecipient: { color: c.onAccent },
+    recipient: { ...t.message, color: c.accentText, backgroundColor: c.blueSoft, fontWeight: '600' },
     assistantMessage: {
       backgroundColor: c.surface,
       alignSelf: 'flex-start',

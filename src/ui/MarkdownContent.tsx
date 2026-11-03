@@ -41,7 +41,7 @@ function messageActionAccessibility(onOpen?: () => void): Pick<TextProps, 'acces
   } : {};
 }
 
-export function MarkdownContent({ text, onMessageLongPress }: { text: string; onMessageLongPress?: () => void }) {
+export function MarkdownContent({ text, inlinePrefix, onMessageLongPress }: { text: string; inlinePrefix?: ReactNode; onMessageLongPress?: () => void }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const tokens = useMemo(() => {
@@ -52,6 +52,9 @@ export function MarkdownContent({ text, onMessageLongPress }: { text: string; on
       return [{ type: 'text', text }];
     }
   }, [text]);
+  // 前缀属于首段的原生 Text 流，不拼进 Markdown 原文，也不重复到后续段落。
+  const firstToken = tokens.find((token) => token.type !== 'space');
+  const prefixIsInline = firstToken && ['paragraph', 'text', 'heading', 'html'].includes(firstToken.type);
 
   const inline = (parts: MarkdownToken[] | undefined, fallback = ''): ReactNode => {
     if (!parts?.length) return fallback;
@@ -88,16 +91,17 @@ export function MarkdownContent({ text, onMessageLongPress }: { text: string; on
   const blocks = (parts: MarkdownToken[]): ReactNode => parts.map((part, index) => {
     const value = part.text ?? part.raw ?? '';
     const key = index;
+    const prefix = prefixIsInline && part === firstToken ? inlinePrefix : undefined;
     switch (part.type) {
       case 'space': return null;
       case 'heading': {
         const headingStyle = part.depth === 1 ? styles.heading1 : part.depth === 2 ? styles.heading2 : styles.heading3;
         return <Text key={key} selectable={!onMessageLongPress} onLongPress={onMessageLongPress}
-          {...messageActionAccessibility(onMessageLongPress)} style={[styles.body, headingStyle]}>{inline(part.tokens, value)}</Text>;
+          {...messageActionAccessibility(onMessageLongPress)} style={[styles.body, headingStyle]}>{prefix}{inline(part.tokens, value)}</Text>;
       }
       case 'paragraph':
       case 'text': return <Text key={key} selectable={!onMessageLongPress} onLongPress={onMessageLongPress}
-        {...messageActionAccessibility(onMessageLongPress)} style={styles.body}>{inline(part.tokens, value)}</Text>;
+        {...messageActionAccessibility(onMessageLongPress)} style={styles.body}>{prefix}{inline(part.tokens, value)}</Text>;
       case 'code': return <CodeBlock key={key} code={value} language={part.lang} onMessageLongPress={onMessageLongPress} />;
       case 'blockquote': return <View key={key} style={styles.quote}>{blocks(part.tokens ?? [{ type: 'text', text: value }])}</View>;
       case 'list': return <View key={key} style={styles.list}>{part.items?.map((item, itemIndex) => (
@@ -110,11 +114,15 @@ export function MarkdownContent({ text, onMessageLongPress }: { text: string; on
       case 'hr': return <View key={key} style={styles.rule} />;
       // 未识别结构及 HTML 保留字面内容；不会执行标签、脚本或图片请求。
       default: return value ? <Text key={key} selectable={!onMessageLongPress} onLongPress={onMessageLongPress}
-        {...messageActionAccessibility(onMessageLongPress)} style={styles.body}>{value}</Text> : null;
+        {...messageActionAccessibility(onMessageLongPress)} style={styles.body}>{prefix}{value}</Text> : null;
     }
   });
 
-  return <View style={styles.root}>{blocks(tokens)}</View>;
+  return <View style={styles.root}>
+    {/* 代码块、表格等块级正文保留自身结构，不把前缀塞进可复制代码或表头。 */}
+    {!!inlinePrefix && !prefixIsInline && <Text style={styles.body}>{inlinePrefix}</Text>}
+    {blocks(tokens)}
+  </View>;
 }
 
 function CodeBlock({ code, language, onMessageLongPress }: { code: string; language?: string; onMessageLongPress?: () => void }) {
