@@ -1,29 +1,34 @@
 import { ArrowUp, AtSign, Square, X } from 'lucide-react-native';
 import { type ScrollViewInstance, AppState, Keyboard, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useApi } from '../api/ApiProvider';
 import { useApprovals } from '../approvals/ApprovalProvider';
 import { useTheme } from '../theme/ThemeProvider';
+import { useRuntimeStore } from '../runtime/RuntimeProvider';
 import { ActionButton } from '../ui/ActionButton';
 import { IconControl } from '../ui/IconControl';
 import { spacing, workspaceTheme } from '../ui/tokens';
 import { MemberAvatar } from '../workspace/MemberAvatar';
 import { Message } from '../workspace/ConversationView';
-import { groupRows, resolveGroupTarget, type GroupSnapshot, type GroupTurn } from './contracts';
+import { groupPreview, groupRows, resolveGroupTarget, type GroupPreview, type GroupSnapshot, type GroupTurn } from './contracts';
 
 let groupSequence = 0;
 const { layout: l, typography: t, radius: r } = workspaceTheme;
 /** 连接内只挂一份群聊所有者；换页面不重发、不把私聊草稿或历史带进群里。 */
-export function GroupChat({ visible, members, onProfile, onApprovals }: {
+export function GroupChat({ visible, members, onProfile, onApprovals, onPrivateChat, onSummary }: {
   visible: boolean; members: { id: string; name: string }[];
   onProfile: (id: string) => void; onApprovals: (spaceId: string) => void;
+  onPrivateChat: (spaceId: string) => void; onSummary: (preview: GroupPreview) => void;
 }) {
   const api = useApi(); const { colors: c } = useTheme(); const approvals = useApprovals();
+  const runtimeStore = useRuntimeStore();
+  const runtime = useSyncExternalStore(runtimeStore.subscribe, runtimeStore.getSnapshot, runtimeStore.getSnapshot);
   const [snapshot, setSnapshot] = useState<GroupSnapshot>();
   const [live, setLive] = useState<GroupTurn[]>([]);
   const [draft, setDraft] = useState(''); const [target, setTarget] = useState<string>();
   const [choosing, setChoosing] = useState(false); const [loading, setLoading] = useState(false);
   const [running, setRunning] = useState(false); const [uncertain, setUncertain] = useState(false); const [error, setError] = useState('');
+  const [syncError, setSyncError] = useState('');
   const mounted = useRef(true); const request = useRef<AbortController | null>(null);
   const pending = useRef<string | null>(null); const readVersion = useRef(0); const scroll = useRef<ScrollViewInstance>(null);
   const following = useRef(true);
@@ -33,23 +38,36 @@ export function GroupChat({ visible, members, onProfile, onApprovals }: {
     try {
       const next = await api.getGroup();
       if (!mounted.current || version !== readVersion.current) return;
-      setSnapshot(next); setError('');
+      setSnapshot(next); setError(''); setSyncError('');
       if (!request.current && next.running !== pending.current) {
         const accepted = next.turns.find((turn) => turn.id === pending.current);
         if (accepted?.messages.some((message) => message.role === 'user')) { setDraft(''); setTarget(undefined); }
         pending.current = null; setUncertain(false); setLive([]);
       }
-    } catch (failure) { if (mounted.current && version === readVersion.current) setError(failure instanceof Error ? failure.message : '群聊读取失败'); }
+    } catch (failure) {
+      if (mounted.current && version === readVersion.current) {
+        const message = failure instanceof Error ? failure.message : '群聊读取失败';
+        setError(message); setSyncError(message);
+      }
+    }
     finally { if (mounted.current && version === readVersion.current) setLoading(false); }
   }, [api]);
   useEffect(() => {
     mounted.current = true;
     return () => { mounted.current = false; request.current?.abort(); };
   }, []);
-  useEffect(() => { if (visible && !request.current) void reload(); }, [visible, reload]);
+  // 隐藏到会话列表时也同步摘要；共用现有通知流，重复/读中失效以最后一轮权威 GET 为准。
+  // 发送期间不抢写 live；收口的 reload 会消费期间积累的所有通知。
+  const notificationVersion = runtime.conversationInvalidations.at(-1)?.version ?? 0;
+  useEffect(() => { if (!request.current) void reload(); }, [visible, runtime.conversationSyncVersion, notificationVersion, reload]);
   useEffect(() => { const sub = AppState.addEventListener('change', (state) => { if (state === 'active' && !request.current) void reload(); }); return () => sub.remove(); }, [reload]);
   const combined = [...(snapshot?.turns ?? []).filter((turn) => !live.some((item) => item.id === turn.id)), ...live];
-  const rows = groupRows(combined);
+  const rows = groupRows(combined, snapshot?.notifications);
+  useEffect(() => {
+    const turns = [...(snapshot?.turns ?? []).filter((turn) => !live.some((item) => item.id === turn.id)), ...live];
+    // 列表只提示读取失败，不把本地输入校验或发送错误冒充同步故障。
+    onSummary(groupPreview(turns, snapshot?.notifications ?? [], syncError));
+  }, [snapshot, live, syncError, onSummary]);
   const busy = running || !!snapshot?.running;
   const send = async () => {
     if (!draft.trim() || busy || uncertain || !snapshot || loading) return;
@@ -87,8 +105,13 @@ export function GroupChat({ visible, members, onProfile, onApprovals }: {
           <MemberAvatar spaceId={row.sender} size={l.groupAvatar} />
         </Pressable>}
         <View style={{ flex: 1, minWidth: 0, gap: spacing[2] }}>
-          {row.sender && <Text style={{ ...t.caption, color: c.muted }}>{title(row.sender)}</Text>}
+          {row.sender && <Text style={{ ...t.caption, color: c.muted }}>{title(row.sender)}{row.notification ? ' · 通知' : ''}</Text>}
           <Message message={row.message} layout="group" recipient={row.target && row.target !== 'local-main' ? `@${title(row.target)}` : undefined} />
+          {row.notification && <Pressable accessibilityRole="button" accessibilityLabel={`在${title(row.notification.targetSpaceId)}私聊中处理通知`}
+            onPress={() => { Keyboard.dismiss(); onPrivateChat(row.notification!.targetSpaceId); }}
+            style={{ alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing[12] }}>
+            <Text style={{ ...t.caption, color: c.accentText }}>由 {title(row.notification.targetSpaceId)} 承接 · 查看私聊</Text>
+          </Pressable>}
           {row.status && <Text style={{ ...t.caption, color: row.status === 'failed' ? c.danger : c.muted }}>{row.status === 'cancelled' ? '已停止' : '处理失败，不会自动重试'}</Text>}
         </View>
       </View>)}

@@ -1,4 +1,5 @@
 import { GroupChat } from '../group/GroupChat';
+import type { GroupPreview } from '../group/contracts';
 import { GroupInfo } from '../group/GroupInfo';
 import { useNewsDiscussion } from '../features/useNewsDiscussion';
 import { SmsProvider } from '../information/SmsProvider';
@@ -201,6 +202,7 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
   const { store: goals } = useGoals();
   const runtime = useSpaceRuntime(spaces.currentSpace);
   const [page, setPage] = useState<WorkspacePage>('group');
+  const [groupPreview, setGroupPreview] = useState<GroupPreview>({});
   const [newsManaging, setNewsManaging] = useState(false);
   const [settingsSubpage, setSettingsSubpage] = useState<SettingsSubpage>(null);
   const [profileReturn, setProfileReturn] = useState<'chat' | 'inbox' | 'group' | 'group-info'>('inbox');
@@ -394,7 +396,7 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
     otherPage = <MemberDirectory spaces={spaces.spaces} labels={labels} error={spaces.error}
       onReload={() => void reloadSpaces()} onChat={select} onProfile={openProfile} onGroup={openGroup}
       onSettings={() => { setPage('settings'); setSettingsSubpage(null); }}
-      creating={spaces.creating}
+      creating={spaces.creating} groupPreview={groupPreview}
       onCreate={() => changeSpace(() => { void spaces.createSpace().then((id) => { if (!id) return; setSpaceView('profile'); setProfileReturn('inbox'); setPage('space'); setSpaceSection('home'); }); })} />;
   } else if (page === 'group-info') {
     otherPage = <GroupInfo members={groupMembers} onBack={() => setPage('group')} onProfile={openProfile} />;
@@ -459,7 +461,7 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
                   accessibilityElementsHidden={sessionMounted} importantForAccessibility={sessionMounted ? 'no-hide-descendants' : 'auto'}>
                   <View style={[styles.bodyStage, page === 'group' && { display: 'none' }]}><ConversationHost currentSpaceId={spaces.currentSpace} spaceIds={spaces.spaces.map((space) => space.id)} chatVisible={page === 'chat'} compactHeader={keyboardVisible} otherPage={otherPage}
                     refreshVersions={historyRefresh} onSettled={refresh} onBindingMismatch={reloadSpaces} openConnection={openConnection} onOpenApprovals={() => openSession('approvals')} /></View>
-                  <GroupChat visible={page === 'group'} members={groupMembers} onProfile={openProfile} onApprovals={(spaceId) => { spaces.selectSpace(spaceId); openSession('approvals'); }} />
+                  <GroupChat visible={page === 'group'} members={groupMembers} onProfile={openProfile} onPrivateChat={select} onSummary={setGroupPreview} onApprovals={(spaceId) => { spaces.selectSpace(spaceId); openSession('approvals'); }} />
                   {!!notice && <Text accessibilityRole="alert" style={[styles.notice, notice.tone === 'error' && styles.error]}>{notice.text}</Text>}
                 </View>
               </BlurTargetView>

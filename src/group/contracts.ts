@@ -5,7 +5,9 @@ export type GroupMessage = { id: string; role: 'user' | 'assistant' | 'tool'; co
   toolCalls?: { id: string; type: 'function'; function: { name: string; arguments: string } }[] };
 export type GroupTurn = { id: string; rootId: string; sourceSpaceId: string | null; targetSpaceId: string; discussionId: string;
   createdAt: string; finishedAt: string | null; status: 'running' | 'completed' | 'failed' | 'cancelled'; messages: GroupMessage[] };
-export type GroupSnapshot = { id: 'main'; defaultSpaceId: 'local-main'; running: string | null; turns: GroupTurn[] };
+export type GroupNotification = { id: string; featureId: 'news' | 'sms'; targetSpaceId: string; sessionId: string; messageId: string; createdAt: string; content: string };
+export type GroupSnapshot = { id: 'main'; defaultSpaceId: 'local-main'; running: string | null; turns: GroupTurn[]; notifications: GroupNotification[] };
+export type GroupPreview = { latest?: { sender: string | null; text: string; at: string; notification: boolean }; error?: string };
 export type GroupInput = { id: string; content: string; targetSpaceId?: string };
 export type GroupEvent = { type: 'turn'; turn: Omit<GroupTurn, 'messages'> } | { type: 'delta'; id: string; text: string } | { type: 'settled' } | { type: 'error'; code: string; message: string };
 export interface GroupClient {
@@ -31,10 +33,17 @@ function turn(value: unknown): GroupTurn {
   return value as unknown as GroupTurn;
 }
 export function parseGroup(value: unknown): GroupSnapshot {
-  if (!record(value) || value.id !== 'main' || value.defaultSpaceId !== 'local-main' || !(value.running === null || messageId(value.running)) || !Array.isArray(value.turns)) throw invalid();
+  if (!record(value) || value.id !== 'main' || value.defaultSpaceId !== 'local-main' || !(value.running === null || messageId(value.running)) || !Array.isArray(value.turns) || !Array.isArray(value.notifications)) throw invalid();
   const turns = value.turns.map(turn);
+  const notifications = value.notifications.map((item): GroupNotification => {
+    if (!record(item) || typeof item.id !== 'string' || !item.id || (item.featureId !== 'news' && item.featureId !== 'sms') ||
+      !space(item.targetSpaceId) || typeof item.sessionId !== 'string' || !item.sessionId || typeof item.messageId !== 'string' || !item.messageId ||
+      !date(item.createdAt) || typeof item.content !== 'string') throw invalid();
+    return item as unknown as GroupNotification;
+  });
   if (new Set(turns.map((item) => item.id)).size !== turns.length) throw invalid();
-  return { id: 'main', defaultSpaceId: 'local-main', running: value.running, turns };
+  if (new Set(notifications.map(notificationKey)).size !== notifications.length) throw invalid();
+  return { id: 'main', defaultSpaceId: 'local-main', running: value.running, turns, notifications };
 }
 export function parseGroupEvent(value: unknown): GroupEvent {
   if (!record(value)) throw invalid();
@@ -46,8 +55,9 @@ export function parseGroupEvent(value: unknown): GroupEvent {
 }
 
 /** 只按可靠发送者显示；正文中的 @ 不会被当成成员发言或路由事实。 */
-export function groupRows(turns: GroupTurn[]) {
-  const rows: { key: string; sender: string | null; target?: string; at: string; status?: 'failed' | 'cancelled'; message: MessageView }[] = [];
+const notificationKey = (item: GroupNotification) => JSON.stringify([item.targetSpaceId, item.sessionId, item.messageId]);
+export function groupRows(turns: GroupTurn[], notifications: GroupNotification[] = []) {
+  const rows: { key: string; sender: string | null; target?: string; at: string; status?: 'failed' | 'cancelled'; notification?: GroupNotification; message: MessageView }[] = [];
   for (const item of turns) {
     const user = item.messages.find((message) => message.role === 'user');
     if (user) rows.push({ key: item.id, sender: item.sourceSpaceId, target: item.targetSpaceId, at: item.createdAt,
@@ -61,7 +71,17 @@ export function groupRows(turns: GroupTurn[]) {
           id: call.id, name: call.function.name, args: call.function.arguments, ...(result ? { result: result.content, isError: result.isError } : {}),
         }; }) } });
   }
+  for (const item of notifications) rows.push({ key: `notification-${notificationKey(item)}`, sender: `${item.featureId}-internal`, at: item.createdAt, notification: item,
+    message: { id: item.messageId, role: 'assistant', text: item.content, toolCalls: [], feedbackAvailable: false } });
   return rows.sort((a, b) => a.at.localeCompare(b.at));
+}
+
+/** 列表只接收轻量展示摘要；不复制一套聊天历史，也不把摘要送回模型。 */
+export function groupPreview(turns: GroupTurn[], notifications: GroupNotification[], error?: string): GroupPreview {
+  const row = groupRows(turns, notifications).at(-1);
+  const text = row?.message.text.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/<think>[\s\S]*$/, '').replace(/\s+/g, ' ').trim().slice(0, 160);
+  return { ...(row ? { latest: { sender: row.sender, at: row.at, notification: !!row.notification,
+    text: text || (row.status === 'failed' ? '处理失败' : row.status === 'cancelled' ? '已停止' : '正在处理…') } } : {}), ...(error ? { error } : {}) };
 }
 
 /** 手动输入的显式 @ 与成员选择器一致；未知目标拒绝，不静默交给 main。 */

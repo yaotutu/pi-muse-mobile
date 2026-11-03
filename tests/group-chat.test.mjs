@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { parseGroup, parseGroupEvent, groupRows, resolveGroupTarget } from '../src/group/contracts.ts';
+import { parseGroup, parseGroupEvent, groupRows, groupPreview, resolveGroupTarget } from '../src/group/contracts.ts';
 import { workspaceBackAction } from '../src/workspace/workspace-back.ts';
 
 const members = [{ id: 'local-main', name: 'Muse' }, { id: 'sms-internal', name: '短信' }, { id: 'news-internal', name: '新闻' }];
@@ -15,13 +15,60 @@ test('群聊不艾特时不发送目标，显式艾特只发送一个成员，�
   assert.throws(() => resolveGroupTarget('@不存在 hello', members));
 });
 test('群聊读取与流事件校验真实归属，重复身份和非法状态拒绝', () => {
-  const snapshot = { id: 'main', defaultSpaceId: 'local-main', running: null, turns: [turn] };
+  const snapshot = { id: 'main', defaultSpaceId: 'local-main', running: null, turns: [turn], notifications: [] };
   assert.deepEqual(parseGroup(snapshot), snapshot);
   assert.throws(() => parseGroup({ ...snapshot, turns: [turn, turn] }));
   assert.throws(() => parseGroup({ ...snapshot, turns: [{ ...turn, targetSpaceId: '../escape' }] }));
   assert.throws(() => parseGroup({ ...snapshot, turns: [{ ...turn, status: 'success' }] }));
   assert.deepEqual(parseGroupEvent({ type: 'delta', id: 'group-one', text: 'hello' }), { type: 'delta', id: 'group-one', text: 'hello' });
   assert.throws(() => parseGroupEvent({ type: 'guessed-speaker', text: '@短信' }));
+});
+const notification = { id: 'notice-one', featureId: 'sms', targetSpaceId: 'local-main', sessionId: 'private-session', messageId: 'private-notice', createdAt: '2026-11-02T00:00:01.000Z', content: '明天出行请提前准备' };
+test('功能通知必须有真实来源、归属、时间，旧快照、重复身份和非法归属不能默默接受', () => {
+  const snapshot = { id: 'main', defaultSpaceId: 'local-main', running: null, turns: [], notifications: [notification] };
+  assert.deepEqual(parseGroup(snapshot), snapshot);
+  for (const item of [{ ...notification, featureId: 'guessed' }, { ...notification, featureId: ['sms'] }, { ...notification, targetSpaceId: '../escape' }, { ...notification, sessionId: '' }, { ...notification, createdAt: 'unknown' }, { ...notification, messageId: null }]) {
+    assert.throws(() => parseGroup({ ...snapshot, notifications: [item] }));
+  }
+  assert.throws(() => parseGroup({ ...snapshot, notifications: undefined }));
+  assert.throws(() => parseGroup({ ...snapshot, notifications: [notification, notification] }));
+  const other = { ...notification, targetSpaceId: 'other' };
+  assert.equal(parseGroup({ ...snapshot, notifications: [notification, other] }).notifications.length, 2);
+});
+test('通知按投递时间合入时间线，头像来自功能而非承接方；只读展示不伪造定向或反馈', () => {
+  const before = JSON.stringify(notification);
+  const rows = groupRows([turn], [notification]);
+  assert.deepEqual(rows.map((row) => row.at), [turn.createdAt, notification.createdAt, turn.finishedAt]);
+  const row = rows[1];
+  assert.equal(row.sender, 'sms-internal'); assert.equal(row.target, undefined);
+  assert.equal(row.notification.targetSpaceId, 'local-main');
+  assert.equal(row.message.feedbackAvailable, false); assert.deepEqual(row.message.toolCalls, []);
+  assert.equal(JSON.stringify(notification), before);
+  assert.equal(new Set(groupRows([], [notification, { ...notification, targetSpaceId: 'other' }]).map((item) => item.key)).size, 2);
+});
+test('会话摘要反映最新通知或群回复，隐藏思考过程，保留失败提示，不修改原始内容', () => {
+  assert.deepEqual(groupPreview([], []), {});
+  const later = { ...notification, createdAt: '2026-11-02T00:01:00.000Z' };
+  assert.deepEqual(groupPreview([turn], [later]).latest, { sender: 'sms-internal', at: later.createdAt, notification: true, text: later.content });
+  const thinking = { ...turn, messages: [{ ...turn.messages[1], content: '<think>private thoughts</think> 简短\n 回复' }] };
+  assert.equal(groupPreview([thinking], []).latest.text, '简短 回复');
+  assert.equal(groupPreview([{ ...thinking, messages: [{ ...thinking.messages[0], content: '<think>unfinished' }] }], []).latest.text, '正在处理…');
+  assert.equal(groupPreview([], [], 'Read failed').error, 'Read failed');
+});
+test('功能通知同步共用 Runtime，隐藏到列表仍读快照；跳承接私聊是显式动作', () => {
+  const read = (file) => readFileSync(new URL('../src/' + file, import.meta.url), 'utf8');
+  const ui = read('group/GroupChat.tsx');
+  assert.match(ui, /useSyncExternalStore\(runtimeStore.subscribe/);
+  assert.match(ui, /\[visible, runtime.conversationSyncVersion, notificationVersion, reload\]/);
+  assert.match(ui, /if \(!request.current\) void reload\(\)/);
+  assert.match(ui, /onPrivateChat\(row.notification!.targetSpaceId\)/);
+  assert.match(ui, /onSummary\(groupPreview\(turns, snapshot\?\.notifications \?\? \[\], syncError\)\)/);
+  assert.doesNotMatch(ui, /subscribeRuntime\(|setInterval\(/);
+  assert.match(read('workspace/WorkspaceScreen.tsx'), /onPrivateChat={select} onSummary={setGroupPreview}/);
+  const directory = read('workspace/MemberDirectory.tsx');
+  assert.match(directory, /groupPreview.latest/);
+  assert.match(directory, /群聊同步失败，进入群聊核对/);
+  assert.match(directory, /flex: 1, minWidth: 0, gap: spacing\[6\]/);
 });
 test('群聊按真实发送/回复时序排列，成员请求与回复使用不同发送者，不从正文猜头像', () => {
   const nested = { ...turn, id: 'child-one', rootId: turn.id, sourceSpaceId: 'local-main', targetSpaceId: 'sms-internal', createdAt: '2026-11-02T00:00:00.500Z', finishedAt: '2026-11-02T00:00:01.000Z', messages: [{ id: 'child-one', role: 'user', content: '查一下' }, { id: 'reply-child-one', role: 'assistant', content: '@新闻 取件码1234' }] };
