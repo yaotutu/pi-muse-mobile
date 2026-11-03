@@ -116,8 +116,10 @@ export const themeTokens = {
     headerAvatar: 64,
     compactHeaderAvatar: 36,
     groupAvatar: 34,
-    groupMessageRadius: 20,
-    groupMessagePadding: 12,
+    groupMessageRadius: 18,
+    groupMessagePaddingHorizontal: 14,
+    groupMessagePaddingVertical: 10,
+    groupMessageGap: 16,
     welcomeAvatar: 80,
     sessionHeaderBottom: 28,
     /** 面板内容在持续挂载的会话信息区下方展开。 */
@@ -194,6 +196,7 @@ export const themeTokens = {
   },
   typography: {
     message: { fontSize: 16, lineHeight: 25 },
+    groupMessage: { fontSize: 16, lineHeight: 24 },
     name: { fontSize: 16, lineHeight: 22 },
     status: { fontSize: 14, lineHeight: 21 },
     heroName: { fontSize: 28, lineHeight: 36, letterSpacing: -0.8 },

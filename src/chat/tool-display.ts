@@ -1,6 +1,7 @@
 import { fileScope } from './file-scope';
 import { parseToolRecord, toolResultContent, toolTextField, toolOutcome } from './tool-presentation';
 import { safeMessageUrl } from './message-links';
+import type { ToolCallView } from './chat-state';
 
 export type ToolDisplay = {
   kind: 'search' | 'web' | 'weather' | 'time' | 'files' | 'memory' | 'schedule' | 'goal' | 'monitor' | 'subagent' | 'generic';
@@ -10,6 +11,18 @@ export type ToolDisplay = {
   sources?: { title: string; url: string }[];
   scope?: string;
 };
+
+/** 群摘要只统计本条消息的工具事实；收到结果不等于任务成功，显式失败不能被折叠隐藏。 */
+export function summarizeToolCalls(tools: ToolCallView[]) {
+  let failed = 0;
+  let pending = 0;
+  for (const tool of tools) {
+    const display = describeTool(tool.name, tool.args, tool.result);
+    if (tool.isError === true || display.status === 'failed') failed++;
+    else if (display.status === 'pending') pending++;
+  }
+  return { total: tools.length, failed, pending };
+}
 
 const toolMeta: Record<string, { kind: ToolDisplay['kind']; title: string }> = {
   search_web: { kind: 'search', title: '网页搜索' },

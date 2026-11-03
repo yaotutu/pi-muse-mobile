@@ -25,7 +25,7 @@ const icons = {
   generic: Wrench,
 } satisfies Record<ToolDisplay['kind'], typeof Wrench>;
 
-export function ToolResultCard({ tool, compact = false }: { tool: ToolCallView; compact?: boolean }) {
+export function ToolResultCard({ tool, embedded = false }: { tool: ToolCallView; embedded?: boolean }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const display = useMemo(() => describeTool(tool.name, tool.args, tool.result), [tool.name, tool.args, tool.result]);
@@ -33,16 +33,17 @@ export function ToolResultCard({ tool, compact = false }: { tool: ToolCallView; 
   const Icon = icons[display.kind];
   const Chevron = expanded ? ChevronUp : ChevronDown;
   const generic = display.kind === 'generic';
-  const collapsible = compact || generic;
-  const status = display.status === 'pending' ? '尚无结果' : display.status === 'failed' ? '执行失败' : '结果已返回';
+  const collapsible = !embedded && generic;
+  const failed = tool.isError === true || display.status === 'failed';
+  const status = failed ? '执行失败' : display.status === 'pending' ? '尚无结果' : '结果已返回';
   const sources = display.sources?.map((source) => ({ ...source, safeUrl: safeMessageUrl(source.url) })) ?? [];
 
-  return <View style={[styles.card, compact && styles.compactCard]}>
-    <View style={[styles.header, compact && styles.compactHeader]}>
-      <View style={[styles.icon, compact && styles.compactIcon]}><Icon size={sizing[18]} color={colors.accentText} /></View>
+  return <View style={[styles.card, embedded && styles.embeddedCard]}>
+    <View style={styles.header}>
+      <View style={[styles.icon, embedded && styles.embeddedIcon]}><Icon size={embedded ? sizing[14] : sizing[18]} color={embedded ? colors.muted : colors.accentText} /></View>
       <View style={styles.heading}>
-        <Text style={styles.title}>{display.title}</Text>
-        <Text style={[styles.meta, display.status === 'failed' && styles.failure]}>
+        <Text style={[styles.title, embedded && styles.embeddedTitle]}>{display.title}</Text>
+        <Text style={[styles.meta, failed && styles.failure]}>
           {[display.scope, status].filter(Boolean).join(' · ')}
         </Text>
       </View>
@@ -51,11 +52,11 @@ export function ToolResultCard({ tool, compact = false }: { tool: ToolCallView; 
       </Pressable>}
     </View>
 
-    {(!collapsible || expanded) && !!display.summary && <Text selectable style={[styles.summary, (display.kind === 'weather' || display.kind === 'time') && styles.prominent, display.status === 'failed' && styles.failure]}>{display.summary}</Text>}
-    {generic && expanded && <Text style={styles.meta}>工具名称：{tool.name}</Text>}
-    {generic && expanded && !display.summary && <Text style={styles.meta}>服务端未提供可展示摘要</Text>}
+    {(!collapsible || expanded) && !!display.summary && <Text selectable style={[styles.summary, !embedded && (display.kind === 'weather' || display.kind === 'time') && styles.prominent, failed && styles.failure]}>{display.summary}</Text>}
+    {generic && (!collapsible || expanded) && <Text style={styles.meta}>工具名称：{tool.name}</Text>}
+    {generic && (!collapsible || expanded) && !display.summary && <Text style={styles.meta}>服务端未提供可展示摘要</Text>}
 
-    {(!compact || expanded) && sources.length > 0 && <View style={styles.sources}>
+    {sources.length > 0 && <View style={styles.sources}>
       {sources.map((source, index) => source.safeUrl
         ? <Pressable key={`${source.url}-${index}`} accessibilityRole="link" accessibilityLabel={`打开来源：${source.title}`} onPress={() => {
             void Linking.openURL(source.safeUrl!).catch(() => Alert.alert('无法打开链接', '请稍后重试。'));
@@ -70,9 +71,9 @@ export function ToolResultCard({ tool, compact = false }: { tool: ToolCallView; 
 
 const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   card: { backgroundColor: c.surface, padding: spacing[16], borderRadius: workspaceTheme.radius.card, gap: spacing[10], borderWidth: StyleSheet.hairlineWidth, borderColor: c.line, maxWidth: '100%' },
-  compactCard: { paddingHorizontal: spacing[12], paddingVertical: spacing[4], borderRadius: workspaceTheme.layout.groupMessageRadius },
-  compactHeader: { gap: spacing[8] },
-  compactIcon: { width: sizing[28], height: sizing[28], backgroundColor: 'transparent' },
+  embeddedCard: { backgroundColor: 'transparent', paddingHorizontal: spacing[4], paddingVertical: spacing[10], borderRadius: 0, borderWidth: 0, borderBottomWidth: StyleSheet.hairlineWidth, gap: spacing[6] },
+  embeddedIcon: { width: sizing[24], height: sizing[24], backgroundColor: 'transparent' },
+  embeddedTitle: { ...workspaceTheme.typography.caption, fontWeight: '500' },
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing[12] },
   icon: { width: workspaceTheme.layout.rowIcon, height: workspaceTheme.layout.rowIcon, borderRadius: workspaceTheme.radius.round, backgroundColor: c.blueSoft, alignItems: 'center', justifyContent: 'center' },
   heading: { flex: 1, minWidth: 0, gap: spacing[2] },

@@ -53,8 +53,8 @@ test('群聊布局与私聊分离：顶栏不悬浮，收件人与紧凑工具�
   assert.doesNotMatch(group, /compactHeader|chatContentTop|combined.filter\(\(turn\) => turn.status/);
   assert.match(group, /<Message message={row.message} layout="group" recipient=/);
   assert.match(group, /row.status === 'cancelled'/);
-  assert.match(read('workspace/ConversationView.tsx'), /compact={layout === 'group'}/);
-  assert.match(read('workspace/ToolResultCard.tsx'), /const collapsible = compact \|\| generic/);
+  assert.match(read('workspace/ConversationView.tsx'), /layout === 'group'\s*\? <ToolCallSummary tools={message.toolCalls}/);
+  assert.match(read('workspace/ToolResultCard.tsx'), /const collapsible = !embedded && generic/);
 });
 test('群信息返回群聊，群聊返回列表；群所有者持续挂载，私聊设置保持独立', () => {
   const state = { keyboardVisible: false, sessionMounted: false, settingsSubpage: null, goalCreating: false };
@@ -72,15 +72,33 @@ test('群信息返回群聊，群聊返回列表；群所有者持续挂载，�
   assert.doesNotMatch(ui, /getConversation|subscribeRuntime/);
   assert.match(ui, /resolveGroupTarget\(draft, members, target\)/);
 });
-test('定向成员与正文共用原生 Text 流，高亮仅来自真实目标，不另设收件人行', () => {
+test('定向成员与正文共用原生 Text 流，无底色；蓝气泡保留白字，浅色气泡才用强调色', () => {
   const read = (file) => readFileSync(new URL('../src/' + file, import.meta.url), 'utf8');
   const view = read('workspace/ConversationView.tsx');
-  assert.match(view, /const mention = recipient \? <Text style={styles.recipient}>/);
-  assert.match(view, /style={\[styles.messageText, styles.userMessageText\]}>\{mention\}\{mention && ' '\}\{message.text\}<\/Text>/);
-  assert.doesNotMatch(view, /!!recipient && <Text|userRecipient/);
-  assert.match(view, /recipient: \{[^\n]*color: c.accentText, backgroundColor: c.blueSoft, fontWeight: '600'/);
-  assert.match(view, /<MessageContent text={message.text} inlinePrefix=/);
-  assert.match(read('workspace/MessageContent.tsx'), /<MarkdownContent text={cleaned} inlinePrefix={inlinePrefix}/);
+  assert.match(view, /const mention = recipient \? <Text style={\[styles.recipient, message.role === 'user' && styles.userRecipient\]}>\{recipient\}/);
+  assert.match(view, />\{mention\}\{mention && ' '\}\{message.text\}<\/Text>/);
+  assert.doesNotMatch(view, /!!recipient && <Text|\\u00a0/);
+  assert.match(view, /recipient: \{ color: c.accentText, fontWeight: '600' \}/);
+  assert.match(view, /userRecipient: \{ color: c.onAccent \}/);
+  assert.match(view, /<MessageContent text={message.text} compact={layout === 'group'} inlinePrefix=/);
+  assert.match(read('workspace/MessageContent.tsx'), /<MarkdownContent text={cleaned} compact={compact} inlinePrefix={inlinePrefix}/);
+});
+test('群工具每条回复只用一个可展开摘要，失败和缺失结果不隐藏，私聊保留工具卡', () => {
+  const read = (file) => readFileSync(new URL('../src/' + file, import.meta.url), 'utf8');
+  const summary = read('workspace/ToolCallSummary.tsx');
+  assert.match(summary, /summary.failed.*项失败/);
+  assert.match(summary, /summary.pending.*项尚无结果/);
+  assert.match(summary, /accessibilityState={{ expanded }}/);
+  assert.match(summary, /accessibilityValue={{ text: `\$\{summary.total\} 项，\$\{status\}` }}/);
+  assert.match(summary, /expanded && <View style={styles.details}>/);
+  assert.match(summary, /<ToolResultCard key={tool.id} tool={tool} embedded/);
+  assert.match(summary, /minHeight: sizing.touchTarget/);
+  assert.match(read('workspace/ConversationView.tsx'), /: message.toolCalls.map\(\(tool\) => <ToolResultCard/);
+  const renderer = read('ui/MarkdownContent.tsx');
+  assert.match(renderer, /compact = false/);
+  assert.match(renderer, /width: compact \? 'auto' : '100%'/);
+  assert.match(renderer, /compact \? t.groupMessage : t.message/);
+  assert.match(renderer, /horizontalContent: \{[^\n]*flexGrow: 0/);
 });
 test('成员间 Markdown 请求只在首段内联目标，不改正文、代码复制或普通私聊默认值', () => {
   const markdown = readFileSync(new URL('../src/ui/MarkdownContent.tsx', import.meta.url), 'utf8');

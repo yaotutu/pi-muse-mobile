@@ -21,6 +21,7 @@ import { useTheme } from '../theme/ThemeProvider';
 import { TypingIndicator } from './primitives';
 import { MessageContent } from './MessageContent';
 import { ToolResultCard } from './ToolResultCard';
+import { ToolCallSummary } from './ToolCallSummary';
 import { ActionButton } from '../ui/ActionButton';
 import { MessageFeedbackControls } from '../feedback/MessageFeedbackControls';
 import { ScrollAnchorFrame, ScrollFollow } from './scroll-follow';
@@ -483,15 +484,15 @@ export function Message({ message, pendingStatus, feedbackScope, layout = 'priva
       setFeedbackOpenOwner(owner);
     });
   };
-  const mention = recipient ? <Text style={styles.recipient}>{`\u00a0${recipient}\u00a0`}</Text> : undefined;
+  const mention = recipient ? <Text style={[styles.recipient, message.role === 'user' && styles.userRecipient]}>{recipient}</Text> : undefined;
   const bubbleContent = <>
     {message.featureSource && <Text style={styles.featureSourceLabel}>来自{message.featureSource.featureId === 'news' ? '新闻' : '短信'}</Text>}
     {!!message.text && (message.role === 'user'
       ? <Text selectable={!feedbackScope} onLongPress={feedbackScope ? openFeedback : undefined}
         accessibilityActions={feedbackScope ? [{ name: 'openMessageActions', label: '打开消息操作' }] : undefined}
         onAccessibilityAction={feedbackScope ? (event) => { if (event.nativeEvent.actionName === 'openMessageActions') openFeedback(); } : undefined}
-        style={[styles.messageText, styles.userMessageText]}>{mention}{mention && ' '}{message.text}</Text>
-      : <MessageContent text={message.text} inlinePrefix={mention && <>{mention}{' '}</>} onMessageLongPress={feedbackScope ? openFeedback : undefined} />)}
+        style={[styles.messageText, layout === 'group' && styles.groupMessageText, styles.userMessageText]}>{mention}{mention && ' '}{message.text}</Text>
+      : <MessageContent text={message.text} compact={layout === 'group'} inlinePrefix={mention && <>{mention}{' '}</>} onMessageLongPress={feedbackScope ? openFeedback : undefined} />)}
     {message.role === 'user' && !!message.attachments?.length && <MessageAttachments items={message.attachments} />}
     {pendingStatus === 'sending' && <Text style={styles.messageSubtext}>发送中…</Text>}
     {pendingStatus === 'failed' && <Text style={styles.messageSubtext}>未发送</Text>}
@@ -507,7 +508,7 @@ export function Message({ message, pendingStatus, feedbackScope, layout = 'priva
     pendingStatus === 'unconfirmed' && styles.userMessageUnconfirmed,
   ];
   return (
-    <View style={styles.messageBlock}>
+    <View style={[styles.messageBlock, layout === 'group' && styles.groupMessageBlock]}>
       {(hasText || (message.role === 'user' && !!message.attachments?.length)) && (
         <View style={styles.bubbleWrap}>
         <Pressable ref={bubbleRef} style={bubbleStyle} disabled={!feedbackScope}
@@ -532,7 +533,9 @@ export function Message({ message, pendingStatus, feedbackScope, layout = 'priva
         />}
         </View>
       )}
-      {message.toolCalls.map((tool) => <ToolResultCard key={tool.id} tool={tool} compact={layout === 'group'} />)}
+      {layout === 'group'
+        ? <ToolCallSummary tools={message.toolCalls} />
+        : message.toolCalls.map((tool) => <ToolResultCard key={tool.id} tool={tool} />)}
     </View>
   );
 }
@@ -554,9 +557,12 @@ const createStyles = (c: WorkspaceColors) =>
     messageBlock: { gap: spacing[8] },
     bubbleWrap: { position: 'relative' },
     message: { padding: l.chatMessagePadding, borderRadius: r.message },
-    groupMessage: { padding: l.groupMessagePadding, borderRadius: l.groupMessageRadius, gap: spacing[4] },
-    groupAssistantMessage: { width: '100%', maxWidth: '100%' },
-    recipient: { ...t.message, color: c.accentText, backgroundColor: c.blueSoft, fontWeight: '600' },
+    groupMessage: { paddingHorizontal: l.groupMessagePaddingHorizontal, paddingVertical: l.groupMessagePaddingVertical, borderRadius: l.groupMessageRadius, gap: spacing[4] },
+    groupMessageBlock: { gap: spacing[2] },
+    groupMessageText: { ...t.groupMessage },
+    groupAssistantMessage: { width: 'auto', maxWidth: '100%' },
+    recipient: { color: c.accentText, fontWeight: '600' },
+    userRecipient: { color: c.onAccent },
     assistantMessage: {
       backgroundColor: c.surface,
       alignSelf: 'flex-start',

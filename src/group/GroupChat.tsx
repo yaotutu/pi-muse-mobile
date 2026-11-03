@@ -79,14 +79,14 @@ export function GroupChat({ visible, members, onProfile, onApprovals }: {
   return <View style={{ flex: 1, minHeight: 0, display: visible ? 'flex' : 'none' }} accessibilityElementsHidden={!visible} importantForAccessibility={visible ? 'auto' : 'no-hide-descendants'}>
     <ScrollView ref={scroll} keyboardShouldPersistTaps="handled" onContentSizeChange={anchor} onLayout={anchor} scrollEventThrottle={16}
       onScroll={(event) => { const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent; following.current = contentSize.height - contentOffset.y - layoutMeasurement.height < l.scrollThreshold; }}
-      contentContainerStyle={{ flexGrow: 1, paddingTop: spacing[12], paddingHorizontal: l.sidePadding, paddingBottom: spacing[24], gap: spacing[20] }}>
+      contentContainerStyle={{ flexGrow: 1, paddingTop: spacing[12], paddingHorizontal: l.sidePadding, paddingBottom: spacing[24], gap: l.groupMessageGap }}>
       {!snapshot && loading && <Text style={{ ...t.caption, color: c.muted }}>正在读取群聊…</Text>}
       {snapshot && !rows.length && !busy && <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}><Text style={{ ...t.detail, color: c.muted }}>有什么想聊的？</Text></View>}
       {rows.map((row) => <View key={row.key} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing[8] }}>
         {row.sender && <Pressable accessibilityRole="button" accessibilityLabel={`查看${title(row.sender)}的主页`} onPress={() => { Keyboard.dismiss(); onProfile(row.sender!); }} style={{ width: l.smallControl, minHeight: l.smallControl, alignItems: 'center', justifyContent: 'center' }}>
           <MemberAvatar spaceId={row.sender} size={l.groupAvatar} />
         </Pressable>}
-        <View style={{ flex: 1, minWidth: 0, gap: spacing[4] }}>
+        <View style={{ flex: 1, minWidth: 0, gap: spacing[2] }}>
           {row.sender && <Text style={{ ...t.caption, color: c.muted }}>{title(row.sender)}</Text>}
           <Message message={row.message} layout="group" recipient={row.target && row.target !== 'local-main' ? `@${title(row.target)}` : undefined} />
           {row.status && <Text style={{ ...t.caption, color: row.status === 'failed' ? c.danger : c.muted }}>{row.status === 'cancelled' ? '已停止' : '处理失败，不会自动重试'}</Text>}

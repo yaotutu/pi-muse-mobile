@@ -41,9 +41,9 @@ function messageActionAccessibility(onOpen?: () => void): Pick<TextProps, 'acces
   } : {};
 }
 
-export function MarkdownContent({ text, inlinePrefix, onMessageLongPress }: { text: string; inlinePrefix?: ReactNode; onMessageLongPress?: () => void }) {
+export function MarkdownContent({ text, compact = false, inlinePrefix, onMessageLongPress }: { text: string; compact?: boolean; inlinePrefix?: ReactNode; onMessageLongPress?: () => void }) {
   const { colors } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const styles = useMemo(() => createStyles(colors, compact), [colors, compact]);
   const tokens = useMemo(() => {
     try {
       return marked.lexer(text, { gfm: true, breaks: true }) as MarkdownToken[];
@@ -169,9 +169,9 @@ function MarkdownTable({ token, inline, onMessageLongPress }: { token: MarkdownT
   </ScrollView>;
 }
 
-const createStyles = (c: WorkspaceColors) => StyleSheet.create({
-  root: { width: '100%', minWidth: 0, gap: spacing[10] },
-  body: { ...t.message, color: c.ink },
+const createStyles = (c: WorkspaceColors, compact = false) => StyleSheet.create({
+  root: { width: compact ? 'auto' : '100%', minWidth: 0, gap: compact ? spacing[8] : spacing[10] },
+  body: { ...(compact ? t.groupMessage : t.message), color: c.ink },
   heading1: { ...m.heading1, fontWeight: '700' },
   heading2: { ...m.heading2, fontWeight: '700' },
   heading3: { ...m.heading3, fontWeight: '700' },
@@ -183,10 +183,11 @@ const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   quote: { borderLeftWidth: sizing[3], borderLeftColor: c.blue, paddingLeft: spacing[12], gap: spacing[8] },
   list: { gap: spacing[6] },
   listItem: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing[8] },
-  listMarker: { ...t.message, color: c.muted },
+  listMarker: { ...(compact ? t.groupMessage : t.message), color: c.muted },
   listBody: { flex: 1, minWidth: 0, gap: spacing[4] },
   rule: { height: StyleSheet.hairlineWidth, backgroundColor: c.line, marginVertical: spacing[4] },
-  horizontalContent: { width: '100%', maxWidth: '100%' },
+  // 横向代码／表格只按内容占高，不能沿纵轴扩张成大片空白气泡。
+  horizontalContent: { width: '100%', maxWidth: '100%', flexGrow: 0 },
   codeBlock: { width: '100%', maxWidth: '100%', backgroundColor: c.canvas, borderRadius: r.field, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderColor: c.line },
   codeHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: sizing.touchTarget, paddingHorizontal: spacing[12], borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.line },
   codeLanguage: { ...t.caption, color: c.muted, flex: 1 },
