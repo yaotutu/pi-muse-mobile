@@ -1,6 +1,6 @@
 import { FeedbackNotice } from '../ui/Feedback';
 import { Card } from '../ui/Surfaces';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Check, Inbox, Play, Send, ShieldAlert, ShieldCheck } from 'lucide-react-native';
 import { workspaceTheme, spacing } from '../ui/tokens';
@@ -16,6 +16,8 @@ export function SmsSettingsCard() {
   const { colors } = useTheme();
   const info = useSmsInformationState();
   const [customSms, setCustomSms] = useState('');
+  const { setVisible } = info;
+  useEffect(() => { setVisible(true); return () => setVisible(false); }, [setVisible]);
 
   const styles = useMemo(() => StyleSheet.create({
     card: { padding: spacing[16], gap: spacing[14], marginBottom: spacing[14], backgroundColor: colors.surface, borderRadius: workspaceTheme.radius.card },
@@ -65,6 +67,7 @@ export function SmsSettingsCard() {
       <Text style={styles.caption}>
         短信保存在独立功能中；仅重要结果进入绑定的承接会话，不随当前空间切换。
       </Text>
+      {info.loading && <Text style={styles.caption}>正在读取短信状态…</Text>}
 
       <Pressable
         accessibilityRole="switch"
@@ -94,6 +97,7 @@ export function SmsSettingsCard() {
               accessibilityLabel="信息过滤指示"
               multiline
               value={info.draftNotes}
+              editable={!info.loading && !info.saving && !info.needsReadback}
               onChangeText={info.setDraftNotes}
               placeholder="例如：整理快递取件码、验证码、重要账单等；营销推广与垃圾广告静默忽略。"
               placeholderTextColor={colors.faint}
@@ -203,7 +207,7 @@ export function SmsSettingsCard() {
             <View style={styles.headerRow}>
               <Text style={styles.text}>待处理与历史信息</Text>
               {info.items.length > 0 && (
-                <Text style={styles.caption}>{info.items.length} 条记录</Text>
+                <Text style={styles.caption}>最近 {info.items.length} 条</Text>
               )}
             </View>
             {info.items.length > 0 ? (
@@ -219,7 +223,7 @@ export function SmsSettingsCard() {
                           styles.statusTagText,
                           { color: item.status === 'pending' ? colors.warning : colors.muted },
                         ]}>
-                          {item.status === 'pending' ? '待分析' : item.status === 'processed' ? '已分析' : item.status}
+                          {{ pending: '待分析', processing: '分析中', processed: '已分析', failed: '分析失败' }[item.status]}
                         </Text>
                       </View>
                       <Text style={styles.itemSource} numberOfLines={1}>

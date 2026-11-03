@@ -57,7 +57,7 @@ test('feature settings are separate from space UI and SMS listener lives for the
   assert.doesNotMatch(read('workspace/SpacePage.tsx'), /InformationSettingsCard|SmsSettingsCard|section.*information/);
   assert.match(read('workspace/WorkspaceScreen.tsx'), /<SmsProvider><FilesProvider/);
   assert.match(read('workspace/MemberDirectory.tsx'), /label="打开全局设置"/);
-  assert.match(read('information/useSmsInformation.ts'), /api\.ingestSmsItems\(\[/);
+  assert.match(read('information/sms-store.ts'), /api\.ingestSmsItems\(\[/);
   assert.doesNotMatch(read('information/useSmsInformation.ts'), /spaceId|\.catch\(\(\) => \(\{ items: \[\]/);
   assert.match(read('information/useSmsInformation.ts'), /hasSmsPermission !== true/);
   assert.match(read('features/useNewsDiscussion.ts'), /pending\.current \|\| uncertainTarget/);
