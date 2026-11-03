@@ -252,7 +252,7 @@ test('成员目录取代侧栏，头像进主页、消息行进私聊，低频�
   assert.match(screen, /if \(page === 'inbox'\) \{/);
   assert.doesNotMatch(screen, /page === 'members'/);
   assert.match(directory, /label="打开全局设置"/);
-  assert.match(directory, /label="添加成员"/);
+  assert.match(directory, /label={creating \? '正在添加成员' : '添加成员'} busy={creating}/);
   assert.match(directory, /accessibilityLabel={`查看/);
   assert.match(directory, /onPress={onProfile}/);
   assert.match(directory, /onPress={\(\) => onChat\(item.id\)}/);

@@ -2,7 +2,7 @@ import './register-source.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { HttpApiClient } from '../src/api/http-client.ts';
-import { parseResetSpace, parseSpaces } from '../src/api/space-contracts.ts';
+import { parseCreatedSpace, parseResetSpace, parseSpaces } from '../src/api/space-contracts.ts';
 import { parseApprovalView } from '../src/approvals/contracts.ts';
 import { parseActivityOverview } from '../src/activities/contracts.ts';
 import { ensureAgentStatus } from '../src/runtime/contracts.ts';
@@ -11,6 +11,20 @@ import { activityFixture } from './helpers/activity-fixtures.ts';
 
 const resetResult = { ok: true, spaceId: 'space/a', sessionId: 'new-session', cancelledApprovals: 1, removed: { jobs: 0, monitors: 0 } };
 const invalid = (error) => error.status === 502;
+test('创建成员只提交选定 ID，并严格核对返回归属和绑定', async () => {
+  const original = globalThis.fetch; const calls = [];
+  const space = { id: 'side-create', sessionId: 'session-create', updatedAt: new Date(0).toISOString() };
+  globalThis.fetch = async (url, init) => { calls.push({ url, init }); return new Response(JSON.stringify({ space })); };
+  try {
+    const api = new HttpApiClient('https://space.example', () => 'token', () => {});
+    assert.deepEqual(await api.createSpace(space.id), space);
+    assert.equal(calls.length, 1); assert.equal(calls[0].url, 'https://space.example/api/spaces');
+    assert.equal(calls[0].init.method, 'POST'); assert.deepEqual(JSON.parse(calls[0].init.body), { spaceId: space.id });
+    for (const value of [{ space: { ...space, id: 'other' } }, { space: { ...space, sessionId: null } }, {}]) {
+      assert.throws(() => parseCreatedSpace(value, space.id), invalid);
+    }
+  } finally { globalThis.fetch = original; }
+});
 test('空间列表必须有真实 sessionId，旧列表、缺绑定或重复空间不能伪装成功', () => {
   const entry = { id: 'a', sessionId: 'session-a', updatedAt: '2026-10-20T00:00:00Z' };
   assert.deepEqual(parseSpaces({ spaces: [entry] }), [entry]);

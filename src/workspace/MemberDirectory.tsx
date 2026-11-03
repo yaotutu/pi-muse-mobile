@@ -15,8 +15,8 @@ import { memberDescription, type SpaceLabels } from './space-labels';
 const mainShortcutSize = 56;
 
 /** 列表不另建聊天存储；点头像看主页，点消息行才进入对应 Space 的真实私聊。 */
-export function MemberDirectory({ spaces, labels, error, onReload, onChat, onProfile, onCreate, onSettings, onGroup }: {
-  spaces: SpaceEntry[]; labels: SpaceLabels; error?: string;
+export function MemberDirectory({ spaces, labels, error, creating, onReload, onChat, onProfile, onCreate, onSettings, onGroup }: {
+  spaces: SpaceEntry[]; labels: SpaceLabels; error?: string; creating: boolean;
   onReload: () => void; onChat: (id: string) => void; onProfile: (id: string) => void; onCreate: () => void; onSettings: () => void; onGroup: () => void;
 }) {
   const { colors } = useTheme();
@@ -37,7 +37,7 @@ export function MemberDirectory({ spaces, labels, error, onReload, onChat, onPro
     <View style={styles.header}>
       <Text accessibilityRole="header" style={styles.title}>会话</Text>
       <IconControl icon={query === null ? Search : X} label={query === null ? '搜索成员' : '收起成员搜索'} style={styles.utility} onPress={() => { Keyboard.dismiss(); setQuery(query === null ? '' : null); }} />
-      <IconControl icon={Plus} label="添加成员" style={styles.utility} onPress={onCreate} />
+      <IconControl icon={Plus} label={creating ? '正在添加成员' : '添加成员'} busy={creating} style={styles.utility} onPress={onCreate} />
       <IconControl icon={Settings} label="打开全局设置" style={styles.utility} onPress={onSettings} />
     </View>
     {query !== null && <FormInput autoFocus accessibilityLabel="搜索成员名称" placeholder="搜索成员" value={query} onChangeText={setQuery} style={styles.search} />}

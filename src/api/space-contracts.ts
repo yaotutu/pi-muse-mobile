@@ -22,6 +22,12 @@ export function parseSpaces(value: unknown): SpaceInfo[] {
   return spaces;
 }
 
+export function parseCreatedSpace(value: unknown, expectedSpaceId: string): SpaceInfo {
+  const [space] = parseSpaces({ spaces: [object(value).space] });
+  if (space.id !== expectedSpaceId) return invalid();
+  return space;
+}
+
 export function parseResetSpace(value: unknown, expectedSpaceId: string): ResetSpaceResult {
   const v = object(value); const removed = object(v.removed);
   if (v.ok !== true || v.spaceId !== expectedSpaceId) return invalid();

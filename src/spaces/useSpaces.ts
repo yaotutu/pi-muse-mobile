@@ -5,13 +5,14 @@ import { useApi } from '../api/ApiProvider';
 import type { SpaceEntry } from '../api/types';
 import { MAIN_SPACE, mainSpace, newSpace } from './space-state';
 import { useSpaceStore } from './SpaceProvider';
+import { createMember } from './create-member';
 
 export function useSpaces(enabled = true, refreshVersion = 0) {
   const api = useApi();
   const sessions = useSpaceStore();
   const [spaces, setSpaces] = useState<SpaceEntry[]>([]);
-  const [localSpaces, setLocalSpaces] = useState<SpaceEntry[]>([]);
-  const localRef = useRef<SpaceEntry[]>([]);
+  const [creating, setCreating] = useState(false);
+  const creation = useRef<{ id: string; controller?: AbortController } | undefined>(undefined);
   const [currentSpace, setCurrentSpace] = useState(MAIN_SPACE);
   const currentRef = useRef(MAIN_SPACE);
   const [error, setError] = useState<string>();
@@ -39,11 +40,8 @@ export function useSpaces(enabled = true, refreshVersion = 0) {
       for (const item of items) if (item.sessionId) sessions.bindSession(item.id, item.sessionId);
       setSpaces(authoritative);
       setError(undefined);
-      // 首次 GET 不能丢掉用户刚建的本地空会话；一旦服务端确认存在，就不再用本地条目复活它。
-      localRef.current = localRef.current.filter((item) => !authoritative.some((server) => server.id === item.id));
-      setLocalSpaces(localRef.current);
       const active = currentRef.current;
-      if (active !== MAIN_SPACE && !authoritative.some((item) => item.id === active) && !localRef.current.some((item) => item.id === active)) {
+      if (active !== MAIN_SPACE && !authoritative.some((item) => item.id === active)) {
         sessions.clear(active);
         selectSpace(MAIN_SPACE);
       }
@@ -63,23 +61,40 @@ export function useSpaces(enabled = true, refreshVersion = 0) {
     return () => subscription.remove();
   }, [reload]);
 
-  const createSpace = () => {
-    const space = newSpace();
-    localRef.current = [space, ...localRef.current];
-    setLocalSpaces(localRef.current);
-    selectSpace(space.id);
+  useEffect(() => () => { creation.current?.controller?.abort(); }, []);
+  const createSpace = async () => {
+    if (!enabled || creation.current?.controller) return;
+    const id = creation.current?.id ?? newSpace().id;
+    const controller = new AbortController();
+    creation.current = { id, controller };
+    setCreating(true);
+    try {
+      const space = await createMember(api, id, controller.signal);
+      if (controller.signal.aborted) return;
+      // 废弃创建前发出的目录 GET，避免迟到的旧列表抹掉刚确认的成员。
+      cancelReload();
+      sessions.bindSession(id, space.sessionId);
+      setSpaces((items) => [space, ...items.filter((item) => item.id !== id)]);
+      creation.current = undefined;
+      selectSpace(id);
+      setError(undefined);
+      return id;
+    } catch (e) {
+      if (!controller.signal.aborted) {
+        setError(`添加成员失败：${e instanceof Error ? e.message : String(e)}。可刷新核对，或再次点击添加确认同一成员。`);
+        // 手动重试仍使用同一 ID；端点只确认存在，不重置已成功建立的空间。
+        creation.current = { id };
+      }
+    } finally { if (!controller.signal.aborted) setCreating(false); }
   };
   const removeSpace = (id: string) => {
     generation.current++;
     request.current?.abort();
     removed.current.add(id);
-    localRef.current = localRef.current.filter((item) => item.id !== id);
-    setLocalSpaces(localRef.current);
     setSpaces((items) => items.filter((item) => item.id !== id));
     if (currentRef.current === id) selectSpace(MAIN_SPACE);
   };
-  const merged = [...localSpaces, ...spaces.filter((space) => !localSpaces.some((item) => item.id === space.id))];
   const workspaces = spaces.filter((space) => space.id !== 'news-internal' && space.id !== 'sms-internal');
   const sourceSpaces = workspaces.some((space) => space.id === MAIN_SPACE) ? workspaces : [mainSpace(), ...workspaces];
-  return { spaces: merged.length ? merged : [mainSpace()], sourceSpaces, currentSpace, selectSpace, createSpace, removeSpace, error, reload };
+  return { spaces: spaces.length ? spaces : [mainSpace()], sourceSpaces, currentSpace, selectSpace, createSpace, creating, removeSpace, error, reload };
 }

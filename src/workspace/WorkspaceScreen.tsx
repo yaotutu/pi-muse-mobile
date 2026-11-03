@@ -394,7 +394,8 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
     otherPage = <MemberDirectory spaces={spaces.spaces} labels={labels} error={spaces.error}
       onReload={() => void reloadSpaces()} onChat={select} onProfile={openProfile} onGroup={openGroup}
       onSettings={() => { setPage('settings'); setSettingsSubpage(null); }}
-      onCreate={() => changeSpace(() => { spaces.createSpace(); setSpaceView('profile'); setProfileReturn('inbox'); setPage('space'); setSpaceSection('home'); })} />;
+      creating={spaces.creating}
+      onCreate={() => changeSpace(() => { void spaces.createSpace().then((id) => { if (!id) return; setSpaceView('profile'); setProfileReturn('inbox'); setPage('space'); setSpaceSection('home'); }); })} />;
   } else if (page === 'group-info') {
     otherPage = <GroupInfo members={groupMembers} onBack={() => setPage('group')} onProfile={openProfile} />;
   } else if (page === 'feature' && settingsSubpage === 'news-sources') {

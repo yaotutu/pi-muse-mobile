@@ -53,7 +53,7 @@ import {
 import { attachmentUploadOf, validateOutgoingMessage } from '../attachments/validation';
 import { ApiError, isRequestCancelled, requestCancelled, responseError } from './errors';
 import { parseSseFrames } from './sse';
-import { parseResetSpace, parseMembers, parseSpaces } from './space-contracts';
+import { parseCreatedSpace, parseResetSpace, parseMembers, parseSpaces } from './space-contracts';
 import { parseGoal, parseGoals, parseMilestoneToggle, parseGoalRemoval } from './goal-contracts';
 import { parseDeleteMonitorResult, parseMonitor, parseMonitors } from './monitor-contracts';
 import type {
@@ -340,6 +340,10 @@ export class HttpApiClient implements ApiClient {
   async listMembers(signal?: AbortSignal) { return parseMembers(await this.request('/api/members', { signal })); }
   async listSpaces(signal?: AbortSignal): Promise<SpaceInfo[]> {
     return parseSpaces(await this.request('/api/spaces', { signal }));
+  }
+
+  async createSpace(spaceId: string, signal?: AbortSignal): Promise<SpaceInfo> {
+    return parseCreatedSpace(await this.request('/api/spaces', { method: 'POST', body: { spaceId }, signal }), spaceId);
   }
 
   async resetSpace(spaceId: string, options: { clearSchedules?: boolean } = {}, signal?: AbortSignal) {

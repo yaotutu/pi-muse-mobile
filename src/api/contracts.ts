@@ -307,6 +307,8 @@ export interface ApiClient extends DreamClient, ApprovalClient, ActivityClient, 
   listMembers(signal?: AbortSignal): Promise<MemberInfo[]>;
   /** GET /api/spaces（按活跃倒序，只包含普通空间） */
   listSpaces(signal?: AbortSignal): Promise<SpaceInfo[]>;
+  /** 显式建立普通成员；只确认同一 ID，不插入消息或重置已有空间。 */
+  createSpace(spaceId: string, signal?: AbortSignal): Promise<SpaceInfo>;
   /** 重置只替换聊天绑定；默认保留规则、技能、文件、定时任务和监控。副作用绝不自动重试。 */
   resetSpace(spaceId: string, options?: { clearSchedules?: boolean }, signal?: AbortSignal): Promise<ResetSpaceResult>;
   /** GET /api/conversation?spaceId= 权威历史；empty 不代表空间存在，存在性以空间列表为准。 */
