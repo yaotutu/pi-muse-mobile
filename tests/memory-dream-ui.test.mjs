@@ -1,14 +1,39 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { workspaceBackAction } from '../src/workspace/workspace-back.ts';
 
 const read = (name) => readFileSync(new URL(`../src/workspace/${name}`, import.meta.url), 'utf8');
 
-test('设置子页使用一致的返回入口文案', () => {
+test('管理子页共用滚动区外的固定标题与返回设置入口，不重复标题和返回按钮', () => {
+  const screen = read('WorkspaceScreen.tsx');
+  const management = screen.slice(screen.indexOf('const management ='), screen.indexOf('return <ScrollView key="settings"'));
+  for (const title of ['长期记忆', '助手与用户资料', 'Dream 记忆整理']) assert.ok(management.includes(title), title);
+  assert.match(management, /<SpaceHeader title=\{management.title\} backLabel="返回设置" onBack=\{\(\) => onSubpage\(null\)\} \/>\s*<ScrollView/);
+  assert.match(management, /\{management.content\}<\/ScrollView>/);
   for (const name of ['ProfilePanel.tsx', 'MemoryPanel.tsx', 'DreamPanel.tsx']) {
     const source = read(name);
-    assert.match(source, /<ActionButton label="返回设置" text="返回设置" onPress=\{onBack\}/);
-    assert.doesNotMatch(source, /返回应用设置|返回应用/);
+    assert.doesNotMatch(source, /返回设置|onBack|styles\.pageTitle|styles\.heading/);
+  }
+});
+
+test('动态与审批覆盖原成员页面，打开时不切私聊且总从动态开始', () => {
+  const screen = read('WorkspaceScreen.tsx');
+  assert.match(screen, /onActivity=\{\(\) => openSession\('activity'\)\}/);
+  const close = screen.slice(screen.indexOf('const closeSession ='), screen.indexOf('const leaveSpaceChild ='));
+  assert.match(close, /setSessionOpen\(false\)/);
+  assert.doesNotMatch(close, /setPage|setSpaceView|setProfileReturn|setSpaceSection/);
+  assert.match(screen, /else if \(action === 'session'\) closeSession\(\)/);
+  assert.match(screen, /onPress=\{sessionOpen \? closeSession : openSession\}/);
+});
+
+test('三个全局管理页的系统返回均先收键盘和覆盖层，再回设置首页', () => {
+  for (const settingsSubpage of ['profile', 'memory', 'dream']) {
+    const state = { page: 'settings', settingsSubpage, keyboardVisible: false, sessionMounted: false, goalCreating: false };
+    assert.equal(workspaceBackAction(state), 'settings');
+    assert.equal(workspaceBackAction({ ...state, keyboardVisible: true }), 'keyboard');
+    assert.equal(workspaceBackAction({ ...state, sessionMounted: true }), 'session');
+    assert.equal(workspaceBackAction({ ...state, settingsSubpage: null }), 'inbox');
   }
 });
 
@@ -17,7 +42,7 @@ test('长期记忆保留直接操作和提交安全提示，紧凑展示真实�
   assert.doesNotMatch(source, /SectionHeading|KEEP WHAT MATTERS|<EmptyState/);
   assert.match(source, /styles\.topRow/);
   assert.match(source, /snapshot\.memories\.length/);
-  for (const label of ['返回设置', '刷新记忆', '搜索记忆', '全部记忆', '新增记忆', '记忆搜索关键词', '记忆内容', '确认删除记忆', '取消删除记忆']) {
+  for (const label of ['刷新记忆', '搜索记忆', '全部记忆', '新增记忆', '记忆搜索关键词', '记忆内容', '确认删除记忆', '取消删除记忆']) {
     assert.ok(source.includes(label), label);
   }
   assert.match(source, /snapshot\.uncertain && <Card[^>]+testID="memory-uncertain"/);

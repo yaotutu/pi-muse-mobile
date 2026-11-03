@@ -46,6 +46,7 @@ import { SessionPanel, type SessionTab } from './SessionPanel';
 import { ResetSessionDialog } from './ResetSessionDialog';
 import { AvatarBloomTransition } from './AvatarBloomTransition';
 import { SpacePage } from './SpacePage';
+import { SpaceHeader } from './SpaceHeader';
 import { filesBackAction, hasFileWork, type SpaceSection } from './space-navigation';
 import { useTheme } from '../theme/ThemeProvider';
 import { ThemePicker } from '../theme/ThemePicker';
@@ -137,9 +138,15 @@ function AnimatedSubpage({ children }: { children: ReactNode }) {
 
 function SettingsPage({ snapshot, openConnection, openBrowser, memoryAvailable = false, profileAvailable = false, dreamAvailable = false, currentSpaceId, subpage, onSubpage }: Pick<WorkspaceConnectionProps, 'snapshot' | 'openConnection'> & { openBrowser?: () => void; memoryAvailable?: boolean; profileAvailable?: boolean; dreamAvailable?: boolean; currentSpaceId?: string; subpage: SettingsSubpage; onSubpage: (page: SettingsSubpage) => void }) {
   const styles = useStyles(); const update = useAppUpdate();
-  if (subpage === 'memory' && memoryAvailable) return <AnimatedSubpage key="memory"><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}><MemoryPanel onBack={() => onSubpage(null)} /></ScrollView></AnimatedSubpage>;
-  if (subpage === 'profile' && profileAvailable) return <AnimatedSubpage key="profile"><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}><ProfilePanel onBack={() => onSubpage(null)} /></ScrollView></AnimatedSubpage>;
-  if (subpage === 'dream' && dreamAvailable && currentSpaceId) return <AnimatedSubpage key="dream"><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}><DreamPanel currentSpaceId={currentSpaceId} onBack={() => onSubpage(null)} /></ScrollView></AnimatedSubpage>;
+  const management = subpage === 'memory' && memoryAvailable ? { title: '长期记忆', content: <MemoryPanel /> }
+    : subpage === 'profile' && profileAvailable ? { title: '助手与用户资料', content: <ProfilePanel /> }
+    : subpage === 'dream' && dreamAvailable && currentSpaceId ? { title: 'Dream 记忆整理', content: <DreamPanel currentSpaceId={currentSpaceId} /> }
+    : undefined;
+  // 返回属于页面层级，不随表单滚走；领域面板仍只负责自己的读取、草稿和保存。
+  if (management) return <AnimatedSubpage key={subpage}>
+    <SpaceHeader title={management.title} backLabel="返回设置" onBack={() => onSubpage(null)} />
+    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.otherPage}>{management.content}</ScrollView>
+  </AnimatedSubpage>;
   return <ScrollView key="settings" contentContainerStyle={[styles.otherPage, styles.settingsPage]}>
     <View style={styles.appSection}><Text accessibilityRole="header" style={styles.appSectionTitle}>连接与设备</Text>
       <View style={styles.appSettingsGroup}>
@@ -415,7 +422,7 @@ function WorkspaceContent({ snapshot, openConnection, spaces }: WorkspaceConnect
   } else if (page === 'space') {
     otherPage = <SpacePage view={spaceView} spaceId={spaces.currentSpace} name={labels.title(spaces.currentSpace)} section={spaceSection}
       onSection={(next) => { setDeleteConfirm(false); setSpaceSection(next); }} onBack={backSpace}
-      onChat={() => select(spaces.currentSpace)} onActivity={() => { setPage('chat'); openSession(); }}
+      onChat={() => select(spaces.currentSpace)} onActivity={() => openSession('activity')}
       onFeatureSettings={() => { setPage('feature'); setSettingsSubpage(spaces.currentSpace === 'sms-internal' ? 'sms' : 'news-feature'); }}
       onReadNews={openNews} onSaved={refresh} maintenance={maintenance} />;
   } else if (page === 'settings') {
