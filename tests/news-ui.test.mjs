@@ -237,7 +237,7 @@ test('新闻来源支持推荐中文精选 RSS 源并可一键填入', () => {
 test('新闻阅读归属新闻成员，不再有底栏，会话活动保留', () => {
   const workspace = read('workspace/WorkspaceScreen.tsx');
   const session = read('workspace/SessionPanel.tsx');
-  assert.match(read('workspace/AgentPage.tsx'), /accessibilityLabel="阅读新闻"/);
+  assert.match(read('workspace/AgentPage.tsx'), /testID="agent-main-view"/);
   assert.doesNotMatch(workspace, /workspace-read-news/);
   assert.doesNotMatch(workspace, /const NAV:|<Navigation/);
   assert.doesNotMatch(workspace, /\{ id: 'activity', label: '任务'/);

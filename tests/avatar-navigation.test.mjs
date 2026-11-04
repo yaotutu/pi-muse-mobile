@@ -55,16 +55,20 @@ test('全部保留独立讨论路由，设置不再经过成员页', () => {
   assert.match(group, /resolveGroupTarget\(draft, members, target\)/);
   assert.match(group, /onAgentSettings/);
 });
-test('只给消息区加手势，不接管 responder；横向内容屏蔽起手、多指与取消不切换', () => {
+test('只在明确横扫后接管消息区；横向内容屏蔽起手、多指与取消不切换', () => {
   for (const file of ['workspace/ConversationView.tsx', 'group/GroupChat.tsx']) {
     assert.match(read(file), /<ChatSwipeArea onSwipe={(?:notification \? undefined : )?onSwipe}><ScrollView/);
     assert.match(read(file), /<\/ScrollView><\/ChatSwipeArea>/);
   }
   const area = read('ui/ChatSwipeArea.tsx');
-  assert.doesNotMatch(area, /PanResponder|onMoveShouldSetResponder/);
-  assert.match(area, /onTouchStartCapture={\(\) => { start.current = null; }}/);
-  assert.match(area, /onTouchCancel={\(\) => { start.current = null; }}/);
+  assert.match(area, /onMoveShouldSetResponderCapture=/);
+  assert.match(area, /return direction\(event\) !== undefined/);
+  assert.match(area, /onTouchStartCapture={clear}/);
+  assert.match(area, /onResponderTerminate={clear}/);
+  assert.match(area, /onResponderRelease=/);
   assert.match(area, /touches.length !== 1/);
+  assert.match(read('workspace/NewsPage.tsx'), /<ChatSwipeArea onSwipe={onSwipe}><ScrollView/);
+  assert.match(read('workspace/NewsPage.tsx'), /onTouchStart={\(event\) => event.stopPropagation\(\)} onLayout=/);
   assert.equal((read('ui/MarkdownContent.tsx').match(/horizontal onTouchStart={\(event\) => event.stopPropagation\(\)}/g) ?? []).length, 2);
 });
 test('系统返回以全部为根，全局设置返回原聊天，子页优先于切换', () => {

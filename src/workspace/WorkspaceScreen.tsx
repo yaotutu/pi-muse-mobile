@@ -1,3 +1,5 @@
+import { AgentViewPreferences, agentHomePage, defaultAgentView } from './agent-view-preferences';
+import { deviceAgentViews } from './device-agent-views';
 import { GroupChat } from '../group/GroupChat';
 import type { NotificationReference } from '../group/contracts';
 import { AgentManagement } from './AgentManagement';
@@ -198,6 +200,10 @@ function LiveWorkspace(props: WorkspaceConnectionProps) {
 function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, setSettingsAgentId }: WorkspaceConnectionProps & {
   agents: ReturnType<typeof useAgents>; settingsAgentId: string | null; setSettingsAgentId: (id: string | null) => void;
 }) {
+  const [views] = useState(() => new AgentViewPreferences(snapshot.serverUrl ?? '', deviceAgentViews));
+  const viewState = useSyncExternalStore(views.subscribe, views.getSnapshot, views.getSnapshot);
+  useEffect(() => { void views.load(); }, [views]);
+  const homePage = useCallback((id: string) => agentHomePage(id, viewState.views[id] ?? defaultAgentView(id)), [viewState.views]);
   const focusedAgentId = settingsAgentId ?? agents.currentAgent;
   const api = useApi();
   // 连接键改变会卸载整层；新闻 Store 在此持续挂载，切智能体与重置会话不会丢草稿。
@@ -220,7 +226,7 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
   const [page, setPage] = useState<WorkspacePage>('group');
   const [newsManaging, setNewsManaging] = useState(false);
   const [settingsSubpage, setSettingsSubpage] = useState<SettingsSubpage>(null);
-  const [chatReturn, setChatReturn] = useState<'chat' | 'group' | 'discussion'>('group');
+  const [chatReturn, setChatReturn] = useState<'chat' | 'group' | 'news' | 'discussion'>('group');
   const [notification, setNotification] = useState<NotificationReference>();
   const [notificationReturn, setNotificationReturn] = useState<'chat' | 'group'>('group');
   const openNotification = (reference: NotificationReference) => {
@@ -349,7 +355,7 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
   }, [files, leaveAgentChild, agentSection, changeAgent, setSettingsAgentId, agentReturn, chatReturn]);
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (deleteBusy.current || agents.creating) return true;
+      if (deleteBusy.current || agents.creating || views.getSnapshot().saving) return true;
       const action = workspaceBackAction({ keyboardVisible, browserOpen, sessionMounted, page, newsArticleOpen: !!news.getSnapshot().selectedArticleId,
         newsManaging, settingsSubpage, goalCreating: !!goals.getSnapshot().creator });
       if (action === 'keyboard') { pendingSessionOpen.current = false; Keyboard.dismiss(); }
@@ -357,7 +363,6 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
       else if (action === 'session') closeSession();
       else if (action === 'news-article') news.closeArticle();
       else if (action === 'news-sources') setNewsManaging(false);
-      else if (action === 'news-owner') setPage('agent');
       else if (action === 'group') setPage('group');
       else if (action === 'discussion') setPage(notificationReturn);
       else if (action === 'chat-return') returnChat();
@@ -368,13 +373,15 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
       return action !== 'none';
     });
     return () => subscription.remove();
-  }, [keyboardVisible, browserOpen, closeBrowser, sessionMounted, closeSession, page, news, newsManaging, settingsSubpage, goals, backAgent, returnChat, agents.creating, notificationReturn]);
+  }, [keyboardVisible, browserOpen, closeBrowser, sessionMounted, closeSession, page, news, newsManaging, settingsSubpage, goals, backAgent, returnChat, agents.creating, notificationReturn, views]);
   const openSession = useCallback((tab?: unknown) => {
     if (typeof tab === 'string') setSessionTab(tab as SessionTab);
     if (keyboardVisible) { pendingSessionOpen.current = true; Keyboard.dismiss(); return; }
     setSessionMounted(true); setSessionOpen(true);
   }, [keyboardVisible]);
-  const select = (id: string) => changeAgent(() => { Keyboard.dismiss(); agents.selectAgent(id); setSettingsAgentId(null); setSessionOpen(false); setPage('chat'); setAgentSection('home'); setNotice(undefined); });
+  const select = (id: string, conversation = false) => changeAgent(() => { Keyboard.dismiss(); agents.selectAgent(id); setSettingsAgentId(null); setSessionOpen(false); setPage(conversation ? 'chat' : homePage(id)); setAgentSection('home'); setNotice(undefined); });
+  // 通知与新闻讨论显式进入实际承接私聊，不改已保存的主视图偏好。
+  const selectConversation = (id: string) => select(id, true);
   // 显式切换聊天才改变聊天所有者；查看设置只改变检查对象。
   const openGroup = () => changeAgent(() => { Keyboard.dismiss(); setSettingsAgentId(null); setSessionOpen(false); setPage('group'); });
   const avatarPreferences = useAvatarPreferences(snapshot.serverUrl ?? '');
@@ -399,17 +406,16 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
   };
   const openAgentSettings = (id: string, fromManagement = false) => changeAgent(() => {
     Keyboard.dismiss();
-    if (page === 'chat' || page === 'group' || page === 'discussion') setChatReturn(page);
+    if (page === 'chat' || page === 'group' || page === 'discussion' || page === 'news') setChatReturn(page);
     setSettingsAgentId(id); setAgentReturn(fromManagement ? 'management' : 'chat');
     setPage('agent'); setAgentSection('home'); setSessionOpen(false);
   });
   const openGlobalSettings = () => changeAgent(() => {
     Keyboard.dismiss();
-    if (page === 'chat' || page === 'group') setChatReturn(page);
+    if (page === 'chat' || page === 'group' || page === 'news') setChatReturn(page);
     setSettingsAgentId(null); setPage('settings'); setSettingsSubpage(null);
   });
-  const openNews = () => { Keyboard.dismiss(); setNewsManaging(false); news.closeArticle(); setPage('news'); };
-  const discussion = useNewsDiscussion((agentId) => { refresh(agentId); select(agentId); });
+  const discussion = useNewsDiscussion((agentId) => { refresh(agentId); selectConversation(agentId); });
   const finishRemoval = (id: string) => {
     const deletedCurrentChat = id === agents.currentAgent;
     sessions.clear(id); runtimeStore.forgetAgent(id); activities.forgetAgent(id); jobs.invalidate(); monitors.invalidate(); agents.removeAgent(id);
@@ -481,7 +487,13 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
       onSection={(next) => { setAgentSection(next); }} onBack={backAgent}
       onActivity={() => openSession('activity')}
       onFeatureSettings={() => { setPage('feature'); setSettingsSubpage(focusedAgentId === 'sms-internal' ? 'sms' : 'news-feature'); }}
-      onReadNews={openNews} onSaved={() => refresh(focusedAgentId)} maintenance={maintenance} />;
+      mainView={views.view(focusedAgentId)} viewSaving={viewState.saving} viewError={viewState.error}
+      onMainView={async (view) => {
+        const saved = await views.save(focusedAgentId, view);
+        // 主视图选择只改变当前智能体主页面的返回，不吞掉通知独立讨论或其他智能体的来源。
+        if (saved && focusedAgentId === agents.currentAgent && (chatReturn === 'chat' || chatReturn === 'news')) setChatReturn(agentHomePage(focusedAgentId, view));
+        return saved;
+      }} onSaved={() => refresh(focusedAgentId)} maintenance={maintenance} />;
   } else if (page === 'settings' && settingsSubpage === 'agents') {
     otherPage = <AgentManagement members={groupMembers} onBack={() => { if (!deleting && !agents.creating) setSettingsSubpage(null); }}
       onSettings={(id) => openAgentSettings(id, true)} creating={agents.creating} deleting={deleting} uncertain={deleteUncertain}
@@ -490,16 +502,14 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
   } else if (page === 'settings') {
     otherPage = <SettingsPage snapshot={snapshot} openConnection={openConnection} memoryAvailable profileAvailable dreamAvailable
       currentAgentId={agents.currentAgent} openAgents={() => setSettingsSubpage('agents')} openBrowser={openBrowser} subpage={settingsSubpage} onSubpage={setSettingsSubpage} />;
-  } else if (page === 'news') {
-    otherPage = <NewsPage store={news} managing={newsManaging} onManaging={setNewsManaging} onBack={() => setPage('agent')}
-      onDiscuss={(id) => changeAgent(() => void discussion.discuss(id))} discussing={discussion.busy} discussionError={discussion.error}
-      uncertainDiscussion={!!discussion.uncertainTarget} onCheckDiscussion={() => { if (discussion.uncertainTarget) select(discussion.uncertainTarget); }}
-      onConfirmDiscussion={() => Alert.alert('确认已核对承接会话？', '恢复后不会重发上一次讨论。请先确认会话里是否已经收到这条新闻。', [
-        { text: '取消', style: 'cancel' }, { text: '已核对', onPress: () => void discussion.confirmChecked() },
-      ])} />;
   } else if (page === 'goals' && !sessionOpen) {
     otherPage = <GoalsPanel openDrawer={openGroup} />;
   }
+  // 本地偏好完成读取前不挂载默认页面，避免先显示聊天再跳阅读。
+  if (!viewState.ready) return <SafeAreaView style={styles.root}>
+    <Text style={styles.mutedText}>{viewState.error ?? '正在读取主视图偏好…'}</Text>
+    {viewState.error && <ActionButton label="重试读取主视图偏好" text="重试" onPress={() => { void views.load(); }} />}
+  </SafeAreaView>;
   // 文件 Provider 与聊天所有者随连接持有；页面切换不销毁草稿或运行。
   return <View style={styles.root} testID="workspace-screen"
     onTouchStartCapture={() => { clearTimeout(avatarRelease.current); setFrozenTargets(targets); }}
@@ -512,7 +522,7 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
           {/* 唯一键盘避让层：Android 按真实重叠缩小阅读区，iOS 保留 padding；不再另算键盘高度。 */}
           <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled={Platform.OS !== 'web'} accessibilityViewIsModal={sessionMounted}>
             {page === 'settings' && !inSettingsSubpage && <AgentHeader title="全局设置" backLabel="返回聊天" onBack={returnChat} />}
-            {(page === 'chat' || page === 'group') && <AgentAvatarStrip targets={targets} selected={selectedAvatar}
+            {(page === 'chat' || page === 'group' || page === 'news') && <AgentAvatarStrip targets={targets} selected={selectedAvatar}
               status={avatarStatus}
               title={avatarTitle} compact={keyboardVisible} disabled={sessionMounted} onSelect={selectAvatar}
               onSettings={(id) => id === 'group' ? openGlobalSettings() : openAgentSettings(id)} />}
@@ -523,8 +533,18 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
                   pointerEvents={sessionMounted ? 'none' : 'auto'} aria-hidden={sessionMounted}
                   {...(Platform.OS === 'web' && sessionMounted ? { inert: true } : {})}
                   accessibilityElementsHidden={sessionMounted} importantForAccessibility={sessionMounted ? 'no-hide-descendants' : 'auto'}>
-                  <View style={[styles.bodyStage, (page === 'group' || page === 'discussion') && { display: 'none' }]}><ConversationHost currentAgentId={agents.currentAgent} agentIds={agents.agents.map((agent) => agent.id)} chatVisible={page === 'chat'} onSwipe={switchAdjacent} otherPage={otherPage}
+                  <View style={[styles.bodyStage, (page === 'group' || page === 'discussion' || page === 'news') && { display: 'none' }]}><ConversationHost currentAgentId={agents.currentAgent} agentIds={agents.agents.map((agent) => agent.id)} chatVisible={page === 'chat'} onSwipe={switchAdjacent} otherPage={otherPage}
                     refreshVersions={historyRefresh} onSettled={refresh} onBindingMismatch={reloadAgents} openConnection={openConnection} onOpenApprovals={() => openSession('approvals')} onContinueNotification={openNotification} /></View>
+                  {/* 阅读视图与聊天所有者并列保留，切头像不卸载文章或滚动现场。 */}
+                  <View style={[styles.bodyStage, page !== 'news' && { display: 'none' }]} pointerEvents={page === 'news' ? 'auto' : 'none'}
+                    accessibilityElementsHidden={page !== 'news'} importantForAccessibility={page === 'news' ? 'auto' : 'no-hide-descendants'}>
+                    <NewsPage store={news} visible={page === 'news'} managing={newsManaging} onManaging={setNewsManaging} onSwipe={switchAdjacent}
+                      onDiscuss={(id) => changeAgent(() => void discussion.discuss(id))} discussing={discussion.busy} discussionError={discussion.error}
+                      uncertainDiscussion={!!discussion.uncertainTarget} onCheckDiscussion={() => { if (discussion.uncertainTarget) selectConversation(discussion.uncertainTarget); }}
+                      onConfirmDiscussion={() => Alert.alert('确认已核对承接会话？', '恢复后不会重发上一次讨论。请先确认会话里是否已经收到这条新闻。', [
+                        { text: '取消', style: 'cancel' }, { text: '已核对', onPress: () => void discussion.confirmChecked() },
+                      ])} />
+                  </View>
                   <GroupChat visible={page === 'group' || page === 'discussion'} notification={page === 'discussion' || chatReturn === 'discussion' && page === 'agent' ? notification : undefined}
                     onOpenNotification={openNotification} onBack={() => setPage(notificationReturn)} members={groupMembers} onAgentSettings={openAgentSettings} onSwipe={switchAdjacent} onApprovals={(agentId) => { setChatReturn(page === 'discussion' ? 'discussion' : 'group'); setAgentReturn('chat'); setSettingsAgentId(agentId); setAgentSection('home'); setPage('agent'); openSession('approvals'); }} />
                   {!!notice && <Text accessibilityRole="alert" style={[styles.notice, notice.tone === 'error' && styles.error]}>{notice.text}</Text>}

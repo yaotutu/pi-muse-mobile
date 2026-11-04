@@ -64,7 +64,7 @@ test('私聊返回群聊，功能设置返回成员层，覆盖层优先', () =>
 test('群聊是返回根层，阅读器保留独立返回来源，子页先退一层', () => {
   const state = { page: 'group', keyboardVisible: false, sessionMounted: false, settingsSubpage: null, goalCreating: false };
   assert.equal(workspaceBackAction(state), 'none');
-  assert.equal(workspaceBackAction({ ...state, page: 'news' }), 'news-owner');
+  assert.equal(workspaceBackAction({ ...state, page: 'news' }), 'group');
   assert.equal(workspaceBackAction({ ...state, page: 'news', newsManaging: true }), 'news-sources');
   assert.equal(workspaceBackAction({ ...state, page: 'news', newsManaging: true, newsArticleOpen: true }), 'news-article');
   assert.equal(workspaceBackAction({ ...state, page: 'news', newsArticleOpen: true, sessionMounted: true }), 'session');

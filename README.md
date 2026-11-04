@@ -67,12 +67,12 @@ The release workflow builds a signed Android APK and an unsigned iOS IPA for use
 
 ### Session panel, approvals, and workspace files
 
-- **One full-screen session center.** Open the private chat's top-right Agent Settings, then Activity and Approvals to open the current session panel. Its Activity, Approvals, and execution History switch in place while the chat remains mounted behind it.
+- **One full-screen session center.** Long-press an agent avatar for its settings, then Activity and Approvals to open the current session panel. Its Activity, Approvals, and execution History switch in place while the chat remains mounted behind it.
 - **Current execution and activity history.** Follow the current run, tool work, model-registered activities, progress, results, and related steps. Activity is not hidden model reasoning and is not represented as an archive of every chat run.
 - **Human-in-the-loop approvals.** Agent-initiated file writes and edits require full before/after review and explicit confirmation. A stale approval cannot overwrite content that changed after the approval was created.
-- **Agent files.** Open a member profile → Files to browse the current agent's private directories and files, read complete text, preview supported images, and download files to a chosen Android directory without overwriting same-name files. Manual text saves require complete-content review and confirmation.
+- **Agent files.** Long-press an agent avatar for its settings, then Files to browse the current agent's private directories and files, read complete text, preview supported images, and download files to a chosen Android directory without overwriting same-name files. Manual text saves require complete-content review and confirmation.
 
-Current source uses member profiles for private files, direct Markdown/text editing, rules, skills, and maintenance. Tap an avatar to open its profile, then Send Message for a separate private chat. News and SMS own their settings; background notifications default to main and can be explicitly rebound. Global settings open from the message list’s top-right gear. Cold launch opens the shared group timeline: no `@` routes only to main, while an explicit `@` sends only to that member. Group and private contexts stay separate; the group top-right opens group information. The current group is text-only, without message feedback or background-notification delivery; those remain in private chats.
+Current source uses the top avatar strip to switch between All and individual agents. Swipe left or right in the All message area, a private chat, or News reading to follow the same avatar order; switching does not clear drafts or stop replies. Long-press an agent avatar for its settings, files, rules, skills, and maintenance, or long-press All for global settings. News defaults to Reading; choose Reading or Chat under Main View in its agent settings. The choice is stored locally per server address and agent, survives app restarts and reauthentication, and does not synchronize across devices. All submissions leave the input as soon as the client takes ownership of the pending message; you can prepare a new draft during the reply, and completion never clears that new draft. Unconfirmed submissions remain recoverable and are not automatically resent. Cold launch opens All: no `@` routes only to main, while an explicit `@` sends only to that member. Group and private contexts stay separate; All remains text-only and does not provide message feedback.
 
 ### Global settings, memory, Dream, and themes
 
@@ -157,7 +157,7 @@ These are local development gates. `npm test` uses local protocol and state fixt
 
 ## Architecture notes
 
-- Cold launch opens group chat directly, without bottom tabs. One conversation list provides the default group, member private chats, avatar profiles, a bottom-right group shortcut, and top-right global settings. News reading lives inside the News member; Goals remains hidden. Navigation uses in-app state; the project does not use React Navigation or Expo Router.
+- Cold launch opens All, without bottom tabs. The avatar strip and horizontal swipes switch agents; News uses its locally saved Reading/Chat preference. Long-press an avatar for settings; Main View is a low-frequency setting, not a second navigation bar. Goals remains hidden. Navigation uses in-app state; the project does not use React Navigation or Expo Router.
 - The chat stream uses AG-UI SSE through `expo/fetch`, with custom framing and aggregation implemented in the client.
 - Runtime status, approvals, activities, and job invalidation share the server's notification SSE. Agents, files, memory, goals, jobs, monitors, profiles, and Dream use documented REST endpoints.
 - Business state is kept in focused providers and stores around React context. The UI renders native React Native components rather than embedding a web app.

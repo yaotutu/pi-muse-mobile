@@ -155,14 +155,21 @@ test('通知讨论按完整来源隔离，普通群消息不含追问；来源�
   for (const invalid of [{ ...ref, sessionId: '' }, { ...ref, targetAgentId: '../x' }, { ...ref, messageId: null }])
     assert.throws(() => parseGroupEvent({ type: 'turn', turn: { ...followup, notification: invalid } }));
 });
-test('通知页 Back 返回来源，输入直发来源而非解析艾特，回读只清对应草稿', () => {
+test('通知页 Back 返回来源，输入直发来源而非解析艾特，草稿按讨论交接', () => {
   assert.equal(workspaceBackAction({ keyboardVisible: false, sessionMounted: false, page: 'discussion', settingsSubpage: null, goalCreating: false }), 'discussion');
   assert.equal(workspaceBackAction({ keyboardVisible: true, sessionMounted: false, page: 'discussion', settingsSubpage: null, goalCreating: false }), 'keyboard');
   const ui = readFileSync(new URL('../src/group/GroupChat.tsx', import.meta.url), 'utf8');
   assert.match(ui, /notification \? \{ content: draft.trim\(\) \} : resolveGroupTarget/);
-  assert.match(ui, /items\[sent.scope\] === sent.draft/);
+  assert.match(ui, /new Map<string, GroupComposer>/);
+  assert.match(ui, /const composer = composers.get\(scope\)!/);
+  assert.match(ui, /for \(const item of composers.values\(\)\) item.reconcile\(next\)/);
+  assert.match(ui, /composer.submit\(\{ id, ...input, ...\(notification/);
   assert.match(ui, /notification && !source/);
   assert.match(ui, /notification \? undefined : onSwipe/);
   assert.match(ui, /!notification \|\| !!row.sender/);
   assert.doesNotMatch(ui, /onPrivateChat/);
+  const workspace = readFileSync(new URL('../src/workspace/WorkspaceScreen.tsx', import.meta.url), 'utf8');
+  assert.match(workspace, /'chat' \| 'group' \| 'news' \| 'discussion'/);
+  assert.match(workspace, /else setPage\(chatReturn\)/);
+  assert.match(workspace, /focusedAgentId === agents.currentAgent && \(chatReturn === 'chat' \|\| chatReturn === 'news'\)/);
 });

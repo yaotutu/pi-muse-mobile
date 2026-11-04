@@ -9,7 +9,7 @@ test('检查对象与聊天所有者分离；文件、规则、动态跟随检�
   assert.match(root, /<FilesProvider currentAgentId={settingsAgentId \?\? agents.currentAgent}/);
   assert.match(root, /<ConversationHost currentAgentId={agents.currentAgent}/);
   for (const pattern of [/useAgentState\(focusedAgentId\)/, /useAgentRuntime\(focusedAgentId\)/, /<AgentPage agentId={focusedAgentId}/, /<SessionPanel agentId={focusedAgentId}/]) assert.match(root, pattern);
-  const open = root.slice(root.indexOf('const openAgentSettings ='), root.indexOf('const openNews ='));
+  const open = root.slice(root.indexOf('const openAgentSettings ='), root.indexOf('const discussion ='));
   assert.match(open, /setChatReturn\(page\)/);
   assert.match(open, /setSettingsAgentId\(id\)/);
   assert.doesNotMatch(open, /selectAgent|refresh\(|setDraft/);
@@ -31,7 +31,7 @@ test('创建不抢走私聊；删除当前聊天才让返回目的地回全部',
   assert.doesNotMatch(create, /selectAgent|setCurrentAgent/);
   assert.match(root, /const deletedCurrentChat = id === agents.currentAgent/);
   assert.match(root, /if \(deletedCurrentChat\) setChatReturn\('group'\)/);
-  assert.match(root, /deleteBusy.current \|\| agents.creating\) return true/);
+  assert.match(root, /deleteBusy.current \|\| agents.creating \|\| views.getSnapshot\(\).saving\) return true/);
 });
 
 test('删除未明先读目录，不重发；管理页锁定增删和设置', () => {

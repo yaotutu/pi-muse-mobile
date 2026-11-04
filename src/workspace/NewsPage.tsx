@@ -1,4 +1,5 @@
-import { ChevronDown, ChevronUp, Bookmark, Check, ChevronLeft, ExternalLink, ArrowLeft, Plus, RefreshCw, Rss, X } from 'lucide-react-native';
+import { ChatSwipeArea } from '../ui/ChatSwipeArea';
+import { ChevronDown, ChevronUp, Bookmark, Check, ChevronLeft, ExternalLink, Plus, RefreshCw, Rss, X } from 'lucide-react-native';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Alert, Keyboard, Linking, Pressable, ScrollView, StyleSheet, Text, View, type ScrollViewInstance, type ViewInstance } from 'react-native';
 import { useTheme } from '../theme/ThemeProvider';
@@ -155,7 +156,7 @@ function ArticleDetail({ store, snapshot, onOpenActions, focusComments, onCommen
       {uncertainDiscussion && onConfirmDiscussion && <ActionButton label="已核对恢复新闻讨论" text="已核对，恢复操作" disabled={discussing} onPress={onConfirmDiscussion} />}
       <NewsFeedbackBadge article={article} onOpen={(target) => onOpenActions(id, target)} />
       <UncertainArticle articleId={id} snapshot={snapshot} store={store} />
-      <View onLayout={(event) => setCommentsY(event.nativeEvent.layout.y)}
+      <View onTouchStart={(event) => event.stopPropagation()} onLayout={(event) => setCommentsY(event.nativeEvent.layout.y)}
         style={[styles.sectionLine, { borderTopColor: colors.line }]}>
         <Text accessibilityRole="header" style={[styles.sectionTitle, { color: colors.ink }]}>评论 · {article.feedback.comments.length}</Text>
         {article.feedback.comments.length === 0 && <Text style={[styles.excerpt, { color: colors.muted }]}>还没有评论。</Text>}
@@ -287,14 +288,14 @@ function Sources({ store, snapshot, onBack, backToSettings = false }: { store: N
 }
 
 /** 页面仅呈现连接级 NewsStore；切页与后台生命周期由根层统一驱动。 */
-export function NewsPage({ store, managing, onManaging, onBack, ...discussion }: { store: NewsStore; managing: boolean; onManaging: (value: boolean) => void; onBack: () => void } & DiscussionProps) {
+export function NewsPage({ store, visible, managing, onManaging, onSwipe, ...discussion }: { store: NewsStore; visible: boolean; managing: boolean; onManaging: (value: boolean) => void; onSwipe: (direction: -1 | 1) => void } & DiscussionProps) {
   const { colors } = useTheme();
   const { snapshot } = useNews(store);
-  const scope = { store, articleId: snapshot.selectedArticleId, managing,
+  const scope = { store, visible, articleId: snapshot.selectedArticleId, managing,
     view: snapshot.view, savedOnly: snapshot.savedOnly };
   const [menuState, setMenuState] = useState<{ scope: typeof scope; menu: { articleId: string; anchor: MenuRect } | null }>(
     { scope, menu: null });
-  if (menuState.scope.store !== store || menuState.scope.articleId !== scope.articleId ||
+  if (menuState.scope.visible !== visible || menuState.scope.store !== store || menuState.scope.articleId !== scope.articleId ||
     menuState.scope.managing !== managing || menuState.scope.view !== scope.view ||
     menuState.scope.savedOnly !== scope.savedOnly) {
     // React 在提交新页面前重渲染，旧 Modal 不会在返回原列表时重新出现。
@@ -306,14 +307,14 @@ export function NewsPage({ store, managing, onManaging, onBack, ...discussion }:
   const currentContext = useRef(scope);
   // 页面、连接或筛选改变时使迟到的 window 测量失效；Modal 不可回到旧文章。
   useLayoutEffect(() => {
-    currentContext.current = { store, articleId: snapshot.selectedArticleId, managing,
+    currentContext.current = { store, visible, articleId: snapshot.selectedArticleId, managing,
       view: snapshot.view, savedOnly: snapshot.savedOnly };
     measureSequence.current += 1;
     return () => { measureSequence.current += 1; };
-  }, [store, snapshot.selectedArticleId, managing, snapshot.view, snapshot.savedOnly]);
+  }, [store, visible, snapshot.selectedArticleId, managing, snapshot.view, snapshot.savedOnly]);
   const closeMenu = () => { measureSequence.current += 1; setMenuState({ scope, menu: null }); };
   const openActions = (articleId: string, target: ViewInstance | null) => {
-    if (!target) return;
+    if (!visible || !target) return;
     const sequence = ++measureSequence.current;
     const owner = currentContext.current;
     Keyboard.dismiss();
@@ -334,13 +335,12 @@ export function NewsPage({ store, managing, onManaging, onBack, ...discussion }:
   };
   const pending = !!snapshot.status && (snapshot.status.pendingCount > 0 || snapshot.status.processing);
   const pageContent = snapshot.selectedArticleId
-    ? <ArticleDetail store={store} snapshot={snapshot} onOpenActions={openActions} {...discussion}
-      focusComments={focusCommentsId === snapshot.selectedArticleId} onCommentsFocused={() => setFocusCommentsId(null)} />
+    ? <ChatSwipeArea onSwipe={onSwipe}><ArticleDetail store={store} snapshot={snapshot} onOpenActions={openActions} {...discussion}
+      focusComments={focusCommentsId === snapshot.selectedArticleId} onCommentsFocused={() => setFocusCommentsId(null)} /></ChatSwipeArea>
     : managing ? <Sources store={store} snapshot={snapshot} onBack={() => onManaging(false)} />
       : <View style={[styles.readerContainer, { backgroundColor: colors.surface }]}>
-          {/* 单顶栏：返回阅读入口、推荐/全部分段与阅读操作；不恢复侧栏或第二层按钮区。 */}
+          {/* 工具栏只筛选阅读内容；智能体切换由上方头像与统一横扫负责。 */}
           <View style={styles.readerToolbar}>
-            <IconControl icon={ArrowLeft} label="返回新闻设置" onPress={onBack} />
             <View accessibilityRole="tablist" accessibilityLabel="新闻视图" style={[styles.viewTabs, { backgroundColor: colors.floatingSurface, borderColor: colors.floatingLine }]}>
               {(['recommended', 'all'] as const).map((view) => <Pressable key={view} accessibilityRole="tab"
                 accessibilityLabel={view === 'recommended' ? '推荐' : '全部'} accessibilityState={{ selected: snapshot.view === view }}
@@ -359,7 +359,7 @@ export function NewsPage({ store, managing, onManaging, onBack, ...discussion }:
                 onPress={() => void store.refreshFeeds()} testID="news-refresh-feeds" />
             </View>
           </View>
-          <ScrollView keyboardShouldPersistTaps="handled" style={{ backgroundColor: colors.surface }}
+          <ChatSwipeArea onSwipe={onSwipe}><ScrollView keyboardShouldPersistTaps="handled" style={{ backgroundColor: colors.surface }}
             contentContainerStyle={styles.readerContent} testID="news-page">
             {snapshot.feedRefreshing && <Text style={[styles.meta, { color: colors.muted }]}>正在抓取来源…</Text>}
     <FeedbackNotice tone="danger" text={snapshot.listError} />
@@ -380,9 +380,9 @@ export function NewsPage({ store, managing, onManaging, onBack, ...discussion }:
     {snapshot.articles.map((article) => <ArticleCard key={article.id} article={article} store={store}
       snapshot={snapshot} onOpenActions={openActions} />)}
     {snapshot.hasMore && <ActionButton label="加载更多文章" text="加载更多" busy={snapshot.loading} onPress={() => store.loadMore()} testID="news-load-more" />}
-  </ScrollView></View>;
+  </ScrollView></ChatSwipeArea></View>;
   return <>{pageContent}
-    {menu && menuArticle && <NewsArticleActions key={menu.articleId} article={menuArticle}
+    {visible && menu && menuArticle && <NewsArticleActions key={menu.articleId} article={menuArticle}
       work={snapshot.articleWork[menu.articleId]} store={store} anchor={menu.anchor}
       notice={routineNotice(snapshot.notice) ? undefined : snapshot.notice}
       onClose={closeMenu} onComments={showComments} />}
