@@ -16,9 +16,9 @@ import { groupRows, resolveGroupTarget, type GroupSnapshot, type GroupTurn } fro
 let groupSequence = 0;
 const { layout: l, typography: t, radius: r } = workspaceTheme;
 /** 连接内只挂一份群聊所有者；换页面不重发、不把私聊草稿或历史带进群里。 */
-export function GroupChat({ visible, members, onProfile, onApprovals, onPrivateChat, onSwipe }: {
+export function GroupChat({ visible, members, onAgentSettings, onApprovals, onPrivateChat, onSwipe }: {
   visible: boolean; members: { id: string; name: string }[];
-  onProfile: (id: string) => void; onApprovals: (agentId: string) => void;
+  onAgentSettings: (id: string) => void; onApprovals: (agentId: string) => void;
   onPrivateChat: (agentId: string) => void; onSwipe?: (direction: -1 | 1) => void;
 }) {
   const api = useApi(); const { colors: c } = useTheme(); const approvals = useApprovals();
@@ -96,7 +96,7 @@ export function GroupChat({ visible, members, onProfile, onApprovals, onPrivateC
       {!snapshot && loading && <Text style={{ ...t.caption, color: c.muted }}>正在读取消息…</Text>}
       {snapshot && !rows.length && !busy && <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}><Text style={{ ...t.detail, color: c.muted }}>有什么想聊的？</Text></View>}
       {rows.map((row) => <View key={row.key} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing[8] }}>
-        {row.sender && <Pressable accessibilityRole="button" accessibilityLabel={`查看${title(row.sender)}的主页`} onPress={() => { Keyboard.dismiss(); onProfile(row.sender!); }} style={{ width: l.smallControl, minHeight: l.smallControl, alignItems: 'center', justifyContent: 'center' }}>
+        {row.sender && <Pressable accessibilityRole="button" accessibilityLabel={`查看${title(row.sender)}的智能体设置`} onPress={() => { Keyboard.dismiss(); onAgentSettings(row.sender!); }} style={{ width: l.smallControl, minHeight: l.smallControl, alignItems: 'center', justifyContent: 'center' }}>
           <MemberAvatar agentId={row.sender} size={l.groupAvatar} />
         </Pressable>}
         <View style={{ flex: 1, minWidth: 0, gap: spacing[2] }}>

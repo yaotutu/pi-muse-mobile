@@ -104,7 +104,7 @@ test('聊天顶部头像栏在正常布局，隐藏智能体不重复挂载其�
 
 test('头像栏承担切换，动态面板继续显示当前智能体的真实状态', () => {
   const screen = read('src/workspace/WorkspaceScreen.tsx');
-  assert.match(screen, /onProfile={\(id\) => id === 'group' \? openGroupInfo\(\) : openProfile\(id\)}/);
+  assert.match(screen, /onSettings={\(id\) => id === 'group' \? openGlobalSettings\(\) : openAgentSettings\(id\)}/);
   assert.match(screen, /<StatusPill label={statusLabel} testID="workspace-session-status"/);
   assert.match(screen, /sessionName && <Text numberOfLines={1}/);
   assert.doesNotMatch(screen, /chatHeader:|identityLabelSurface:/);
@@ -125,7 +125,7 @@ test('会话面板采样持续挂载的聊天层，关闭期间继续隔离底�
   assert.doesNotMatch(surface, /backgroundColor:\s*colors\.canvas/);
   assert.doesNotMatch(panel, /backgroundColor:\s*colors\.canvas|<Modal/);
   assert.match(screen, /if \(finished && !sessionOpen\) setSessionMounted\(false\)/);
-  assert.match(screen, /setSessionOpen\(false\); setDeleteConfirm\(false\)/);
+  assert.match(screen, /setSessionOpen\(false\)/);
   assert.match(screen, /testID="workspace-session-status"/);
 });
 
@@ -184,16 +184,13 @@ test('会话文字操作共用点击区与状态，重置由独立确认承载',
   }
   assert.doesNotMatch(execution, /查看活动历史|状态说明|查看关联活动/);
   for (const label of ['确认重置会话', '取消重置会话']) assert.match(dialog, new RegExp(`<ActionButton label="${label}"`));
-  assert.match(screen, /deleteConfirm \? '确认删除智能体' : '删除当前智能体'/);
-  assert.match(screen, /<ActionButton label="取消删除智能体"/);
+  assert.match(screen, /确认删除.*style: 'destructive'/);
   assert.match(button, /minHeight: themeTokens\.layout\.smallControl/);
   assert.match(button, /maxWidth: '100%'/);
   assert.match(button, /minWidth: 0, flexShrink: 1/);
   assert.match(button, /accessibilityState=\{\{ disabled: locked, busy, .*expanded/);
-  assert.match(screen, /tone="danger" busy=\{session\.deleting\}/);
   assert.match(dialog, /!available \|\| session\.resetUncertain \|\| !sessions\.canWrite\(agentId\) \|\| sessions\.hasSettingsWrite\(agentId\)/);
-  assert.match(screen, /agents\.currentAgent !== MAIN_AGENT && !isBuiltinMember\(agents.currentAgent\) && <Card style=\{styles\.exampleCard\} tone="danger">/);
-  assert.match(screen, /confirmActions: \{ flexDirection: 'row', flexWrap: 'wrap'/);
+  assert.match(read('src/workspace/AgentManagement.tsx'), /member.id !== MAIN_AGENT && !isBuiltinMember\(member.id\)/);
   assert.doesNotMatch(execution, /styles\.button|styles\.buttonText/);
   assert.doesNotMatch(screen, /styles\.secondaryButton/);
 });
@@ -230,13 +227,12 @@ test('工具结果缺席不是运行中证据，结束或停止后的空结果�
   assert.doesNotMatch(card, /工具执行中| · 执行中/);
 });
 
-test('头像栏替代成员目录，低频管理收进群组信息', () => {
+test('低频增删只在全局智能体管理，不保留中间成员页', () => {
   const screen = read('src/workspace/WorkspaceScreen.tsx');
-  assert.doesNotMatch(screen, /MemberDirectory|inbox|drawerOpen/);
-  assert.equal(existsSync(new URL('src/workspace/MemberDirectory.tsx', root)), false);
-  assert.match(read('src/group/GroupInfo.tsx'), /label="打开全局设置"/);
-  assert.match(read('src/group/GroupInfo.tsx'), /label="添加智能体".*busy={creating}/);
-  assert.match(screen, /onCreate={\(\) => changeAgent/);
+  assert.doesNotMatch(screen, /MemberDirectory|inbox|drawerOpen|GroupInfo/);
+  assert.equal(existsSync(new URL('src/group/GroupInfo.tsx', root)), false);
+  assert.match(read('src/workspace/AgentManagement.tsx'), /label="添加智能体".*busy={creating}/);
+  assert.match(screen, /<AgentManagement members={groupMembers}/);
 });
 
 test('放弃 failed 暂存须二次确认并回读权威历史，当前草稿保持独立', () => {
@@ -256,19 +252,14 @@ test('启动直达群聊，点击和滑动共用同一个受保护切换入口',
   assert.match(source, /const select = .*changeAgent/);
 });
 
-test('所有私聊右上角统一进入当前智能体设置，头像仍进入成员主页', () => {
+test('长按直接打开智能体设置，不再区分主页或保留发消息中间动作', () => {
   const source = read('src/workspace/WorkspaceScreen.tsx');
-  const profile = read('src/workspace/AgentPage.tsx');
-  const header = source.slice(source.indexOf('{(page ==='), source.indexOf('<View style={styles.bodyStage}>'));
-  assert.match(header, /icon={Settings}.*testID="workspace-open-agent-settings".*openProfile\(agents.currentAgent, 'settings'\)/);
-  assert.match(header, /onProfile={\(id\).*openProfile\(id\)/);
-  assert.doesNotMatch(header, /openNews|openSession|news-internal|icon={Activity}/);
-  assert.match(source, /setAgentView\(view\)/);
-  assert.match(source, /<AgentPage view={agentView} agentId={agents.currentAgent}/);
-  assert.match(profile, /section === 'home' && view === 'settings' \? '智能体设置'/);
-  assert.match(profile, /view === 'profile' && <ActionButton/);
-  assert.match(source, /backLabel={agentView === 'settings' \? '返回智能体设置' : '返回成员主页'}/);
-  assert.match(read('src/features/FeaturePage.tsx'), /<AgentHeader.*backLabel={backLabel}/);
+  const agent = read('src/workspace/AgentPage.tsx');
+  assert.doesNotMatch(source, /agentView|openProfile|workspace-open-agent-settings/);
+  assert.match(source, /<AgentPage agentId={focusedAgentId}/);
+  assert.doesNotMatch(agent, /onChat|view ===|memberDescription/);
+  assert.match(agent, /home: '智能体设置'/);
+  assert.match(source, /backLabel="返回智能体设置"/);
 });
 
 test('新闻只从成员主页阅读，返回主页后仍按原入口返回私聊或群聊', () => {
@@ -279,16 +270,16 @@ test('新闻只从成员主页阅读，返回主页后仍按原入口返回私�
   assert.match(source, /onReadNews={openNews}/);
   assert.match(source, /action === 'news-owner'\) setPage\('agent'\)/);
   assert.match(source, /onBack={\(\) => setPage\('agent'\)}/);
-  assert.match(profile, /view === 'profile' && agentId === 'news-internal'/);
+  assert.match(profile, /agentId === 'news-internal'/);
   assert.match(profile, /accessibilityLabel="查看成员动态与审批"/);
-  assert.match(reader, /label="返回新闻主页" onPress={onBack}/);
+  assert.match(reader, /label="返回新闻设置" onPress={onBack}/);
 });
 
 test('智能体维护归智能体子页，全局设置来自群组信息，会话面板只处理当前执行', () => {
   const screen = read('src/workspace/WorkspaceScreen.tsx');
   const panel = read('src/workspace/SessionPanel.tsx');
-  assert.match(screen, /onSettings={\(\) => \{ setPage\('settings'\)/);
-  assert.match(read('src/group/GroupInfo.tsx'), /label="打开全局设置"/);
+  assert.match(screen, /const openGlobalSettings =/);
+  assert.match(screen, /<AgentHeader title="全局设置"/);
   assert.match(screen, /page === 'agent'\) \{\s*otherPage = <AgentPage/);
   assert.match(screen, /const maintenance =/);
   const settings = screen.slice(screen.indexOf('function SettingsPage'), screen.indexOf('function DisconnectedWorkspace'));
@@ -300,11 +291,11 @@ test('智能体维护归智能体子页，全局设置来自群组信息，会�
 test('独立原生重置对话框固定目标，取消无提交，断线和未明结果锁定重提', () => {
   const screen = read('src/workspace/WorkspaceScreen.tsx');
   const dialog = read('src/workspace/ResetSessionDialog.tsx');
-  assert.match(screen, /setResetTarget\(agents\.currentAgent\)/);
+  assert.match(screen, /setResetTarget\(focusedAgentId\)/);
   assert.match(screen, /resetTarget && <ResetSessionDialog key=\{resetTarget\} agentId=\{resetTarget\} available=\{!!connection\?\.enabled\}/);
   assert.match(screen, /const reset = async \(id: string, clearSchedules: boolean\) => \{\s*if \(!connection\?\.enabled\)/);
   assert.match(screen, /sessions\.resetAgent\(id, clearSchedules\)/);
-  assert.match(screen, /setResetTarget\(undefined\); setResetError\(undefined\); setSessionOpen\(false\); setPage\('chat'\)/);
+  assert.match(screen, /setResetTarget\(undefined\); setResetError\(undefined\); setSessionOpen\(false\)/);
   assert.match(dialog, /const \[clearSchedules, setClearSchedules\] = useState\(false\)/);
   assert.match(dialog, /<Modal visible transparent animationType=\{reducedMotion \? 'none' : 'fade'\} onRequestClose=\{cancel\}/);
   assert.match(dialog, /<Card style=\{styles\.dialog\} tone="warning" accessibilityViewIsModal>/);

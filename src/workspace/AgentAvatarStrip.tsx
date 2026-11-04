@@ -1,17 +1,22 @@
-import { useCallback, useEffect, useRef, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { Pressable, ScrollView, Text, View, type LayoutRectangle, type ScrollViewInstance } from 'react-native';
 import { Users } from 'lucide-react-native';
 import { useTheme } from '../theme/ThemeProvider';
 import { spacing, workspaceTheme } from '../ui/tokens';
 import { MemberAvatar } from './MemberAvatar';
 
-/** 顶栏占正常布局；当前头像再点进入资料，其他头像只切换，不另建会话所有者。 */
-export function AgentAvatarStrip({ targets, selected, title, compact, disabled, onSelect, onProfile, action }: {
+const SETTINGS_HOLD_MS = 500;
+
+/** 单击只切聊天，长按只开设置；不根据选中态改变单击含义，也不另建会话所有者。 */
+export function AgentAvatarStrip({ targets, selected, title, compact, disabled, onSelect, onSettings }: {
   targets: string[]; selected: string; title: (id: string) => string; compact: boolean; disabled: boolean;
-  onSelect: (id: string) => void; onProfile: (id: string) => void; action: ReactNode;
+  onSelect: (id: string) => void; onSettings: (id: string) => void;
 }) {
   const { colors: c } = useTheme();
   const scroll = useRef<ScrollViewInstance>(null);
+  const settingsPress = useRef(false);
+  const pressedAt = useRef(0);
+  const heldForSettings = (timestamp: number) => settingsPress.current || timestamp - pressedAt.current >= SETTINGS_HOLD_MS;
   const frames = useRef<Record<string, LayoutRectangle>>({});
   const viewport = useRef(0); const offset = useRef(0);
   const reveal = useCallback((id: string) => {
@@ -28,8 +33,20 @@ export function AgentAvatarStrip({ targets, selected, title, compact, disabled, 
       {targets.map((id) => {
         const active = selected === id; const name = title(id);
         return <Pressable key={id} accessibilityRole="tab" accessibilityLabel={`切换到${name}`} accessibilityState={{ selected: active, disabled }}
-          accessibilityHint={active ? '再次点击查看资料' : '切换聊天，草稿和正在进行的回复会保留'} disabled={disabled}
-          onPress={() => active ? onProfile(id) : onSelect(id)} onLongPress={() => onProfile(id)}
+          accessibilityHint={id === 'group' ? '点击切换到全部，长按打开全局设置' : '点击切换聊天，长按打开智能体设置'} disabled={disabled}
+          accessibilityActions={[{ name: 'settings', label: id === 'group' ? '打开全局设置' : `打开${name}的智能体设置` }]}
+          onAccessibilityAction={(event) => { if (!disabled && event.nativeEvent.actionName === 'settings') onSettings(id); }}
+          delayLongPress={SETTINGS_HOLD_MS}
+          onPressIn={(event) => { settingsPress.current = false; pressedAt.current = event.nativeEvent.timestamp; }}
+          onLongPress={() => { settingsPress.current = true; }}
+          // 松手并结束原生触摸后再跳页，避免卸载仍持有 responder 的头像，吞掉新页面第一次点击。
+          onPressOut={(event) => {
+            // 流式渲染繁忙时 JS 长按计时器可能晚于松手；原生触摸时间仍能区分长按，避免误切聊天。
+            settingsPress.current = heldForSettings(event.nativeEvent.timestamp);
+            if (settingsPress.current) requestAnimationFrame(() => onSettings(id));
+          }}
+          // Pressability 的延迟 press-out 可能晚于 onPress，单击路径也按同一次原生时长判定。
+          onPress={(event) => { if (!heldForSettings(event.nativeEvent.timestamp) && !active) onSelect(id); }}
           onLayout={(event) => { frames.current[id] = event.nativeEvent.layout; if (active) reveal(id); }}
           style={({ pressed }) => ({ minWidth: compact ? 48 : 62, minHeight: 48, alignItems: 'center', justifyContent: 'center', gap: spacing[4], paddingHorizontal: spacing[4], paddingVertical: spacing[4], opacity: pressed ? 0.6 : 1 })}>
           <View style={{ padding: 3, borderRadius: 19, borderWidth: 1.5, borderColor: active ? c.accentText : 'transparent' }}>
@@ -39,6 +56,5 @@ export function AgentAvatarStrip({ targets, selected, title, compact, disabled, 
         </Pressable>;
       })}
     </ScrollView>
-    {action}
   </View>;
 }

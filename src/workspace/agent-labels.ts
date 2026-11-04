@@ -18,6 +18,3 @@ export class AgentLabels {
 }
 
 export function isBuiltinMember(id: string) { return id === 'news-internal' || id === 'sms-internal'; }
-export function memberDescription(id: string) {
-  return id === MAIN_AGENT ? '日常对话与协作，让 Muse 帮你安排。' : id === 'news-internal' ? '阅读新闻、整理资讯，和我聊聊你关心的内容。' : id === 'sms-internal' ? '整理短信、筛选重要信息，保留你自己的偏好。' : '独立的对话、文件与规则，专注处理自己的事情。';
-}

@@ -1,10 +1,10 @@
 import { GroupChat } from '../group/GroupChat';
-import { GroupInfo } from '../group/GroupInfo';
+import { AgentManagement } from './AgentManagement';
 import { useNewsDiscussion } from '../features/useNewsDiscussion';
 import { SmsProvider } from '../information/SmsProvider';
 import { FeaturePage, type FeatureSection } from '../features/FeaturePage';
 import { Card } from '../ui/Surfaces';
-import { BookOpen, ChevronRight, Download, ArrowLeft, Ellipsis, Moon, RotateCcw, Server, Settings, UserRound, X, Globe, type LucideIcon } from 'lucide-react-native';
+import { BookOpen, ChevronRight, Download, Moon, RotateCcw, Server, Settings, Users, UserRound, X, Globe, type LucideIcon } from 'lucide-react-native';
 import { BlurTargetView } from 'expo-blur';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ThemeStatusBar } from '../theme/ThemeStatusBar';
@@ -58,8 +58,8 @@ import { MemberAvatar } from './MemberAvatar';
 import { BrowserPanel } from '../browser/BrowserPanel';
 import { createBrowserStore } from '../browser/browser-store';
 
-type WorkspacePage = 'group' | 'group-info' | 'chat' | 'news' | 'goals' | 'settings' | 'agent' | 'feature';
-type SettingsSubpage = 'memory' | 'profile' | 'dream' | 'news-sources' | FeatureSection | null;
+type WorkspacePage = 'group' | 'chat' | 'news' | 'goals' | 'settings' | 'agent' | 'feature';
+type SettingsSubpage = 'agents' | 'memory' | 'profile' | 'dream' | 'news-sources' | FeatureSection | null;
 type WorkspaceNotice = { text: string; tone: 'success' | 'error' };
 const { layout: l, radius: r, typography: t } = workspaceTheme;
 function useStyles() { const { colors } = useTheme(); return useMemo(() => createStyles(colors), [colors]); }
@@ -136,7 +136,7 @@ function AnimatedSubpage({ children }: { children: ReactNode }) {
   );
 }
 
-function SettingsPage({ snapshot, openConnection, openBrowser, memoryAvailable = false, profileAvailable = false, dreamAvailable = false, currentAgentId, subpage, onSubpage }: Pick<WorkspaceConnectionProps, 'snapshot' | 'openConnection'> & { openBrowser?: () => void; memoryAvailable?: boolean; profileAvailable?: boolean; dreamAvailable?: boolean; currentAgentId?: string; subpage: SettingsSubpage; onSubpage: (page: SettingsSubpage) => void }) {
+function SettingsPage({ snapshot, openConnection, openBrowser, openAgents, memoryAvailable = false, profileAvailable = false, dreamAvailable = false, currentAgentId, subpage, onSubpage }: Pick<WorkspaceConnectionProps, 'snapshot' | 'openConnection'> & { openBrowser?: () => void; openAgents?: () => void; memoryAvailable?: boolean; profileAvailable?: boolean; dreamAvailable?: boolean; currentAgentId?: string; subpage: SettingsSubpage; onSubpage: (page: SettingsSubpage) => void }) {
   const styles = useStyles(); const update = useAppUpdate();
   const management = subpage === 'memory' && memoryAvailable ? { title: '长期记忆', content: <MemoryPanel /> }
     : subpage === 'profile' && profileAvailable ? { title: '助手与用户资料', content: <ProfilePanel /> }
@@ -155,6 +155,7 @@ function SettingsPage({ snapshot, openConnection, openBrowser, memoryAvailable =
         {update && <SettingRow title="应用更新" label="应用更新" description={update.snapshot.status === 'unsupported' ? '当前环境不支持自动安装' : '检查版本、下载与安装进度'} icon={Download} onPress={update.open} />}
       </View>
     </View>
+    {openAgents && <View style={styles.appSettingsGroup}><SettingRow title="智能体管理" label="打开智能体管理" description="添加、删除与设置智能体" icon={Users} onPress={openAgents} /></View>}
     <View style={styles.appSection}><Text accessibilityRole="header" style={styles.appSectionTitle}>助手与个人资料</Text>
       <View style={styles.appSettingsGroup}><SettingRow title="助手与用户资料" label="打开助手与用户资料" description={profileAvailable ? '名字、语气、人设与用户资料' : '连接真实服务后可用'} icon={UserRound} onPress={() => onSubpage('profile')} disabled={!profileAvailable} /></View>
     </View>
@@ -187,10 +188,15 @@ function DisconnectedWorkspace({ snapshot, openConnection }: WorkspaceConnection
 function LiveWorkspace(props: WorkspaceConnectionProps) {
   const connection = useServiceConnection();
   const agents = useAgents(!!connection?.enabled, props.snapshot.refreshVersion);
-  return <SmsProvider><FilesProvider currentAgentId={agents.currentAgent}><WorkspaceContent {...props} agents={agents} /></FilesProvider></SmsProvider>;
+  // 设置对象和聊天对象独立；查看设置不会挂载另一个聊天或切走原来的草稿。
+  const [settingsAgentId, setSettingsAgentId] = useState<string | null>(null);
+  return <SmsProvider><FilesProvider currentAgentId={settingsAgentId ?? agents.currentAgent}><WorkspaceContent {...props} agents={agents} settingsAgentId={settingsAgentId} setSettingsAgentId={setSettingsAgentId} /></FilesProvider></SmsProvider>;
 }
 
-function WorkspaceContent({ snapshot, openConnection, agents }: WorkspaceConnectionProps & { agents: ReturnType<typeof useAgents> }) {
+function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, setSettingsAgentId }: WorkspaceConnectionProps & {
+  agents: ReturnType<typeof useAgents>; settingsAgentId: string | null; setSettingsAgentId: (id: string | null) => void;
+}) {
+  const focusedAgentId = settingsAgentId ?? agents.currentAgent;
   const api = useApi();
   // 连接键改变会卸载整层；新闻 Store 在此持续挂载，切智能体与重置会话不会丢草稿。
   const [news] = useState(() => createNewsStore(api));
@@ -200,26 +206,28 @@ function WorkspaceContent({ snapshot, openConnection, agents }: WorkspaceConnect
   const [browserOpen, setBrowserOpen] = useState(false);
   const connection = useServiceConnection();
   const { store: files } = useFiles();
-  const [agentView, setAgentView] = useState<'profile' | 'settings'>('profile');
   const [agentSection, setAgentSection] = useState<AgentSection>('home');
-  const session = useAgentState(agents.currentAgent);
+  const session = useAgentState(focusedAgentId);
   const sessions = useAgentStore(); const runtimeStore = useRuntimeStore();
   const activities = useActivityStore();
   const { store: jobs } = useJobs();
   const { store: monitors } = useMonitors();
   const { store: approvals } = useApprovals();
   const { store: goals } = useGoals();
-  const runtime = useAgentRuntime(agents.currentAgent);
+  const runtime = useAgentRuntime(focusedAgentId);
   const [page, setPage] = useState<WorkspacePage>('group');
   const [newsManaging, setNewsManaging] = useState(false);
   const [settingsSubpage, setSettingsSubpage] = useState<SettingsSubpage>(null);
-  const [profileReturn, setProfileReturn] = useState<'chat' | 'group' | 'group-info'>('group');
+  const [chatReturn, setChatReturn] = useState<'chat' | 'group'>('group');
+  const [agentReturn, setAgentReturn] = useState<'chat' | 'management'>('chat');
   const [sessionOpen, setSessionOpen] = useState(false);
   const [sessionMounted, setSessionMounted] = useState(false);
   const chatBlurTarget = useRef<ViewInstance | null>(null);
   const pendingSessionOpen = useRef(false);
   const [sessionTab, setSessionTab] = useState<SessionTab>('activity');
-  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const deleteBusy = useRef(false);
+  const [deleteUncertain, setDeleteUncertain] = useState<string>();
   const [resetTarget, setResetTarget] = useState<string>();
   const [resetError, setResetError] = useState<string>();
   const [notice, setNotice] = useState<WorkspaceNotice>();
@@ -240,7 +248,7 @@ function WorkspaceContent({ snapshot, openConnection, agents }: WorkspaceConnect
   if (labelState.ids !== labelIds) setLabelState({ ids: labelIds, labels: labelState.labels.sync(agents.agents) });
   const labels = labelState.ids === labelIds ? labelState.labels : labelState.labels.sync(agents.agents);
   const groupMembers = agents.agents.filter((agent) => agent.sessionId || agent.id === MAIN_AGENT || isBuiltinMember(agent.id)).map((agent) => ({ id: agent.id, name: labels.title(agent.id) }));
-  const sessionName = agents.currentAgent === MAIN_AGENT ? null : labels.title(agents.currentAgent);
+  const sessionName = focusedAgentId === MAIN_AGENT ? null : labels.title(focusedAgentId);
   const reloadAgents = agents.reload;
   const refresh = useCallback((agentId = agents.currentAgent) => { void reloadAgents(); activities.invalidate(); jobs.invalidate(); monitors.invalidate(); goals.invalidate(); setHistoryRefresh((value) => ({ ...value, [agentId]: (value[agentId] ?? 0) + 1 })); }, [reloadAgents, activities, jobs, monitors, goals, agents.currentAgent]);
   useEffect(() => {
@@ -292,18 +300,29 @@ function WorkspaceContent({ snapshot, openConnection, agents }: WorkspaceConnect
     pendingSessionOpen.current = false;
     setSessionOpen(false);
   }, [session.deleting, session.resetting]);
+  const changeAgent = useCallback((action: () => void) => {
+    const state = files.getSnapshot();
+    if (!hasFileWork(state)) { action(); return; }
+    const busy = state.writing !== false || state.uncertain;
+    Alert.alert('请先处理当前智能体文件', busy ? '文件操作进行中或结果未明，请进入文件页核对后再切换。' : '切换智能体前请保存或丢弃文件草稿，避免混淆文件归属。', [
+      { text: '取消', style: 'cancel' },
+      { text: '返回文件', onPress: () => { setPage('agent'); setAgentSection('files'); } },
+      ...(!busy ? [{ text: '丢弃并继续', style: 'destructive' as const, onPress: () => { files.cancelSavePreview(); files.cancelDelete(); files.cancelEditor(); action(); } }] : []),
+    ]);
+  }, [files]);
+  const returnChat = useCallback(() => changeAgent(() => { setSettingsAgentId(null); setPage(chatReturn); }), [changeAgent, setSettingsAgentId, chatReturn]);
   const leaveAgentChild = useCallback(() => {
-    if (sessions.hasSettingsWrite(agents.currentAgent)) return;
+    if (sessions.hasSettingsWrite(focusedAgentId)) return;
     if ((agentSection === 'rules' && session.instructions.draft !== session.instructions.saved) || (agentSection === 'skills' && !equalSwitches(session.skills.draft, session.skills.saved))) {
       Alert.alert('有未保存的智能体设置', '草稿只保留在本次连接中。', [
         { text: '继续编辑', style: 'cancel' },
         { text: '保留草稿并返回', onPress: () => setAgentSection('home') },
-        { text: '丢弃并返回', style: 'destructive', onPress: () => { sessions.discardSettings(agents.currentAgent, agentSection === 'rules' ? 'instructions' : 'skills'); setAgentSection('home'); } },
+        { text: '丢弃并返回', style: 'destructive', onPress: () => { sessions.discardSettings(focusedAgentId, agentSection === 'rules' ? 'instructions' : 'skills'); setAgentSection('home'); } },
       ]);
     } else setAgentSection('home');
-  }, [sessions, agents.currentAgent, agentSection, session.instructions.draft, session.instructions.saved, session.skills.draft, session.skills.saved]);
+  }, [sessions, focusedAgentId, agentSection, session.instructions.draft, session.instructions.saved, session.skills.draft, session.skills.saved]);
   const backAgent = useCallback(() => {
-    if (agentSection === 'home') { setPage(profileReturn); return; }
+    if (agentSection === 'home') { changeAgent(() => { setSettingsAgentId(null); if (agentReturn === 'management') { setPage('settings'); setSettingsSubpage('agents'); } else setPage(chatReturn); }); return; }
     if (agentSection !== 'files') { leaveAgentChild(); return; }
     const action = filesBackAction(files.getSnapshot());
     if (action === 'locked') {
@@ -318,9 +337,10 @@ function WorkspaceContent({ snapshot, openConnection, agents }: WorkspaceConnect
     else if (action === 'detail') files.closeFile();
     else if (action === 'directory') files.goUp();
     else setAgentSection('home');
-  }, [files, leaveAgentChild, agentSection, profileReturn]);
+  }, [files, leaveAgentChild, agentSection, changeAgent, setSettingsAgentId, agentReturn, chatReturn]);
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (deleteBusy.current || agents.creating) return true;
       const action = workspaceBackAction({ keyboardVisible, browserOpen, sessionMounted, page, newsArticleOpen: !!news.getSnapshot().selectedArticleId,
         newsManaging, settingsSubpage, goalCreating: !!goals.getSnapshot().creator });
       if (action === 'keyboard') { pendingSessionOpen.current = false; Keyboard.dismiss(); }
@@ -330,7 +350,7 @@ function WorkspaceContent({ snapshot, openConnection, agents }: WorkspaceConnect
       else if (action === 'news-sources') setNewsManaging(false);
       else if (action === 'news-owner') setPage('agent');
       else if (action === 'group') setPage('group');
-      else if (action === 'group-info') setPage('group-info');
+      else if (action === 'chat-return') returnChat();
       else if (action === 'feature') { if (settingsSubpage === 'news-sources') setSettingsSubpage('news-feature'); else { setPage('agent'); setSettingsSubpage(null); } }
       else if (action === 'settings') setSettingsSubpage(settingsSubpage === 'news-sources' ? 'news-feature' : null);
       else if (action === 'agent') backAgent();
@@ -338,25 +358,15 @@ function WorkspaceContent({ snapshot, openConnection, agents }: WorkspaceConnect
       return action !== 'none';
     });
     return () => subscription.remove();
-  }, [keyboardVisible, browserOpen, closeBrowser, sessionMounted, closeSession, page, news, newsManaging, settingsSubpage, goals, backAgent]);
+  }, [keyboardVisible, browserOpen, closeBrowser, sessionMounted, closeSession, page, news, newsManaging, settingsSubpage, goals, backAgent, returnChat, agents.creating]);
   const openSession = useCallback((tab?: unknown) => {
     if (typeof tab === 'string') setSessionTab(tab as SessionTab);
     if (keyboardVisible) { pendingSessionOpen.current = true; Keyboard.dismiss(); return; }
     setSessionMounted(true); setSessionOpen(true);
   }, [keyboardVisible]);
-  const changeAgent = (action: () => void) => {
-    const state = files.getSnapshot();
-    if (!hasFileWork(state)) { action(); return; }
-    const busy = state.writing !== false || state.uncertain;
-    Alert.alert('请先处理当前智能体文件', busy ? '文件操作进行中或结果未明，请进入文件页核对后再切换。' : '切换智能体前请保存或丢弃文件草稿，避免混淆文件归属。', [
-      { text: '取消', style: 'cancel' },
-      { text: '返回文件', onPress: () => { setPage('agent'); setAgentSection('files'); } },
-      ...(!busy ? [{ text: '丢弃并继续', style: 'destructive' as const, onPress: () => { files.cancelSavePreview(); files.cancelDelete(); files.cancelEditor(); action(); } }] : []),
-    ]);
-  };
-  const select = (id: string) => changeAgent(() => { Keyboard.dismiss(); agents.selectAgent(id); setSessionOpen(false); setPage('chat'); setAgentSection('home'); setDeleteConfirm(false); setNotice(undefined); });
-  // 主页与智能体设置共用同一批领域状态；只区分入口呈现，子页返回不丢当前智能体。
-  const openGroup = () => changeAgent(() => { Keyboard.dismiss(); setSessionOpen(false); setPage('group'); });
+  const select = (id: string) => changeAgent(() => { Keyboard.dismiss(); agents.selectAgent(id); setSettingsAgentId(null); setSessionOpen(false); setPage('chat'); setAgentSection('home'); setNotice(undefined); });
+  // 显式切换聊天才改变聊天所有者；查看设置只改变检查对象。
+  const openGroup = () => changeAgent(() => { Keyboard.dismiss(); setSettingsAgentId(null); setSessionOpen(false); setPage('group'); });
   const targets = avatarTargets(groupMembers.map((member) => member.id));
   const selectedAvatar = page === 'group' ? 'group' : agents.currentAgent;
   const avatarTitle = (id: string) => id === 'group' ? '全部' : labels.title(id);
@@ -365,20 +375,51 @@ function WorkspaceContent({ snapshot, openConnection, agents }: WorkspaceConnect
     const next = adjacentAvatar(targets, selectedAvatar, direction);
     if (next) selectAvatar(next);
   };
-  const openGroupInfo = () => { Keyboard.dismiss(); setPage('group-info'); };
-  const openProfile = (id: string, view: 'profile' | 'settings' = 'profile') => changeAgent(() => { Keyboard.dismiss(); agents.selectAgent(id); setAgentView(view); setProfileReturn(page === 'chat' || page === 'group' || page === 'group-info' ? page : 'group'); setPage('agent'); setAgentSection('home'); setSessionOpen(false); setDeleteConfirm(false); });
+  const openAgentSettings = (id: string, fromManagement = false) => changeAgent(() => {
+    Keyboard.dismiss();
+    if (page === 'chat' || page === 'group') setChatReturn(page);
+    setSettingsAgentId(id); setAgentReturn(fromManagement ? 'management' : 'chat');
+    setPage('agent'); setAgentSection('home'); setSessionOpen(false);
+  });
+  const openGlobalSettings = () => changeAgent(() => {
+    Keyboard.dismiss();
+    if (page === 'chat' || page === 'group') setChatReturn(page);
+    setSettingsAgentId(null); setPage('settings'); setSettingsSubpage(null);
+  });
   const openNews = () => { Keyboard.dismiss(); setNewsManaging(false); news.closeArticle(); setPage('news'); };
   const discussion = useNewsDiscussion((agentId) => { refresh(agentId); select(agentId); });
-  const remove = async () => {
-    const id = agents.currentAgent;
+  const finishRemoval = (id: string) => {
+    const deletedCurrentChat = id === agents.currentAgent;
+    sessions.clear(id); runtimeStore.forgetAgent(id); activities.forgetAgent(id); jobs.invalidate(); monitors.invalidate(); agents.removeAgent(id);
+    if (deletedCurrentChat) setChatReturn('group');
+    setDeleteUncertain(undefined); setNotice(undefined);
+  };
+  const checkDeletion = async () => {
+    if (deleteBusy.current) return;
+    deleteBusy.current = true; setDeleting(true);
+    try {
+      const items = await api.listAgents();
+      if (deleteUncertain && !items.some((item) => item.id === deleteUncertain)) finishRemoval(deleteUncertain);
+      else setDeleteUncertain(undefined);
+      await agents.reload(); setNotice(undefined);
+    } catch (error) { setNotice({ text: error instanceof Error ? error.message : String(error), tone: 'error' }); }
+    finally { deleteBusy.current = false; setDeleting(false); }
+  };
+  const remove = async (id: string) => {
+    if (deleteBusy.current || deleteUncertain || id === MAIN_AGENT || isBuiltinMember(id)) return;
+    deleteBusy.current = true; setDeleting(true);
     try {
       const result = await sessions.deleteAgent(id);
-      if (!result) return;
-      runtimeStore.forgetAgent(id); activities.forgetAgent(id); jobs.invalidate(); monitors.invalidate(); agents.removeAgent(id);
-      setSessionOpen(false); setDeleteConfirm(false); setNotice(undefined); setAgentSection('home'); setPage('group');
-      await agents.reload();
-    } catch (error) { setNotice({ text: error instanceof Error ? error.message : String(error), tone: 'error' }); }
+      if (!result) { setNotice({ text: '当前无法删除，请确认连接与智能体写入状态。', tone: 'error' }); return; }
+      finishRemoval(id); await agents.reload();
+    } catch (error) {
+      // 删除结果未明时只允许先读目录核对，绝不自动重发。
+      setDeleteUncertain(id); setNotice({ text: error instanceof Error ? error.message : String(error), tone: 'error' });
+    } finally { deleteBusy.current = false; setDeleting(false); }
   };
+  const confirmRemoval = (id: string) => changeAgent(() => Alert.alert(`删除${labels.title(id)}？`, `智能体 ID：${id}\n私聊历史、「全部」中的讨论与显示记录、消息反馈、工作区文件、规则、技能及绑定任务将彻底删除，无法撤销。其他智能体不受影响。`, [
+    { text: '取消', style: 'cancel' }, { text: '确认删除', style: 'destructive', onPress: () => void remove(id) },
+  ]));
   const reset = async (id: string, clearSchedules: boolean) => {
     if (!connection?.enabled) { setResetError('服务器连接不可用，请重新连接后再操作。'); return; }
     try {
@@ -388,9 +429,9 @@ function WorkspaceContent({ snapshot, openConnection, agents }: WorkspaceConnect
       runtimeStore.forgetAgent(id);
       activities.invalidate(id);
       await approvals.refreshPending();
-      setResetTarget(undefined); setResetError(undefined); setSessionOpen(false); setPage('chat');
+      setResetTarget(undefined); setResetError(undefined); setSessionOpen(false);
       setNotice({ text: '会话已重置，可开启全新对话。智能体规则、技能与工作区文件已保留。', tone: 'success' });
-      refresh();
+      refresh(id);
     } catch (error) {
       setResetError(error instanceof Error ? error.message : String(error));
       // 列表回读仅核对新 sessionId，不重发 reset；未确认期间禁止继续发送旧上下文。
@@ -399,39 +440,31 @@ function WorkspaceContent({ snapshot, openConnection, agents }: WorkspaceConnect
   };
   const maintenance = <>
     <Card style={styles.exampleCard}><Text style={styles.itemTitle}>重置当前会话</Text><Text style={styles.mutedText}>开启全新对话，保留这个智能体的文件、规则与技能。</Text>
-      <ActionButton label="重置当前会话" text="重置会话" icon={RotateCcw} disabled={!connection?.enabled || hasFileWork(files.getSnapshot())} onPress={() => { setResetError(undefined); setResetTarget(agents.currentAgent); }} />
+      <ActionButton label="重置当前会话" text="重置会话" icon={RotateCcw} disabled={!connection?.enabled || hasFileWork(files.getSnapshot())} onPress={() => { setResetError(undefined); setResetTarget(focusedAgentId); }} />
     </Card>
-    {agents.currentAgent !== MAIN_AGENT && !isBuiltinMember(agents.currentAgent) && <Card style={styles.exampleCard} tone="danger">
-      <Text style={styles.itemTitle}>{deleteConfirm ? '确认删除当前智能体？' : '删除当前智能体'}</Text>
-      <Text style={styles.mutedText}>本成员的私聊历史、在「全部」中的讨论与显示记录、消息反馈、工作区文件、规则、技能及绑定任务将被彻底删除，无法撤销；其他成员的历史不受影响。</Text>
-      <View style={styles.confirmActions}>
-        <ActionButton label={deleteConfirm ? '确认删除智能体' : '删除当前智能体'} text={deleteConfirm ? '确认删除' : '删除智能体'} tone="danger" busy={session.deleting} disabled={hasFileWork(files.getSnapshot())} onPress={() => deleteConfirm ? void remove() : setDeleteConfirm(true)} />
-        {deleteConfirm && <ActionButton label="取消删除智能体" text="取消" disabled={session.deleting} onPress={() => setDeleteConfirm(false)} />}
-      </View>
-    </Card>}
   </>;
-  // 页面只组织入口；会话所有者与领域 Store 持续挂载，成员主页不会复制状态。
+  // 页面只组织入口；会话所有者与领域 Store 持续挂载，设置页面不会复制状态。
   let otherPage: ReactNode = null;
-  if (page === 'group-info') {
-    otherPage = <GroupInfo members={groupMembers} onBack={() => setPage('group')} onProfile={openProfile}
-      creating={agents.creating} error={agents.error} onReload={() => void reloadAgents()}
-      onSettings={() => { setPage('settings'); setSettingsSubpage(null); }}
-      onCreate={() => changeAgent(() => { void agents.createAgent().then((id) => { if (!id) return; setAgentView('profile'); setProfileReturn('group-info'); setPage('agent'); setAgentSection('home'); }); })} />;
-  } else if (page === 'feature' && settingsSubpage === 'news-sources') {
+  if (page === 'feature' && settingsSubpage === 'news-sources') {
     otherPage = <NewsSourcesPage store={news} onBack={() => setSettingsSubpage('news-feature')} />;
   } else if (page === 'feature' && (settingsSubpage === 'sms' || settingsSubpage === 'news-feature')) {
-    otherPage = <FeaturePage newsPreferences={newsPreferences} section={settingsSubpage} backLabel={agentView === 'settings' ? '返回智能体设置' : '返回成员主页'} onBack={() => { setSettingsSubpage(null); setPage('agent'); }}
+    otherPage = <FeaturePage newsPreferences={newsPreferences} section={settingsSubpage} backLabel="返回智能体设置" onBack={() => { setSettingsSubpage(null); setPage('agent'); }}
       agents={agents.sourceAgents.filter((agent) => !!agent.sessionId).map((agent) => ({ id: agent.id, title: labels.title(agent.id) }))}
       onNewsSettings={() => setSettingsSubpage('news-sources')} />;
   } else if (page === 'agent') {
-    otherPage = <AgentPage view={agentView} agentId={agents.currentAgent} name={labels.title(agents.currentAgent)} section={agentSection}
-      onSection={(next) => { setDeleteConfirm(false); setAgentSection(next); }} onBack={backAgent}
-      onChat={() => select(agents.currentAgent)} onActivity={() => openSession('activity')}
-      onFeatureSettings={() => { setPage('feature'); setSettingsSubpage(agents.currentAgent === 'sms-internal' ? 'sms' : 'news-feature'); }}
-      onReadNews={openNews} onSaved={refresh} maintenance={maintenance} />;
+    otherPage = <AgentPage agentId={focusedAgentId} name={labels.title(focusedAgentId)} section={agentSection}
+      onSection={(next) => { setAgentSection(next); }} onBack={backAgent}
+      onActivity={() => openSession('activity')}
+      onFeatureSettings={() => { setPage('feature'); setSettingsSubpage(focusedAgentId === 'sms-internal' ? 'sms' : 'news-feature'); }}
+      onReadNews={openNews} onSaved={() => refresh(focusedAgentId)} maintenance={maintenance} />;
+  } else if (page === 'settings' && settingsSubpage === 'agents') {
+    otherPage = <AgentManagement members={groupMembers} onBack={() => { if (!deleting && !agents.creating) setSettingsSubpage(null); }}
+      onSettings={(id) => openAgentSettings(id, true)} creating={agents.creating} deleting={deleting} uncertain={deleteUncertain}
+      error={notice?.tone === 'error' ? notice.text : agents.error} onReload={() => void checkDeletion()} onDelete={confirmRemoval}
+      onCreate={() => { void agents.createAgent().then((id) => { if (id) openAgentSettings(id, true); }); }} />;
   } else if (page === 'settings') {
     otherPage = <SettingsPage snapshot={snapshot} openConnection={openConnection} memoryAvailable profileAvailable dreamAvailable
-      currentAgentId={agents.currentAgent} openBrowser={openBrowser} subpage={settingsSubpage} onSubpage={setSettingsSubpage} />;
+      currentAgentId={agents.currentAgent} openAgents={() => setSettingsSubpage('agents')} openBrowser={openBrowser} subpage={settingsSubpage} onSubpage={setSettingsSubpage} />;
   } else if (page === 'news') {
     otherPage = <NewsPage store={news} managing={newsManaging} onManaging={setNewsManaging} onBack={() => setPage('agent')}
       onDiscuss={(id) => changeAgent(() => void discussion.discuss(id))} discussing={discussion.busy} discussionError={discussion.error}
@@ -450,12 +483,10 @@ function WorkspaceContent({ snapshot, openConnection, agents }: WorkspaceConnect
         <SafeAreaView style={styles.screen} edges={['top', 'bottom', 'left', 'right']}>
           {/* 唯一键盘避让层：Android 按真实重叠缩小阅读区，iOS 保留 padding；不再另算键盘高度。 */}
           <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled={Platform.OS !== 'web'} accessibilityViewIsModal={sessionMounted}>
-            {page === 'settings' && !inSettingsSubpage && <View style={styles.pageHeader}><IconControl icon={ArrowLeft} label="返回成员与设置" onPress={() => setPage('group-info')} /><Text style={styles.pageTitle}>设置</Text><View style={styles.headerSideButtonSpacer} /></View>}
+            {page === 'settings' && !inSettingsSubpage && <AgentHeader title="全局设置" backLabel="返回聊天" onBack={returnChat} />}
             {(page === 'chat' || page === 'group') && <AgentAvatarStrip targets={targets} selected={selectedAvatar}
               title={avatarTitle} compact={keyboardVisible} disabled={sessionMounted} onSelect={selectAvatar}
-              onProfile={(id) => id === 'group' ? openGroupInfo() : openProfile(id)}
-              action={page === 'group' ? <IconControl icon={Ellipsis} label="打开成员与设置" onPress={openGroupInfo} />
-                : <IconControl icon={Settings} label={`打开${labels.title(agents.currentAgent)}的智能体设置`} testID="workspace-open-agent-settings" onPress={() => openProfile(agents.currentAgent, 'settings')} />} />}
+              onSettings={(id) => id === 'group' ? openGlobalSettings() : openAgentSettings(id)} />}
             <View style={styles.bodyStage}>
               <BlurTargetView ref={chatBlurTarget} style={styles.bodyStage}>
                 {/* Expo 的原生 BlurTargetView 仅负责采样；普通 RN View 承担触控和读屏隔离。 */}
@@ -465,7 +496,7 @@ function WorkspaceContent({ snapshot, openConnection, agents }: WorkspaceConnect
                   accessibilityElementsHidden={sessionMounted} importantForAccessibility={sessionMounted ? 'no-hide-descendants' : 'auto'}>
                   <View style={[styles.bodyStage, page === 'group' && { display: 'none' }]}><ConversationHost currentAgentId={agents.currentAgent} agentIds={agents.agents.map((agent) => agent.id)} chatVisible={page === 'chat'} onSwipe={switchAdjacent} otherPage={otherPage}
                     refreshVersions={historyRefresh} onSettled={refresh} onBindingMismatch={reloadAgents} openConnection={openConnection} onOpenApprovals={() => openSession('approvals')} /></View>
-                  <GroupChat visible={page === 'group'} members={groupMembers} onProfile={openProfile} onPrivateChat={select} onSwipe={switchAdjacent} onApprovals={(agentId) => { agents.selectAgent(agentId); openSession('approvals'); }} />
+                  <GroupChat visible={page === 'group'} members={groupMembers} onAgentSettings={openAgentSettings} onPrivateChat={select} onSwipe={switchAdjacent} onApprovals={(agentId) => { setChatReturn('group'); setAgentReturn('chat'); setSettingsAgentId(agentId); setAgentSection('home'); setPage('agent'); openSession('approvals'); }} />
                   {!!notice && <Text accessibilityRole="alert" style={[styles.notice, notice.tone === 'error' && styles.error]}>{notice.text}</Text>}
                 </View>
               </BlurTargetView>
@@ -495,7 +526,7 @@ function WorkspaceContent({ snapshot, openConnection, agents }: WorkspaceConnect
                 }
                 headerCenter={
                   <View style={styles.identity}>
-                    <MemberAvatar agentId={agents.currentAgent} size={l.headerAvatar} />
+                    <MemberAvatar agentId={focusedAgentId} size={l.headerAvatar} />
                     <View style={[styles.identityLabel, styles.sessionIdentityLabel]}>{sessionName && <Text numberOfLines={1} style={styles.identityName}>{sessionName}</Text>}<StatusPill label={statusLabel} testID="workspace-session-status" tone={!runtime.synchronized ? 'warning' : runtime.running ? 'accent' : 'neutral'} /></View>
                   </View>
                 }
@@ -506,7 +537,7 @@ function WorkspaceContent({ snapshot, openConnection, agents }: WorkspaceConnect
                   </FrostedSurface>
                 )}
               >
-                <SessionPanel agentId={agents.currentAgent}
+                <SessionPanel agentId={focusedAgentId}
                   tab={sessionTab}
                   onTab={(next) => {
                     if (session.resetting || session.deleting) return;
@@ -514,7 +545,7 @@ function WorkspaceContent({ snapshot, openConnection, agents }: WorkspaceConnect
                   }}
                   deleting={session.deleting}
                   resetting={session.resetting}
-                  onSettled={refresh}
+                  onSettled={() => refresh(focusedAgentId)}
                 />
               </AvatarBloomTransition>
             )}
@@ -543,10 +574,8 @@ const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   identityLabel: { paddingHorizontal: spacing[8], paddingTop: spacing[6], gap: spacing[3], alignItems: 'center', maxWidth: '100%' },
   identityName: { ...t.name, color: c.ink, maxWidth: '100%', textAlign: 'center' },
   headerSideButtonSpacer: { width: l.controlSize, height: l.controlSize },
-  pageHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: l.sidePadding, paddingTop: spacing[12], paddingBottom: spacing[8] },
-  otherPage: { paddingTop: l.pageTop, paddingHorizontal: l.sidePadding, paddingBottom: spacing[24], gap: spacing[18] }, pageTitle: { ...t.heroName, color: c.ink }, itemTitle: { ...t.itemTitle, color: c.ink }, mutedText: { ...t.detail, color: c.muted }, caption: { ...t.caption, color: c.faint }, error: { ...t.caption, color: c.danger },
+  otherPage: { paddingTop: l.pageTop, paddingHorizontal: l.sidePadding, paddingBottom: spacing[24], gap: spacing[18] }, itemTitle: { ...t.itemTitle, color: c.ink }, mutedText: { ...t.detail, color: c.muted }, caption: { ...t.caption, color: c.faint }, error: { ...t.caption, color: c.danger },
   exampleCard: { padding: spacing[20], borderRadius: r.card, backgroundColor: c.surface, gap: spacing[16], marginBottom: spacing[16] },
-  confirmActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing[8] },
   settingsPage: { gap: spacing[24] }, appSection: { gap: spacing[10] },
   appSectionTitle: { ...t.status, color: c.muted, marginLeft: spacing[6] },
   appSettingsGroup: { borderRadius: r.card, backgroundColor: c.surface, overflow: 'hidden' },

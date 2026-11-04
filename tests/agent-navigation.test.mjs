@@ -156,6 +156,11 @@ test('原文直编保持输入节点，只有草稿出现保存栏，元信息�
 });
 
 // 维护页每次重新进入都要重新确认，不能复用上次离开前的删除确认。
-test('重新进入智能体维护会清除先前删除确认', () => {
-  assert.match(read('workspace/WorkspaceScreen.tsx'), /onSection=\{\(next\) => \{ setDeleteConfirm\(false\); setAgentSection\(next\); \}\}/);
+test('智能体维护只有重置，删除确认集中在全局管理并固定目标', () => {
+  const screen = read('workspace/WorkspaceScreen.tsx');
+  const maintenance = screen.slice(screen.indexOf('const maintenance ='), screen.indexOf('let otherPage'));
+  assert.match(maintenance, /setResetTarget\(focusedAgentId\)/);
+  assert.doesNotMatch(maintenance, /deleteConfirm|remove\(|删除/);
+  assert.match(screen, /confirmRemoval = \(id: string\)/);
+  assert.match(screen, /onPress: \(\) => void remove\(id\)/);
 });

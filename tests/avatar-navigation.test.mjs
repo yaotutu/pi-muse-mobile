@@ -27,31 +27,33 @@ test('只有快速明显横扫才切换，点击、短滑、纵向、慢选字�
     assert.equal(swipeDirection(...args), undefined);
   }
 });
-test('头像具备选中语义、资料入口和自动滚入视口，群/私聊右侧操作分离', () => {
+test('头像单击仅切换、选中无操作，长按及无障碍动作直接进入设置', () => {
   const strip = read('workspace/AgentAvatarStrip.tsx');
   assert.match(strip, /accessibilityRole="tab".*accessibilityState={{ selected: active, disabled }}/);
-  assert.match(strip, /active \? onProfile\(id\) : onSelect\(id\)/);
-  assert.match(strip, /onLongPress={\(\) => onProfile\(id\)}/);
+  assert.match(strip, /onPress={\(event\) => { if \(!heldForSettings\(event.nativeEvent.timestamp\) && !active\) onSelect\(id\); }}/);
+  assert.match(strip, /onLongPress={\(\) => { settingsPress.current = true; }}/);
+  assert.match(strip, /onPressOut={[\s\S]*requestAnimationFrame\(\(\) => onSettings\(id\)\)/);
+  assert.match(strip, /delayLongPress={SETTINGS_HOLD_MS}/);
+  assert.match(strip, /pressedAt.current = event.nativeEvent.timestamp/);
+  assert.match(strip, /const heldForSettings = \(timestamp: number\) => settingsPress.current \|\| timestamp - pressedAt.current >= SETTINGS_HOLD_MS/);
+  assert.match(strip, /settingsPress.current = heldForSettings\(event.nativeEvent.timestamp\)/);
+  assert.match(strip, /accessibilityActions=.*name: 'settings'/);
+  assert.match(strip, /actionName === 'settings'\) onSettings\(id\)/);
   assert.match(strip, /scroll.current\?\.scrollTo/);
+  assert.doesNotMatch(strip, /onProfile|action\??:/);
   const root = read('workspace/WorkspaceScreen.tsx');
-  assert.match(root, /page === 'group' \? <IconControl icon={Ellipsis}/);
-  assert.match(root, /openProfile\(agents.currentAgent, 'settings'\)/);
-  assert.doesNotMatch(root, /MemberDirectory|inbox|groupPreview/);
+  assert.match(root, /onSettings={\(id\) => id === 'group' \? openGlobalSettings\(\) : openAgentSettings\(id\)}/);
+  assert.doesNotMatch(root, /MemberDirectory|inbox|group-info|GroupInfo|openProfile|Ellipsis|workspace-open-agent-settings/);
 });
-test('聚合入口显示全部，成员管理命名一致，保留独立的 group 路由和定向发送', () => {
+test('全部保留独立讨论路由，设置不再经过成员页', () => {
   const root = read('workspace/WorkspaceScreen.tsx');
   assert.match(root, /id === 'group' \? '全部' : labels.title\(id\)/);
-  assert.match(root, /label="打开成员与设置"/);
-  assert.match(root, /label="返回成员与设置"/);
-  const info = read('group/GroupInfo.tsx');
-  assert.match(info, /title="成员与设置".*backLabel="返回全部"/);
-  assert.match(info, /默认由 Muse 回复/);
+  assert.match(root, /<AgentHeader title="全局设置" backLabel="返回聊天"/);
+  assert.match(root, /title="智能体管理" label="打开智能体管理"/);
   const group = read('group/GroupChat.tsx');
   assert.match(group, /accessibilityLabel="全部消息输入框"/);
   assert.match(group, /resolveGroupTarget\(draft, members, target\)/);
-  for (const content of [root, info, group, read('group/contracts.ts'), read('api/http-client.ts')]) {
-    assert.doesNotMatch(content, /['"`][^'"`\n]*群组信息|['"`][^'"`\n]*群聊/);
-  }
+  assert.match(group, /onAgentSettings/);
 });
 test('只给消息区加手势，不接管 responder；横向内容屏蔽起手、多指与取消不切换', () => {
   for (const file of ['workspace/ConversationView.tsx', 'group/GroupChat.tsx']) {
@@ -65,11 +67,11 @@ test('只给消息区加手势，不接管 responder；横向内容屏蔽起手�
   assert.match(area, /touches.length !== 1/);
   assert.equal((read('ui/MarkdownContent.tsx').match(/horizontal onTouchStart={\(event\) => event.stopPropagation\(\)}/g) ?? []).length, 2);
 });
-test('系统返回以群聊为根，全局设置先返回群信息，子页优先于切换', () => {
+test('系统返回以全部为根，全局设置返回原聊天，子页优先于切换', () => {
   const state = { keyboardVisible: false, sessionMounted: false, settingsSubpage: null, goalCreating: false };
   assert.equal(workspaceBackAction({ ...state, page: 'group' }), 'none');
   assert.equal(workspaceBackAction({ ...state, page: 'chat' }), 'group');
-  assert.equal(workspaceBackAction({ ...state, page: 'settings' }), 'group-info');
+  assert.equal(workspaceBackAction({ ...state, page: 'settings' }), 'chat-return');
   assert.equal(workspaceBackAction({ ...state, page: 'settings', settingsSubpage: 'memory' }), 'settings');
   assert.equal(workspaceBackAction({ ...state, page: 'agent' }), 'agent');
 });

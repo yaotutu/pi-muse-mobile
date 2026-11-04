@@ -67,7 +67,7 @@ test('会话面板当前执行与文件入口消费真实连接，不消费示�
   assert.match(read('src/workspace/AgentPage.tsx'), /<FilesScreen currentAgentId=\{agentId\} agentName=\{name\} onBack=\{onBack\} \/>/);
   assert.doesNotMatch(source, /工作区文件尚未接入/);
   const screen = read('src/workspace/WorkspaceScreen.tsx');
-  assert.match(screen, /<FilesProvider currentAgentId=\{agents\.currentAgent\}>/);
+  assert.match(screen, /<FilesProvider currentAgentId=\{settingsAgentId \?\? agents\.currentAgent\}>/);
   assert.ok(screen.indexOf('<FilesProvider currentAgentId=') < screen.indexOf('<SessionPanel agentId='));
   const files = read('src/workspace/FilesScreen.tsx');
   assert.match(files, /store\.open\(\); return \(\) => store\.close\(\)/);

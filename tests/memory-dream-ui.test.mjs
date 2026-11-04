@@ -20,7 +20,7 @@ test('管理子页共用滚动区外的固定标题与返回设置入口，不�
 test('动态与审批覆盖原成员页面，打开时不切私聊且总从动态开始', () => {
   const screen = read('WorkspaceScreen.tsx');
   assert.match(screen, /onActivity=\{\(\) => openSession\('activity'\)\}/);
-  const close = screen.slice(screen.indexOf('const closeSession ='), screen.indexOf('const leaveAgentChild ='));
+  const close = screen.slice(screen.indexOf('const closeSession ='), screen.indexOf('const changeAgent ='));
   assert.match(close, /setSessionOpen\(false\)/);
   assert.doesNotMatch(close, /setPage|setAgentView|setProfileReturn|setAgentSection/);
   assert.match(screen, /else if \(action === 'session'\) closeSession\(\)/);
@@ -33,7 +33,7 @@ test('三个全局管理页的系统返回均先收键盘和覆盖层，再回�
     assert.equal(workspaceBackAction(state), 'settings');
     assert.equal(workspaceBackAction({ ...state, keyboardVisible: true }), 'keyboard');
     assert.equal(workspaceBackAction({ ...state, sessionMounted: true }), 'session');
-    assert.equal(workspaceBackAction({ ...state, settingsSubpage: null }), 'group-info');
+    assert.equal(workspaceBackAction({ ...state, settingsSubpage: null }), 'chat-return');
   }
 });
 

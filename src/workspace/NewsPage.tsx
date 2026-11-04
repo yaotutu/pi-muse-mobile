@@ -340,7 +340,7 @@ export function NewsPage({ store, managing, onManaging, onBack, ...discussion }:
       : <View style={[styles.readerContainer, { backgroundColor: colors.surface }]}>
           {/* 单顶栏：返回阅读入口、推荐/全部分段与阅读操作；不恢复侧栏或第二层按钮区。 */}
           <View style={styles.readerToolbar}>
-            <IconControl icon={ArrowLeft} label="返回新闻主页" onPress={onBack} />
+            <IconControl icon={ArrowLeft} label="返回新闻设置" onPress={onBack} />
             <View accessibilityRole="tablist" accessibilityLabel="新闻视图" style={[styles.viewTabs, { backgroundColor: colors.floatingSurface, borderColor: colors.floatingLine }]}>
               {(['recommended', 'all'] as const).map((view) => <Pressable key={view} accessibilityRole="tab"
                 accessibilityLabel={view === 'recommended' ? '推荐' : '全部'} accessibilityState={{ selected: snapshot.view === view }}

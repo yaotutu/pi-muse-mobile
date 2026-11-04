@@ -76,7 +76,6 @@ export function useAgents(enabled = true, refreshVersion = 0) {
       sessions.bindSession(id, agent.sessionId);
       setAgents((items) => [agent, ...items.filter((item) => item.id !== id)]);
       creation.current = undefined;
-      selectAgent(id);
       setError(undefined);
       return id;
     } catch (e) {

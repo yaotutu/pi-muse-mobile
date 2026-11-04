@@ -91,15 +91,15 @@ test('群聊布局与私聊分离：顶栏不悬浮，收件人与紧凑工具�
 });
 test('群信息返回群聊，群聊为根层；群所有者持续挂载，私聊设置保持独立', () => {
   const state = { keyboardVisible: false, sessionMounted: false, settingsSubpage: null, goalCreating: false };
-  assert.equal(workspaceBackAction({ ...state, page: 'group-info' }), 'group');
+  assert.equal(workspaceBackAction({ ...state, page: 'settings' }), 'chat-return');
   assert.equal(workspaceBackAction({ ...state, page: 'group' }), 'none');
   const read = (file) => readFileSync(new URL('../src/' + file, import.meta.url), 'utf8');
   const root = read('workspace/WorkspaceScreen.tsx');
   assert.match(root, /useState<WorkspacePage>\('group'\)/);
   assert.match(root, /<GroupChat visible={page === 'group'}/);
-  assert.match(root, /label="打开成员与设置"/);
-  assert.match(root, /openProfile\(agents.currentAgent, 'settings'\)/);
-  assert.match(root, /本成员的私聊历史、在「全部」中的讨论与显示记录/);
+  assert.match(root, /const openGlobalSettings =/);
+  assert.match(root, /onAgentSettings={openAgentSettings}/);
+  assert.match(root, /私聊历史、「全部」中的讨论与显示记录/);
   assert.match(read('workspace/ResetSessionDialog.tsx'), /本成员的私聊历史、在「全部」中的讨论与显示记录/);
   const ui = read('group/GroupChat.tsx');
   assert.doesNotMatch(ui, /getConversation|subscribeRuntime/);
