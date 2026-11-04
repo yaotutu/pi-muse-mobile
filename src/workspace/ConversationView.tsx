@@ -1,3 +1,4 @@
+import type { NotificationReference } from '../group/contracts';
 import { ChatSwipeArea } from '../ui/ChatSwipeArea';
 /**
  * 聊天会话主视图：消息列表、工具调用卡片、输入框与运行终态历史同步。
@@ -42,6 +43,7 @@ export type ConversationViewProps = {
   onSettled: () => void;
   openConnection: () => void;
   onOpenApprovals?: () => void;
+  onContinueNotification?: (reference: NotificationReference) => void;
 };
 
 export function ConversationView({
@@ -52,6 +54,7 @@ export function ConversationView({
   onSettled,
   openConnection,
   onOpenApprovals,
+  onContinueNotification,
 }: ConversationViewProps) {
   const approvals = useApprovals();
   const agentPendingApprovals = approvals.snapshot.pendingIds
@@ -285,8 +288,7 @@ export function ConversationView({
             )
           )}
           {conversation.views.map((message) => (
-            <Message
-              key={message.id}
+            <View key={message.id}><Message
               message={message}
               pendingStatus={pending && pending.messageId === message.id ? pending.status : undefined}
               feedbackScope={message.feedbackAvailable === true && conversation.sessionId &&
@@ -294,6 +296,12 @@ export function ConversationView({
                 ? { agentId, sessionId: conversation.sessionId, initialFeedback: message.feedback }
                 : undefined}
             />
+            {onContinueNotification && message.role === 'assistant' && message.featureSource && conversation.sessionId && conversation.persistedMessageIds.has(message.id) &&
+              <Pressable accessibilityRole="button" accessibilityLabel="继续处理来源通知" onPress={() => { Keyboard.dismiss(); onContinueNotification({ targetAgentId: agentId, sessionId: conversation.sessionId!, messageId: message.id }); }}
+                style={{ alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing[12] }}>
+                <Text style={{ ...t.caption, color: colors.accentText }}>继续处理 · {message.featureSource.featureId === 'news' ? '新闻' : '短信'}</Text>
+              </Pressable>}
+            </View>
           ))}
           {pending?.status === 'failed' && (
             <View style={styles.pendingBanner}>

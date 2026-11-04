@@ -49,7 +49,7 @@ test('反馈归属、唯一 Hook、无反馈时零徽标与菜单生命周期', 
   const view = read('src/workspace/ConversationView.tsx');
   const controls = read('src/feedback/MessageFeedbackControls.tsx');
   assert.match(view, /message\.feedbackAvailable === true && conversation\.sessionId &&\s+conversation\.persistedMessageIds\.has\(message\.id\) && message\.feedback/);
-  assert.match(view, /<Message\s+key=\{message\.id\}/);
+  assert.match(view, /<View key=\{message\.id\}><Message/);
   assert.match(view, /measureInWindow\(/);
   assert.match(view, /accessible=\{false\} focusable=\{false\}/);
   assert.match(view, /testID=\{feedbackScope \? `message-bubble-\$\{message\.id\}` : undefined\}/);

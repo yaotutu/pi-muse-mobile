@@ -1,4 +1,5 @@
 import { GroupChat } from '../group/GroupChat';
+import type { NotificationReference } from '../group/contracts';
 import { AgentManagement } from './AgentManagement';
 import { useNewsDiscussion } from '../features/useNewsDiscussion';
 import { SmsProvider } from '../information/SmsProvider';
@@ -59,7 +60,7 @@ import { useAvatarPreferences } from './useAvatarPreferences';
 import { BrowserPanel } from '../browser/BrowserPanel';
 import { createBrowserStore } from '../browser/browser-store';
 
-type WorkspacePage = 'group' | 'chat' | 'news' | 'goals' | 'settings' | 'agent' | 'feature';
+type WorkspacePage = 'group' | 'chat' | 'discussion' | 'news' | 'goals' | 'settings' | 'agent' | 'feature';
 type SettingsSubpage = 'agents' | 'memory' | 'profile' | 'dream' | 'news-sources' | FeatureSection | null;
 type WorkspaceNotice = { text: string; tone: 'success' | 'error' };
 const { layout: l, radius: r, typography: t } = workspaceTheme;
@@ -219,7 +220,14 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
   const [page, setPage] = useState<WorkspacePage>('group');
   const [newsManaging, setNewsManaging] = useState(false);
   const [settingsSubpage, setSettingsSubpage] = useState<SettingsSubpage>(null);
-  const [chatReturn, setChatReturn] = useState<'chat' | 'group'>('group');
+  const [chatReturn, setChatReturn] = useState<'chat' | 'group' | 'discussion'>('group');
+  const [notification, setNotification] = useState<NotificationReference>();
+  const [notificationReturn, setNotificationReturn] = useState<'chat' | 'group'>('group');
+  const openNotification = (reference: NotificationReference) => {
+    Keyboard.dismiss();
+    setNotification({ targetAgentId: reference.targetAgentId, sessionId: reference.sessionId, messageId: reference.messageId });
+    setNotificationReturn(page === 'chat' ? 'chat' : 'group'); setPage('discussion');
+  };
   const [agentReturn, setAgentReturn] = useState<'chat' | 'management'>('chat');
   const [sessionOpen, setSessionOpen] = useState(false);
   const [sessionMounted, setSessionMounted] = useState(false);
@@ -351,6 +359,7 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
       else if (action === 'news-sources') setNewsManaging(false);
       else if (action === 'news-owner') setPage('agent');
       else if (action === 'group') setPage('group');
+      else if (action === 'discussion') setPage(notificationReturn);
       else if (action === 'chat-return') returnChat();
       else if (action === 'feature') { if (settingsSubpage === 'news-sources') setSettingsSubpage('news-feature'); else { setPage('agent'); setSettingsSubpage(null); } }
       else if (action === 'settings') setSettingsSubpage(settingsSubpage === 'news-sources' ? 'news-feature' : null);
@@ -359,7 +368,7 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
       return action !== 'none';
     });
     return () => subscription.remove();
-  }, [keyboardVisible, browserOpen, closeBrowser, sessionMounted, closeSession, page, news, newsManaging, settingsSubpage, goals, backAgent, returnChat, agents.creating]);
+  }, [keyboardVisible, browserOpen, closeBrowser, sessionMounted, closeSession, page, news, newsManaging, settingsSubpage, goals, backAgent, returnChat, agents.creating, notificationReturn]);
   const openSession = useCallback((tab?: unknown) => {
     if (typeof tab === 'string') setSessionTab(tab as SessionTab);
     if (keyboardVisible) { pendingSessionOpen.current = true; Keyboard.dismiss(); return; }
@@ -390,7 +399,7 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
   };
   const openAgentSettings = (id: string, fromManagement = false) => changeAgent(() => {
     Keyboard.dismiss();
-    if (page === 'chat' || page === 'group') setChatReturn(page);
+    if (page === 'chat' || page === 'group' || page === 'discussion') setChatReturn(page);
     setSettingsAgentId(id); setAgentReturn(fromManagement ? 'management' : 'chat');
     setPage('agent'); setAgentSection('home'); setSessionOpen(false);
   });
@@ -514,9 +523,10 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
                   pointerEvents={sessionMounted ? 'none' : 'auto'} aria-hidden={sessionMounted}
                   {...(Platform.OS === 'web' && sessionMounted ? { inert: true } : {})}
                   accessibilityElementsHidden={sessionMounted} importantForAccessibility={sessionMounted ? 'no-hide-descendants' : 'auto'}>
-                  <View style={[styles.bodyStage, page === 'group' && { display: 'none' }]}><ConversationHost currentAgentId={agents.currentAgent} agentIds={agents.agents.map((agent) => agent.id)} chatVisible={page === 'chat'} onSwipe={switchAdjacent} otherPage={otherPage}
-                    refreshVersions={historyRefresh} onSettled={refresh} onBindingMismatch={reloadAgents} openConnection={openConnection} onOpenApprovals={() => openSession('approvals')} /></View>
-                  <GroupChat visible={page === 'group'} members={groupMembers} onAgentSettings={openAgentSettings} onPrivateChat={select} onSwipe={switchAdjacent} onApprovals={(agentId) => { setChatReturn('group'); setAgentReturn('chat'); setSettingsAgentId(agentId); setAgentSection('home'); setPage('agent'); openSession('approvals'); }} />
+                  <View style={[styles.bodyStage, (page === 'group' || page === 'discussion') && { display: 'none' }]}><ConversationHost currentAgentId={agents.currentAgent} agentIds={agents.agents.map((agent) => agent.id)} chatVisible={page === 'chat'} onSwipe={switchAdjacent} otherPage={otherPage}
+                    refreshVersions={historyRefresh} onSettled={refresh} onBindingMismatch={reloadAgents} openConnection={openConnection} onOpenApprovals={() => openSession('approvals')} onContinueNotification={openNotification} /></View>
+                  <GroupChat visible={page === 'group' || page === 'discussion'} notification={page === 'discussion' || chatReturn === 'discussion' && page === 'agent' ? notification : undefined}
+                    onOpenNotification={openNotification} onBack={() => setPage(notificationReturn)} members={groupMembers} onAgentSettings={openAgentSettings} onSwipe={switchAdjacent} onApprovals={(agentId) => { setChatReturn(page === 'discussion' ? 'discussion' : 'group'); setAgentReturn('chat'); setSettingsAgentId(agentId); setAgentSection('home'); setPage('agent'); openSession('approvals'); }} />
                   {!!notice && <Text accessibilityRole="alert" style={[styles.notice, notice.tone === 'error' && styles.error]}>{notice.text}</Text>}
                 </View>
               </BlurTargetView>

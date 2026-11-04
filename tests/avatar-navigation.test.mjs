@@ -51,13 +51,13 @@ test('全部保留独立讨论路由，设置不再经过成员页', () => {
   assert.match(root, /<AgentHeader title="全局设置" backLabel="返回聊天"/);
   assert.match(root, /title="智能体管理" label="打开智能体管理"/);
   const group = read('group/GroupChat.tsx');
-  assert.match(group, /accessibilityLabel="全部消息输入框"/);
+  assert.match(group, /accessibilityLabel={notification \? '通知讨论输入框' : '全部消息输入框'}/);
   assert.match(group, /resolveGroupTarget\(draft, members, target\)/);
   assert.match(group, /onAgentSettings/);
 });
 test('只给消息区加手势，不接管 responder；横向内容屏蔽起手、多指与取消不切换', () => {
   for (const file of ['workspace/ConversationView.tsx', 'group/GroupChat.tsx']) {
-    assert.match(read(file), /<ChatSwipeArea onSwipe={onSwipe}><ScrollView/);
+    assert.match(read(file), /<ChatSwipeArea onSwipe={(?:notification \? undefined : )?onSwipe}><ScrollView/);
     assert.match(read(file), /<\/ScrollView><\/ChatSwipeArea>/);
   }
   const area = read('ui/ChatSwipeArea.tsx');

@@ -6,13 +6,14 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useAgentRuntime } from '../runtime/RuntimeProvider';
 import { useAgentState } from '../agents/AgentProvider';
+import type { NotificationReference } from '../group/contracts';
 import { ConversationView } from './ConversationView';
 import { conversationRefreshKey, reconcileConversationOwners } from './conversation-host-state';
 
-function AgentConversation({ agentId, visible, onSwipe, refreshVersion, onSettled, onBindingMismatch, openConnection, onOpenApprovals }: {
+function AgentConversation({ agentId, visible, onSwipe, refreshVersion, onSettled, onBindingMismatch, openConnection, onOpenApprovals, onContinueNotification }: {
   agentId: string; visible: boolean; onSwipe?: (direction: -1 | 1) => void; refreshVersion: number;
   onSettled: (agentId: string) => void; onBindingMismatch: () => void; openConnection: () => void;
-  onOpenApprovals?: () => void;
+  onOpenApprovals?: () => void; onContinueNotification?: (reference: NotificationReference) => void;
 }) {
   const session = useAgentState(agentId);
   const runtime = useAgentRuntime(agentId);
@@ -25,14 +26,14 @@ function AgentConversation({ agentId, visible, onSwipe, refreshVersion, onSettle
   return <View style={[styles.owner, !visible && styles.hidden]} accessibilityElementsHidden={!visible}
     importantForAccessibility={visible ? 'auto' : 'no-hide-descendants'} pointerEvents={visible ? 'auto' : 'none'}>
     <ConversationView key={`${agentId}:${session.epoch}`} agentId={agentId} visible={visible} onSwipe={onSwipe} refreshKey={refreshKey}
-      onSettled={settled} openConnection={openConnection} onOpenApprovals={onOpenApprovals} />
+      onSettled={settled} openConnection={openConnection} onOpenApprovals={onOpenApprovals} onContinueNotification={onContinueNotification} />
   </View>;
 }
 
-export function ConversationHost({ currentAgentId, agentIds, chatVisible, onSwipe, otherPage, refreshVersions, onSettled, onBindingMismatch, openConnection, onOpenApprovals }: {
+export function ConversationHost({ currentAgentId, agentIds, chatVisible, onSwipe, otherPage, refreshVersions, onSettled, onBindingMismatch, openConnection, onOpenApprovals, onContinueNotification }: {
   currentAgentId: string; agentIds: string[]; chatVisible: boolean; onSwipe?: (direction: -1 | 1) => void; otherPage: ReactNode;
   refreshVersions: Record<string, number>; onSettled: (agentId: string) => void; onBindingMismatch: () => void; openConnection: () => void;
-  onOpenApprovals?: () => void;
+  onOpenApprovals?: () => void; onContinueNotification?: (reference: NotificationReference) => void;
 }) {
   const [visited, setVisited] = useState<string[]>([currentAgentId]);
   // 同一 render 就挂载新智能体，不让发送入口等待 effect；列表移除后释放对应所有者。
@@ -40,7 +41,7 @@ export function ConversationHost({ currentAgentId, agentIds, chatVisible, onSwip
   if (owners !== visited) setVisited(owners);
   return <View style={styles.host}>
     {owners.map((id) => <AgentConversation key={id} agentId={id} visible={chatVisible && id === currentAgentId} onSwipe={onSwipe}
-      refreshVersion={refreshVersions[id] ?? 0} onSettled={onSettled} onBindingMismatch={onBindingMismatch} openConnection={openConnection} onOpenApprovals={onOpenApprovals} />)}
+      refreshVersion={refreshVersions[id] ?? 0} onSettled={onSettled} onBindingMismatch={onBindingMismatch} openConnection={openConnection} onOpenApprovals={onOpenApprovals} onContinueNotification={onContinueNotification} />)}
     {!chatVisible && <View style={styles.owner}>{otherPage}</View>}
   </View>;
 }

@@ -4,10 +4,11 @@ import type { MessageView } from '../chat/chat-state';
 export type GroupMessage = { id: string; role: 'user' | 'assistant' | 'tool'; content: string; toolCallId?: string; isError?: boolean;
   toolCalls?: { id: string; type: 'function'; function: { name: string; arguments: string } }[] };
 export type GroupTurn = { id: string; rootId: string; sourceAgentId: string | null; targetAgentId: string; discussionId: string;
-  createdAt: string; finishedAt: string | null; status: 'running' | 'completed' | 'failed' | 'cancelled'; messages: GroupMessage[] };
+  createdAt: string; finishedAt: string | null; status: 'running' | 'completed' | 'failed' | 'cancelled'; messages: GroupMessage[]; notification?: NotificationReference };
+export type NotificationReference = { targetAgentId: string; sessionId: string; messageId: string };
 export type GroupNotification = { id: string; featureId: 'news' | 'sms'; targetAgentId: string; sessionId: string; messageId: string; createdAt: string; content: string };
 export type GroupSnapshot = { id: 'main'; defaultAgentId: 'local-main'; running: string | null; turns: GroupTurn[]; notifications: GroupNotification[] };
-export type GroupInput = { id: string; content: string; targetAgentId?: string };
+export type GroupInput = { id: string; content: string; targetAgentId?: string; notification?: NotificationReference };
 export type GroupEvent = { type: 'turn'; turn: Omit<GroupTurn, 'messages'> } | { type: 'delta'; id: string; text: string } | { type: 'settled' } | { type: 'error'; code: string; message: string };
 export interface GroupClient {
   getGroup(signal?: AbortSignal): Promise<GroupSnapshot>;
@@ -20,10 +21,13 @@ const uuid = (value: unknown): value is string => typeof value === 'string' && /
 const agent = (value: unknown): value is string => typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(value);
 const date = (value: unknown) => typeof value === 'string' && !Number.isNaN(Date.parse(value));
 const invalid = () => new ApiError(502, '「全部」消息数据不正确，请重新同步核对');
+const reference = (value: unknown): value is NotificationReference => record(value) && agent(value.targetAgentId) &&
+  typeof value.sessionId === 'string' && !!value.sessionId && value.sessionId.length <= 128 && typeof value.messageId === 'string' && !!value.messageId && value.messageId.length <= 128;
 function turn(value: unknown): GroupTurn {
   if (!record(value) || !messageId(value.id) || !messageId(value.rootId) || !uuid(value.discussionId) || !agent(value.targetAgentId) ||
     !(value.sourceAgentId === null || agent(value.sourceAgentId)) || !date(value.createdAt) || !(value.finishedAt === null || date(value.finishedAt)) ||
-    !['running', 'completed', 'failed', 'cancelled'].includes(String(value.status)) || !Array.isArray(value.messages)) throw invalid();
+    !['running', 'completed', 'failed', 'cancelled'].includes(String(value.status)) || !Array.isArray(value.messages) ||
+    (value.notification !== undefined && !reference(value.notification))) throw invalid();
   for (const message of value.messages) {
     if (!record(message) || typeof message.id !== 'string' || typeof message.content !== 'string' || !['user', 'assistant', 'tool'].includes(String(message.role))) throw invalid();
     if (message.role === 'tool' && (typeof message.toolCallId !== 'string' || (message.isError !== undefined && typeof message.isError !== 'boolean'))) throw invalid();
@@ -54,7 +58,10 @@ export function parseGroupEvent(value: unknown): GroupEvent {
 }
 
 /** 只按可靠发送者显示；正文中的 @ 不会被当成成员发言或路由事实。 */
-const notificationKey = (item: GroupNotification) => JSON.stringify([item.targetAgentId, item.sessionId, item.messageId]);
+export const notificationKey = (item: NotificationReference) => JSON.stringify([item.targetAgentId, item.sessionId, item.messageId]);
+/** 通知追问与正常成员聊天分开投影；只以完整来源引用关联，不按正文猜测。 */
+export const discussionTurns = (turns: GroupTurn[], notification?: NotificationReference) => turns.filter((item) =>
+  notification ? !!item.notification && notificationKey(item.notification) === notificationKey(notification) : !item.notification);
 export function groupRows(turns: GroupTurn[], notifications: GroupNotification[] = []) {
   const rows: { key: string; sender: string | null; target?: string; at: string; status?: 'failed' | 'cancelled'; notification?: GroupNotification; message: MessageView }[] = [];
   for (const item of turns) {

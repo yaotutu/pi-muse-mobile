@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { parseGroup, parseGroupEvent, groupRows, resolveGroupTarget } from '../src/group/contracts.ts';
+import { parseGroup, parseGroupEvent, groupRows, resolveGroupTarget, discussionTurns, notificationKey } from '../src/group/contracts.ts';
 import { workspaceBackAction } from '../src/workspace/workspace-back.ts';
 
 const members = [{ id: 'local-main', name: 'Muse' }, { id: 'sms-internal', name: '短信' }, { id: 'news-internal', name: '新闻' }];
@@ -46,15 +46,15 @@ test('通知按投递时间合入时间线，头像来自功能而非承接方�
   assert.equal(JSON.stringify(notification), before);
   assert.equal(new Set(groupRows([], [notification, { ...notification, targetAgentId: 'other' }]).map((item) => item.key)).size, 2);
 });
-test('功能通知同步共用 Runtime，隐藏时仍读快照；跳承接私聊是显式动作', () => {
+test('功能通知同步共用 Runtime，隐藏时仍读快照；继续处理显式打开来源讨论', () => {
   const read = (file) => readFileSync(new URL('../src/' + file, import.meta.url), 'utf8');
   const ui = read('group/GroupChat.tsx');
   assert.match(ui, /useSyncExternalStore\(runtimeStore.subscribe/);
-  assert.match(ui, /\[visible, runtime.conversationSyncVersion, notificationVersion, reload\]/);
+  assert.match(ui, /\[visible, scope, runtime.conversationSyncVersion, notificationVersion, reload\]/);
   assert.match(ui, /if \(!request.current\) void reload\(\)/);
-  assert.match(ui, /onPrivateChat\(row.notification!.targetAgentId\)/);
+  assert.match(ui, /onOpenNotification\(row.notification!\)/);
   assert.doesNotMatch(ui, /subscribeRuntime\(|setInterval\(/);
-  assert.match(read('workspace/WorkspaceScreen.tsx'), /onPrivateChat={select} onSwipe={switchAdjacent}/);
+  assert.match(read('workspace/WorkspaceScreen.tsx'), /onOpenNotification={openNotification}/);
 });
 test('群聊按真实发送/回复时序排列，成员请求与回复使用不同发送者，不从正文猜头像', () => {
   const nested = { ...turn, id: 'child-one', rootId: turn.id, sourceAgentId: 'local-main', targetAgentId: 'sms-internal', createdAt: '2026-11-02T00:00:00.500Z', finishedAt: '2026-11-02T00:00:01.000Z', messages: [{ id: 'child-one', role: 'user', content: '查一下' }, { id: 'reply-child-one', role: 'assistant', content: '@新闻 取件码1234' }] };
@@ -96,7 +96,7 @@ test('群信息返回群聊，群聊为根层；群所有者持续挂载，私�
   const read = (file) => readFileSync(new URL('../src/' + file, import.meta.url), 'utf8');
   const root = read('workspace/WorkspaceScreen.tsx');
   assert.match(root, /useState<WorkspacePage>\('group'\)/);
-  assert.match(root, /<GroupChat visible={page === 'group'}/);
+  assert.match(root, /<GroupChat visible={page === 'group' \|\| page === 'discussion'}/);
   assert.match(root, /const openGlobalSettings =/);
   assert.match(root, /onAgentSettings={openAgentSettings}/);
   assert.match(root, /私聊历史、「全部」中的讨论与显示记录/);
@@ -141,4 +141,28 @@ test('成员间 Markdown 请求只在首段内联目标，不改正文、代码�
   assert.match(markdown, /marked.lexer\(text,/);
   assert.match(markdown, /<CodeBlock key={key} code={value}/);
   assert.doesNotMatch(markdown, /text\.replace|inlinePrefix\s*\+/);
+});
+
+test('通知讨论按完整来源隔离，普通群消息不含追问；来源字段非法必须报错', () => {
+  const ref = { targetAgentId: notification.targetAgentId, sessionId: notification.sessionId, messageId: notification.messageId };
+  const followup = { ...turn, id: 'followup', targetAgentId: 'sms-internal', notification: ref };
+  const other = { ...followup, id: 'other', notification: { ...ref, messageId: 'other-notice' } };
+  const nested = { ...followup, id: 'nested', sourceAgentId: 'sms-internal', targetAgentId: 'news-internal' };
+  assert.deepEqual(discussionTurns([turn, followup, other, nested]), [turn]);
+  assert.deepEqual(discussionTurns([turn, followup, other, nested], ref), [followup, nested]);
+  assert.notEqual(notificationKey(ref), notificationKey(other.notification));
+  assert.equal(parseGroupEvent({ type: 'turn', turn: followup }).turn.notification.messageId, ref.messageId);
+  for (const invalid of [{ ...ref, sessionId: '' }, { ...ref, targetAgentId: '../x' }, { ...ref, messageId: null }])
+    assert.throws(() => parseGroupEvent({ type: 'turn', turn: { ...followup, notification: invalid } }));
+});
+test('通知页 Back 返回来源，输入直发来源而非解析艾特，回读只清对应草稿', () => {
+  assert.equal(workspaceBackAction({ keyboardVisible: false, sessionMounted: false, page: 'discussion', settingsSubpage: null, goalCreating: false }), 'discussion');
+  assert.equal(workspaceBackAction({ keyboardVisible: true, sessionMounted: false, page: 'discussion', settingsSubpage: null, goalCreating: false }), 'keyboard');
+  const ui = readFileSync(new URL('../src/group/GroupChat.tsx', import.meta.url), 'utf8');
+  assert.match(ui, /notification \? \{ content: draft.trim\(\) \} : resolveGroupTarget/);
+  assert.match(ui, /items\[sent.scope\] === sent.draft/);
+  assert.match(ui, /notification && !source/);
+  assert.match(ui, /notification \? undefined : onSwipe/);
+  assert.match(ui, /!notification \|\| !!row.sender/);
+  assert.doesNotMatch(ui, /onPrivateChat/);
 });
