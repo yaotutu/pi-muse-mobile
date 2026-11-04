@@ -171,5 +171,5 @@ test('新闻 Back 先关闭键盘和阅读子页，再回聊天', () => {
   assert.equal(workspaceBackAction(state), 'keyboard');
   assert.equal(workspaceBackAction({ ...state, keyboardVisible: false }), 'news-article');
   assert.equal(workspaceBackAction({ ...state, keyboardVisible: false, newsArticleOpen: false }), 'news-sources');
-  assert.equal(workspaceBackAction({ ...state, keyboardVisible: false, newsArticleOpen: false, newsManaging: false }), 'news-owner');
+  assert.equal(workspaceBackAction({ ...state, keyboardVisible: false, newsArticleOpen: false, newsManaging: false }), 'group');
 });

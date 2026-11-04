@@ -200,8 +200,11 @@ export function ConversationView({
       .interruptAndSend(
         session.draft,
         () => {
-          sessions.setDraft(agentId, '');
-          sessions.clearDraftAttachments(agentId, session.epoch);
+          // 停止旧轮需要等待网络；交接前核对草稿快照，不能清除等待期间新写的下一条。
+          const latest = sessions.get(agentId);
+          if (latest.epoch !== session.epoch) return;
+          if (latest.draft === session.draft) sessions.setDraft(agentId, '');
+          if (latest.draftAttachments === session.draftAttachments) sessions.clearDraftAttachments(agentId, session.epoch);
           setAttachmentError('');
         },
         session.draftAttachments,

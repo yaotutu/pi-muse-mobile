@@ -1,6 +1,7 @@
+import { GroupComposer } from './group-composer';
 import { ChatSwipeArea } from '../ui/ChatSwipeArea';
 import { ArrowUp, AtSign, Square, X } from 'lucide-react-native';
-import { type ScrollViewInstance, AppState, Keyboard, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { type ScrollViewInstance, Alert, AppState, Keyboard, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useApi } from '../api/ApiProvider';
 import { useApprovals } from '../approvals/ApprovalProvider';
@@ -26,7 +27,8 @@ export function GroupChat({ visible, members, onAgentSettings, onApprovals, onPr
   const runtime = useSyncExternalStore(runtimeStore.subscribe, runtimeStore.getSnapshot, runtimeStore.getSnapshot);
   const [snapshot, setSnapshot] = useState<GroupSnapshot>();
   const [live, setLive] = useState<GroupTurn[]>([]);
-  const [draft, setDraft] = useState(''); const [target, setTarget] = useState<string>();
+  const [composer] = useState(() => new GroupComposer());
+  const { draft, target, pending: pendingDraft } = useSyncExternalStore(composer.subscribe, composer.getSnapshot, composer.getSnapshot);
   const [choosing, setChoosing] = useState(false); const [loading, setLoading] = useState(false);
   const [running, setRunning] = useState(false); const [uncertain, setUncertain] = useState(false); const [error, setError] = useState('');
   const mounted = useRef(true); const request = useRef<AbortController | null>(null);
@@ -40,8 +42,7 @@ export function GroupChat({ visible, members, onAgentSettings, onApprovals, onPr
       if (!mounted.current || version !== readVersion.current) return;
       setSnapshot(next); setError('');
       if (!request.current && next.running !== pending.current) {
-        const accepted = next.turns.find((turn) => turn.id === pending.current);
-        if (accepted?.messages.some((message) => message.role === 'user')) { setDraft(''); setTarget(undefined); }
+        composer.reconcile(next);
         pending.current = null; setUncertain(false); setLive([]);
       }
     } catch (failure) {
@@ -51,7 +52,7 @@ export function GroupChat({ visible, members, onAgentSettings, onApprovals, onPr
       }
     }
     finally { if (mounted.current && version === readVersion.current) setLoading(false); }
-  }, [api]);
+  }, [api, composer]);
   useEffect(() => {
     mounted.current = true;
     return () => { mounted.current = false; request.current?.abort(); };
@@ -65,17 +66,21 @@ export function GroupChat({ visible, members, onAgentSettings, onApprovals, onPr
   const rows = groupRows(combined, snapshot?.notifications);
   const busy = running || !!snapshot?.running;
   const send = async () => {
-    if (!draft.trim() || busy || uncertain || !snapshot || loading) return;
+    if (!draft.trim() || request.current || busy || uncertain || pendingDraft || !snapshot || loading) return;
     let input: ReturnType<typeof resolveGroupTarget>;
     try { input = resolveGroupTarget(draft, members, target); if (!input.content.trim()) throw new Error('请输入要发送的消息'); }
     catch (failure) { setError((failure as Error).message); return; }
     const id = `group-${Date.now()}-${++groupSequence}`; const controller = new AbortController();
+    if (!composer.submit({ id, ...input })) return;
     request.current = controller; pending.current = id; setRunning(true); setError(''); setChoosing(false);
     following.current = true; ++readVersion.current;
     try {
       await api.sendGroup({ id, ...input }, (event) => {
         if (!mounted.current) return;
-        if (event.type === 'turn') setLive((items) => [...items, { ...event.turn, messages: event.turn.id === id ? [{ id, role: 'user', content: input.content }] : [] }]);
+        if (event.type === 'turn') {
+          composer.accept(event.turn.id);
+          setLive((items) => [...items.filter((turn) => turn.id !== event.turn.id), { ...event.turn, messages: event.turn.id === id ? [{ id, role: 'user', content: input.content }] : [] }]);
+        }
         if (event.type === 'delta') setLive((items) => items.map((turn) => turn.id !== event.id ? turn : { ...turn, messages: turn.messages.some((message) => message.role === 'assistant')
           ? turn.messages.map((message) => message.role === 'assistant' ? { ...message, content: message.content + event.text } : message)
           : [...turn.messages, { id: `reply-${turn.id}`, role: 'assistant', content: event.text }] }));
@@ -110,23 +115,33 @@ export function GroupChat({ visible, members, onAgentSettings, onApprovals, onPr
           {row.status && <Text style={{ ...t.caption, color: row.status === 'failed' ? c.danger : c.muted }}>{row.status === 'cancelled' ? '已停止' : '处理失败，不会自动重试'}</Text>}
         </View>
       </View>)}
+      {pendingDraft && !combined.some((turn) => turn.id === pendingDraft.id) && <View style={{ gap: spacing[8] }}>
+        <Message message={{ id: pendingDraft.id, role: 'user', text: pendingDraft.content, toolCalls: [], feedbackAvailable: false }} layout="group" />
+        <Text style={{ ...t.caption, color: c.muted }}>{pendingDraft.absent ? '服务器未接收这条消息。原内容已保留，请先处理当前草稿后恢复，或明确丢弃。' : '正在发送；原内容已保留，未确认时不会重复发送。'}</Text>
+        {pendingDraft.absent && <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing[8] }}>
+          <ActionButton label="恢复未接收消息到输入框" text="恢复草稿" disabled={!!draft || !!target} onPress={() => { composer.restore(); }} />
+          <ActionButton label="丢弃未接收消息" text="丢弃旧消息" tone="danger" onPress={() => Alert.alert('丢弃未接收消息？', '只丢弃这条未接收消息，不影响输入框中的新草稿。', [
+            { text: '取消', style: 'cancel' }, { text: '丢弃', style: 'destructive', onPress: composer.discard },
+          ])} />
+        </View>}
+      </View>}
       {busy && <Text accessibilityLabel="全部视图正在回复" style={{ ...t.caption, color: c.muted }}>正在回复…</Text>}
       {!!error && <Text accessibilityRole="alert" style={{ ...t.caption, color: c.danger }}>{error}</Text>}
       {(!!error || uncertain || (!!snapshot?.running && !running)) && <ActionButton label="重新同步全部消息" text="同步核对" onPress={() => void reload()} />}
     </ScrollView></ChatSwipeArea>
     {pendingApprovals.length > 0 && <ActionButton label="查看全部视图待处理审批" text={`待处理审批（${pendingApprovals.length}）`} onPress={() => onApprovals(pendingApprovals[0].agentId!)} style={{ marginHorizontal: l.sidePadding }} />}
     {choosing && <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 200, marginHorizontal: l.sidePadding, borderRadius: r.card, backgroundColor: c.surface }}>
-      {members.map((member) => <Pressable key={member.id} accessibilityRole="button" accessibilityLabel={`全部视图艾特${member.name}`} onPress={() => { setTarget(member.id); setChoosing(false); setDraft((text) => text.endsWith('@') ? text.slice(0, -1) : text); }} style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', padding: spacing[12], gap: spacing[12] }}>
+      {members.map((member) => <Pressable key={member.id} accessibilityRole="button" accessibilityLabel={`全部视图艾特${member.name}`} onPress={() => { composer.setTarget(member.id); setChoosing(false); composer.setDraft(draft.endsWith('@') ? draft.slice(0, -1) : draft); }} style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', padding: spacing[12], gap: spacing[12] }}>
         <MemberAvatar agentId={member.id} size={30} /><Text style={{ ...t.detail, color: c.ink }}>{member.name}</Text>
       </Pressable>)}
     </ScrollView>}
-    {!!target && <Pressable accessibilityRole="button" accessibilityLabel="取消全部视图艾特" onPress={() => setTarget(undefined)} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[8], alignSelf: 'flex-start', marginHorizontal: l.sidePadding, padding: spacing[10] }}><Text style={{ ...t.caption, color: c.accentText }}>@{title(target)}</Text><X size={16} color={c.muted} /></Pressable>}
+    {!!target && <Pressable accessibilityRole="button" accessibilityLabel="取消全部视图艾特" onPress={() => composer.setTarget(undefined)} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[8], alignSelf: 'flex-start', marginHorizontal: l.sidePadding, padding: spacing[10] }}><Text style={{ ...t.caption, color: c.accentText }}>@{title(target)}</Text><X size={16} color={c.muted} /></Pressable>}
     <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: l.composerHeight, padding: l.composerPadding, marginHorizontal: l.sidePadding, marginBottom: l.composerBottom, borderRadius: r.round, backgroundColor: c.surface }}>
-      <IconControl icon={AtSign} label="选择全部视图回复成员" disabled={busy || uncertain} onPress={() => setChoosing(!choosing)} />
-      <TextInput accessibilityLabel="全部消息输入框" placeholder="消息" placeholderTextColor={c.faint} multiline value={draft} editable={!running && !uncertain}
-        onChangeText={(text) => { setDraft(text); if (text.endsWith('@')) setChoosing(true); }}
+      <IconControl icon={AtSign} label="选择全部视图回复成员" onPress={() => setChoosing(!choosing)} />
+      <TextInput accessibilityLabel="全部消息输入框" placeholder="消息" placeholderTextColor={c.faint} multiline value={draft}
+        onChangeText={(text) => { composer.setDraft(text); if (text.endsWith('@')) setChoosing(true); }}
         style={{ ...t.input, flex: 1, minWidth: 0, minHeight: 44, maxHeight: l.composerMaxHeight, padding: spacing[8], color: c.ink }} />
-      <IconControl icon={busy ? Square : ArrowUp} label={busy ? '停止全部视图回复' : '发送全部视图消息'} disabled={!busy && (!draft.trim() || uncertain || !snapshot || loading)}
+      <IconControl icon={busy ? Square : ArrowUp} label={busy ? '停止全部视图回复' : '发送全部视图消息'} disabled={!busy && (!draft.trim() || uncertain || !!pendingDraft || !snapshot || loading)}
         onPress={() => { if (busy) { const id = pending.current ?? snapshot?.running; if (id) void api.stopGroup(id).catch((failure) => setError((failure as Error).message)); } else void send(); }} />
     </View>
   </View>;

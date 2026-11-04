@@ -257,22 +257,25 @@ test('长按直接打开智能体设置，不再区分主页或保留发消息�
   const agent = read('src/workspace/AgentPage.tsx');
   assert.doesNotMatch(source, /agentView|openProfile|workspace-open-agent-settings/);
   assert.match(source, /<AgentPage agentId={focusedAgentId}/);
-  assert.doesNotMatch(agent, /onChat|view ===|memberDescription/);
+  assert.doesNotMatch(agent, /onChat|memberDescription/);
   assert.match(agent, /home: '智能体设置'/);
   assert.match(source, /backLabel="返回智能体设置"/);
 });
 
-test('新闻只从成员主页阅读，返回主页后仍按原入口返回私聊或群聊', () => {
+test('新闻按主视图偏好进入，阅读保留头像栏与现场，切视图只在设置', () => {
   const source = read('src/workspace/WorkspaceScreen.tsx');
   const profile = read('src/workspace/AgentPage.tsx');
   const reader = read('src/workspace/NewsPage.tsx');
-  assert.doesNotMatch(source, /newsReturn|setNewsReturn/);
-  assert.match(source, /onReadNews={openNews}/);
-  assert.match(source, /action === 'news-owner'\) setPage\('agent'\)/);
-  assert.match(source, /onBack={\(\) => setPage\('agent'\)}/);
+  assert.match(source, /setPage\(conversation \? 'chat' : homePage\(id\)\)/);
+  assert.match(source, /page === 'chat' \|\| page === 'group' \|\| page === 'news'\) && <AgentAvatarStrip/);
+  assert.match(source, /<NewsPage store={news} visible={page === 'news'}/);
+  assert.match(source, /onMainView={\(view\) => views.save\(focusedAgentId, view\)}/);
   assert.match(profile, /agentId === 'news-internal'/);
-  assert.match(profile, /accessibilityLabel="查看成员动态与审批"/);
-  assert.match(reader, /label="返回新闻设置" onPress={onBack}/);
+  assert.match(profile, /testID="agent-main-view"/);
+  assert.match(profile, /accessibilityRole="radio"/);
+  assert.doesNotMatch(profile, /onReadNews/);
+  assert.doesNotMatch(reader, /label="返回新闻设置"/);
+  assert.match(reader, /visible && menu && menuArticle/);
 });
 
 test('智能体维护归智能体子页，全局设置来自群组信息，会话面板只处理当前执行', () => {

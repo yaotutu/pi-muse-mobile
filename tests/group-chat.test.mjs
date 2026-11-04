@@ -54,7 +54,7 @@ test('功能通知同步共用 Runtime，隐藏时仍读快照；跳承接私聊
   assert.match(ui, /if \(!request.current\) void reload\(\)/);
   assert.match(ui, /onPrivateChat\(row.notification!.targetAgentId\)/);
   assert.doesNotMatch(ui, /subscribeRuntime\(|setInterval\(/);
-  assert.match(read('workspace/WorkspaceScreen.tsx'), /onPrivateChat={select} onSwipe={switchAdjacent}/);
+  assert.match(read('workspace/WorkspaceScreen.tsx'), /onPrivateChat={selectConversation} onSwipe={switchAdjacent}/);
 });
 test('群聊按真实发送/回复时序排列，成员请求与回复使用不同发送者，不从正文猜头像', () => {
   const nested = { ...turn, id: 'child-one', rootId: turn.id, sourceAgentId: 'local-main', targetAgentId: 'sms-internal', createdAt: '2026-11-02T00:00:00.500Z', finishedAt: '2026-11-02T00:00:01.000Z', messages: [{ id: 'child-one', role: 'user', content: '查一下' }, { id: 'reply-child-one', role: 'assistant', content: '@新闻 取件码1234' }] };
