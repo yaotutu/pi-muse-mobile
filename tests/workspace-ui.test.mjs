@@ -6,9 +6,9 @@ import ts from 'typescript';
 const root = new URL('../', import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), 'utf8');
 
-test('Muse 回滚基准保留大头像浮层和浏览器入口，不恢复灵动岛或底部目标入口', () => {
+test('Muse 配色和形象保留在头像栏和浏览器入口，不恢复灵动岛或底部目标入口', () => {
   const screen = read('src/workspace/WorkspaceScreen.tsx');
-  assert.match(screen, /<MemberAvatar agentId=\{agents.currentAgent\} size=\{keyboardVisible \? l\.compactHeaderAvatar : l\.headerAvatar\}/);
+  assert.match(screen, /<AgentAvatarStrip targets={targets}/);
   assert.doesNotMatch(screen, /DynamicIsland|settingsCapsule|capsuleLabel/);
   assert.equal(existsSync(new URL('src/workspace/DynamicIsland.tsx', root)), false);
   assert.equal(existsSync(new URL('src/ui/Subpage.tsx', root)), false);
@@ -95,35 +95,20 @@ test('聊天空态只留短句，本地头像与真实流动画均有稳定入�
   assert.doesNotMatch(primitives, /https?:\/\//);
 });
 
-test('聊天浮层不占正文高度，首条消息避开头像，隐藏智能体不重复挂载其他页面', () => {
-  const source = read('src/workspace/WorkspaceScreen.tsx');
-  assert.match(source, /chatHeader: \{ position: 'absolute', zIndex: 2/);
-  assert.match(source, /pointerEvents="box-none" style=\{\[styles\.chatHeader/);
-  assert.match(read('src/workspace/ConversationView.tsx'), /paddingTop: l\.chatContentTop/);
-  assert.match(read('src/workspace/ConversationHost.tsx'), /!chatVisible && <View style=\{styles\.owner\}>\{otherPage\}/);
-  assert.match(read('src/workspace/SessionPanel.tsx'), /<ScrollView\s+key=\{tab\}/);
+test('聊天顶部头像栏在正常布局，隐藏智能体不重复挂载其他页面', () => {
+  assert.match(read('src/workspace/WorkspaceScreen.tsx'), /<AgentAvatarStrip targets={targets}/);
+  assert.match(read('src/workspace/ConversationView.tsx'), /paddingTop: spacing\[12\]/);
+  assert.match(read('src/workspace/ConversationHost.tsx'), /!chatVisible && <View style={styles.owner}>{otherPage}/);
+  assert.match(read('src/workspace/SessionPanel.tsx'), /<ScrollView\s+key={tab}/);
 });
 
-test('聊天只为非主智能体非键盘名称挂小浮层，详细状态留在可点击头像的会话面板', () => {
+test('头像栏承担切换，动态面板继续显示当前智能体的真实状态', () => {
   const screen = read('src/workspace/WorkspaceScreen.tsx');
-  const chatHeader = screen.slice(screen.indexOf("{page === 'chat' && <View"), screen.indexOf('<View style={styles.bodyStage}>'));
-  const sessionHeader = screen.slice(screen.indexOf('headerCenter={'), screen.indexOf('headerRight=', screen.indexOf('headerCenter={')));
-  assert.match(chatHeader, /<Pressable accessibilityRole="button" accessibilityLabel=\{`查看/);
-  assert.match(chatHeader, /accessibilityHint=\{`当前智能体：\$\{labels\.title\(agents\.currentAgent\)\}；当前状态：\$\{statusLabel\}/);
-  assert.match(chatHeader, /<MemberAvatar agentId=\{agents.currentAgent\} size=\{keyboardVisible \? l\.compactHeaderAvatar : l\.headerAvatar\}/);
-  assert.match(chatHeader, /\{headerNames\.chat && <View style=\{\[styles\.identityLabel, styles\.identityLabelSurface\]\}>/);
-  assert.doesNotMatch(chatHeader, /<StatusPill|identityLabelCompact/);
-  assert.match(sessionHeader, /\{headerNames\.session && <Text numberOfLines=\{1\}/);
-  assert.match(sessionHeader, /<StatusPill label=\{statusLabel\} testID="workspace-session-status"/);
-  assert.match(screen, /identityLabelSurface: \{ backgroundColor: c\.floatingSurface, borderColor: c\.floatingLine, borderWidth: StyleSheet\.hairlineWidth, borderRadius: r\.field, paddingBottom: spacing\[6\] \}/);
-  assert.match(screen, /style=\{\[styles\.identityLabel, styles\.sessionIdentityLabel\]\}/);
-  assert.doesNotMatch(screen.match(/chatHeader: \{[^}]*\}/)?.[0] ?? '', /backgroundColor|borderWidth/);
-  assert.match(screen, /testID="workspace-open-agent-settings"/);
+  assert.match(screen, /onProfile={\(id\) => id === 'group' \? openGroupInfo\(\) : openProfile\(id\)}/);
+  assert.match(screen, /<StatusPill label={statusLabel} testID="workspace-session-status"/);
+  assert.match(screen, /sessionName && <Text numberOfLines={1}/);
+  assert.doesNotMatch(screen, /chatHeader:|identityLabelSurface:/);
   assert.match(read('src/workspace/AgentPage.tsx'), /accessibilityLabel="查看成员动态与审批"/);
-  assert.match(screen, /onPress=\{\(\) => openProfile\(agents.currentAgent\)\}/);
-  const execution = read('src/workspace/CurrentExecution.tsx');
-  assert.match(execution, /<Text accessibilityRole="alert" style=\{styles\.syncTitle\}>\{runtime\.label\}/);
-  assert.match(execution, /accessibilityLabel="查看待审批"/);
 });
 
 test('会话面板采样持续挂载的聊天层，关闭期间继续隔离底层交互', () => {
@@ -215,7 +200,7 @@ test('会话文字操作共用点击区与状态，重置由独立确认承载',
 
 test('原生输入时压缩会话信息区且不挂载底栏，键盘事件监听随宿主卸载清理', () => {
   const source = read('src/workspace/WorkspaceScreen.tsx');
-  assert.match(source, /keyboardVisible && styles\.chatHeaderCompact/);
+  assert.match(source, /compact={keyboardVisible}/);
   assert.doesNotMatch(source, /<Navigation/);
   assert.match(source, /return \(\) => \{ show\.remove\(\); hide\.remove\(\); \}/);
   const chat = read('src/workspace/ConversationView.tsx');
@@ -236,7 +221,7 @@ test('Android 单层 KAV 按键盘重叠收缩完整聊天区，composer 留在�
   assert.match(chat, /chatBody: \{ flex: 1, minHeight: 0 \}/);
   assert.match(chat, /composer: \{/);
   assert.doesNotMatch(chat.slice(chat.indexOf('composer: {'), chat.indexOf('composerFocused: {')), /position: 'absolute'|bottom: 0/);
-  assert.match(screen, /chatHeader: \{ position: 'absolute'/);
+  assert.doesNotMatch(screen, /chatHeader:/);
 });
 
 test('工具结果缺席不是运行中证据，结束或停止后的空结果保持中性提示', () => {
@@ -245,17 +230,12 @@ test('工具结果缺席不是运行中证据，结束或停止后的空结果�
   assert.doesNotMatch(card, /工具执行中| · 执行中/);
 });
 
-test('成员目录取代侧栏，头像进主页、消息行进私聊，低频操作在顶部', () => {
+test('头像栏替代成员目录，低频管理收进群组信息', () => {
   const screen = read('src/workspace/WorkspaceScreen.tsx');
-  const directory = read('src/workspace/MemberDirectory.tsx');
-  assert.doesNotMatch(screen, /AgentDrawer|PanResponder|drawerOpen|打开智能体侧栏/);
-  assert.match(screen, /if \(page === 'inbox'\) \{/);
-  assert.doesNotMatch(screen, /page === 'members'/);
-  assert.match(directory, /label="打开全局设置"/);
-  assert.match(directory, /label={creating \? '正在添加成员' : '添加成员'} busy={creating}/);
-  assert.match(directory, /accessibilityLabel={`查看/);
-  assert.match(directory, /onPress={onProfile}/);
-  assert.match(directory, /onPress={\(\) => onChat\(item.id\)}/);
+  assert.doesNotMatch(screen, /MemberDirectory|inbox|drawerOpen/);
+  assert.equal(existsSync(new URL('src/workspace/MemberDirectory.tsx', root)), false);
+  assert.match(read('src/group/GroupInfo.tsx'), /label="打开全局设置"/);
+  assert.match(read('src/group/GroupInfo.tsx'), /label="添加智能体".*busy={creating}/);
   assert.match(screen, /onCreate={\(\) => changeAgent/);
 });
 
@@ -268,24 +248,20 @@ test('放弃 failed 暂存须二次确认并回读权威历史，当前草稿保
   assert.match(chat, /sessions\.restorePendingSubmissionToDraft\(agentId\)/);
 });
 
-test('启动直达群聊，唯一会话列表提供默认群聊和私聊入口', () => {
+test('启动直达群聊，点击和滑动共用同一个受保护切换入口', () => {
   const source = read('src/workspace/WorkspaceScreen.tsx');
-  const directory = read('src/workspace/MemberDirectory.tsx');
-  assert.doesNotMatch(source, /function Navigation|const NAV:|workspace-tab-/);
   assert.match(source.split('function WorkspaceContent')[1], /useState<WorkspacePage>\('group'\)/);
-  assert.match(source, /onGroup={openGroup}/);
-  assert.match(directory, /testID="conversation-list"/);
-  assert.match(directory, /accessibilityLabel="回到群聊".*onPress={onGroup}/);
-  assert.doesNotMatch(directory, /mode ===|mode:/);
+  assert.match(source, /const selectAvatar = .*openGroup\(\) : select\(id\)/);
+  assert.match(source, /const next = adjacentAvatar\(targets, selectedAvatar, direction\)/);
   assert.match(source, /const select = .*changeAgent/);
 });
 
 test('所有私聊右上角统一进入当前智能体设置，头像仍进入成员主页', () => {
   const source = read('src/workspace/WorkspaceScreen.tsx');
   const profile = read('src/workspace/AgentPage.tsx');
-  const header = source.slice(source.indexOf("{page === 'chat' && <View"), source.indexOf('<View style={styles.bodyStage}>'));
+  const header = source.slice(source.indexOf('{(page ==='), source.indexOf('<View style={styles.bodyStage}>'));
   assert.match(header, /icon={Settings}.*testID="workspace-open-agent-settings".*openProfile\(agents.currentAgent, 'settings'\)/);
-  assert.match(header, /onPress={\(\) => openProfile\(agents.currentAgent\)}/);
+  assert.match(header, /onProfile={\(id\).*openProfile\(id\)/);
   assert.doesNotMatch(header, /openNews|openSession|news-internal|icon={Activity}/);
   assert.match(source, /setAgentView\(view\)/);
   assert.match(source, /<AgentPage view={agentView} agentId={agents.currentAgent}/);
@@ -295,7 +271,7 @@ test('所有私聊右上角统一进入当前智能体设置，头像仍进入�
   assert.match(read('src/features/FeaturePage.tsx'), /<AgentHeader.*backLabel={backLabel}/);
 });
 
-test('新闻只从成员主页阅读，返回主页后仍按原入口返回私聊或列表', () => {
+test('新闻只从成员主页阅读，返回主页后仍按原入口返回私聊或群聊', () => {
   const source = read('src/workspace/WorkspaceScreen.tsx');
   const profile = read('src/workspace/AgentPage.tsx');
   const reader = read('src/workspace/NewsPage.tsx');
@@ -308,11 +284,11 @@ test('新闻只从成员主页阅读，返回主页后仍按原入口返回私�
   assert.match(reader, /label="返回新闻主页" onPress={onBack}/);
 });
 
-test('智能体维护归智能体子页，全局设置来自列表顶部，会话面板只处理当前执行', () => {
+test('智能体维护归智能体子页，全局设置来自群组信息，会话面板只处理当前执行', () => {
   const screen = read('src/workspace/WorkspaceScreen.tsx');
   const panel = read('src/workspace/SessionPanel.tsx');
   assert.match(screen, /onSettings={\(\) => \{ setPage\('settings'\)/);
-  assert.match(read('src/workspace/MemberDirectory.tsx'), /label="打开全局设置"/);
+  assert.match(read('src/group/GroupInfo.tsx'), /label="打开全局设置"/);
   assert.match(screen, /page === 'agent'\) \{\s*otherPage = <AgentPage/);
   assert.match(screen, /const maintenance =/);
   const settings = screen.slice(screen.indexOf('function SettingsPage'), screen.indexOf('function DisconnectedWorkspace'));

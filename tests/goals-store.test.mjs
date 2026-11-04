@@ -306,7 +306,7 @@ test('源码与架构挂载：GoalsProvider 在 RuntimeProvider 同层装配，W
   assert.match(workspaceSource, /import\s+\{\s*useGoals\s*\}\s+from\s+'\.\.\/goals\/GoalProvider'/);
   assert.match(workspaceSource, /const \{ store: goals \} = useGoals\(\)/);
   assert.match(workspaceSource, /goals\.invalidate\(\)/);
-  assert.match(workspaceSource, /<GoalsPanel openDrawer=\{openInbox\}/);
+  assert.match(workspaceSource, /<GoalsPanel openDrawer=\{openGroup\}/);
   assert.doesNotMatch(workspaceSource, /目标尚未接入/);
 
   const panelSource = read('src/workspace/GoalsPanel.tsx');

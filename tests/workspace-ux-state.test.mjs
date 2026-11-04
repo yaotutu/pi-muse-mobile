@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { AgentLabels, headerAgentNames, agentTime } from '../src/workspace/agent-labels.ts';
+import { AgentLabels } from '../src/workspace/agent-labels.ts';
 
 const entry = (id, updatedAt) => ({ id, sessionId: null, updatedAt });
 
@@ -30,26 +30,6 @@ test('新智能体获得新编号，删除不影响已有标签，坏时间不�
   assert.equal(labels.title('side-b'), '成员 2');
   labels = labels.sync([entry('local-main', '2026-10-30T00:00:00Z'), entry('side-b', '2026-10-30T02:00:00Z')]);
   assert.equal(labels.title('side-b'), '成员 2');
-  assert.equal(agentTime('bad-date'), '时间未知');
-});
-
-test('主智能体与键盘态无聊天名称，非主智能体仅键盘收起时显示，面板只给非主智能体名称', () => {
-  const labels = new AgentLabels().sync([
-    entry('local-main', '2026-10-30T00:00:00Z'),
-    entry('side-a', '2026-10-30T01:00:00Z'),
-  ]);
-  assert.equal(labels.title('local-main'), 'Muse', '侧栏主智能体名称不变');
-  assert.deepEqual(headerAgentNames(labels, 'local-main', false), { chat: null, session: null });
-  assert.deepEqual(headerAgentNames(labels, 'local-main', true), { chat: null, session: null });
-  assert.deepEqual(headerAgentNames(labels, 'side-a', false), { chat: '成员 1', session: '成员 1' });
-  assert.deepEqual(headerAgentNames(labels, 'side-a', true), { chat: null, session: '成员 1' });
-});
-
-test('空主智能体的精确 epoch0 显示暂无聊天，真实日期照常显示', () => {
-  assert.equal(agentTime('1970-01-01T00:00:00.000Z'), '暂无聊天');
-  assert.equal(agentTime('1970-01-01T00:00:00.001Z'), new Date('1970-01-01T00:00:00.001Z').toLocaleString());
-  assert.equal(agentTime('2026-10-30T09:00:00Z'), new Date('2026-10-30T09:00:00Z').toLocaleString());
-  assert.equal(agentTime('bad-date'), '时间未知');
 });
 
 const { ScrollAnchorFrame, ScrollFollow } = await import('../src/workspace/scroll-follow.ts');
@@ -176,7 +156,7 @@ test('Android Back 优先关闭键盘、会话面板，然后返回设置子页'
   assert.equal(workspaceBackAction(state), 'keyboard');
   assert.equal(workspaceBackAction({ ...state, keyboardVisible: false }), 'session');
   assert.equal(workspaceBackAction({ ...state, keyboardVisible: false, sessionMounted: false }), 'settings');
-  assert.equal(workspaceBackAction({ ...state, keyboardVisible: false, sessionMounted: false, settingsSubpage: null }), 'inbox');
+  assert.equal(workspaceBackAction({ ...state, keyboardVisible: false, sessionMounted: false, settingsSubpage: null }), 'group-info');
 });
 
 test('目标创建态 Back 先由创建流程消费，不落到系统退出', () => {

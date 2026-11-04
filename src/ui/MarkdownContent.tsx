@@ -147,7 +147,7 @@ function CodeBlock({ code, language, onMessageLongPress }: { code: string; langu
         <Text style={styles.copyLabel}>{copyState === 'copied' ? '已复制' : copyState === 'failed' ? '复制失败' : '复制'}</Text>
       </Pressable>
     </View>
-    <ScrollView horizontal style={styles.horizontalContent} contentContainerStyle={styles.codeScroll} showsHorizontalScrollIndicator>
+    <ScrollView horizontal onTouchStart={(event) => event.stopPropagation()} style={styles.horizontalContent} contentContainerStyle={styles.codeScroll} showsHorizontalScrollIndicator>
       {onMessageLongPress
         ? <Text onLongPress={onMessageLongPress} {...messageActionAccessibility(onMessageLongPress)} style={styles.codeText}>{code}</Text>
         : <Text selectable style={styles.codeText}>{code}</Text>}
@@ -159,7 +159,7 @@ function MarkdownTable({ token, inline, onMessageLongPress }: { token: MarkdownT
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const rows = [token.header ?? [], ...(token.rows ?? [])];
-  return <ScrollView horizontal style={styles.horizontalContent} contentContainerStyle={styles.table} showsHorizontalScrollIndicator>
+  return <ScrollView horizontal onTouchStart={(event) => event.stopPropagation()} style={styles.horizontalContent} contentContainerStyle={styles.table} showsHorizontalScrollIndicator>
     {rows.map((row, rowIndex) => <View key={rowIndex} style={styles.tableRow}>
       {row.map((cell, cellIndex) => <View key={cellIndex} style={[styles.tableCell, rowIndex === 0 && styles.tableHeader]}>
         <Text selectable={!onMessageLongPress} onLongPress={onMessageLongPress}

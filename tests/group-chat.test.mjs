@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { parseGroup, parseGroupEvent, groupRows, groupPreview, resolveGroupTarget } from '../src/group/contracts.ts';
+import { parseGroup, parseGroupEvent, groupRows, resolveGroupTarget } from '../src/group/contracts.ts';
 import { workspaceBackAction } from '../src/workspace/workspace-back.ts';
 
 const members = [{ id: 'local-main', name: 'Muse' }, { id: 'sms-internal', name: '短信' }, { id: 'news-internal', name: '新闻' }];
@@ -46,29 +46,15 @@ test('通知按投递时间合入时间线，头像来自功能而非承接方�
   assert.equal(JSON.stringify(notification), before);
   assert.equal(new Set(groupRows([], [notification, { ...notification, targetAgentId: 'other' }]).map((item) => item.key)).size, 2);
 });
-test('会话摘要反映最新通知或群回复，隐藏思考过程，保留失败提示，不修改原始内容', () => {
-  assert.deepEqual(groupPreview([], []), {});
-  const later = { ...notification, createdAt: '2026-11-02T00:01:00.000Z' };
-  assert.deepEqual(groupPreview([turn], [later]).latest, { sender: 'sms-internal', at: later.createdAt, notification: true, text: later.content });
-  const thinking = { ...turn, messages: [{ ...turn.messages[1], content: '<think>private thoughts</think> 简短\n 回复' }] };
-  assert.equal(groupPreview([thinking], []).latest.text, '简短 回复');
-  assert.equal(groupPreview([{ ...thinking, messages: [{ ...thinking.messages[0], content: '<think>unfinished' }] }], []).latest.text, '正在处理…');
-  assert.equal(groupPreview([], [], 'Read failed').error, 'Read failed');
-});
-test('功能通知同步共用 Runtime，隐藏到列表仍读快照；跳承接私聊是显式动作', () => {
+test('功能通知同步共用 Runtime，隐藏时仍读快照；跳承接私聊是显式动作', () => {
   const read = (file) => readFileSync(new URL('../src/' + file, import.meta.url), 'utf8');
   const ui = read('group/GroupChat.tsx');
   assert.match(ui, /useSyncExternalStore\(runtimeStore.subscribe/);
   assert.match(ui, /\[visible, runtime.conversationSyncVersion, notificationVersion, reload\]/);
   assert.match(ui, /if \(!request.current\) void reload\(\)/);
   assert.match(ui, /onPrivateChat\(row.notification!.targetAgentId\)/);
-  assert.match(ui, /onSummary\(groupPreview\(turns, snapshot\?\.notifications \?\? \[\], syncError\)\)/);
   assert.doesNotMatch(ui, /subscribeRuntime\(|setInterval\(/);
-  assert.match(read('workspace/WorkspaceScreen.tsx'), /onPrivateChat={select} onSummary={setGroupPreview}/);
-  const directory = read('workspace/MemberDirectory.tsx');
-  assert.match(directory, /groupPreview.latest/);
-  assert.match(directory, /群聊同步失败，进入群聊核对/);
-  assert.match(directory, /flex: 1, minWidth: 0, gap: spacing\[6\]/);
+  assert.match(read('workspace/WorkspaceScreen.tsx'), /onPrivateChat={select} onSwipe={switchAdjacent}/);
 });
 test('群聊按真实发送/回复时序排列，成员请求与回复使用不同发送者，不从正文猜头像', () => {
   const nested = { ...turn, id: 'child-one', rootId: turn.id, sourceAgentId: 'local-main', targetAgentId: 'sms-internal', createdAt: '2026-11-02T00:00:00.500Z', finishedAt: '2026-11-02T00:00:01.000Z', messages: [{ id: 'child-one', role: 'user', content: '查一下' }, { id: 'reply-child-one', role: 'assistant', content: '@新闻 取件码1234' }] };
@@ -94,8 +80,8 @@ test('停止和失败贴在原回复位置，无正文也保留成员身份；�
 test('群聊布局与私聊分离：顶栏不悬浮，收件人与紧凑工具跟随消息', () => {
   const read = (file) => readFileSync(new URL('../src/' + file, import.meta.url), 'utf8');
   const root = read('workspace/WorkspaceScreen.tsx');
-  assert.match(root, /page === 'group' && <View style={styles.groupHeader}>/);
-  assert.match(root, /page === 'chat' && <View pointerEvents="box-none" style={\[styles.chatHeader/);
+  assert.match(root, /<AgentAvatarStrip targets={targets}/);
+  assert.doesNotMatch(root, /chatHeader:/);
   const group = read('group/GroupChat.tsx');
   assert.doesNotMatch(group, /compactHeader|chatContentTop|combined.filter\(\(turn\) => turn.status/);
   assert.match(group, /<Message message={row.message} layout="group" recipient=/);
@@ -103,10 +89,10 @@ test('群聊布局与私聊分离：顶栏不悬浮，收件人与紧凑工具�
   assert.match(read('workspace/ConversationView.tsx'), /layout === 'group'\s*\? <ToolCallSummary tools={message.toolCalls}/);
   assert.match(read('workspace/ToolResultCard.tsx'), /const collapsible = !embedded && generic/);
 });
-test('群信息返回群聊，群聊返回列表；群所有者持续挂载，私聊设置保持独立', () => {
+test('群信息返回群聊，群聊为根层；群所有者持续挂载，私聊设置保持独立', () => {
   const state = { keyboardVisible: false, sessionMounted: false, settingsSubpage: null, goalCreating: false };
   assert.equal(workspaceBackAction({ ...state, page: 'group-info' }), 'group');
-  assert.equal(workspaceBackAction({ ...state, page: 'group' }), 'inbox');
+  assert.equal(workspaceBackAction({ ...state, page: 'group' }), 'none');
   const read = (file) => readFileSync(new URL('../src/' + file, import.meta.url), 'utf8');
   const root = read('workspace/WorkspaceScreen.tsx');
   assert.match(root, /useState<WorkspacePage>\('group'\)/);

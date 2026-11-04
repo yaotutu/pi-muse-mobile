@@ -1,3 +1,4 @@
+import { ChatSwipeArea } from '../ui/ChatSwipeArea';
 import { ArrowUp, AtSign, Square, X } from 'lucide-react-native';
 import { type ScrollViewInstance, AppState, Keyboard, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
@@ -10,15 +11,15 @@ import { IconControl } from '../ui/IconControl';
 import { spacing, workspaceTheme } from '../ui/tokens';
 import { MemberAvatar } from '../workspace/MemberAvatar';
 import { Message } from '../workspace/ConversationView';
-import { groupPreview, groupRows, resolveGroupTarget, type GroupPreview, type GroupSnapshot, type GroupTurn } from './contracts';
+import { groupRows, resolveGroupTarget, type GroupSnapshot, type GroupTurn } from './contracts';
 
 let groupSequence = 0;
 const { layout: l, typography: t, radius: r } = workspaceTheme;
 /** 连接内只挂一份群聊所有者；换页面不重发、不把私聊草稿或历史带进群里。 */
-export function GroupChat({ visible, members, onProfile, onApprovals, onPrivateChat, onSummary }: {
+export function GroupChat({ visible, members, onProfile, onApprovals, onPrivateChat, onSwipe }: {
   visible: boolean; members: { id: string; name: string }[];
   onProfile: (id: string) => void; onApprovals: (agentId: string) => void;
-  onPrivateChat: (agentId: string) => void; onSummary: (preview: GroupPreview) => void;
+  onPrivateChat: (agentId: string) => void; onSwipe?: (direction: -1 | 1) => void;
 }) {
   const api = useApi(); const { colors: c } = useTheme(); const approvals = useApprovals();
   const runtimeStore = useRuntimeStore();
@@ -28,7 +29,6 @@ export function GroupChat({ visible, members, onProfile, onApprovals, onPrivateC
   const [draft, setDraft] = useState(''); const [target, setTarget] = useState<string>();
   const [choosing, setChoosing] = useState(false); const [loading, setLoading] = useState(false);
   const [running, setRunning] = useState(false); const [uncertain, setUncertain] = useState(false); const [error, setError] = useState('');
-  const [syncError, setSyncError] = useState('');
   const mounted = useRef(true); const request = useRef<AbortController | null>(null);
   const pending = useRef<string | null>(null); const readVersion = useRef(0); const scroll = useRef<ScrollViewInstance>(null);
   const following = useRef(true);
@@ -38,7 +38,7 @@ export function GroupChat({ visible, members, onProfile, onApprovals, onPrivateC
     try {
       const next = await api.getGroup();
       if (!mounted.current || version !== readVersion.current) return;
-      setSnapshot(next); setError(''); setSyncError('');
+      setSnapshot(next); setError('');
       if (!request.current && next.running !== pending.current) {
         const accepted = next.turns.find((turn) => turn.id === pending.current);
         if (accepted?.messages.some((message) => message.role === 'user')) { setDraft(''); setTarget(undefined); }
@@ -47,7 +47,7 @@ export function GroupChat({ visible, members, onProfile, onApprovals, onPrivateC
     } catch (failure) {
       if (mounted.current && version === readVersion.current) {
         const message = failure instanceof Error ? failure.message : '群聊读取失败';
-        setError(message); setSyncError(message);
+        setError(message);
       }
     }
     finally { if (mounted.current && version === readVersion.current) setLoading(false); }
@@ -56,18 +56,13 @@ export function GroupChat({ visible, members, onProfile, onApprovals, onPrivateC
     mounted.current = true;
     return () => { mounted.current = false; request.current?.abort(); };
   }, []);
-  // 隐藏到会话列表时也同步摘要；共用现有通知流，重复/读中失效以最后一轮权威 GET 为准。
+  // 隐藏时也同步群聊；共用现有通知流，重复/读中失效以最后一轮权威 GET 为准。
   // 发送期间不抢写 live；收口的 reload 会消费期间积累的所有通知。
   const notificationVersion = runtime.conversationInvalidations.at(-1)?.version ?? 0;
   useEffect(() => { if (!request.current) void reload(); }, [visible, runtime.conversationSyncVersion, notificationVersion, reload]);
   useEffect(() => { const sub = AppState.addEventListener('change', (state) => { if (state === 'active' && !request.current) void reload(); }); return () => sub.remove(); }, [reload]);
   const combined = [...(snapshot?.turns ?? []).filter((turn) => !live.some((item) => item.id === turn.id)), ...live];
   const rows = groupRows(combined, snapshot?.notifications);
-  useEffect(() => {
-    const turns = [...(snapshot?.turns ?? []).filter((turn) => !live.some((item) => item.id === turn.id)), ...live];
-    // 列表只提示读取失败，不把本地输入校验或发送错误冒充同步故障。
-    onSummary(groupPreview(turns, snapshot?.notifications ?? [], syncError));
-  }, [snapshot, live, syncError, onSummary]);
   const busy = running || !!snapshot?.running;
   const send = async () => {
     if (!draft.trim() || busy || uncertain || !snapshot || loading) return;
@@ -95,7 +90,7 @@ export function GroupChat({ visible, members, onProfile, onApprovals, onPrivateC
   const title = (id: string) => members.find((member) => member.id === id)?.name ?? id;
   const anchor = () => { if (visible && following.current) scroll.current?.scrollToEnd({ animated: false }); };
   return <View style={{ flex: 1, minHeight: 0, display: visible ? 'flex' : 'none' }} accessibilityElementsHidden={!visible} importantForAccessibility={visible ? 'auto' : 'no-hide-descendants'}>
-    <ScrollView ref={scroll} keyboardShouldPersistTaps="handled" onContentSizeChange={anchor} onLayout={anchor} scrollEventThrottle={16}
+    <ChatSwipeArea onSwipe={onSwipe}><ScrollView ref={scroll} keyboardShouldPersistTaps="handled" onContentSizeChange={anchor} onLayout={anchor} scrollEventThrottle={16}
       onScroll={(event) => { const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent; following.current = contentSize.height - contentOffset.y - layoutMeasurement.height < l.scrollThreshold; }}
       contentContainerStyle={{ flexGrow: 1, paddingTop: spacing[12], paddingHorizontal: l.sidePadding, paddingBottom: spacing[24], gap: l.groupMessageGap }}>
       {!snapshot && loading && <Text style={{ ...t.caption, color: c.muted }}>正在读取群聊…</Text>}
@@ -118,7 +113,7 @@ export function GroupChat({ visible, members, onProfile, onApprovals, onPrivateC
       {busy && <Text accessibilityLabel="群聊正在回复" style={{ ...t.caption, color: c.muted }}>正在回复…</Text>}
       {!!error && <Text accessibilityRole="alert" style={{ ...t.caption, color: c.danger }}>{error}</Text>}
       {(!!error || uncertain || (!!snapshot?.running && !running)) && <ActionButton label="重新同步群聊" text="同步核对" onPress={() => void reload()} />}
-    </ScrollView>
+    </ScrollView></ChatSwipeArea>
     {pendingApprovals.length > 0 && <ActionButton label="查看群聊待处理审批" text={`待处理审批（${pendingApprovals.length}）`} onPress={() => onApprovals(pendingApprovals[0].agentId!)} style={{ marginHorizontal: l.sidePadding }} />}
     {choosing && <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 200, marginHorizontal: l.sidePadding, borderRadius: r.card, backgroundColor: c.surface }}>
       {members.map((member) => <Pressable key={member.id} accessibilityRole="button" accessibilityLabel={`群聊艾特${member.name}`} onPress={() => { setTarget(member.id); setChoosing(false); setDraft((text) => text.endsWith('@') ? text.slice(0, -1) : text); }} style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', padding: spacing[12], gap: spacing[12] }}>

@@ -7,7 +7,6 @@ export type GroupTurn = { id: string; rootId: string; sourceAgentId: string | nu
   createdAt: string; finishedAt: string | null; status: 'running' | 'completed' | 'failed' | 'cancelled'; messages: GroupMessage[] };
 export type GroupNotification = { id: string; featureId: 'news' | 'sms'; targetAgentId: string; sessionId: string; messageId: string; createdAt: string; content: string };
 export type GroupSnapshot = { id: 'main'; defaultAgentId: 'local-main'; running: string | null; turns: GroupTurn[]; notifications: GroupNotification[] };
-export type GroupPreview = { latest?: { sender: string | null; text: string; at: string; notification: boolean }; error?: string };
 export type GroupInput = { id: string; content: string; targetAgentId?: string };
 export type GroupEvent = { type: 'turn'; turn: Omit<GroupTurn, 'messages'> } | { type: 'delta'; id: string; text: string } | { type: 'settled' } | { type: 'error'; code: string; message: string };
 export interface GroupClient {
@@ -74,14 +73,6 @@ export function groupRows(turns: GroupTurn[], notifications: GroupNotification[]
   for (const item of notifications) rows.push({ key: `notification-${notificationKey(item)}`, sender: `${item.featureId}-internal`, at: item.createdAt, notification: item,
     message: { id: item.messageId, role: 'assistant', text: item.content, toolCalls: [], feedbackAvailable: false } });
   return rows.sort((a, b) => a.at.localeCompare(b.at));
-}
-
-/** 列表只接收轻量展示摘要；不复制一套聊天历史，也不把摘要送回模型。 */
-export function groupPreview(turns: GroupTurn[], notifications: GroupNotification[], error?: string): GroupPreview {
-  const row = groupRows(turns, notifications).at(-1);
-  const text = row?.message.text.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/<think>[\s\S]*$/, '').replace(/\s+/g, ' ').trim().slice(0, 160);
-  return { ...(row ? { latest: { sender: row.sender, at: row.at, notification: !!row.notification,
-    text: text || (row.status === 'failed' ? '处理失败' : row.status === 'cancelled' ? '已停止' : '正在处理…') } } : {}), ...(error ? { error } : {}) };
 }
 
 /** 手动输入的显式 @ 与成员选择器一致；未知目标拒绝，不静默交给 main。 */

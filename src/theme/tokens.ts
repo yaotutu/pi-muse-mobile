@@ -110,11 +110,10 @@ export const themeTokens = {
     resetDialogMaxWidth: 420,
     fileInformationWidth: 280,
     sidePadding: 20,
-    /** 会话面板保留完整信息区几何；私聊页使用绝对浮层。 */
+    /** 会话动态面板保留完整信息区几何；聊天页另用正常流头像栏。 */
     headerHeight: 124,
     headerTop: 12,
     headerAvatar: 64,
-    compactHeaderAvatar: 36,
     groupAvatar: 34,
     groupMessageRadius: 18,
     groupMessagePaddingHorizontal: 14,
@@ -135,9 +134,7 @@ export const themeTokens = {
     composerBottom: 12,
     sessionTabsHeight: 66,
     sessionTabInset: 6,
-    /** 首条消息避开浮动头像与可选智能体名称，后续内容可从其下滚过。 */
-    chatContentTop: 124,
-    chatContentTopCompact: 56,
+    /** 普通私聊消息的纵向间距；群聊有自己的紧凑规格。 */
     messageGap: 16,
     /** 聊天气泡独有的内边距，不波及连接页的通用消息容器。 */
     chatMessagePadding: 16,

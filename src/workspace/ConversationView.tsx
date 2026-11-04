@@ -1,3 +1,4 @@
+import { ChatSwipeArea } from '../ui/ChatSwipeArea';
 /**
  * 聊天会话主视图：消息列表、工具调用卡片、输入框与运行终态历史同步。
  *
@@ -36,7 +37,7 @@ function useStyles() {
 export type ConversationViewProps = {
   agentId: string;
   visible: boolean;
-  compactHeader: boolean;
+  onSwipe?: (direction: -1 | 1) => void;
   refreshKey: string | number;
   onSettled: () => void;
   openConnection: () => void;
@@ -46,7 +47,7 @@ export type ConversationViewProps = {
 export function ConversationView({
   agentId,
   visible,
-  compactHeader,
+  onSwipe,
   refreshKey,
   onSettled,
   openConnection,
@@ -253,11 +254,11 @@ export function ConversationView({
   return (
     <>
       <View style={[styles.chatBody, !visible && styles.hidden]}>
-        <ScrollView
+        <ChatSwipeArea onSwipe={onSwipe}><ScrollView
           ref={scroll}
           style={styles.chatScroll}
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={[styles.messageList, compactHeader && styles.messageListCompact]}
+          contentContainerStyle={styles.messageList}
           showsVerticalScrollIndicator={false}
           onScroll={(event) => {
             if (!visible) return;
@@ -341,7 +342,7 @@ export function ConversationView({
               }}
             />
           )}
-        </ScrollView>
+        </ScrollView></ChatSwipeArea>
         {showLatest && <Pressable accessibilityRole="button" accessibilityLabel="回到最新消息" onPress={() => { scrollFollow.current.returnLatest(); setShowLatest(false); scroll.current?.scrollToEnd({ animated: true }); }} style={styles.latestButton}><ArrowDown size={sizing[18]} color={colors.ink} /><Text style={styles.caption}>回到最新</Text></Pressable>}
       </View>
       {visible && <>
@@ -546,14 +547,13 @@ const createStyles = (c: WorkspaceColors) =>
     hidden: { display: 'none' },
     chatScroll: { flex: 1 },
     messageList: {
-      // 首条消息避开浮动会话信息；长历史仍可从浮层下方滚过。
+      // 头像栏已占正常布局，正文不再为浮动头像预留空白。
       flexGrow: 1,
-      paddingTop: l.chatContentTop,
+      paddingTop: spacing[12],
       paddingHorizontal: l.sidePadding,
       paddingBottom: spacing[24],
       gap: l.messageGap,
     },
-    messageListCompact: { paddingTop: l.chatContentTopCompact },
     messageBlock: { gap: spacing[8] },
     bubbleWrap: { position: 'relative' },
     message: { padding: l.chatMessagePadding, borderRadius: r.message },

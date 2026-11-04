@@ -1,11 +1,10 @@
 import { GroupChat } from '../group/GroupChat';
-import type { GroupPreview } from '../group/contracts';
 import { GroupInfo } from '../group/GroupInfo';
 import { useNewsDiscussion } from '../features/useNewsDiscussion';
 import { SmsProvider } from '../information/SmsProvider';
 import { FeaturePage, type FeatureSection } from '../features/FeaturePage';
 import { Card } from '../ui/Surfaces';
-import { BookOpen, ChevronRight, Download, ArrowLeft, Users, Ellipsis, Moon, RotateCcw, Server, Settings, UserRound, X, Globe, type LucideIcon } from 'lucide-react-native';
+import { BookOpen, ChevronRight, Download, ArrowLeft, Ellipsis, Moon, RotateCcw, Server, Settings, UserRound, X, Globe, type LucideIcon } from 'lucide-react-native';
 import { BlurTargetView } from 'expo-blur';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ThemeStatusBar } from '../theme/ThemeStatusBar';
@@ -40,7 +39,7 @@ import { ProfileProvider } from '../profile/ProfileProvider';
 import { DreamProvider } from '../dream/DreamProvider';
 import { DreamPanel } from './DreamPanel';
 import { ConversationHost } from './ConversationHost';
-import { AgentLabels, headerAgentNames, isBuiltinMember } from './agent-labels';
+import { AgentLabels, isBuiltinMember } from './agent-labels';
 import { workspaceBackAction } from './workspace-back';
 import { SessionPanel, type SessionTab } from './SessionPanel';
 import { ResetSessionDialog } from './ResetSessionDialog';
@@ -53,12 +52,13 @@ import { ThemePicker } from '../theme/ThemePicker';
 import { IconControl, MuseAvatar, StatusPill, useReducedMotion } from './primitives';
 import { FrostedSurface } from '../ui/FrostedSurface';
 import { ActionButton } from '../ui/ActionButton';
-import { MemberDirectory } from './MemberDirectory';
+import { AgentAvatarStrip } from './AgentAvatarStrip';
+import { adjacentAvatar, avatarTargets } from './avatar-navigation';
 import { MemberAvatar } from './MemberAvatar';
 import { BrowserPanel } from '../browser/BrowserPanel';
 import { createBrowserStore } from '../browser/browser-store';
 
-type WorkspacePage = 'group' | 'group-info' | 'inbox' | 'chat' | 'news' | 'goals' | 'settings' | 'agent' | 'feature';
+type WorkspacePage = 'group' | 'group-info' | 'chat' | 'news' | 'goals' | 'settings' | 'agent' | 'feature';
 type SettingsSubpage = 'memory' | 'profile' | 'dream' | 'news-sources' | FeatureSection | null;
 type WorkspaceNotice = { text: string; tone: 'success' | 'error' };
 const { layout: l, radius: r, typography: t } = workspaceTheme;
@@ -211,10 +211,9 @@ function WorkspaceContent({ snapshot, openConnection, agents }: WorkspaceConnect
   const { store: goals } = useGoals();
   const runtime = useAgentRuntime(agents.currentAgent);
   const [page, setPage] = useState<WorkspacePage>('group');
-  const [groupPreview, setGroupPreview] = useState<GroupPreview>({});
   const [newsManaging, setNewsManaging] = useState(false);
   const [settingsSubpage, setSettingsSubpage] = useState<SettingsSubpage>(null);
-  const [profileReturn, setProfileReturn] = useState<'chat' | 'inbox' | 'group' | 'group-info'>('inbox');
+  const [profileReturn, setProfileReturn] = useState<'chat' | 'group' | 'group-info'>('group');
   const [sessionOpen, setSessionOpen] = useState(false);
   const [sessionMounted, setSessionMounted] = useState(false);
   const chatBlurTarget = useRef<ViewInstance | null>(null);
@@ -241,7 +240,7 @@ function WorkspaceContent({ snapshot, openConnection, agents }: WorkspaceConnect
   if (labelState.ids !== labelIds) setLabelState({ ids: labelIds, labels: labelState.labels.sync(agents.agents) });
   const labels = labelState.ids === labelIds ? labelState.labels : labelState.labels.sync(agents.agents);
   const groupMembers = agents.agents.filter((agent) => agent.sessionId || agent.id === MAIN_AGENT || isBuiltinMember(agent.id)).map((agent) => ({ id: agent.id, name: labels.title(agent.id) }));
-  const headerNames = headerAgentNames(labels, agents.currentAgent, keyboardVisible);
+  const sessionName = agents.currentAgent === MAIN_AGENT ? null : labels.title(agents.currentAgent);
   const reloadAgents = agents.reload;
   const refresh = useCallback((agentId = agents.currentAgent) => { void reloadAgents(); activities.invalidate(); jobs.invalidate(); monitors.invalidate(); goals.invalidate(); setHistoryRefresh((value) => ({ ...value, [agentId]: (value[agentId] ?? 0) + 1 })); }, [reloadAgents, activities, jobs, monitors, goals, agents.currentAgent]);
   useEffect(() => {
@@ -272,7 +271,7 @@ function WorkspaceContent({ snapshot, openConnection, agents }: WorkspaceConnect
     if (runtime.synchronized) void reloadAgents();
   }, [runtime.synchronized, reloadAgents]);
   useEffect(() => {
-    // 原生键盘出现时让出阅读智能体；系统 Back 收起键盘后恢复完整头像浮层。
+    // 原生键盘出现时压缩头像栏；系统 Back 收起键盘后恢复名称。
     const show = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => setKeyboardVisible(true));
     const hide = Keyboard.addListener('keyboardDidHide', () => {
       setKeyboardVisible(false);
@@ -331,7 +330,7 @@ function WorkspaceContent({ snapshot, openConnection, agents }: WorkspaceConnect
       else if (action === 'news-sources') setNewsManaging(false);
       else if (action === 'news-owner') setPage('agent');
       else if (action === 'group') setPage('group');
-      else if (action === 'inbox') setPage('inbox');
+      else if (action === 'group-info') setPage('group-info');
       else if (action === 'feature') { if (settingsSubpage === 'news-sources') setSettingsSubpage('news-feature'); else { setPage('agent'); setSettingsSubpage(null); } }
       else if (action === 'settings') setSettingsSubpage(settingsSubpage === 'news-sources' ? 'news-feature' : null);
       else if (action === 'agent') backAgent();
@@ -345,7 +344,6 @@ function WorkspaceContent({ snapshot, openConnection, agents }: WorkspaceConnect
     if (keyboardVisible) { pendingSessionOpen.current = true; Keyboard.dismiss(); return; }
     setSessionMounted(true); setSessionOpen(true);
   }, [keyboardVisible]);
-  const openInbox = useCallback(() => { Keyboard.dismiss(); setPage('inbox'); void reloadAgents(); }, [reloadAgents]);
   const changeAgent = (action: () => void) => {
     const state = files.getSnapshot();
     if (!hasFileWork(state)) { action(); return; }
@@ -359,7 +357,16 @@ function WorkspaceContent({ snapshot, openConnection, agents }: WorkspaceConnect
   const select = (id: string) => changeAgent(() => { Keyboard.dismiss(); agents.selectAgent(id); setSessionOpen(false); setPage('chat'); setAgentSection('home'); setDeleteConfirm(false); setNotice(undefined); });
   // 主页与智能体设置共用同一批领域状态；只区分入口呈现，子页返回不丢当前智能体。
   const openGroup = () => changeAgent(() => { Keyboard.dismiss(); setSessionOpen(false); setPage('group'); });
-  const openProfile = (id: string, view: 'profile' | 'settings' = 'profile') => changeAgent(() => { Keyboard.dismiss(); agents.selectAgent(id); setAgentView(view); setProfileReturn(page === 'chat' || page === 'group' || page === 'group-info' ? page : 'inbox'); setPage('agent'); setAgentSection('home'); setSessionOpen(false); setDeleteConfirm(false); });
+  const targets = avatarTargets(groupMembers.map((member) => member.id));
+  const selectedAvatar = page === 'group' ? 'group' : agents.currentAgent;
+  const avatarTitle = (id: string) => id === 'group' ? '群聊' : labels.title(id);
+  const selectAvatar = (id: string) => id === 'group' ? openGroup() : select(id);
+  const switchAdjacent = (direction: -1 | 1) => {
+    const next = adjacentAvatar(targets, selectedAvatar, direction);
+    if (next) selectAvatar(next);
+  };
+  const openGroupInfo = () => { Keyboard.dismiss(); setPage('group-info'); };
+  const openProfile = (id: string, view: 'profile' | 'settings' = 'profile') => changeAgent(() => { Keyboard.dismiss(); agents.selectAgent(id); setAgentView(view); setProfileReturn(page === 'chat' || page === 'group' || page === 'group-info' ? page : 'group'); setPage('agent'); setAgentSection('home'); setSessionOpen(false); setDeleteConfirm(false); });
   const openNews = () => { Keyboard.dismiss(); setNewsManaging(false); news.closeArticle(); setPage('news'); };
   const discussion = useNewsDiscussion((agentId) => { refresh(agentId); select(agentId); });
   const remove = async () => {
@@ -368,7 +375,7 @@ function WorkspaceContent({ snapshot, openConnection, agents }: WorkspaceConnect
       const result = await sessions.deleteAgent(id);
       if (!result) return;
       runtimeStore.forgetAgent(id); activities.forgetAgent(id); jobs.invalidate(); monitors.invalidate(); agents.removeAgent(id);
-      setSessionOpen(false); setDeleteConfirm(false); setNotice(undefined); setAgentSection('home'); setPage('inbox');
+      setSessionOpen(false); setDeleteConfirm(false); setNotice(undefined); setAgentSection('home'); setPage('group');
       await agents.reload();
     } catch (error) { setNotice({ text: error instanceof Error ? error.message : String(error), tone: 'error' }); }
   };
@@ -405,14 +412,11 @@ function WorkspaceContent({ snapshot, openConnection, agents }: WorkspaceConnect
   </>;
   // 页面只组织入口；会话所有者与领域 Store 持续挂载，成员主页不会复制状态。
   let otherPage: ReactNode = null;
-  if (page === 'inbox') {
-    otherPage = <MemberDirectory agents={agents.agents} labels={labels} error={agents.error}
-      onReload={() => void reloadAgents()} onChat={select} onProfile={openProfile} onGroup={openGroup}
+  if (page === 'group-info') {
+    otherPage = <GroupInfo members={groupMembers} onBack={() => setPage('group')} onProfile={openProfile}
+      creating={agents.creating} error={agents.error} onReload={() => void reloadAgents()}
       onSettings={() => { setPage('settings'); setSettingsSubpage(null); }}
-      creating={agents.creating} groupPreview={groupPreview}
-      onCreate={() => changeAgent(() => { void agents.createAgent().then((id) => { if (!id) return; setAgentView('profile'); setProfileReturn('inbox'); setPage('agent'); setAgentSection('home'); }); })} />;
-  } else if (page === 'group-info') {
-    otherPage = <GroupInfo members={groupMembers} onBack={() => setPage('group')} onProfile={openProfile} />;
+      onCreate={() => changeAgent(() => { void agents.createAgent().then((id) => { if (!id) return; setAgentView('profile'); setProfileReturn('group-info'); setPage('agent'); setAgentSection('home'); }); })} />;
   } else if (page === 'feature' && settingsSubpage === 'news-sources') {
     otherPage = <NewsSourcesPage store={news} onBack={() => setSettingsSubpage('news-feature')} />;
   } else if (page === 'feature' && (settingsSubpage === 'sms' || settingsSubpage === 'news-feature')) {
@@ -436,7 +440,7 @@ function WorkspaceContent({ snapshot, openConnection, agents }: WorkspaceConnect
         { text: '取消', style: 'cancel' }, { text: '已核对', onPress: () => void discussion.confirmChecked() },
       ])} />;
   } else if (page === 'goals' && !sessionOpen) {
-    otherPage = <GoalsPanel openDrawer={openInbox} />;
+    otherPage = <GoalsPanel openDrawer={openGroup} />;
   }
   // 文件 Provider 与聊天所有者随连接持有；页面切换不销毁草稿或运行。
   return <View style={styles.root} testID="workspace-screen"><ThemeStatusBar />
@@ -446,25 +450,12 @@ function WorkspaceContent({ snapshot, openConnection, agents }: WorkspaceConnect
         <SafeAreaView style={styles.screen} edges={['top', 'bottom', 'left', 'right']}>
           {/* 唯一键盘避让层：Android 按真实重叠缩小阅读区，iOS 保留 padding；不再另算键盘高度。 */}
           <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled={Platform.OS !== 'web'} accessibilityViewIsModal={sessionMounted}>
-            {page === 'settings' && !inSettingsSubpage && <View style={styles.pageHeader}><IconControl icon={ArrowLeft} label="返回消息列表" onPress={openInbox} /><Text style={styles.pageTitle}>设置</Text><View style={styles.headerSideButtonSpacer} /></View>}
-            {/* 头像与左右操作浮在聊天层上方，不占正文高度；触控只落在实际控件。 */}
-            {page === 'chat' && <View pointerEvents="box-none" style={[styles.chatHeader, keyboardVisible && styles.chatHeaderCompact]}>
-              <View style={styles.headerLeft}><IconControl icon={ArrowLeft} label="返回消息列表" testID="workspace-back-inbox" onPress={openInbox} /></View>
-              <Pressable accessibilityRole="button" accessibilityLabel={`查看${labels.title(agents.currentAgent)}的主页`} accessibilityHint={`当前智能体：${labels.title(agents.currentAgent)}；当前状态：${statusLabel}。查看成员资料、发消息与管理专属文件`} accessibilityState={{ disabled: sessionMounted }} disabled={sessionMounted} testID="workspace-open-member" style={[styles.identity, keyboardVisible && styles.identityCompact]}
-                onPress={() => openProfile(agents.currentAgent)}>
-                <MemberAvatar agentId={agents.currentAgent} size={keyboardVisible ? l.compactHeaderAvatar : l.headerAvatar} />
-                {headerNames.chat && <View style={[styles.identityLabel, styles.identityLabelSurface]}><Text numberOfLines={1} style={styles.identityName}>{headerNames.chat}</Text></View>}
-              </Pressable>
-              <View style={styles.headerRight}><IconControl icon={Settings} label={`打开${labels.title(agents.currentAgent)}的智能体设置`} testID="workspace-open-agent-settings" onPress={() => openProfile(agents.currentAgent, 'settings')} /></View>
-            </View>}
-            {/* 群聊顶栏占据正常文档流；历史再长也不会穿过标题和操作按钮。 */}
-            {page === 'group' && <View style={styles.groupHeader}>
-              <IconControl icon={ArrowLeft} label="返回消息列表" onPress={openInbox} />
-              <Pressable accessibilityRole="button" accessibilityLabel="查看群组信息" style={styles.groupIdentity} onPress={() => { Keyboard.dismiss(); setPage('group-info'); }}>
-                <Users size={22} color={colors.accentText} /><Text style={styles.identityName}>群聊</Text>
-              </Pressable>
-              <IconControl icon={Ellipsis} label="打开群组信息" onPress={() => { Keyboard.dismiss(); setPage('group-info'); }} />
-            </View>}
+            {page === 'settings' && !inSettingsSubpage && <View style={styles.pageHeader}><IconControl icon={ArrowLeft} label="返回群组信息" onPress={() => setPage('group-info')} /><Text style={styles.pageTitle}>设置</Text><View style={styles.headerSideButtonSpacer} /></View>}
+            {(page === 'chat' || page === 'group') && <AgentAvatarStrip targets={targets} selected={selectedAvatar}
+              title={avatarTitle} compact={keyboardVisible} disabled={sessionMounted} onSelect={selectAvatar}
+              onProfile={(id) => id === 'group' ? openGroupInfo() : openProfile(id)}
+              action={page === 'group' ? <IconControl icon={Ellipsis} label="打开群组信息" onPress={openGroupInfo} />
+                : <IconControl icon={Settings} label={`打开${labels.title(agents.currentAgent)}的智能体设置`} testID="workspace-open-agent-settings" onPress={() => openProfile(agents.currentAgent, 'settings')} />} />}
             <View style={styles.bodyStage}>
               <BlurTargetView ref={chatBlurTarget} style={styles.bodyStage}>
                 {/* Expo 的原生 BlurTargetView 仅负责采样；普通 RN View 承担触控和读屏隔离。 */}
@@ -472,9 +463,9 @@ function WorkspaceContent({ snapshot, openConnection, agents }: WorkspaceConnect
                   pointerEvents={sessionMounted ? 'none' : 'auto'} aria-hidden={sessionMounted}
                   {...(Platform.OS === 'web' && sessionMounted ? { inert: true } : {})}
                   accessibilityElementsHidden={sessionMounted} importantForAccessibility={sessionMounted ? 'no-hide-descendants' : 'auto'}>
-                  <View style={[styles.bodyStage, page === 'group' && { display: 'none' }]}><ConversationHost currentAgentId={agents.currentAgent} agentIds={agents.agents.map((agent) => agent.id)} chatVisible={page === 'chat'} compactHeader={keyboardVisible} otherPage={otherPage}
+                  <View style={[styles.bodyStage, page === 'group' && { display: 'none' }]}><ConversationHost currentAgentId={agents.currentAgent} agentIds={agents.agents.map((agent) => agent.id)} chatVisible={page === 'chat'} onSwipe={switchAdjacent} otherPage={otherPage}
                     refreshVersions={historyRefresh} onSettled={refresh} onBindingMismatch={reloadAgents} openConnection={openConnection} onOpenApprovals={() => openSession('approvals')} /></View>
-                  <GroupChat visible={page === 'group'} members={groupMembers} onProfile={openProfile} onPrivateChat={select} onSummary={setGroupPreview} onApprovals={(agentId) => { agents.selectAgent(agentId); openSession('approvals'); }} />
+                  <GroupChat visible={page === 'group'} members={groupMembers} onProfile={openProfile} onPrivateChat={select} onSwipe={switchAdjacent} onApprovals={(agentId) => { agents.selectAgent(agentId); openSession('approvals'); }} />
                   {!!notice && <Text accessibilityRole="alert" style={[styles.notice, notice.tone === 'error' && styles.error]}>{notice.text}</Text>}
                 </View>
               </BlurTargetView>
@@ -505,7 +496,7 @@ function WorkspaceContent({ snapshot, openConnection, agents }: WorkspaceConnect
                 headerCenter={
                   <View style={styles.identity}>
                     <MemberAvatar agentId={agents.currentAgent} size={l.headerAvatar} />
-                    <View style={[styles.identityLabel, styles.sessionIdentityLabel]}>{headerNames.session && <Text numberOfLines={1} style={styles.identityName}>{headerNames.session}</Text>}<StatusPill label={statusLabel} testID="workspace-session-status" tone={!runtime.synchronized ? 'warning' : runtime.running ? 'accent' : 'neutral'} /></View>
+                    <View style={[styles.identityLabel, styles.sessionIdentityLabel]}>{sessionName && <Text numberOfLines={1} style={styles.identityName}>{sessionName}</Text>}<StatusPill label={statusLabel} testID="workspace-session-status" tone={!runtime.synchronized ? 'warning' : runtime.running ? 'accent' : 'neutral'} /></View>
                   </View>
                 }
                 headerRight={<View style={styles.headerSideButtonSpacer} />}
@@ -539,7 +530,6 @@ function WorkspaceContent({ snapshot, openConnection, agents }: WorkspaceConnect
 const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: c.canvas }, viewport: { flex: 1, alignSelf: 'center', overflow: 'hidden', backgroundColor: c.canvas }, screen: { flex: 1 },
   foreground: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: c.canvas, overflow: 'hidden' },
-  chatHeader: { position: 'absolute', zIndex: 2, top: l.headerTop, left: l.sidePadding, right: l.sidePadding, height: l.headerHeight }, chatHeaderCompact: { height: l.controlSize }, headerLeft: { position: 'absolute', top: 0, left: 0 }, headerRight: { position: 'absolute', top: 0, right: 0, flexDirection: 'row', gap: spacing[4] },
   bodyStage: { flex: 1 },
   sessionLayer: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden' },
   frostedWrap: { flex: 1 },
@@ -550,12 +540,7 @@ const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   sessionIdentityLabel: { maxWidth: l.identityMaxWidth },
   pressed: { opacity: workspaceTheme.interaction.pressedOpacity },
   identity: { alignSelf: 'center', alignItems: 'center', maxWidth: l.identityMaxWidth },
-  groupHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: l.sidePadding, paddingVertical: spacing[8], backgroundColor: c.canvas },
-  groupIdentity: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing[8], minHeight: l.controlSize, flexShrink: 1 },
-  identityCompact: { height: l.controlSize, flexDirection: 'row', gap: spacing[8] },
   identityLabel: { paddingHorizontal: spacing[8], paddingTop: spacing[6], gap: spacing[3], alignItems: 'center', maxWidth: '100%' },
-  // 只覆盖非主智能体聊天名称自身，不给透明顶栏增加整条背景或正文占位。
-  identityLabelSurface: { backgroundColor: c.floatingSurface, borderColor: c.floatingLine, borderWidth: StyleSheet.hairlineWidth, borderRadius: r.field, paddingBottom: spacing[6] },
   identityName: { ...t.name, color: c.ink, maxWidth: '100%', textAlign: 'center' },
   headerSideButtonSpacer: { width: l.controlSize, height: l.controlSize },
   pageHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: l.sidePadding, paddingTop: spacing[12], paddingBottom: spacing[8] },
