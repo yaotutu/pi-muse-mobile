@@ -299,7 +299,7 @@ export class HttpApiClient implements ApiClient {
       control.assertActive();
       if (response.status === 401) { this.onUnauthorized(token); throw new ApiError(401, '请重新认证'); }
       if (!response.ok) throw responseError(response.status, await response.json().catch(() => undefined));
-      if (!response.body) throw new ApiError(502, '群聊未返回数据流');
+      if (!response.body) throw new ApiError(502, '「全部」未返回数据流');
       control.stopTimeout();
       reader = response.body.getReader();
       control.controller.signal.addEventListener('abort', cancel, { once: true });
@@ -309,7 +309,7 @@ export class HttpApiClient implements ApiClient {
         buffer += decoder.decode(result.value, { stream: !result.done });
         const frames = parseSseFrames(buffer); buffer = frames.rest;
         for (const raw of frames.events) {
-          if (terminal) throw new ApiError(502, '群聊终态后出现额外事件');
+          if (terminal) throw new ApiError(502, '「全部」回复结束后出现额外事件');
           const event = parseGroupEvent(raw);
           terminal = event.type === 'settled' || event.type === 'error';
           onEvent(event);
@@ -317,7 +317,7 @@ export class HttpApiClient implements ApiClient {
         }
         if (result.done) break;
       }
-      if (!terminal || buffer.trim()) throw new ApiError(502, '群聊连接中断，请同步核对，勿重复发送');
+      if (!terminal || buffer.trim()) throw new ApiError(502, '「全部」消息连接中断，请同步核对，勿重复发送');
       this.notify(control, { kind: 'online', token });
     } catch (error) { throw this.failure(error, control, token); }
     finally { control.controller.signal.removeEventListener('abort', cancel); await reader?.cancel().catch(() => {}); control.finish(); }

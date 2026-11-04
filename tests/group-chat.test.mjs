@@ -97,10 +97,10 @@ test('群信息返回群聊，群聊为根层；群所有者持续挂载，私�
   const root = read('workspace/WorkspaceScreen.tsx');
   assert.match(root, /useState<WorkspacePage>\('group'\)/);
   assert.match(root, /<GroupChat visible={page === 'group'}/);
-  assert.match(root, /label="打开群组信息"/);
+  assert.match(root, /label="打开成员与设置"/);
   assert.match(root, /openProfile\(agents.currentAgent, 'settings'\)/);
-  assert.match(root, /本成员的私聊历史、群聊讨论与显示记录/);
-  assert.match(read('workspace/ResetSessionDialog.tsx'), /本成员的私聊历史、群聊讨论与显示记录/);
+  assert.match(root, /本成员的私聊历史、在「全部」中的讨论与显示记录/);
+  assert.match(read('workspace/ResetSessionDialog.tsx'), /本成员的私聊历史、在「全部」中的讨论与显示记录/);
   const ui = read('group/GroupChat.tsx');
   assert.doesNotMatch(ui, /getConversation|subscribeRuntime/);
   assert.match(ui, /resolveGroupTarget\(draft, members, target\)/);

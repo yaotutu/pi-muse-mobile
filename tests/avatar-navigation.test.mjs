@@ -38,6 +38,21 @@ test('头像具备选中语义、资料入口和自动滚入视口，群/私聊�
   assert.match(root, /openProfile\(agents.currentAgent, 'settings'\)/);
   assert.doesNotMatch(root, /MemberDirectory|inbox|groupPreview/);
 });
+test('聚合入口显示全部，成员管理命名一致，保留独立的 group 路由和定向发送', () => {
+  const root = read('workspace/WorkspaceScreen.tsx');
+  assert.match(root, /id === 'group' \? '全部' : labels.title\(id\)/);
+  assert.match(root, /label="打开成员与设置"/);
+  assert.match(root, /label="返回成员与设置"/);
+  const info = read('group/GroupInfo.tsx');
+  assert.match(info, /title="成员与设置".*backLabel="返回全部"/);
+  assert.match(info, /默认由 Muse 回复/);
+  const group = read('group/GroupChat.tsx');
+  assert.match(group, /accessibilityLabel="全部消息输入框"/);
+  assert.match(group, /resolveGroupTarget\(draft, members, target\)/);
+  for (const content of [root, info, group, read('group/contracts.ts'), read('api/http-client.ts')]) {
+    assert.doesNotMatch(content, /['"`][^'"`\n]*群组信息|['"`][^'"`\n]*群聊/);
+  }
+});
 test('只给消息区加手势，不接管 responder；横向内容屏蔽起手、多指与取消不切换', () => {
   for (const file of ['workspace/ConversationView.tsx', 'group/GroupChat.tsx']) {
     assert.match(read(file), /<ChatSwipeArea onSwipe={onSwipe}><ScrollView/);

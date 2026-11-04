@@ -46,7 +46,7 @@ export function GroupChat({ visible, members, onProfile, onApprovals, onPrivateC
       }
     } catch (failure) {
       if (mounted.current && version === readVersion.current) {
-        const message = failure instanceof Error ? failure.message : '群聊读取失败';
+        const message = failure instanceof Error ? failure.message : '「全部」消息读取失败';
         setError(message);
       }
     }
@@ -93,7 +93,7 @@ export function GroupChat({ visible, members, onProfile, onApprovals, onPrivateC
     <ChatSwipeArea onSwipe={onSwipe}><ScrollView ref={scroll} keyboardShouldPersistTaps="handled" onContentSizeChange={anchor} onLayout={anchor} scrollEventThrottle={16}
       onScroll={(event) => { const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent; following.current = contentSize.height - contentOffset.y - layoutMeasurement.height < l.scrollThreshold; }}
       contentContainerStyle={{ flexGrow: 1, paddingTop: spacing[12], paddingHorizontal: l.sidePadding, paddingBottom: spacing[24], gap: l.groupMessageGap }}>
-      {!snapshot && loading && <Text style={{ ...t.caption, color: c.muted }}>正在读取群聊…</Text>}
+      {!snapshot && loading && <Text style={{ ...t.caption, color: c.muted }}>正在读取消息…</Text>}
       {snapshot && !rows.length && !busy && <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}><Text style={{ ...t.detail, color: c.muted }}>有什么想聊的？</Text></View>}
       {rows.map((row) => <View key={row.key} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing[8] }}>
         {row.sender && <Pressable accessibilityRole="button" accessibilityLabel={`查看${title(row.sender)}的主页`} onPress={() => { Keyboard.dismiss(); onProfile(row.sender!); }} style={{ width: l.smallControl, minHeight: l.smallControl, alignItems: 'center', justifyContent: 'center' }}>
@@ -110,23 +110,23 @@ export function GroupChat({ visible, members, onProfile, onApprovals, onPrivateC
           {row.status && <Text style={{ ...t.caption, color: row.status === 'failed' ? c.danger : c.muted }}>{row.status === 'cancelled' ? '已停止' : '处理失败，不会自动重试'}</Text>}
         </View>
       </View>)}
-      {busy && <Text accessibilityLabel="群聊正在回复" style={{ ...t.caption, color: c.muted }}>正在回复…</Text>}
+      {busy && <Text accessibilityLabel="全部视图正在回复" style={{ ...t.caption, color: c.muted }}>正在回复…</Text>}
       {!!error && <Text accessibilityRole="alert" style={{ ...t.caption, color: c.danger }}>{error}</Text>}
-      {(!!error || uncertain || (!!snapshot?.running && !running)) && <ActionButton label="重新同步群聊" text="同步核对" onPress={() => void reload()} />}
+      {(!!error || uncertain || (!!snapshot?.running && !running)) && <ActionButton label="重新同步全部消息" text="同步核对" onPress={() => void reload()} />}
     </ScrollView></ChatSwipeArea>
-    {pendingApprovals.length > 0 && <ActionButton label="查看群聊待处理审批" text={`待处理审批（${pendingApprovals.length}）`} onPress={() => onApprovals(pendingApprovals[0].agentId!)} style={{ marginHorizontal: l.sidePadding }} />}
+    {pendingApprovals.length > 0 && <ActionButton label="查看全部视图待处理审批" text={`待处理审批（${pendingApprovals.length}）`} onPress={() => onApprovals(pendingApprovals[0].agentId!)} style={{ marginHorizontal: l.sidePadding }} />}
     {choosing && <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 200, marginHorizontal: l.sidePadding, borderRadius: r.card, backgroundColor: c.surface }}>
-      {members.map((member) => <Pressable key={member.id} accessibilityRole="button" accessibilityLabel={`群聊艾特${member.name}`} onPress={() => { setTarget(member.id); setChoosing(false); setDraft((text) => text.endsWith('@') ? text.slice(0, -1) : text); }} style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', padding: spacing[12], gap: spacing[12] }}>
+      {members.map((member) => <Pressable key={member.id} accessibilityRole="button" accessibilityLabel={`全部视图艾特${member.name}`} onPress={() => { setTarget(member.id); setChoosing(false); setDraft((text) => text.endsWith('@') ? text.slice(0, -1) : text); }} style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', padding: spacing[12], gap: spacing[12] }}>
         <MemberAvatar agentId={member.id} size={30} /><Text style={{ ...t.detail, color: c.ink }}>{member.name}</Text>
       </Pressable>)}
     </ScrollView>}
-    {!!target && <Pressable accessibilityRole="button" accessibilityLabel="取消群聊艾特" onPress={() => setTarget(undefined)} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[8], alignSelf: 'flex-start', marginHorizontal: l.sidePadding, padding: spacing[10] }}><Text style={{ ...t.caption, color: c.accentText }}>@{title(target)}</Text><X size={16} color={c.muted} /></Pressable>}
+    {!!target && <Pressable accessibilityRole="button" accessibilityLabel="取消全部视图艾特" onPress={() => setTarget(undefined)} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[8], alignSelf: 'flex-start', marginHorizontal: l.sidePadding, padding: spacing[10] }}><Text style={{ ...t.caption, color: c.accentText }}>@{title(target)}</Text><X size={16} color={c.muted} /></Pressable>}
     <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: l.composerHeight, padding: l.composerPadding, marginHorizontal: l.sidePadding, marginBottom: l.composerBottom, borderRadius: r.round, backgroundColor: c.surface }}>
-      <IconControl icon={AtSign} label="选择群聊回复成员" disabled={busy || uncertain} onPress={() => setChoosing(!choosing)} />
-      <TextInput accessibilityLabel="群聊消息输入框" placeholder="消息" placeholderTextColor={c.faint} multiline value={draft} editable={!running && !uncertain}
+      <IconControl icon={AtSign} label="选择全部视图回复成员" disabled={busy || uncertain} onPress={() => setChoosing(!choosing)} />
+      <TextInput accessibilityLabel="全部消息输入框" placeholder="消息" placeholderTextColor={c.faint} multiline value={draft} editable={!running && !uncertain}
         onChangeText={(text) => { setDraft(text); if (text.endsWith('@')) setChoosing(true); }}
         style={{ ...t.input, flex: 1, minWidth: 0, minHeight: 44, maxHeight: l.composerMaxHeight, padding: spacing[8], color: c.ink }} />
-      <IconControl icon={busy ? Square : ArrowUp} label={busy ? '停止群聊回复' : '发送群聊消息'} disabled={!busy && (!draft.trim() || uncertain || !snapshot || loading)}
+      <IconControl icon={busy ? Square : ArrowUp} label={busy ? '停止全部视图回复' : '发送全部视图消息'} disabled={!busy && (!draft.trim() || uncertain || !snapshot || loading)}
         onPress={() => { if (busy) { const id = pending.current ?? snapshot?.running; if (id) void api.stopGroup(id).catch((failure) => setError((failure as Error).message)); } else void send(); }} />
     </View>
   </View>;

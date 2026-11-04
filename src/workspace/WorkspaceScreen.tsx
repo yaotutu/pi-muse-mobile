@@ -359,7 +359,7 @@ function WorkspaceContent({ snapshot, openConnection, agents }: WorkspaceConnect
   const openGroup = () => changeAgent(() => { Keyboard.dismiss(); setSessionOpen(false); setPage('group'); });
   const targets = avatarTargets(groupMembers.map((member) => member.id));
   const selectedAvatar = page === 'group' ? 'group' : agents.currentAgent;
-  const avatarTitle = (id: string) => id === 'group' ? '群聊' : labels.title(id);
+  const avatarTitle = (id: string) => id === 'group' ? '全部' : labels.title(id);
   const selectAvatar = (id: string) => id === 'group' ? openGroup() : select(id);
   const switchAdjacent = (direction: -1 | 1) => {
     const next = adjacentAvatar(targets, selectedAvatar, direction);
@@ -403,7 +403,7 @@ function WorkspaceContent({ snapshot, openConnection, agents }: WorkspaceConnect
     </Card>
     {agents.currentAgent !== MAIN_AGENT && !isBuiltinMember(agents.currentAgent) && <Card style={styles.exampleCard} tone="danger">
       <Text style={styles.itemTitle}>{deleteConfirm ? '确认删除当前智能体？' : '删除当前智能体'}</Text>
-      <Text style={styles.mutedText}>本成员的私聊历史、群聊讨论与显示记录、消息反馈、工作区文件、规则、技能及绑定任务将被彻底删除，无法撤销；其他成员的历史不受影响。</Text>
+      <Text style={styles.mutedText}>本成员的私聊历史、在「全部」中的讨论与显示记录、消息反馈、工作区文件、规则、技能及绑定任务将被彻底删除，无法撤销；其他成员的历史不受影响。</Text>
       <View style={styles.confirmActions}>
         <ActionButton label={deleteConfirm ? '确认删除智能体' : '删除当前智能体'} text={deleteConfirm ? '确认删除' : '删除智能体'} tone="danger" busy={session.deleting} disabled={hasFileWork(files.getSnapshot())} onPress={() => deleteConfirm ? void remove() : setDeleteConfirm(true)} />
         {deleteConfirm && <ActionButton label="取消删除智能体" text="取消" disabled={session.deleting} onPress={() => setDeleteConfirm(false)} />}
@@ -450,11 +450,11 @@ function WorkspaceContent({ snapshot, openConnection, agents }: WorkspaceConnect
         <SafeAreaView style={styles.screen} edges={['top', 'bottom', 'left', 'right']}>
           {/* 唯一键盘避让层：Android 按真实重叠缩小阅读区，iOS 保留 padding；不再另算键盘高度。 */}
           <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled={Platform.OS !== 'web'} accessibilityViewIsModal={sessionMounted}>
-            {page === 'settings' && !inSettingsSubpage && <View style={styles.pageHeader}><IconControl icon={ArrowLeft} label="返回群组信息" onPress={() => setPage('group-info')} /><Text style={styles.pageTitle}>设置</Text><View style={styles.headerSideButtonSpacer} /></View>}
+            {page === 'settings' && !inSettingsSubpage && <View style={styles.pageHeader}><IconControl icon={ArrowLeft} label="返回成员与设置" onPress={() => setPage('group-info')} /><Text style={styles.pageTitle}>设置</Text><View style={styles.headerSideButtonSpacer} /></View>}
             {(page === 'chat' || page === 'group') && <AgentAvatarStrip targets={targets} selected={selectedAvatar}
               title={avatarTitle} compact={keyboardVisible} disabled={sessionMounted} onSelect={selectAvatar}
               onProfile={(id) => id === 'group' ? openGroupInfo() : openProfile(id)}
-              action={page === 'group' ? <IconControl icon={Ellipsis} label="打开群组信息" onPress={openGroupInfo} />
+              action={page === 'group' ? <IconControl icon={Ellipsis} label="打开成员与设置" onPress={openGroupInfo} />
                 : <IconControl icon={Settings} label={`打开${labels.title(agents.currentAgent)}的智能体设置`} testID="workspace-open-agent-settings" onPress={() => openProfile(agents.currentAgent, 'settings')} />} />}
             <View style={styles.bodyStage}>
               <BlurTargetView ref={chatBlurTarget} style={styles.bodyStage}>

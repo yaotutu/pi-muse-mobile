@@ -19,7 +19,7 @@ const messageId = (value: unknown): value is string => typeof value === 'string'
 const uuid = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9-]{36}$/.test(value);
 const agent = (value: unknown): value is string => typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(value);
 const date = (value: unknown) => typeof value === 'string' && !Number.isNaN(Date.parse(value));
-const invalid = () => new ApiError(502, '群聊数据不正确，请重新同步核对');
+const invalid = () => new ApiError(502, '「全部」消息数据不正确，请重新同步核对');
 function turn(value: unknown): GroupTurn {
   if (!record(value) || !messageId(value.id) || !messageId(value.rootId) || !uuid(value.discussionId) || !agent(value.targetAgentId) ||
     !(value.sourceAgentId === null || agent(value.sourceAgentId)) || !date(value.createdAt) || !(value.finishedAt === null || date(value.finishedAt)) ||
