@@ -96,7 +96,6 @@ import type {
 import type { MessageFeedback, MessageFeedbackEvents, MessageReaction } from '../feedback/types';
 import {
   assertNewsSourceInput,
-  normalizedNewsComment,
   parseNewsArticleDetail,
   parseNewsArticlePage,
   parseNewsFeedbackResponse,
@@ -888,20 +887,6 @@ export class HttpApiClient implements ApiClient {
     return parseNewsFeedbackResponse(await this.request<unknown>(
       `/api/news/articles/${encodeURIComponent(articleId)}/saved`,
       { method: 'PUT', body: { saved }, signal },
-    ));
-  }
-
-  async addNewsComment(articleId: string, text: string, signal?: AbortSignal) {
-    return parseNewsFeedbackResponse(await this.request<unknown>(
-      `/api/news/articles/${encodeURIComponent(articleId)}/comments`,
-      { method: 'POST', body: { text: normalizedNewsComment(text) }, signal },
-    ));
-  }
-
-  async deleteNewsComment(articleId: string, commentId: string, signal?: AbortSignal) {
-    return parseNewsFeedbackResponse(await this.request<unknown>(
-      `/api/news/articles/${encodeURIComponent(articleId)}/comments/${encodeURIComponent(commentId)}`,
-      { method: 'DELETE', signal },
     ));
   }
 

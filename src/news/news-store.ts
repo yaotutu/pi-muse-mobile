@@ -1,8 +1,6 @@
 import { ApiError, isRequestCancelled } from '../api/errors';
-import {
-  assertNewsSourceInput,
-  normalizedNewsComment,
-} from './contracts';
+import { assertNewsSourceInput } from './contracts';
+import { newsActionLocked } from './news-action-interaction';
 import type {
   NewsArticle,
   NewsArticleWork,
@@ -24,9 +22,6 @@ const initialArticleWork = (): NewsArticleWork => ({
   savedWriting: false,
   savedUncertain: false,
   savedReviewed: false,
-  commentWriting: false,
-  commentUncertain: false,
-  commentReviewed: false,
 });
 
 const initialSourceDeleteWork = (): NewsSourceDeleteWork => ({
@@ -62,7 +57,6 @@ const initial = (): NewsSnapshot => ({
   articleStale: true,
   articleMissing: false,
   articleWork: {},
-  commentDrafts: {},
   feedRefreshing: false,
   feedUncertain: false,
   feedReviewed: false,
@@ -78,10 +72,6 @@ const uncertainWrite = (error: unknown): boolean =>
 
 const sameFilter = (state: NewsSnapshot, view: NewsView, savedOnly: boolean) =>
   state.view === view && state.savedOnly === savedOnly;
-
-const feedbackBusy = (work: NewsArticleWork) =>
-  work.reactionWriting || work.savedWriting || work.commentWriting ||
-  work.reactionUncertain || work.savedUncertain || work.commentUncertain;
 
 /**
  * 当前连接内的新闻页状态。新闻不绑定聊天智能体，也不读取聊天 reset/选中智能体。
@@ -515,7 +505,6 @@ export class NewsStore {
             ...work,
             reactionReviewed: work.reactionUncertain ? true : work.reactionReviewed,
             savedReviewed: work.savedUncertain ? true : work.savedReviewed,
-            commentReviewed: work.commentUncertain ? true : work.commentReviewed,
           },
         },
       });
@@ -561,7 +550,7 @@ export class NewsStore {
   setReaction = async (articleId: string, reaction: NewsReaction | null): Promise<boolean> => {
     const article = this.articleFromState(articleId);
     const work = this.workFor(articleId);
-    if (!this.canRead() || !article || feedbackBusy(work)) return false;
+    if (!this.canRead() || !article || newsActionLocked(work)) return false;
     if (article.feedback.reaction === reaction) return true;
     const controller = new AbortController();
     this.writeControllers.add(controller);
@@ -605,7 +594,7 @@ export class NewsStore {
   setSaved = async (articleId: string, saved: boolean): Promise<boolean> => {
     const article = this.articleFromState(articleId);
     const work = this.workFor(articleId);
-    if (!this.canRead() || !article || feedbackBusy(work)) return false;
+    if (!this.canRead() || !article || newsActionLocked(work)) return false;
     if (article.feedback.saved === saved) return true;
     const controller = new AbortController();
     this.writeControllers.add(controller);
@@ -641,108 +630,17 @@ export class NewsStore {
     return article ? this.setSaved(articleId, !article.feedback.saved) : false;
   };
 
-  setCommentDraft(articleId: string, text: string) {
-    if (this.disposed) return;
-    this.publish({ commentDrafts: { ...this.state.commentDrafts, [articleId]: text } });
-  };
-
-  addComment = async (articleId: string): Promise<boolean> => {
-    const work = this.workFor(articleId);
-    if (!this.canRead() || feedbackBusy(work)) return false;
-    const draft = this.state.commentDrafts[articleId] ?? '';
-    let text: string;
-    try {
-      text = normalizedNewsComment(draft);
-    } catch (error) {
-      this.publish({ notice: errorMessage(error, '评论不能为空') });
-      return false;
-    }
-    const controller = new AbortController();
-    this.writeControllers.add(controller);
-    this.patchWork(articleId, { commentWriting: true });
-    try {
-      const feedback = await this.client.addNewsComment(articleId, text, controller.signal);
-      if (this.disposed) return false;
-      this.applyFeedback(articleId, feedback);
-      if ((this.state.commentDrafts[articleId] ?? '') === draft) {
-        this.publish({ commentDrafts: { ...this.state.commentDrafts, [articleId]: '' } });
-      }
-      this.patchWork(articleId, {
-        commentWriting: false,
-        commentUncertain: false,
-        commentReviewed: false,
-      });
-      return true;
-    } catch (error) {
-      if (this.disposed) return false;
-      const uncertain = uncertainWrite(error);
-      this.patchWork(articleId, {
-        commentWriting: false,
-        commentUncertain: uncertain,
-        commentReviewed: false,
-      });
-      if (uncertain) void this.readbackArticle(articleId);
-      this.publish({
-        notice: uncertain
-          ? '评论提交结果未明，草稿已保留；回读并明确核对前不会重复提交。'
-          : errorMessage(error, '评论保存失败，草稿已保留'),
-      });
-      return false;
-    } finally {
-      this.writeControllers.delete(controller);
-    }
-  };
-
-  deleteComment = async (articleId: string, commentId: string): Promise<boolean> => {
-    const work = this.workFor(articleId);
-    if (!this.canRead() || feedbackBusy(work)) return false;
-    const controller = new AbortController();
-    this.writeControllers.add(controller);
-    this.patchWork(articleId, { commentWriting: true });
-    try {
-      const feedback = await this.client.deleteNewsComment(articleId, commentId, controller.signal);
-      if (this.disposed) return false;
-      this.applyFeedback(articleId, feedback);
-      this.patchWork(articleId, {
-        commentWriting: false,
-        commentUncertain: false,
-        commentReviewed: false,
-      });
-      return true;
-    } catch (error) {
-      if (this.disposed) return false;
-      const uncertain = uncertainWrite(error);
-      this.patchWork(articleId, {
-        commentWriting: false,
-        commentUncertain: uncertain,
-        commentReviewed: false,
-      });
-      if (uncertain) void this.readbackArticle(articleId);
-      this.publish({
-        notice: uncertain
-          ? '删除评论结果未明，正在回读；核对前不会重复删除。'
-          : errorMessage(error, '删除评论失败，请重试'),
-      });
-      return false;
-    } finally {
-      this.writeControllers.delete(controller);
-    }
-  };
-
   /** 详情回读成功只标记已核对；仍需 UI 明确调用，不能仅清错误后自动重发。 */
   acknowledgeArticleReadback = (articleId: string) => {
     const work = this.workFor(articleId);
-    const reviewed = work.reactionUncertain && work.reactionReviewed ||
-      work.savedUncertain && work.savedReviewed ||
-      work.commentUncertain && work.commentReviewed;
-    if (!reviewed || work.reactionWriting || work.savedWriting || work.commentWriting) return false;
+    const reviewed = (work.reactionUncertain || work.savedUncertain) &&
+      (!work.reactionUncertain || work.reactionReviewed) && (!work.savedUncertain || work.savedReviewed);
+    if (!reviewed || work.reactionWriting || work.savedWriting) return false;
     this.patchWork(articleId, {
       reactionUncertain: false,
       reactionReviewed: false,
       savedUncertain: false,
       savedReviewed: false,
-      commentUncertain: false,
-      commentReviewed: false,
     });
     this.publish({ notice: '已解除文章提交锁定；再次操作会发起新的写入。' });
     return true;

@@ -65,8 +65,6 @@ function createClient() {
     details: [],
     reactions: [],
     saves: [],
-    addComments: [],
-    deleteComments: [],
     createSources: [],
     deleteSources: [],
     refreshes: [],
@@ -95,12 +93,6 @@ function createClient() {
     },
     setNewsSaved(articleId, saved, signal) {
       return pending('saves', { articleId, saved, signal });
-    },
-    addNewsComment(articleId, text, signal) {
-      return pending('addComments', { articleId, text, signal });
-    },
-    deleteNewsComment(articleId, commentId, signal) {
-      return pending('deleteComments', { articleId, commentId, signal });
     },
     createNewsSource(input, signal) {
       return pending('createSources', { input, signal });
@@ -211,7 +203,7 @@ test('读取失败保留旧列表、源和详情并显示错误；迟到旧连�
   assert.equal(store.getSnapshot().articles.length, 0);
 });
 
-test('每文章反馈写入互斥，反应与收藏状态独立；评论未明写保留草稿并锁住重发', async () => {
+test('每篇反应与收藏互斥写入；未明反应回读后仍需显式核对，历史评论保持原样', async () => {
   const client = createClient();
   const store = createNewsStore(client);
   await openStore(store, client, { articles: [article()], nextCursor: null });
@@ -235,43 +227,27 @@ test('每文章反馈写入互斥，反应与收藏状态独立；评论未明�
   assert.equal(store.getSnapshot().article.feedback.saved, true);
   assert.equal(store.getSnapshot().articles[0].feedback.saved, true);
 
-  store.setCommentDraft('article-1', '  新评论  ');
-  const adding = store.addComment('article-1');
-  assert.equal(client.calls.addComments[0].text, '新评论');
-  client.calls.addComments[0].reject(new ApiError(503, '新闻服务暂不可用'));
-  assert.equal(await adding, false);
+  const reactingAgain = store.toggleReaction('article-1', 'dislike');
+  client.calls.reactions[1].reject(new ApiError(503, '新闻服务暂不可用'));
+  assert.equal(await reactingAgain, false);
   await tick();
-
-  assert.equal(store.getSnapshot().commentDrafts['article-1'], '  新评论  ');
-  assert.equal(store.getSnapshot().articleWork['article-1'].commentUncertain, true);
-  assert.equal(client.calls.details.length, 2, '未明写应自动发起只读回读');
-  assert.equal(await store.addComment('article-1'), false);
-  assert.equal(client.calls.addComments.length, 1, '核对前不能重复 POST');
-
-  client.calls.details[1].resolve({
-    article: article({
-      feedback: feedback({
-        reaction: 'like',
-        saved: true,
-        comments: [{
-          id: 'comment-1',
-          text: '新评论',
-          createdAt: '2026-10-30T02:00:00Z',
-          updatedAt: '2026-10-30T02:00:00Z',
-        }],
-      }),
-    }),
-  });
+  assert.equal(store.getSnapshot().articleWork['article-1'].reactionUncertain, true);
+  assert.equal(client.calls.details.length, 2, '未明写应自动发起只读核对');
+  assert.equal(await store.toggleReaction('article-1', 'dislike'), false);
+  assert.equal(await store.toggleSaved('article-1'), false);
+  assert.equal(client.calls.reactions.length, 2, '回读前不得重发');
+  const historical = [{ id: 'comment-1', text: '历史内容', createdAt: '2026-10-30T02:00:00Z', updatedAt: '2026-10-30T02:00:00Z' }];
+  client.calls.details[1].resolve({ article: article({ feedback: feedback({ reaction: 'dislike', saved: true, comments: historical }) }) });
   await tick();
-  assert.equal(store.getSnapshot().articleWork['article-1'].commentReviewed, true);
-  assert.equal(await store.addComment('article-1'), false, '仅回读成功不能自动解锁');
+  assert.equal(store.getSnapshot().articleWork['article-1'].reactionReviewed, true);
+  assert.equal(await store.toggleReaction('article-1', 'dislike'), false, '读取成功不自动解锁');
   assert.equal(store.acknowledgeArticleReadback('article-1'), true);
-
-  const retry = store.addComment('article-1');
-  assert.equal(client.calls.addComments.length, 2, '显式核对后才允许新写入');
-  client.calls.addComments[1].resolve(feedback({ reaction: 'like', saved: true, comments: [] }));
-  assert.equal(await retry, true);
-  assert.equal(store.getSnapshot().commentDrafts['article-1'], '');
+  const undo = store.toggleReaction('article-1', 'dislike');
+  assert.equal(client.calls.reactions[2].reaction, null, '重复点击选中反应应撤销');
+  client.calls.reactions[2].resolve(feedback({ saved: true, comments: historical }));
+  assert.equal(await undo, true);
+  assert.deepEqual(store.getSnapshot().article.feedback.comments, historical, '历史数据仍保留，不删除也不展示');
+  assert.equal(store.getSnapshot().articles.length, 1, '不喜欢不会自动移走文章');
   store.dispose();
 });
 
@@ -299,20 +275,6 @@ test('反馈写成功取消此前列表/详情读取，迟到旧响应不能覆�
   assert.equal(store.getSnapshot().article.feedback.saved, true);
   assert.equal(store.getSnapshot().articles[0].feedback.reaction, 'like');
   assert.equal(store.getSnapshot().articles[0].feedback.saved, true);
-  store.dispose();
-});
-
-test('评论提交期间更新草稿时，成功响应保留较新的草稿', async () => {
-  const client = createClient();
-  const store = createNewsStore(client);
-  await openStore(store, client, { articles: [article()], nextCursor: null });
-
-  store.setCommentDraft('article-1', '提交版本');
-  const adding = store.addComment('article-1');
-  store.setCommentDraft('article-1', '更新后的草稿');
-  client.calls.addComments[0].resolve(feedback());
-  assert.equal(await adding, true);
-  assert.equal(store.getSnapshot().commentDrafts['article-1'], '更新后的草稿');
   store.dispose();
 });
 

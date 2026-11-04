@@ -1,90 +1,47 @@
-/** 新闻文章菜单只消费 NewsStore 的既有反馈状态；评论仍进入阅读详情。 */
-import { Bookmark, MessageCircle } from 'lucide-react-native';
-import { useRef } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View, type ViewInstance } from 'react-native';
+/** 新闻阅读反馈直接呈现，只有喜欢／不喜欢／收藏；写入仍由连接级 Store 串行处理。
+ * 不把点击或收藏伪装成兴趣学习，也不删除服务端返回的历史评论。
+ */
+import { Bookmark, ThumbsDown, ThumbsUp, type LucideIcon } from 'lucide-react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../theme/ThemeProvider';
-import { ThemeStatusBar } from '../theme/ThemeStatusBar';
 import { spacing, themeTokens } from '../theme/tokens';
-import { ActionButton } from '../ui/ActionButton';
-import { AnchoredFeedbackMenu, FeedbackMenuRow, FeedbackMenuRows, FeedbackReactionPill } from '../ui/AnchoredFeedbackMenu';
-import { FeedbackNotice } from '../ui/Feedback';
-import type { MenuRect } from '../ui/menu-position';
+import { newsActionLocked } from './news-action-interaction';
 import type { NewsStore } from './news-store';
-import { newsActionPresentation } from './news-action-interaction';
 import type { NewsArticle, NewsArticleWork } from './types';
 
-export function NewsFeedbackBadge({ article, onOpen }: { article: NewsArticle; onOpen: (target: ViewInstance | null) => void }) {
-  const { colors } = useTheme();
-  const ref = useRef<ViewInstance>(null);
-  const { reaction, saved, comments } = article.feedback;
-  if (!newsActionPresentation(article.feedback).hasBadge) return null;
-  return <Pressable ref={ref} accessibilityRole="button"
-    accessibilityLabel={`打开文章操作，${reaction === 'like' ? '已喜欢' : reaction === 'dislike' ? '已不喜欢' : '无反应'}，${saved ? '已收藏' : '未收藏'}，${comments.length} 条评论`}
-    onPress={() => onOpen(ref.current)} testID={`news-feedback-badge-${article.id}`}
-    style={[styles.badge, { borderColor: colors.line, backgroundColor: colors.canvas }]}>
-    {reaction && <Text style={styles.badgeEmoji}>{reaction === 'like' ? '👍' : '👎'}</Text>}
-    {saved && <Bookmark size={themeTokens.layout.iconSize - spacing[4]} color={colors.accentText} />}
-    {comments.length > 0 && <><MessageCircle size={themeTokens.layout.iconSize - spacing[4]} color={colors.ink} />
-      <Text style={[styles.badgeCount, { color: colors.ink }]}>{comments.length}</Text></>}
-  </Pressable>;
-}
-
-export function NewsArticleActions({ article, work, store, anchor, notice, onClose, onComments }: {
-  article: NewsArticle; work?: NewsArticleWork; store: NewsStore; anchor: MenuRect;
-  notice?: string; onClose: () => void; onComments: () => void;
+export function NewsArticleActions({ article, work, store }: {
+  article: NewsArticle; work?: NewsArticleWork; store: NewsStore;
 }) {
   const { colors } = useTheme();
-  const presentation = newsActionPresentation(article.feedback, work);
-  const locked = presentation.locked;
-  const busy = !!work && (work.reactionWriting || work.savedWriting || work.commentWriting);
-  const uncertain = !!work && (work.reactionUncertain || work.savedUncertain || work.commentUncertain);
-  const reviewed = !!work && (!work.reactionUncertain || work.reactionReviewed) &&
-    (!work.savedUncertain || work.savedReviewed) && (!work.commentUncertain || work.commentReviewed);
-  const chooseReaction = async (reaction: 'like' | 'dislike') => {
-    if (!locked && await store.toggleReaction(article.id, reaction)) onClose();
-  };
-  const toggleSaved = async () => {
-    if (!locked && await store.toggleSaved(article.id)) onClose();
-  };
-
-  return <Modal transparent visible animationType="none" statusBarTranslucent navigationBarTranslucent
-    onRequestClose={onClose}>
-    <ThemeStatusBar />
-    <AnchoredFeedbackMenu anchor={anchor} align="left" dismissLabel="关闭文章操作" onDismiss={onClose}
-      testID={`news-article-menu-${article.id}`}>
-      <FeedbackReactionPill reaction={presentation.reaction} locked={locked} busy={busy}
-        subjectLabel="这篇文章" likeTestID={`news-like-${article.id}`}
-        dislikeTestID={`news-dislike-${article.id}`} onReaction={(reaction) => void chooseReaction(reaction)} />
-      <FeedbackMenuRows>
-        <FeedbackMenuRow icon={Bookmark} label={presentation.saved ? '取消收藏这篇文章' : '收藏这篇文章'}
-          text={presentation.saved ? '取消收藏' : '收藏'} selected={presentation.saved} disabled={locked}
-          onPress={() => void toggleSaved()} testID={`news-save-${article.id}`} />
-        <FeedbackMenuRow icon={MessageCircle} label={`查看文章评论，${article.feedback.comments.length} 条`}
-          text={`评论${article.feedback.comments.length ? `  ${article.feedback.comments.length}` : ''}`}
-          onPress={onComments} testID={`news-comments-open-${article.id}`} />
-      </FeedbackMenuRows>
-      {(notice || uncertain) && <ScrollView style={[styles.menuNotice, { backgroundColor: colors.canvas }]}
-        contentContainerStyle={styles.menuNoticeContent}>
-        <FeedbackNotice tone={uncertain ? 'warning' : 'danger'}
-          text={uncertain ? '操作结果未明。回读文章和评论并核对实际状态；核对前不会重复发送。' : notice} />
-        {uncertain && <View style={styles.recovery}>
-          <ActionButton label="重新读取文章以核对" text="回读核对" onPress={() => void store.readbackArticle(article.id)}
-            testID="news-article-menu-readback" />
-          {reviewed && <ActionButton label="确认已核对文章状态并解锁操作" text="已核对，解锁"
-            onPress={() => store.acknowledgeArticleReadback(article.id)} testID="news-article-menu-acknowledge" />}
-        </View>}
-      </ScrollView>}
-    </AnchoredFeedbackMenu>
-  </Modal>;
+  const locked = newsActionLocked(work);
+  const { reaction, saved } = article.feedback;
+  const action = (id: string, Icon: LucideIcon, text: string, label: string, selected: boolean,
+    busy: boolean, onPress: () => void) => <Pressable accessibilityRole="button" key={id}
+    accessibilityLabel={`${label}，${article.title}`} accessibilityState={{ selected, disabled: locked, busy }}
+    disabled={locked} onPress={onPress} testID={`news-${id}-${article.id}`}
+    style={({ pressed }) => [styles.action, id === 'save' && styles.save,
+      selected && { backgroundColor: colors.selected }, locked && styles.disabled, pressed && styles.pressed]}>
+    <Icon size={themeTokens.newsReading.actionIconSize} color={selected ? colors.accentText : colors.muted}
+      fill={selected ? colors.selected : 'none'} strokeWidth={selected ? 2.5 : 1.7} />
+    <Text style={[styles.text, { color: selected ? colors.accentText : colors.muted, fontWeight: selected ? '600' : '400' }]}>{text}</Text>
+  </Pressable>;
+  return <View style={styles.row} testID={`news-actions-${article.id}`}
+    onTouchStart={(event) => event.stopPropagation()}>
+    {action('like', ThumbsUp, reaction === 'like' ? '已喜欢' : '喜欢', reaction === 'like' ? '撤销喜欢' : '喜欢',
+      reaction === 'like', !!work?.reactionWriting, () => { void store.toggleReaction(article.id, 'like'); })}
+    {action('dislike', ThumbsDown, reaction === 'dislike' ? '已不喜欢' : '不喜欢', reaction === 'dislike' ? '撤销不喜欢' : '不喜欢',
+      reaction === 'dislike', !!work?.reactionWriting, () => { void store.toggleReaction(article.id, 'dislike'); })}
+    {action('save', Bookmark, saved ? '已收藏' : '收藏', saved ? '取消收藏' : '收藏',
+      saved, !!work?.savedWriting, () => { void store.toggleSaved(article.id); })}
+  </View>;
 }
 
 const styles = StyleSheet.create({
-  badge: { minHeight: themeTokens.layout.smallControl, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center',
-    gap: spacing[4], paddingHorizontal: spacing[10], borderRadius: themeTokens.radius.round,
-    borderWidth: StyleSheet.hairlineWidth },
-  badgeEmoji: { fontSize: themeTokens.messageFeedback.badgeEmojiSize },
-  badgeCount: { ...themeTokens.typography.caption },
-  menuNotice: { flexShrink: 1, borderRadius: themeTokens.radius.field },
-  menuNoticeContent: { padding: spacing[8], gap: spacing[8] },
-  recovery: { gap: spacing[8] },
+  row: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing[4] },
+  action: { minHeight: themeTokens.layout.smallControl, flexDirection: 'row', alignItems: 'center',
+    gap: spacing[6], paddingHorizontal: spacing[8], paddingVertical: spacing[6], borderRadius: themeTokens.radius.field },
+  save: { marginLeft: 'auto' },
+  text: { ...themeTokens.typography.caption },
+  disabled: { opacity: themeTokens.interaction.disabledOpacity },
+  pressed: { opacity: themeTokens.interaction.pressedOpacity },
 });

@@ -139,7 +139,7 @@ test('会话动态按 OpenMuse 极简时间线展示真实状态，去除冗余�
   assert.doesNotMatch(execution, /查看活动历史|状态说明/);
 });
 
-test('会话复用整组分段，新闻使用紧凑受控文字Tab', () => {
+test('会话复用整组分段，新闻使用紧凑筛选菜单', () => {
   const control = read('src/ui/SegmentedControl.tsx');
   const session = read('src/workspace/SessionPanel.tsx');
   const news = read('src/workspace/NewsPage.tsx');
@@ -147,7 +147,7 @@ test('会话复用整组分段，新闻使用紧凑受控文字Tab', () => {
   assert.doesNotMatch(news, /<SegmentedControl/);
   assert.match(news, /\(\['recommended', 'all'\] as const\)\.map/);
   assert.match(news, /store\.setView\(view\)/);
-  assert.match(news, /aria-selected=\{snapshot\.view === view\}/);
+  assert.match(news, /selected=\{snapshot\.view === view\}/);
   for (const [id, label] of [['activity', '动态'], ['approvals', '审批'], ['history', '历史']]) {
     assert.match(session, new RegExp(`label: '${label}'.*testID: 'workspace-session-tab-${id}'`));
   }
@@ -275,7 +275,7 @@ test('新闻按主视图偏好进入，阅读保留头像栏与现场，切视�
   assert.match(profile, /accessibilityRole="radio"/);
   assert.doesNotMatch(profile, /onReadNews/);
   assert.doesNotMatch(reader, /label="返回新闻设置"/);
-  assert.match(reader, /visible && menu && menuArticle/);
+  assert.match(reader, /visible && anchor && <Modal/);
 });
 
 test('智能体维护归智能体子页，全局设置来自群组信息，会话面板只处理当前执行', () => {

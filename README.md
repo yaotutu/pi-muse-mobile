@@ -74,6 +74,12 @@ The release workflow builds a signed Android APK and an unsigned iOS IPA for use
 
 Current source uses the top avatar strip to switch between All and individual agents. Swipe left or right in the All message area, a private chat, or News reading to follow the same avatar order; switching does not clear drafts or stop replies. Long-press an agent avatar for its settings, files, rules, skills, and maintenance, or long-press All for global settings. News defaults to Reading; choose Reading or Chat under Main View in its agent settings. The choice is stored locally per server address and agent, survives app restarts and reauthentication, and does not synchronize across devices. All submissions leave the input as soon as the client takes ownership of the pending message; you can prepare a new draft during the reply, and completion never clears that new draft. Unconfirmed submissions remain recoverable and are not automatically resent. Cold launch opens All: no `@` routes only to main, while an explicit `@` sends only to that member. Group and private contexts stay separate; All remains text-only and does not provide message feedback.
 
+### News reading
+
+- **A lightweight reading feed.** The News view uses a single text column: source and Chinese-formatted local time, headline, and a two-line excerpt. Open an article for its full RSS text and recommendation reason, with selectable text; returning preserves the list position.
+- **Personal feedback.** Every article offers Like, Dislike, and Save directly. Like and Dislike are mutually exclusive and can be toggled off; Save is independent. Disliking an article does not immediately remove it. The reader has no comments UI and does not delete historical comments stored on the server.
+- **Compact tools.** Choose Recommended or All from a menu, filter saved articles separately, and use More for source management, fetch status, and manual fetching. Original links and conversation discussion are in the detail toolbar. The client adds no click tracking, view counts, or interest extraction, and does not claim a successful feedback write has already changed recommendations.
+
 ### Global settings, memory, Dream, and themes
 
 - **Server connection management.** Save one reachable Pi Muse address, authenticate with the server AccessKey, and keep the resulting session token on the device. The plaintext AccessKey is not persisted by the client.
