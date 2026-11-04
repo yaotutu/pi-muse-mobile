@@ -50,3 +50,14 @@ test('无数字角标、全部不聚合，断线标记未知，触摸期间冻�
   assert.match(root, /runtimeSnapshot.connection !== 'live' \? 'unknown'/);
   assert.doesNotMatch(root, /key={targets/);
 });
+
+test('动态审批面板与头像共用检查对象的整体状态，不以私聊空闲覆盖通知审批或后台工作', () => {
+  const root = readFileSync(new URL('../src/workspace/WorkspaceScreen.tsx', import.meta.url), 'utf8');
+  assert.match(root, /const inspectedStatus = avatarStatus\(focusedAgentId\)/);
+  assert.match(root, /const statusLabel = connectionError \? connectionLabel\(snapshot\) : avatarStatusDetail\(focusedAgentId\)/);
+  assert.match(root, /inspectedStatus === 'error' \? 'danger'/);
+  assert.match(root, /inspectedStatus === 'waiting' \|\| inspectedStatus === 'unknown' \? 'warning'/);
+  assert.match(root, /inspectedStatus === 'working' \? 'accent' : 'neutral'/);
+  assert.match(root, /testID="workspace-session-status" tone={statusTone}/);
+  assert.doesNotMatch(root, /runtime\.label|runtime\.running/);
+});

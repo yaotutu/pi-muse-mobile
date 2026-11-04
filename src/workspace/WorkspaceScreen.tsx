@@ -257,8 +257,6 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
   const targetScale = Math.max(25, Math.ceil((Math.hypot(contentWidth / 2, height - avatarCenterY) / bloomRadius) * 1.08));
   const inSettingsSubpage = page === 'settings' && settingsSubpage !== null;
   const newsVisible = page === 'news' || (page === 'feature' && settingsSubpage === 'news-sources');
-  const statusLabel = snapshot.status === 'authentication-required' || snapshot.status === 'reset-error' || snapshot.status === 'storage-error'
-    ? connectionLabel(snapshot) : runtime.label;
   const labelIds = agents.agents.map((agent) => agent.id).sort().join('|');
   if (labelState.ids !== labelIds) setLabelState({ ids: labelIds, labels: labelState.labels.sync(agents.agents) });
   const labels = labelState.ids === labelIds ? labelState.labels : labelState.labels.sync(agents.agents);
@@ -397,6 +395,13 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
   useEffect(() => () => clearTimeout(avatarRelease.current), []);
   const avatarStatus = (id: string) => runtimeSnapshot.connection !== 'live' ? 'unknown' as const : runtimeSnapshot.presences.find((item) => item.agentId === id)?.state ?? 'idle';
   const avatarStatusDetail = (id: string) => runtimeSnapshot.connection !== 'live' ? '连接已断开，状态待同步' : runtimeSnapshot.presences.find((item) => item.agentId === id)?.label ?? '空闲';
+  // 面板检查整个智能体；私聊运行状态不包含通知讨论或后台处理，不能据此显示“就绪”。
+  const inspectedStatus = avatarStatus(focusedAgentId);
+  const connectionError = snapshot.status === 'authentication-required' || snapshot.status === 'reset-error' || snapshot.status === 'storage-error';
+  const statusLabel = connectionError ? connectionLabel(snapshot) : avatarStatusDetail(focusedAgentId);
+  const statusTone = connectionError || inspectedStatus === 'error' ? 'danger'
+    : inspectedStatus === 'waiting' || inspectedStatus === 'unknown' ? 'warning'
+    : inspectedStatus === 'working' ? 'accent' : 'neutral';
   const selectedAvatar = page === 'group' ? 'group' : agents.currentAgent;
   const avatarTitle = (id: string) => id === 'group' ? '全部' : labels.title(id);
   const selectAvatar = (id: string) => id === 'group' ? openGroup() : select(id);
@@ -577,7 +582,7 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
                 headerCenter={
                   <View style={styles.identity}>
                     <MemberAvatar agentId={focusedAgentId} size={l.headerAvatar} />
-                    <View style={[styles.identityLabel, styles.sessionIdentityLabel]}>{sessionName && <Text numberOfLines={1} style={styles.identityName}>{sessionName}</Text>}<StatusPill label={statusLabel} testID="workspace-session-status" tone={!runtime.synchronized ? 'warning' : runtime.running ? 'accent' : 'neutral'} /></View>
+                    <View style={[styles.identityLabel, styles.sessionIdentityLabel]}>{sessionName && <Text numberOfLines={1} style={styles.identityName}>{sessionName}</Text>}<StatusPill label={statusLabel} testID="workspace-session-status" tone={statusTone} /></View>
                   </View>
                 }
                 headerRight={<View style={styles.headerSideButtonSpacer} />}
