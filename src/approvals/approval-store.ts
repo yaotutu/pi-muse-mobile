@@ -74,6 +74,7 @@ export class ApprovalStore {
     if (
       !this.active
       || event.event === 'agent_status_updated'
+      || event.event === 'agent_presence_updated'
       || event.event === 'activity_updated'
       || event.event === 'conversation_updated'
     ) return;

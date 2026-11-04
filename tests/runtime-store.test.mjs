@@ -7,7 +7,7 @@ import { ApprovalStore } from '../src/approvals/approval-store.ts';
 import { approvalFixture, approvalResolution } from './helpers/approval-fixtures.ts';
 
 const status = (overrides = {}) => ({ activityId: null, agentId: 'a', runId: 'run-a', revision: 1, source: 'chat', jobId: null, title: '当前执行', status: 'running', phase: 'waiting_model', label: '等待模型响应', tools: [], subagents: [], pendingApprovalIds: [], startedAt: '2026-10-19T10:00:00.000Z', updatedAt: '2026-10-19T10:00:00.000Z', endedAt: null, ...overrides });
-const ready = (runs = [], instanceId = 'instance-a') => ({ event: 'ready', data: { instanceId, serverTime: '2026-10-19T10:00:00.000Z', agentStatuses: runs, pendingApprovals: [], activities: [] } });
+const ready = (runs = [], instanceId = 'instance-a') => ({ event: 'ready', data: { instanceId, serverTime: '2026-10-19T10:00:00.000Z', agentPresences: [], agentStatuses: runs, pendingApprovals: [], activities: [] } });
 const update = (run, instanceId = 'instance-a') => ({ event: 'agent_status_updated', data: { ...run, instanceId } });
 const conversationUpdate = (agentId = 'a', sessionId = 'session-a', instanceId = 'instance-a') => ({
   event: 'conversation_updated',
@@ -28,6 +28,27 @@ function fixture() {
   const store = new RuntimeStore(client, { retryDelay: () => 1 });
   return { store, client, connections, queries };
 }
+
+test('头像状态与运行共享通知流，增量只替换对应智能体，断线保留观测并由 ready 全量恢复', async () => {
+  const { store, connections } = fixture();
+  const presence = (agentId, state) => ({ agentId, state, label: state, lastActiveAt: null });
+  store.setActive(true);
+  const first = ready(); first.data.agentPresences = [presence('a', 'working'), presence('b', 'waiting')];
+  connections[0].onEvent(first);
+  connections[0].onEvent({ event: 'agent_presence_updated', data: { instanceId: 'instance-a', ...presence('a', 'idle') } });
+  assert.equal(store.getSnapshot().presences.find((item) => item.agentId === 'a').state, 'idle');
+  assert.equal(store.getSnapshot().presences.find((item) => item.agentId === 'b').state, 'waiting');
+  assert.deepEqual(store.getSnapshot().runs, []);
+  connections[0].resolve(); await tick();
+  assert.equal(store.getSnapshot().connection, 'reconnecting');
+  assert.equal(store.getSnapshot().presences.length, 2);
+  store.retry();
+  connections.at(-1).onEvent(ready([], 'instance-b'));
+  assert.deepEqual(store.getSnapshot().presences, [], '新的空快照不能保留旧等待或错误');
+  connections[0].onEvent({ event: 'agent_presence_updated', data: { instanceId: 'instance-a', ...presence('b', 'error') } });
+  assert.deepEqual(store.getSnapshot().presences, []);
+  store.dispose();
+});
 
 test('通知流仅一条且按会话隔离，低版本和重复帧不倒退', () => {
   const { store, connections } = fixture();

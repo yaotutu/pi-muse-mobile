@@ -1,8 +1,10 @@
-/** 头像顺序只取决于身份，不随聊天时间变化，左右切换始终可预测。 */
-export function avatarTargets(ids: string[]) {
+/** 全部固定在最左；置顶分组优先，各组按有效活动时间排序，同时间使用稳定身份顺序。 */
+export function avatarTargets(ids: string[], pinned: readonly string[] = [], recency: Readonly<Record<string, string | null>> = {}) {
   const builtins = ['local-main', 'news-internal', 'sms-internal'];
   const known = new Set(ids);
-  return ['group', ...builtins.filter((id) => known.has(id)), ...[...known].filter((id) => !builtins.includes(id)).sort()];
+  const stable = [...builtins.filter((id) => known.has(id)), ...[...known].filter((id) => id !== 'group' && !builtins.includes(id)).sort()];
+  const rank = new Map(stable.map((id, index) => [id, index]));
+  return ['group', ...stable.sort((a, b) => Number(pinned.includes(b)) - Number(pinned.includes(a)) || (recency[b] ?? '').localeCompare(recency[a] ?? '') || rank.get(a)! - rank.get(b)!)];
 }
 
 export function adjacentAvatar(targets: string[], current: string, direction: -1 | 1) {

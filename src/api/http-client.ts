@@ -65,6 +65,7 @@ import {
   parseAgentStatusResponse,
   parseAgentStatusUpdate,
   parseRuntimeReady,
+  parseAgentPresence,
 } from '../runtime/contracts';
 import { RuntimeSseParser, RuntimeSseParseError, decodeRuntimeFrame } from '../runtime/sse';
 import type { ApprovalPage, ApprovalQuery, ApprovalView } from '../approvals/types';
@@ -1162,6 +1163,7 @@ export class HttpApiClient implements ApiClient {
           if (decoded.data.instanceId !== readyInstanceId) throw new ApiError(502, '推送事件与 ready 的 instanceId 不一致');
           let event: RuntimeEvent;
           if (decoded.event === 'agent_status_updated') event = { event: decoded.event, data: parseAgentStatusUpdate(decoded.data, readyInstanceId) };
+          else if (decoded.event === 'agent_presence_updated') event = { event: decoded.event, data: { ...parseAgentPresence(decoded.data), instanceId: readyInstanceId } };
           else if (decoded.event === 'approval_pending') {
             const approval = parseApprovalView(decoded.data);
             if (approval.status !== 'pending') throw new ApiError(502, '待审批事件不是 pending 状态');

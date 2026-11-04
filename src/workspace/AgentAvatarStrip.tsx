@@ -4,12 +4,14 @@ import { Users } from 'lucide-react-native';
 import { useTheme } from '../theme/ThemeProvider';
 import { spacing, workspaceTheme } from '../ui/tokens';
 import { MemberAvatar } from './MemberAvatar';
+import { AgentStatusBadge, avatarStatusLabel, type AvatarStatus } from './AgentStatusBadge';
 
 const SETTINGS_HOLD_MS = 500;
 
 /** 单击只切聊天，长按只开设置；不根据选中态改变单击含义，也不另建会话所有者。 */
-export function AgentAvatarStrip({ targets, selected, title, compact, disabled, onSelect, onSettings }: {
+export function AgentAvatarStrip({ targets, selected, title, status, compact, disabled, onSelect, onSettings }: {
   targets: string[]; selected: string; title: (id: string) => string; compact: boolean; disabled: boolean;
+  status: (id: string) => AvatarStatus;
   onSelect: (id: string) => void; onSettings: (id: string) => void;
 }) {
   const { colors: c } = useTheme();
@@ -24,7 +26,7 @@ export function AgentAvatarStrip({ targets, selected, title, compact, disabled, 
     const x = frame.x < offset.current ? frame.x : frame.x + frame.width > offset.current + viewport.current ? frame.x + frame.width - viewport.current : offset.current;
     scroll.current?.scrollTo({ x: Math.max(0, x), animated: false });
   }, []);
-  useEffect(() => { reveal(selected); }, [selected, compact, reveal]);
+  useEffect(() => { reveal(selected); }, [selected, compact, targets, reveal]);
   // 选择及键盘布局改变时露出当前头像；不重建按钮，保留读屏焦点。
   return <View testID="agent-avatar-strip" style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing[12], paddingVertical: spacing[6], gap: spacing[8], backgroundColor: c.canvas }}>
     <ScrollView ref={scroll} horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" style={{ flex: 1 }}
@@ -33,6 +35,7 @@ export function AgentAvatarStrip({ targets, selected, title, compact, disabled, 
       {targets.map((id) => {
         const active = selected === id; const name = title(id);
         return <Pressable key={id} accessibilityRole="tab" accessibilityLabel={`切换到${name}`} accessibilityState={{ selected: active, disabled }}
+          accessibilityValue={id === 'group' ? undefined : { text: avatarStatusLabel(status(id)) }}
           accessibilityHint={id === 'group' ? '点击切换到全部，长按打开全局设置' : '点击切换聊天，长按打开智能体设置'} disabled={disabled}
           accessibilityActions={[{ name: 'settings', label: id === 'group' ? '打开全局设置' : `打开${name}的智能体设置` }]}
           onAccessibilityAction={(event) => { if (!disabled && event.nativeEvent.actionName === 'settings') onSettings(id); }}
@@ -51,6 +54,7 @@ export function AgentAvatarStrip({ targets, selected, title, compact, disabled, 
           style={({ pressed }) => ({ minWidth: compact ? 48 : 62, minHeight: 48, alignItems: 'center', justifyContent: 'center', gap: spacing[4], paddingHorizontal: spacing[4], paddingVertical: spacing[4], opacity: pressed ? 0.6 : 1 })}>
           <View style={{ padding: 3, borderRadius: 19, borderWidth: 1.5, borderColor: active ? c.accentText : 'transparent' }}>
             {id === 'group' ? <View style={{ width: compact ? 30 : 36, height: compact ? 30 : 36, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: c.blueSoft }}><Users size={21} color={c.accentText} /></View> : <MemberAvatar agentId={id} size={compact ? 30 : 36} />}
+            {id !== 'group' && <AgentStatusBadge state={status(id)} />}
           </View>
           {!compact && <Text numberOfLines={1} style={{ ...workspaceTheme.typography.caption, maxWidth: 72, color: active ? c.accentText : c.muted, fontWeight: active ? '600' : '400' }}>{name}</Text>}
         </Pressable>;

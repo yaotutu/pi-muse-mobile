@@ -115,6 +115,7 @@ export function decodeRuntimeFrame(frame: ParsedRuntimeFrame): RuntimeEvent | nu
   if (![
     'ready',
     'agent_status_updated',
+    'agent_presence_updated',
     'approval_pending',
     'approval_updated',
     'activity_updated',

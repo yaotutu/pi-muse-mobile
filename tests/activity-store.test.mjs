@@ -7,7 +7,7 @@ import { activityFixture, activityPage, detailFixture } from './helpers/activity
 
 const tick = () => new Promise(setImmediate);
 const wait = () => new Promise((r) => setTimeout(r, 10));
-const ready = (activities = []) => ({ event: 'ready', data: { instanceId: 'i', serverTime: '2026-10-20T00:00:00Z', agentStatuses: [], pendingApprovals: [], activities } });
+const ready = (activities = []) => ({ event: 'ready', data: { instanceId: 'i', serverTime: '2026-10-20T00:00:00Z', agentPresences: [], agentStatuses: [], pendingApprovals: [], activities } });
 const update = (activity) => ({ event: 'activity_updated', data: { ...activity, instanceId: 'i' } });
 function fixture() {
   const lists = []; const details = [];

@@ -5,7 +5,7 @@ import { ApprovalConflictError } from '../src/approvals/contracts.ts';
 import { ApiError } from '../src/api/errors.ts';
 import { approvalFixture, settledApproval, approvalSummary, approvalResolution } from './helpers/approval-fixtures.ts';
 
-const ready = (pendingApprovals = [], instanceId = 'instance-a') => ({ event: 'ready', data: { instanceId, serverTime: '2026-10-20T00:00:00.000Z', agentStatuses: [], pendingApprovals, activities: [] } });
+const ready = (pendingApprovals = [], instanceId = 'instance-a') => ({ event: 'ready', data: { instanceId, serverTime: '2026-10-20T00:00:00.000Z', agentPresences: [], agentStatuses: [], pendingApprovals, activities: [] } });
 const update = (approval = settledApproval()) => ({ event: 'approval_updated', data: { ...approvalResolution(approval), instanceId: 'instance-a' } });
 const pending = (approval = approvalFixture()) => ({ event: 'approval_pending', data: { ...approval, instanceId: 'instance-a' } });
 const deferred = () => { let resolve, reject; const promise = new Promise((ok, fail) => { resolve = ok; reject = fail; }); return { promise, resolve, reject }; };

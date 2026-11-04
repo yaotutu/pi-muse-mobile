@@ -6,7 +6,7 @@ import { FeaturePage, type FeatureSection } from '../features/FeaturePage';
 import { Card } from '../ui/Surfaces';
 import { BookOpen, ChevronRight, Download, Moon, RotateCcw, Server, Settings, Users, UserRound, X, Globe, type LucideIcon } from 'lucide-react-native';
 import { BlurTargetView } from 'expo-blur';
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { ThemeStatusBar } from '../theme/ThemeStatusBar';
 import { Alert, Animated, AppState, BackHandler, Easing, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View, type ViewInstance, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -55,6 +55,7 @@ import { ActionButton } from '../ui/ActionButton';
 import { AgentAvatarStrip } from './AgentAvatarStrip';
 import { adjacentAvatar, avatarTargets } from './avatar-navigation';
 import { MemberAvatar } from './MemberAvatar';
+import { useAvatarPreferences } from './useAvatarPreferences';
 import { BrowserPanel } from '../browser/BrowserPanel';
 import { createBrowserStore } from '../browser/browser-store';
 
@@ -367,7 +368,19 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
   const select = (id: string) => changeAgent(() => { Keyboard.dismiss(); agents.selectAgent(id); setSettingsAgentId(null); setSessionOpen(false); setPage('chat'); setAgentSection('home'); setNotice(undefined); });
   // 显式切换聊天才改变聊天所有者；查看设置只改变检查对象。
   const openGroup = () => changeAgent(() => { Keyboard.dismiss(); setSettingsAgentId(null); setSessionOpen(false); setPage('group'); });
-  const targets = avatarTargets(groupMembers.map((member) => member.id));
+  const avatarPreferences = useAvatarPreferences(snapshot.serverUrl ?? '');
+  const runtimeSnapshot = useSyncExternalStore(runtimeStore.subscribe, runtimeStore.getSnapshot, runtimeStore.getSnapshot);
+  const recency = Object.fromEntries(runtimeSnapshot.presences.map((item) => [item.agentId, item.lastActiveAt]));
+  const avatarIds = groupMembers.map((member) => member.id).join(',');
+  const desiredOrder = avatarTargets(avatarIds.split(',').filter(Boolean), avatarPreferences.pinned, recency).join(',');
+  const desiredTargets = useMemo(() => desiredOrder.split(','), [desiredOrder]);
+  // 手指落下时冻结当前顺序；消息、头像点击与横扫完成后才应用最新活跃排列。
+  const [frozenTargets, setFrozenTargets] = useState<string[] | null>(null);
+  const targets = frozenTargets ?? desiredTargets;
+  const avatarRelease = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(avatarRelease.current), []);
+  const avatarStatus = (id: string) => runtimeSnapshot.connection !== 'live' ? 'unknown' as const : runtimeSnapshot.presences.find((item) => item.agentId === id)?.state ?? 'idle';
+  const avatarStatusDetail = (id: string) => runtimeSnapshot.connection !== 'live' ? '连接已断开，状态待同步' : runtimeSnapshot.presences.find((item) => item.agentId === id)?.label ?? '空闲';
   const selectedAvatar = page === 'group' ? 'group' : agents.currentAgent;
   const avatarTitle = (id: string) => id === 'group' ? '全部' : labels.title(id);
   const selectAvatar = (id: string) => id === 'group' ? openGroup() : select(id);
@@ -453,6 +466,9 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
       onNewsSettings={() => setSettingsSubpage('news-sources')} />;
   } else if (page === 'agent') {
     otherPage = <AgentPage agentId={focusedAgentId} name={labels.title(focusedAgentId)} section={agentSection}
+      pinned={avatarPreferences.pinned.includes(focusedAgentId)} pinDisabled={avatarPreferences.loading || avatarPreferences.saving || !!avatarPreferences.error}
+      pinError={avatarPreferences.error} onPin={() => avatarPreferences.toggle(focusedAgentId)} onPinRetry={avatarPreferences.retry}
+      statusLabel={avatarStatusDetail(focusedAgentId)}
       onSection={(next) => { setAgentSection(next); }} onBack={backAgent}
       onActivity={() => openSession('activity')}
       onFeatureSettings={() => { setPage('feature'); setSettingsSubpage(focusedAgentId === 'sms-internal' ? 'sms' : 'news-feature'); }}
@@ -476,7 +492,10 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
     otherPage = <GoalsPanel openDrawer={openGroup} />;
   }
   // 文件 Provider 与聊天所有者随连接持有；页面切换不销毁草稿或运行。
-  return <View style={styles.root} testID="workspace-screen"><ThemeStatusBar />
+  return <View style={styles.root} testID="workspace-screen"
+    onTouchStartCapture={() => { clearTimeout(avatarRelease.current); setFrozenTargets(targets); }}
+    onTouchEndCapture={() => { clearTimeout(avatarRelease.current); avatarRelease.current = setTimeout(() => setFrozenTargets(null), 200); }}
+    onTouchCancel={() => { clearTimeout(avatarRelease.current); setFrozenTargets(null); }}><ThemeStatusBar />
     <View style={[styles.viewport, { width: contentWidth }]}
       pointerEvents={browserOpen ? 'none' : 'auto'} accessibilityElementsHidden={browserOpen} importantForAccessibility={browserOpen ? 'no-hide-descendants' : 'auto'}>
       <View style={styles.foreground}>
@@ -485,6 +504,7 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
           <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled={Platform.OS !== 'web'} accessibilityViewIsModal={sessionMounted}>
             {page === 'settings' && !inSettingsSubpage && <AgentHeader title="全局设置" backLabel="返回聊天" onBack={returnChat} />}
             {(page === 'chat' || page === 'group') && <AgentAvatarStrip targets={targets} selected={selectedAvatar}
+              status={avatarStatus}
               title={avatarTitle} compact={keyboardVisible} disabled={sessionMounted} onSelect={selectAvatar}
               onSettings={(id) => id === 'group' ? openGlobalSettings() : openAgentSettings(id)} />}
             <View style={styles.bodyStage}>

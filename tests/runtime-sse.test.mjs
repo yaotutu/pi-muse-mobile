@@ -17,7 +17,7 @@ const parseChunks = (chunks, limits) => {
 };
 
 test('标准 event/data 帧按到达顺序解析，未闭合尾部留给下一段', () => {
-  const ready = { instanceId: 'i1', serverTime: 't', agentStatuses: [] };
+  const ready = { instanceId: 'i1', serverTime: 't', agentPresences: [], agentStatuses: [] };
   const status = { instanceId: 'i1', agentId: 'a', runId: 'b', revision: 2, source: 'chat', jobId: null, title: 't', status: 'running', phase: 'waiting_model', label: 'l', tools: [], subagents: [], pendingApprovalIds: [], startedAt: '2026-10-19T00:00:00.000Z', updatedAt: '2026-10-19T00:00:00.000Z', endedAt: null };
   const tail = 'event: agent_status_updated\ndata: {"instance';
   const out = new RuntimeSseParser().push(frame('ready', ready) + frame('agent_status_updated', status) + tail);
@@ -38,13 +38,13 @@ test('标准 event/data 帧按到达顺序解析，未闭合尾部留给下一�
 });
 
 test('CRLF 与 LF 帧尾都能正确闭合', () => {
-  const ready = { instanceId: 'i1', serverTime: 't', agentStatuses: [] };
+  const ready = { instanceId: 'i1', serverTime: 't', agentPresences: [], agentStatuses: [] };
   const crlf = frame('ready', ready, '\r\n');
   assert.deepEqual(new RuntimeSseParser().push(crlf), [{ event: 'ready', data: JSON.stringify(ready) }]);
 });
 
 test('每个 chunk 切分位置都不能丢失或重复事件', () => {
-  const ready = { instanceId: 'i1', serverTime: 't', agentStatuses: [] };
+  const ready = { instanceId: 'i1', serverTime: 't', agentPresences: [], agentStatuses: [] };
   const status = { instanceId: 'i1', agentId: 'a', runId: 'b', revision: 2, source: 'chat', jobId: null, title: 't', status: 'running', phase: 'waiting_model', label: 'l', tools: [], subagents: [], pendingApprovalIds: [], startedAt: '2026-10-19T00:00:00.000Z', updatedAt: '2026-10-19T00:00:00.000Z', endedAt: null };
   const stream = frame('ready', ready, '\r\n') + frame('agent_status_updated', status) + frame('ready', ready);
   for (let split = 0; split <= stream.length; split += 1) {
@@ -53,7 +53,7 @@ test('每个 chunk 切分位置都不能丢失或重复事件', () => {
 });
 
 test('UTF-8 多字节字符跨 chunk 仍能完整闭合', () => {
-  const ready = { instanceId: 'i1', serverTime: '中文时间', agentStatuses: [] };
+  const ready = { instanceId: 'i1', serverTime: '中文时间', agentPresences: [], agentStatuses: [] };
   const stream = frame('ready', ready);
   // 把 UTF-8 字节流按字节切分，模拟网络层零散到达；TextDecoder 在第二次 decode 时落盘残留字节。
   const bytes = new TextEncoder().encode(stream);
@@ -134,13 +134,13 @@ test('未闭合帧累计超过 otherBytes 也抛 oversize，避免半截帧积�
 
 test('end() 丢弃未闭合尾部，不合成事件', () => {
   const parser = new RuntimeSseParser();
-  parser.push(frame('ready', { instanceId: 'i1', serverTime: 't', agentStatuses: [] }));
+  parser.push(frame('ready', { instanceId: 'i1', serverTime: 't', agentPresences: [], agentStatuses: [] }));
   parser.push('event: agent_status_updated\ndata: {"v":1');
   assert.deepEqual(parser.end(), []);
 });
 
 test('decodeRuntimeFrame：ready/agent_status_updated 解码为 RuntimeEvent，未知事件返回 null', () => {
-  const readyFrame = { event: 'ready', data: JSON.stringify({ instanceId: 'i1', serverTime: 't', agentStatuses: [] }) };
+  const readyFrame = { event: 'ready', data: JSON.stringify({ instanceId: 'i1', serverTime: 't', agentPresences: [], agentStatuses: [] }) };
   const out = decodeRuntimeFrame(readyFrame);
   assert.equal(out.event, 'ready');
   assert.equal(out.data.instanceId, 'i1');

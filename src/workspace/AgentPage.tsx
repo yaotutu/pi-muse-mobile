@@ -1,6 +1,6 @@
 import { useMemo, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Activity, ChevronRight, FileText, FolderOpen, Newspaper, Settings2, Sparkles, type LucideIcon } from 'lucide-react-native';
+import { Activity, Check, ChevronRight, FileText, FolderOpen, Newspaper, Pin, Settings2, Sparkles, type LucideIcon } from 'lucide-react-native';
 import { useTheme } from '../theme/ThemeProvider';
 import { workspaceTheme, spacing, sizing } from '../ui/tokens';
 import { FilesScreen } from './FilesScreen';
@@ -19,9 +19,10 @@ const entries: { section: Exclude<AgentSection, 'home'>; title: string; detail: 
 ];
 
 /** 智能体页只组织当前智能体的功能；不持有聊天/SSE，也不创建另一份规则文件。 */
-export function AgentPage({ agentId, name, section, onSection, onBack, onActivity, onFeatureSettings, onReadNews, onSaved, maintenance }: {
+export function AgentPage({ agentId, name, section, onSection, onBack, onActivity, onFeatureSettings, onReadNews, onSaved, maintenance, pinned, pinDisabled, pinError, onPin, onPinRetry, statusLabel }: {
   agentId: string; name: string; section: AgentSection; onSection: (section: AgentSection) => void;
   onBack: () => void; onActivity: () => void; onFeatureSettings: () => void; onReadNews: () => void; onSaved: () => void; maintenance: ReactNode;
+  pinned: boolean; pinDisabled: boolean; pinError?: string; onPin: () => void; onPinRetry: () => void; statusLabel: string;
 }) {
   const { colors } = useTheme();
   const styles = useMemo(() => StyleSheet.create({
@@ -38,7 +39,11 @@ export function AgentPage({ agentId, name, section, onSection, onBack, onActivit
     <AgentHeader title={titles[section]} caption={section === 'home' ? undefined : name} onBack={onBack} backLabel={section === 'home' ? '返回上一页' : undefined} />
     <ScrollView key={section} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
       {section === 'home' && <>
-        <View style={styles.identity}><MemberAvatar agentId={agentId} size={72} /><Text style={styles.name}>{name}</Text></View>
+        <View style={styles.identity}><MemberAvatar agentId={agentId} size={72} /><Text style={styles.name}>{name}</Text><Text accessibilityLiveRegion="polite" style={styles.caption}>{statusLabel}</Text></View>
+        <View style={styles.group}><Pressable accessibilityRole="switch" accessibilityLabel="置顶智能体" accessibilityState={{ checked: pinned, disabled: pinDisabled }} disabled={pinDisabled} onPress={onPin} style={styles.row}>
+          <Pin size={sizing.iconMedium} color={colors.blue} /><View style={styles.rowText}><Text style={styles.label}>置顶智能体</Text><Text style={styles.caption}>置顶优先，其余按最近活跃排列</Text></View>
+          {pinned ? <Check size={sizing.iconMedium} color={colors.accentText} /> : <Text style={styles.caption}>未置顶</Text>}
+        </Pressable>{!!pinError && <Pressable accessibilityRole="button" accessibilityLabel="重试读取置顶偏好" onPress={onPinRetry} style={styles.row}><Text style={styles.caption}>{pinError}，点击重新读取</Text></Pressable>}</View>
         {agentId === 'news-internal' && <View style={styles.group}><Pressable accessibilityRole="button" accessibilityLabel="阅读新闻" onPress={onReadNews} style={styles.row}>
           <Newspaper size={sizing.iconMedium} color={colors.blue} /><View style={styles.rowText}><Text style={styles.label}>阅读新闻</Text><Text style={styles.caption}>查看文章、收藏与阅读来源</Text></View><ChevronRight size={sizing[18]} color={colors.faint} />
         </Pressable></View>}

@@ -10,6 +10,7 @@ import { parsePendingApprovals } from '../approvals/contracts';
 import { parseActivityOverview } from '../activities/contracts';
 import { isActiveActivity } from '../activities/types';
 import type {
+  AgentPresence,
   AgentStatus,
   AgentStatusResponse,
   ConversationInvalidation,
@@ -143,6 +144,9 @@ export function parseRuntimeReady(value: unknown): Extract<RuntimeEvent, { event
   const instanceId = ensureString(entry.instanceId, 'ready.data.instanceId');
   const serverTime = ensureString(entry.serverTime, 'ready.data.serverTime');
   if (!Array.isArray(entry.agentStatuses)) throw new ApiError(502, 'ready.data.agentStatuses 不是数组');
+  if (!Array.isArray(entry.agentPresences)) throw new ApiError(502, 'ready.data.agentPresences 不是数组');
+  const agentPresences = entry.agentPresences.map(parseAgentPresence);
+  if (new Set(agentPresences.map((item) => item.agentId)).size !== agentPresences.length) throw new ApiError(502, '头像状态集合存在重复智能体');
   if (!Array.isArray(entry.activities)) throw new ApiError(502, 'ready.data.activities 不是数组');
   const activities = entry.activities.map(parseActivityOverview);
   if (new Set(activities.map((item) => item.id)).size !== activities.length || activities.some((item) => !isActiveActivity(item))) {
@@ -152,8 +156,21 @@ export function parseRuntimeReady(value: unknown): Extract<RuntimeEvent, { event
     instanceId,
     serverTime,
     agentStatuses: entry.agentStatuses.map(ensureAgentStatus),
+    agentPresences,
     pendingApprovals: parsePendingApprovals({ approvals: entry.pendingApprovals }),
     activities,
+  };
+}
+
+export function parseAgentPresence(value: unknown): AgentPresence {
+  if (!value || typeof value !== 'object') throw new ApiError(502, '头像状态不是对象');
+  const entry = value as Record<string, unknown>;
+  if (entry.lastActiveAt !== null && (typeof entry.lastActiveAt !== 'string' || !/^\d{4}-\d\d-\d\dT.*Z$/.test(entry.lastActiveAt) || !Number.isFinite(Date.parse(entry.lastActiveAt)))) throw new ApiError(502, '最近活动时间不合法');
+  return {
+    agentId: ensureString(entry.agentId, 'presence.agentId'),
+    state: ensureEnum<AgentPresence['state']>(entry.state, new Set(['idle', 'working', 'waiting', 'error']), 'presence.state'),
+    label: ensureText(entry.label, 'presence.label'),
+    lastActiveAt: entry.lastActiveAt as string | null,
   };
 }
 

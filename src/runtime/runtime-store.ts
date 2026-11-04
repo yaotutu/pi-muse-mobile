@@ -1,5 +1,5 @@
 import { ApiError, isRequestCancelled } from '../api/errors';
-import type { AgentStatus, AgentStatusResponse, ConversationInvalidation, RuntimeEvent } from './types';
+import type { AgentPresence, AgentStatus, AgentStatusResponse, ConversationInvalidation, RuntimeEvent } from './types';
 
 export type RuntimeClient = {
   subscribeRuntime: (onEvent: (event: RuntimeEvent) => void, signal?: AbortSignal) => Promise<void>;
@@ -10,6 +10,7 @@ export type RuntimeSnapshot = {
   connection: RuntimeConnection;
   instanceId?: string;
   runs: readonly AgentStatus[];
+  presences: readonly AgentPresence[];
   unknownAgentIds?: readonly string[];
   /** ready 的同步序号；客户端用它恢复断线期间漏掉的历史失效。 */
   conversationSyncVersion: number;
@@ -29,7 +30,7 @@ const MAX_REMEMBERED_INVALIDATIONS = 32;
 /** 单个服务器数据域持有一条通知连接；重连只同步状态，绝不重发聊天或停止运行。 */
 export class RuntimeStore {
   private state: RuntimeSnapshot = {
-    connection: 'paused', runs: [], conversationSyncVersion: 0, conversationInvalidations: [],
+    connection: 'paused', runs: [], presences: [], conversationSyncVersion: 0, conversationInvalidations: [],
   };
   private listeners = new Set<() => void>();
   private controller?: AbortController;
@@ -94,6 +95,7 @@ export class RuntimeStore {
             instanceId: event.data.instanceId,
             connection: 'live',
             runs: [...event.data.agentStatuses],
+            presences: [...event.data.agentPresences],
             unknownAgentIds: [...new Set(missing.map((run) => run.agentId))],
             conversationSyncVersion: this.state.conversationSyncVersion + 1,
             conversationInvalidations: [],
@@ -108,6 +110,9 @@ export class RuntimeStore {
             const invalidations = [...this.state.conversationInvalidations, { ...invalidation, version: ++this.conversationVersion }];
             this.publish({ conversationInvalidations: invalidations.slice(-MAX_REMEMBERED_INVALIDATIONS) });
           } else if (event.event === 'agent_status_updated') this.merge(event.data);
+          else if (event.event === 'agent_presence_updated' && !this.blockedAgents.has(event.data.agentId)) {
+            this.publish({ presences: [...this.state.presences.filter((item) => item.agentId !== event.data.agentId), event.data] });
+          }
         }
         this.options.onEvent?.(event);
       }, controller.signal);
@@ -163,6 +168,7 @@ export class RuntimeStore {
     }
   }
   forgetAgent(agentId: string) {
+    this.publish({ presences: this.state.presences.filter((item) => item.agentId !== agentId) });
     this.blockedAgents.add(agentId);
     for (const [key, run] of this.unresolved) if (run.agentId === agentId) this.unresolved.delete(key);
     this.publish({ runs: this.state.runs.filter((run) => run.agentId !== agentId), unknownAgentIds: this.state.unknownAgentIds?.filter((id) => id !== agentId) });

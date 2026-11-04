@@ -8,6 +8,12 @@ import type { ApprovalResolution, ApprovalView } from '../approvals/types';
 import type { ActivityOverview } from '../activities/types';
 
 export type RunSource = 'chat' | 'job';
+export type AgentPresence = {
+  agentId: string;
+  state: 'idle' | 'working' | 'waiting' | 'error';
+  label: string;
+  lastActiveAt: string | null;
+};
 
 export type RunStatus = 'running' | 'succeeded' | 'failed' | 'cancelled';
 
@@ -87,6 +93,7 @@ export type RuntimeReadyEvent = {
     instanceId: string;
     serverTime: string;
     agentStatuses: AgentStatus[];
+    agentPresences: AgentPresence[];
     pendingApprovals: ApprovalView[];
     activities: ActivityOverview[];
   };
@@ -105,6 +112,7 @@ export type ConversationInvalidation = {
 
 /** 本轮订阅对外契约；未知事件由传输层直接跳过，不向上抛。 */
 export type RuntimeEvent = RuntimeReadyEvent | RuntimeAgentStatusUpdatedEvent
+  | { event: 'agent_presence_updated'; data: AgentPresence & { instanceId: string } }
   | { event: 'approval_pending'; data: ApprovalView & { instanceId: string } }
   | { event: 'approval_updated'; data: ApprovalResolution & { instanceId: string } }
   | { event: 'activity_updated'; data: ActivityOverview & { instanceId: string } }

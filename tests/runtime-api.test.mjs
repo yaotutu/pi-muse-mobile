@@ -66,7 +66,7 @@ test('subscribeRuntime ready 当前活动与 activity_updated 概览独立解析
   const stream = makeStream(); let requests = 0;
   await withFetch(async (url) => {
     requests++; assert.equal(url, `${BASE}/api/events`);
-    stream.push(frame('ready', { instanceId: 'inst-1', serverTime: 't', agentStatuses: [], activities: [activity] }));
+    stream.push(frame('ready', { instanceId: 'inst-1', serverTime: 't', agentPresences: [], agentStatuses: [], activities: [activity] }));
     stream.push('event: future_activity_event\ndata: not-json\n\n');
     stream.push(frame('activity_updated', { ...complete, instanceId: 'inst-1', secret: 'not-public' }));
     stream.close(); return new Response(stream);
@@ -80,7 +80,7 @@ test('subscribeRuntime ready 当前活动与 activity_updated 概览独立解析
 });
 
 test('subscribeRuntime 解析严格的 conversation_updated，未知字段或跨实例帧断流', async () => {
-  const ready = { instanceId: 'inst-1', serverTime: 't', agentStatuses: [] };
+  const ready = { instanceId: 'inst-1', serverTime: 't', agentPresences: [], agentStatuses: [] };
   const valid = { instanceId: 'inst-1', agentId: 'agent-a', sessionId: 'session-1' };
   const stream = makeStream();
   await withFetch(async () => {
@@ -112,7 +112,7 @@ test('subscribeRuntime 解析严格的 conversation_updated，未知字段或跨
 });
 
 test('subscribeRuntime 缺活动集合、重复/终态 ready、坏活动或跨实例活动必须报502', async () => {
-  const ready = { instanceId: 'inst-1', serverTime: 't', agentStatuses: [] };
+  const ready = { instanceId: 'inst-1', serverTime: 't', agentPresences: [], agentStatuses: [] };
   const cases = [
     [['ready', { ...ready, activities: undefined }]],
     [['ready', { ...ready, activities: [activityFixture(), activityFixture()] }]],
@@ -207,7 +207,7 @@ test('subscribeRuntime 发送 GET /api/events，Bearer + Accept + redirect: erro
   const stream = makeStream();
   await withFetch(async (url, init) => {
     observed = { url, method: init.method, headers: init.headers, redirect: init.redirect };
-    stream.push(frame('ready', { instanceId: 'inst-1', serverTime: '2026-10-19T00:00:00.000Z', agentStatuses: [] }));
+    stream.push(frame('ready', { instanceId: 'inst-1', serverTime: '2026-10-19T00:00:00.000Z', agentPresences: [], agentStatuses: [] }));
     stream.close();
     return new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } });
   }, async () => {
@@ -224,7 +224,7 @@ test('subscribeRuntime 发送 GET /api/events，Bearer + Accept + redirect: erro
 test('subscribeRuntime 首帧 ready 解析后触发状态更新回调', async () => {
   const stream = makeStream();
   await withFetch(async () => {
-    stream.push(frame('ready', { instanceId: 'inst-1', serverTime: '2026-10-19T00:00:00.000Z', agentStatuses: [] }));
+    stream.push(frame('ready', { instanceId: 'inst-1', serverTime: '2026-10-19T00:00:00.000Z', agentPresences: [], agentStatuses: [] }));
     stream.push(frame('agent_status_updated', { ...agentStatus({ revision: 2 }), instanceId: 'inst-1' }));
     stream.push(frame('agent_status_updated', { ...agentStatus({ revision: 3, phase: 'finalizing' }), instanceId: 'inst-1' }));
     stream.close();
@@ -253,7 +253,7 @@ test('subscribeRuntime ready 保留完整大审批预览，与运行状态分开
     stream.push(frame('ready', {
       instanceId: 'inst-1',
       serverTime: '2026-10-19T00:00:00.000Z',
-      agentStatuses: [agentStatus()],
+      agentPresences: [], agentStatuses: [agentStatus()],
       pendingApprovals: [approvalFixture({ preview: { ...approvalFixture().preview, after: bigPending } })],
     }));
     stream.close();
@@ -272,7 +272,7 @@ test('subscribeRuntime ready 保留完整大审批预览，与运行状态分开
 test('subscribeRuntime 消费审批新增与轻量回执，不额外拉快照', async () => {
   const stream = makeStream();
   await withFetch(async () => {
-    stream.push(frame('ready', { instanceId: 'inst-1', serverTime: '2026-10-19T00:00:00.000Z', agentStatuses: [] }));
+    stream.push(frame('ready', { instanceId: 'inst-1', serverTime: '2026-10-19T00:00:00.000Z', agentPresences: [], agentStatuses: [] }));
     stream.push(frame('approval_pending', { ...approvalFixture(), instanceId: 'inst-1' }));
     stream.push(frame('approval_updated', { ...approvalResolution(), instanceId: 'inst-1' }));
     stream.push(frame('agent_status_updated', { ...agentStatus({ revision: 2 }), instanceId: 'inst-1' }));
@@ -293,10 +293,10 @@ test('subscribeRuntime 消费审批新增与轻量回执，不额外拉快照', 
 
 test('subscribeRuntime 坏审批、缺 pending 集合及跨实例审批帧必须断流报 502', async () => {
   const cases = [
-    [['ready', { instanceId: 'inst-1', serverTime: 't', agentStatuses: [], pendingApprovals: undefined }]],
-    [['ready', { instanceId: 'inst-1', serverTime: 't', agentStatuses: [] }], ['approval_pending', { ...approvalFixture(), preview: {}, instanceId: 'inst-1' }]],
-    [['ready', { instanceId: 'inst-1', serverTime: 't', agentStatuses: [] }], ['approval_pending', { ...approvalFixture(), instanceId: 'other' }]],
-    [['ready', { instanceId: 'inst-1', serverTime: 't', agentStatuses: [] }], ['approval_updated', { ...approvalFixture(), instanceId: 'inst-1' }]],
+    [['ready', { instanceId: 'inst-1', serverTime: 't', agentPresences: [], agentStatuses: [], pendingApprovals: undefined }]],
+    [['ready', { instanceId: 'inst-1', serverTime: 't', agentPresences: [], agentStatuses: [] }], ['approval_pending', { ...approvalFixture(), preview: {}, instanceId: 'inst-1' }]],
+    [['ready', { instanceId: 'inst-1', serverTime: 't', agentPresences: [], agentStatuses: [] }], ['approval_pending', { ...approvalFixture(), instanceId: 'other' }]],
+    [['ready', { instanceId: 'inst-1', serverTime: 't', agentPresences: [], agentStatuses: [] }], ['approval_updated', { ...approvalFixture(), instanceId: 'inst-1' }]],
   ];
   for (const events of cases) {
     const stream = makeStream();
@@ -314,7 +314,7 @@ test('subscribeRuntime 心跳注释不触发回调', async () => {
   const stream = makeStream();
   await withFetch(async () => {
     stream.push(': keep-alive\n\n');
-    stream.push(frame('ready', { instanceId: 'inst-1', serverTime: '2026-10-19T00:00:00.000Z', agentStatuses: [] }));
+    stream.push(frame('ready', { instanceId: 'inst-1', serverTime: '2026-10-19T00:00:00.000Z', agentPresences: [], agentStatuses: [] }));
     stream.push(': ping\n\n');
     stream.close();
     return new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } });
@@ -330,7 +330,7 @@ test('subscribeRuntime 心跳注释不触发回调', async () => {
 test('subscribeRuntime instanceId 与 ready 不一致抛 502', async () => {
   const stream = makeStream();
   await withFetch(async () => {
-    stream.push(frame('ready', { instanceId: 'inst-1', serverTime: '2026-10-19T00:00:00.000Z', agentStatuses: [] }));
+    stream.push(frame('ready', { instanceId: 'inst-1', serverTime: '2026-10-19T00:00:00.000Z', agentPresences: [], agentStatuses: [] }));
     stream.push(frame('agent_status_updated', { ...agentStatus(), instanceId: 'inst-other' }));
     return new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } });
   }, async () => {
@@ -353,8 +353,8 @@ test('subscribeRuntime 第一帧不是 ready 抛 502', async () => {
 test('subscribeRuntime 重复 ready 视为非法帧抛 502', async () => {
   const stream = makeStream();
   await withFetch(async () => {
-    stream.push(frame('ready', { instanceId: 'inst-1', serverTime: '2026-10-19T00:00:00.000Z', agentStatuses: [] }));
-    stream.push(frame('ready', { instanceId: 'inst-1', serverTime: '2026-10-19T00:00:00.000Z', agentStatuses: [] }));
+    stream.push(frame('ready', { instanceId: 'inst-1', serverTime: '2026-10-19T00:00:00.000Z', agentPresences: [], agentStatuses: [] }));
+    stream.push(frame('ready', { instanceId: 'inst-1', serverTime: '2026-10-19T00:00:00.000Z', agentPresences: [], agentStatuses: [] }));
     return new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } });
   }, async () => {
     const api = new HttpApiClient(BASE, () => 'token-1', () => {});
@@ -382,7 +382,7 @@ test('subscribeRuntime signal 取消：resolve 不抛，绝不调用 stopRun', a
   // 用 deferred 让 onEvent 通知传输层已抵达 read 循环，再触发 abort。
   const reached = (() => { let resolve; return { promise: new Promise((done) => { resolve = done; }), resolve }; })();
   await withFetch(async () => {
-    stream.push(frame('ready', { instanceId: 'inst-1', serverTime: '2026-10-19T00:00:00.000Z', agentStatuses: [] }));
+    stream.push(frame('ready', { instanceId: 'inst-1', serverTime: '2026-10-19T00:00:00.000Z', agentPresences: [], agentStatuses: [] }));
     // 不 close，让客户端触发 abort；reader.cancel 会触发 cancel 回调。
     return new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } });
   }, async () => {
@@ -400,7 +400,7 @@ test('subscribeRuntime 回调异常按原样抛出，不能伪装成网络错误
   const events = [];
   const stream = makeStream();
   await withFetch(async () => {
-    stream.push(frame('ready', { instanceId: 'inst-1', serverTime: '2026-10-19T00:00:00.000Z', agentStatuses: [] }));
+    stream.push(frame('ready', { instanceId: 'inst-1', serverTime: '2026-10-19T00:00:00.000Z', agentPresences: [], agentStatuses: [] }));
     stream.push(frame('agent_status_updated', { ...agentStatus({ revision: 2 }), instanceId: 'inst-1' }));
     stream.push(frame('agent_status_updated', { ...agentStatus({ revision: 3 }), instanceId: 'inst-1' }));
     return new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } });
@@ -443,7 +443,7 @@ test('subscribeRuntime ready帧坏JSON触发502，不静默漏掉同步边界', 
   const stream = makeStream();
   await withFetch(async () => {
     stream.push('event: ready\ndata: not-json\n\n');
-    stream.push(frame('ready', { instanceId: 'inst-1', serverTime: '2026-10-19T00:00:00.000Z', agentStatuses: [] }));
+    stream.push(frame('ready', { instanceId: 'inst-1', serverTime: '2026-10-19T00:00:00.000Z', agentPresences: [], agentStatuses: [] }));
     stream.push(frame('agent_status_updated', { ...agentStatus({ revision: 2 }), instanceId: 'inst-1' }));
     stream.close();
     return new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } });
@@ -460,7 +460,7 @@ test('subscribeRuntime 超大 ready 帧触发传输层断流（不静默吞内�
   // 故意构造一个 >12MiB 的 ready 帧，验证传输层在解析阶段就拒绝。
   const big = 'x'.repeat(13 * 1024 * 1024);
   await withFetch(async () => {
-    stream.push(`event: ready\ndata: ${JSON.stringify({ instanceId: 'inst-1', serverTime: 't', agentStatuses: [], pendingApprovals: big })}\n\n`);
+    stream.push(`event: ready\ndata: ${JSON.stringify({ instanceId: 'inst-1', serverTime: 't', agentPresences: [], agentStatuses: [], pendingApprovals: big })}\n\n`);
     return new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } });
   }, async () => {
     const api = new HttpApiClient(BASE, () => 'token-1', () => {});
@@ -478,7 +478,7 @@ test('subscribeRuntime 与 runAgent 互不影响：取消订阅不调用 stopRun
   const stream = makeStream();
   await withFetch(async (url) => {
     if (url === `${BASE}/api/events`) {
-      stream.push(frame('ready', { instanceId: 'inst-1', serverTime: '2026-10-19T00:00:00.000Z', agentStatuses: [] }));
+      stream.push(frame('ready', { instanceId: 'inst-1', serverTime: '2026-10-19T00:00:00.000Z', agentPresences: [], agentStatuses: [] }));
       return new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } });
     }
     return stopInterceptor(url);
