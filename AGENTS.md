@@ -16,7 +16,7 @@ Claude Code 从 [CLAUDE.md](CLAUDE.md)读取命令和架构，日常开发读[�
 - `expo.version`、`expo.android.versionCode`、`expo.ios.buildNumber` 不手工修改，仅发布流程中的 `tools/bump-version.js` 可写。未经明确授权，不 bump、push、发布、修改签名或 CI。
 - CNG 的 `android/`、`ios/` 为生成目录，不手工维护或提交；原生行为改 `app.json` 与 config plugin。
 - 已验收模块按长期授权本地 commit，先检查工作区和暂存区 diff，仅纳入本任务改动，不覆盖他人文件。项目开发进程可核对归属后启停并保留数据；生产或归属不明进程另行确认。
-- 积极委派已获用户授权（2026-11-05）：客户端实现优先派给 codex（GPT，视觉任务）或原生 sub agent（Claude 系，同样可读截图），主会话负责派单、diff 审查与验收。执行者不 commit/push，产物经审查后由主会话提交；派单模板与模型路由见服务端[协作指南](../pi-muse-server/docs/agent-workflow-guide.md)。Gemini 配好后纳入客户端轮换。真实模型测试费用已长期授权，此授权不包含修改全局模型配置或发布。
+- 积极委派已获用户授权（2026-11-05）：客户端实现优先派给 codex（外部视觉执行者，本机实际模型以 codex 运行头部为准）或原生 sub agent（Claude 系，同样可读截图），主会话负责派单、diff 审查与验收。执行者不 commit/push，产物经审查后由主会话提交；派单模板与模型路由见服务端[协作指南](../pi-muse-server/docs/agent-workflow-guide.md)。真实模型测试费用已长期授权，此授权不包含修改全局模型配置或发布。
 - 新文件/目录只用 ASCII 字母、数字、`-`、`_`、扩展名点；用中文注释解释协议、安全与生命周期。个人自用、简单优先，内部重构同步调用方而不保留无需求的兼容层。
 
 ## 专项入口
