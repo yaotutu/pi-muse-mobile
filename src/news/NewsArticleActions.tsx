@@ -19,8 +19,8 @@ export function NewsArticleActions({ article, work, store }: {
     busy: boolean, onPress: () => void) => <Pressable accessibilityRole="button" key={id}
     accessibilityLabel={`${label}，${article.title}`} accessibilityState={{ selected, disabled: locked, busy }}
     disabled={locked} onPress={onPress} testID={`news-${id}-${article.id}`}
-    style={({ pressed }) => [styles.action, id === 'save' && styles.save,
-      selected && { backgroundColor: colors.selected }, locked && styles.disabled, pressed && styles.pressed]}>
+    style={({ pressed }) => [styles.action, selected && { backgroundColor: colors.selected },
+      locked && styles.disabled, pressed && styles.pressed]}>
     <Icon size={themeTokens.newsReading.actionIconSize} color={selected ? colors.accentText : colors.muted}
       fill={selected ? colors.selected : 'none'} strokeWidth={selected ? 2.5 : 1.7} />
     <Text style={[styles.text, { color: selected ? colors.accentText : colors.muted, fontWeight: selected ? '600' : '400' }]}>{text}</Text>
@@ -37,10 +37,10 @@ export function NewsArticleActions({ article, work, store }: {
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing[4] },
+  /* 三个操作作为一组整体靠右：详情底栏和列表行一致，右手单手也容易够到；窄屏仍允许换行。 */
+  row: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end', gap: spacing[4] },
   action: { minHeight: themeTokens.layout.smallControl, flexDirection: 'row', alignItems: 'center',
     gap: spacing[6], paddingHorizontal: spacing[8], paddingVertical: spacing[6], borderRadius: themeTokens.radius.field },
-  save: { marginLeft: 'auto' },
   text: { ...themeTokens.typography.caption },
   disabled: { opacity: themeTokens.interaction.disabledOpacity },
   pressed: { opacity: themeTokens.interaction.pressedOpacity },

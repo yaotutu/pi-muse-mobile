@@ -53,6 +53,9 @@ test('阅读反馈常驻三个独立按钮，显式选中态、命中区和写�
   assert.match(actions, /accessibilityState=\{\{ selected, disabled: locked, busy \}\}/);
   assert.match(actions, /disabled=\{locked\}/);
   assert.match(actions, /minHeight: themeTokens\.layout\.smallControl/);
+  // 三个操作整组靠右对齐（详情底栏与列表行一致），不再把收藏单独推开或把喜欢留在最左。
+  assert.match(actions, /justifyContent: 'flex-end'/);
+  assert.doesNotMatch(actions, /marginLeft: 'auto'/);
   assert.match(actions, /onTouchStart=\{\(event\) => event\.stopPropagation\(\)\}/);
   assert.match(actions, /store\.toggleReaction\(article\.id, 'like'\)/);
   assert.match(actions, /store\.toggleSaved\(article\.id\)/);
