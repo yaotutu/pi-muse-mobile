@@ -77,14 +77,6 @@ export function assertNewsSourceInput(input: NewsSourceCreateInput): NewsSourceC
   return { url, ...(title === undefined ? {} : { title }) };
 }
 
-export function normalizedNewsComment(text: string): string {
-  const result = text.trim();
-  if (!result || result.length > 4000) {
-    throw new ApiError(400, '评论去除首尾空白后必须为 1 到 4000 字');
-  }
-  return result;
-}
-
 function parseHttpUrl(value: unknown): string {
   try {
     return assertNewsHttpUrl(text(value, { min: 1, max: 2048 }));

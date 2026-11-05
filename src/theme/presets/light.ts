@@ -9,7 +9,6 @@ export const lightTheme = {
   colors: {
     canvas: '#FAFAF7',
     surface: '#EDEEEA',
-    newsCard: '#FAFAF7',
     control: '#E1E4DF',
     floatingSurface: 'rgba(241,243,238,0.94)',
     floatingLine: 'rgba(79,103,84,0.17)',

@@ -139,7 +139,7 @@ test('会话动态按 OpenMuse 极简时间线展示真实状态，去除冗余�
   assert.doesNotMatch(execution, /查看活动历史|状态说明/);
 });
 
-test('会话复用整组分段，新闻使用紧凑受控文字Tab', () => {
+test('会话复用整组分段，新闻使用紧凑筛选菜单', () => {
   const control = read('src/ui/SegmentedControl.tsx');
   const session = read('src/workspace/SessionPanel.tsx');
   const news = read('src/workspace/NewsPage.tsx');
@@ -147,7 +147,7 @@ test('会话复用整组分段，新闻使用紧凑受控文字Tab', () => {
   assert.doesNotMatch(news, /<SegmentedControl/);
   assert.match(news, /\(\['recommended', 'all'\] as const\)\.map/);
   assert.match(news, /store\.setView\(view\)/);
-  assert.match(news, /aria-selected=\{snapshot\.view === view\}/);
+  assert.match(news, /selected=\{snapshot\.view === view\}/);
   for (const [id, label] of [['activity', '动态'], ['approvals', '审批'], ['history', '历史']]) {
     assert.match(session, new RegExp(`label: '${label}'.*testID: 'workspace-session-tab-${id}'`));
   }
@@ -267,7 +267,7 @@ test('新闻按主视图偏好进入，阅读保留头像栏与现场，切视�
   const profile = read('src/workspace/AgentPage.tsx');
   const reader = read('src/workspace/NewsPage.tsx');
   assert.match(source, /setPage\(conversation \? 'chat' : homePage\(id\)\)/);
-  assert.match(source, /page === 'chat' \|\| page === 'group' \|\| page === 'news'\) && <AgentAvatarStrip/);
+  assert.match(source, /page === 'chat' \|\| page === 'group' \|\| page === 'news'\) && !newsDetailOpen && <AgentAvatarStrip/);
   assert.match(source, /<NewsPage store={news} visible={page === 'news'}/);
   assert.match(source, /await views.save\(focusedAgentId, view\)/);
   assert.match(source, /setChatReturn\(agentHomePage\(focusedAgentId, view\)\)/);
@@ -276,7 +276,21 @@ test('新闻按主视图偏好进入，阅读保留头像栏与现场，切视�
   assert.match(profile, /accessibilityRole="radio"/);
   assert.doesNotMatch(profile, /onReadNews/);
   assert.doesNotMatch(reader, /label="返回新闻设置"/);
-  assert.match(reader, /visible && menu && menuArticle/);
+  assert.match(reader, /visible && anchor && <Modal/);
+});
+
+test('阅读列表以细分隔线区分头像栏与内容；文章详情整页隐藏头像栏', () => {
+  const source = read('src/workspace/WorkspaceScreen.tsx');
+  // 详情整页：外壳订阅新闻快照，selectedArticleId 打开时不渲染头像栏与分隔线。
+  assert.match(source, /const newsSnapshot = useNews\(news\)\.snapshot;/);
+  assert.match(source, /const newsDetailOpen = page === 'news' && newsSnapshot\.selectedArticleId != null;/);
+  // 新闻详情显隐与主分支头像状态同时保留，避免合并时二选一覆盖。
+  assert.match(source, /!newsDetailOpen && <AgentAvatarStrip[^>]*status=\{avatarStatus\}/);
+  assert.match(source, /page === 'news' && !newsDetailOpen && <View style=\{styles\.stripDivider\} testID="news-strip-divider" \/>/);
+  assert.match(source, /stripDivider: \{ height: StyleSheet\.hairlineWidth, backgroundColor: c\.line \},/);
+  // 列表与来源管理仍保留头像栏；详情内横扫切换智能体由 ChatSwipeArea 承担。
+  const reader = read('src/workspace/NewsPage.tsx');
+  assert.match(reader, /snapshot\.selectedArticleId \? <ChatSwipeArea onSwipe=\{onSwipe\}>/);
 });
 
 test('智能体维护归智能体子页，全局设置来自群组信息，会话面板只处理当前执行', () => {

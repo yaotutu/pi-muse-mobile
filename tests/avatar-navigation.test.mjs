@@ -68,7 +68,7 @@ test('只在明确横扫后接管消息区；横向内容屏蔽起手、多指�
   assert.match(area, /onResponderRelease=/);
   assert.match(area, /touches.length !== 1/);
   assert.match(read('workspace/NewsPage.tsx'), /<ChatSwipeArea onSwipe={onSwipe}><ScrollView/);
-  assert.match(read('workspace/NewsPage.tsx'), /onTouchStart={\(event\) => event.stopPropagation\(\)} onLayout=/);
+  assert.match(read('news/NewsArticleActions.tsx'), /onTouchStart={\(event\) => event.stopPropagation\(\)}/);
   assert.equal((read('ui/MarkdownContent.tsx').match(/horizontal onTouchStart={\(event\) => event.stopPropagation\(\)}/g) ?? []).length, 2);
 });
 test('系统返回以全部为根，全局设置返回原聊天，子页优先于切换', () => {

@@ -40,6 +40,7 @@ export type NewsComment = {
 export type NewsFeedback = {
   reaction: NewsReaction | null;
   saved: boolean;
+  /** 当前服务端契约仍返回历史评论；客户端只校验并保留，不显示也不写入。 */
   comments: NewsComment[];
 };
 
@@ -99,12 +100,6 @@ export interface NewsClient {
     signal?: AbortSignal,
   ): Promise<NewsFeedback>;
   setNewsSaved(articleId: string, saved: boolean, signal?: AbortSignal): Promise<NewsFeedback>;
-  addNewsComment(articleId: string, text: string, signal?: AbortSignal): Promise<NewsFeedback>;
-  deleteNewsComment(
-    articleId: string,
-    commentId: string,
-    signal?: AbortSignal,
-  ): Promise<NewsFeedback>;
   refreshNews(signal?: AbortSignal): Promise<NewsRefreshResult>;
   getNewsPreferences(signal?: AbortSignal): Promise<NewsPreferences>;
   saveNewsPreferences(input: NewsPreferencesInput, signal?: AbortSignal): Promise<NewsPreferences>;
@@ -122,9 +117,6 @@ export type NewsArticleWork = {
   savedWriting: boolean;
   savedUncertain: boolean;
   savedReviewed: boolean;
-  commentWriting: boolean;
-  commentUncertain: boolean;
-  commentReviewed: boolean;
 };
 
 export type NewsSourceDeleteWork = {
@@ -171,7 +163,6 @@ export type NewsSnapshot = {
   articleError?: string;
   articleMissing: boolean;
   articleWork: Readonly<Record<string, NewsArticleWork>>;
-  commentDrafts: Readonly<Record<string, string>>;
 
   feedRefreshing: boolean;
   feedUncertain: boolean;

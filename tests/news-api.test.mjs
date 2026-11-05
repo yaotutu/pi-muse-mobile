@@ -120,8 +120,6 @@ test('新闻写入端点严格发送冻结请求体并返回完整反馈', async
     if (url.endsWith('/preferences')) return json({ notes: '新备注', learnedNotes: '' });
     if (url.includes('/saved')) return json({ feedback: feedback({ saved: true }) });
     if (url.includes('/reaction')) return json({ feedback: feedback({ reaction: null }) });
-    if (url.includes('/comments/')) return json({ feedback: feedback({ comments: [] }) });
-    if (url.includes('/comments')) return json({ feedback: feedback() });
     if (init.method === 'DELETE') return json({ deleted: true, sourceId: 'source-1' });
     throw new Error(`意外请求 ${url}`);
   }, async (api) => {
@@ -140,8 +138,6 @@ test('新闻写入端点严格发送冻结请求体并返回完整反馈', async
     if (url.endsWith('/preferences')) return json({ notes: '新备注', learnedNotes: '' });
     if (url.includes('/saved')) return json({ feedback: feedback({ saved: true }) });
     if (url.includes('/reaction')) return json({ feedback: feedback({ reaction: null }) });
-    if (url.includes('/comments/')) return json({ feedback: feedback({ comments: [] }) });
-    if (url.includes('/comments')) return json({ feedback: feedback() });
     if (init.method === 'DELETE') return json({ deleted: true, sourceId: 'source-1' });
     throw new Error(`意外请求 ${url}`);
   }, async (api) => {
@@ -149,8 +145,6 @@ test('新闻写入端点严格发送冻结请求体并返回完整反馈', async
     await api.deleteNewsSource('source-1');
     await api.setNewsReaction('article_1', 'dislike');
     await api.setNewsSaved('article_1', true);
-    await api.addNewsComment('article_1', '  一条评论  ');
-    await api.deleteNewsComment('article_1', 'comment/一');
     await api.refreshNews();
     await api.saveNewsPreferences({ notes: '新备注' });
   });
@@ -175,16 +169,6 @@ test('新闻写入端点严格发送冻结请求体并返回完整反馈', async
       url: 'https://news.example/api/news/articles/article_1/saved',
       method: 'PUT',
       body: { saved: true },
-    },
-    {
-      url: 'https://news.example/api/news/articles/article_1/comments',
-      method: 'POST',
-      body: { text: '一条评论' },
-    },
-    {
-      url: 'https://news.example/api/news/articles/article_1/comments/comment%2F%E4%B8%80',
-      method: 'DELETE',
-      body: undefined,
     },
     {
       url: 'https://news.example/api/news/refresh',
@@ -226,7 +210,7 @@ test('新闻严格解析公开响应；额外字段、错位 ID、坏 URL 和错
   }
 });
 
-test('新闻源 URL 与评论在客户端先校验，非法请求不触网', async () => {
+test('新闻源 URL 在客户端先校验，非法请求不触网', async () => {
   const credentialUrl = `https://user:${'pass' + 'word'}@example.com/feed`;
   let calls = 0;
   await withClient(async () => {
@@ -241,11 +225,7 @@ test('新闻源 URL 与评论在客户端先校验，非法请求不触网', asy
     ]) {
       await assert.rejects(api.createNewsSource({ url }), (error) => error instanceof ApiError && error.status === 400);
     }
-    await assert.rejects(api.addNewsComment('article-1', '   '), (error) => error instanceof ApiError && error.status === 400);
-    await assert.rejects(
-      api.addNewsComment('article-1', 'x'.repeat(4001)),
-      (error) => error instanceof ApiError && error.status === 400,
-    );
+
   });
   assert.equal(calls, 0);
 });
