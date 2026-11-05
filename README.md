@@ -172,7 +172,9 @@ These are local development gates. `npm test` uses local protocol and state fixt
 ## Documentation
 
 - [Pi Muse server](https://github.com/yaotutu/pi-muse) — deployment, configuration, architecture, and API documentation
-- [Project handoff](docs/HANDOFF.md) — implementation scope, current status, and historical acceptance notes
+- [Claude Code guide](CLAUDE.md) — development commands, architecture, and task-specific reading
+- [Mobile development guide](docs/mobile-development-guide.md) — navigation, state ownership, and API consumption
+- [Historical records](docs/archive/README.md) — past handoffs and acceptance evidence, not current instructions
 - [Theme maintenance](docs/themes.md) — theme registry, tokens, and verification guidance
 - [Engineering guidelines](AGENTS.md) — development boundaries, protocol rules, and release policy
 - [Release downloads](https://github.com/yaotutu/pi-muse-mobile/releases) — signed Android APK assets and an unsigned iOS IPA for qualified self-signing

@@ -172,7 +172,9 @@ npm test
 ## 文档
 
 - [Pi Muse 服务端](https://github.com/yaotutu/pi-muse) — 部署、配置、架构与 API 文档
-- [项目交接文档](docs/HANDOFF.md) — 实现范围、当前状态与历史验收记录
+- [Claude Code 入口](CLAUDE.md) — 开发命令、架构和按任务读取指南
+- [移动开发指南](docs/mobile-development-guide.md) — 导航、状态所有权与接口消费
+- [历史资料](docs/archive/README.md) — 旧交接与验收证据，不作为当前规则
 - [主题维护](docs/themes.md) — 主题注册表、token 与验证说明
 - [工程协作规范](AGENTS.md) — 开发边界、协议规则与发布策略
 - [Release 下载](https://github.com/yaotutu/pi-muse-mobile/releases) — 公开 Android APK 与供资格用户自签的未签名 iOS IPA
