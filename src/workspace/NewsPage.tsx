@@ -1,7 +1,7 @@
 import { ChatSwipeArea } from '../ui/ChatSwipeArea';
-import { ChevronDown, ChevronUp, Bookmark, Check, ChevronLeft, ExternalLink, MessageSquare, MoreHorizontal, Plus, RefreshCw, Rss, X, type LucideIcon } from 'lucide-react-native';
+import { ChevronDown, ChevronUp, Bookmark, Check, ChevronLeft, MessageSquare, MoreHorizontal, Plus, RefreshCw, Rss, X, type LucideIcon } from 'lucide-react-native';
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { Alert, Keyboard, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View, type ViewInstance } from 'react-native';
+import { Keyboard, Modal, Pressable, ScrollView, StyleSheet, Text, View, type ViewInstance } from 'react-native';
 import { useTheme } from '../theme/ThemeProvider';
 import { spacing, themeTokens } from '../theme/tokens';
 import { AgentHeader } from './AgentHeader';
@@ -10,7 +10,6 @@ import { FeedbackNotice } from '../ui/Feedback';
 import { FormInput } from '../ui/FormInput';
 import { IconControl } from '../ui/IconControl';
 import { Card } from '../ui/Surfaces';
-import { safeMessageUrl } from '../chat/message-links';
 import { NewsArticleActions } from '../news/NewsArticleActions';
 import { ThemeStatusBar } from '../theme/ThemeStatusBar';
 import { AnchoredFeedbackMenu, FeedbackMenuRow, FeedbackMenuRows } from '../ui/AnchoredFeedbackMenu';
@@ -128,31 +127,20 @@ function UncertainArticle({ articleId, snapshot, store }: { articleId: string; s
 
 type DiscussionProps = { onDiscuss?: (articleId: string) => void; discussing?: boolean; discussionError?: string; uncertainDiscussion?: boolean; onCheckDiscussion?: () => void; onConfirmDiscussion?: () => void };
 
-function ArticleDetail({ store, snapshot, visible, onDiscuss, discussing, discussionError, uncertainDiscussion, onCheckDiscussion, onConfirmDiscussion }: {
-  store: NewsStore; snapshot: NewsSnapshot; visible: boolean;
+function ArticleDetail({ store, snapshot, onDiscuss, discussing, discussionError, uncertainDiscussion, onCheckDiscussion, onConfirmDiscussion }: {
+  store: NewsStore; snapshot: NewsSnapshot;
 } & DiscussionProps) {
   const { colors } = useTheme();
   const id = snapshot.selectedArticleId!;
   const article = snapshot.articleMissing ? undefined : snapshot.article?.id === id ? snapshot.article : snapshot.articles.find((item) => item.id === id);
-  const url = article?.url ? safeMessageUrl(article.url) : undefined;
-  const openOriginal = () => {
-    if (url) void Linking.openURL(url).catch(() => Alert.alert('无法打开原文', '请稍后重试。'));
-  };
+  const discussDisabled = discussing || uncertainDiscussion;
   return <View style={[styles.readerContainer, { backgroundColor: colors.canvas }]}>
+    {/* 详情顶栏只负责返回；文章级动作（讨论）与个人反馈都在底部操作栏。 */}
     <View style={styles.readerToolbar}>
       <Pressable accessibilityRole="button" accessibilityLabel="返回新闻列表" onPress={() => store.closeArticle()}
         style={styles.menuButton} testID="news-detail-back">
         <ChevronLeft size={l.iconSize} color={colors.ink} /><Text style={[styles.menuText, { color: colors.ink }]}>返回</Text>
       </Pressable>
-      <View style={styles.toolbarActions}>
-        {url && <Pressable accessibilityRole="button" accessibilityLabel="在浏览器打开无凭据原文" onPress={openOriginal}
-          style={styles.menuButton} testID="news-original-link"><ExternalLink size={l.iconSize} color={colors.muted} /></Pressable>}
-        {article && onDiscuss && <ReaderMenu label="更多文章操作" testID="news-detail-more" visible={visible}>
-          {(close) => <FeedbackMenuRows><FeedbackMenuRow icon={MessageSquare} label="带到承接会话讨论新闻"
-            text={discussing ? '正在带入讨论…' : '带到会话讨论'} disabled={discussing || uncertainDiscussion} testID="news-discuss"
-            onPress={() => { close(); onDiscuss(id); }} /></FeedbackMenuRows>}
-        </ReaderMenu>}
-      </View>
     </View>
     <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.detailContent} testID="news-detail">
       {snapshot.articleLoading && <Text style={[styles.meta, { color: colors.muted }]}>正在读取文章内容…</Text>}
@@ -169,17 +157,27 @@ function ArticleDetail({ store, snapshot, visible, onDiscuss, discussing, discus
           </View>}
         </View>
         <Text selectable style={[styles.body, { color: colors.ink }]}>{article.content || 'RSS 未提供可显示的正文。'}</Text>
-        <Text style={[styles.detailNote, { color: colors.muted }]}>内容来自 RSS 订阅源，完整内容可查看原文。</Text>
+        <Text style={[styles.detailNote, { color: colors.muted }]}>内容来自 RSS 订阅源。</Text>
       </>}
-      {/* 讨论仍有独立失败与核对语义；即使入口收进更多菜单，未明状态也不能藏起来。 */}
+    </ScrollView>
+    {/* 固定底部操作栏：讨论与喜欢／不喜欢／收藏同栏靠右；未明回读与讨论核对提示也在栏内，不随正文滚动。 */}
+    {article && <View style={[styles.detailFooter, { borderTopColor: colors.line }]} testID="news-detail-footer">
+      {onDiscuss && <View style={styles.footerActions}>
+        <Pressable accessibilityRole="button" accessibilityLabel="带到会话讨论这篇新闻"
+          accessibilityState={{ disabled: discussDisabled, busy: discussing }} disabled={discussDisabled}
+          onPress={() => onDiscuss(id)} testID="news-discuss"
+          style={({ pressed }) => [styles.footerChat, { backgroundColor: colors.surface }, discussDisabled && styles.chatDisabled, pressed && styles.pressed]}>
+          <MessageSquare size={themeTokens.newsReading.actionIconSize} color={colors.muted} strokeWidth={1.7} />
+          <Text style={[styles.footerChatText, { color: colors.muted }]}>{discussing ? '讨论中…' : '讨论'}</Text>
+        </Pressable>
+        <NewsArticleActions article={article} store={store} work={snapshot.articleWork[id]} />
+      </View>}
+      {!onDiscuss && <NewsArticleActions article={article} store={store} work={snapshot.articleWork[id]} />}
+      <UncertainArticle articleId={id} snapshot={snapshot} store={store} />
+      {/* 讨论仍有独立失败与核对语义；入口移入底部栏后，未明状态依旧不能藏起来。 */}
       <FeedbackNotice tone="danger" text={discussionError} />
       {uncertainDiscussion && onCheckDiscussion && <ActionButton label="核对新闻承接会话" text="前往承接会话核对" onPress={onCheckDiscussion} />}
       {uncertainDiscussion && onConfirmDiscussion && <ActionButton label="已核对恢复新闻讨论" text="已核对，恢复操作" disabled={discussing} onPress={onConfirmDiscussion} />}
-    </ScrollView>
-    {/* 固定底部操作栏：正文滚到任何位置三个操作都一步可达；未明回读与解锁提示同栏呈现，不随正文滚动。 */}
-    {article && <View style={[styles.detailFooter, { borderTopColor: colors.line }]} testID="news-detail-footer">
-      <NewsArticleActions article={article} store={store} work={snapshot.articleWork[id]} />
-      <UncertainArticle articleId={id} snapshot={snapshot} store={store} />
     </View>}
   </View>;
 }
@@ -351,7 +349,7 @@ export function NewsPage({ store, visible, managing, onManaging, onSwipe, ...dis
       </ScrollView></ChatSwipeArea>
     </View>
     {snapshot.selectedArticleId ? <ChatSwipeArea onSwipe={onSwipe}>
-      <ArticleDetail key={snapshot.selectedArticleId} store={store} snapshot={snapshot} visible={visible} {...discussion} />
+      <ArticleDetail key={snapshot.selectedArticleId} store={store} snapshot={snapshot} {...discussion} />
     </ChatSwipeArea> : managing && <Sources store={store} snapshot={snapshot} onBack={() => onManaging(false)} />}
   </View>;
 }
@@ -388,6 +386,12 @@ const styles = StyleSheet.create({
   detailNote: { ...n.detailNote },
   body: { ...n.detailBody },
   detailFooter: { borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: l.sidePadding, paddingVertical: spacing[6], gap: spacing[8] },
+  /* 底部栏一行的动作组：讨论在反馈组左侧，整组靠右；窄屏允许换行。 */
+  footerActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end', gap: spacing[8] },
+  footerChat: { minHeight: themeTokens.layout.smallControl, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: spacing[6], paddingHorizontal: spacing[10], borderRadius: themeTokens.radius.field },
+  footerChatText: { ...themeTokens.typography.caption },
+  chatDisabled: { opacity: themeTokens.interaction.disabledOpacity },
   sourceForm: { gap: spacing[12] },
   sourceRow: { paddingVertical: spacing[12], borderBottomWidth: StyleSheet.hairlineWidth, gap: spacing[8] },
   confirm: { gap: spacing[12] },

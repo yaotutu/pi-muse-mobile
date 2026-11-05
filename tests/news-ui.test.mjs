@@ -67,17 +67,21 @@ test('阅读反馈常驻三个独立按钮，显式选中态、命中区和写�
   assert.equal(newsActionLocked({ reactionReviewed: true, savedReviewed: true }), false);
 });
 
-test('详情专注完整正文，三个反馈固定底部操作栏，讨论收进更多', () => {
+test('详情顶栏只保留返回，讨论与三个反馈同在固定底部操作栏', () => {
   const page = read('workspace/NewsPage.tsx');
   const detail = page.split('function ArticleDetail(')[1].split('function Sources(')[0];
   assert.match(detail, /<Text selectable style=\{\[styles\.body/);
   assert.match(detail, /推荐理由 · \{article\.recommendation\.reason\}/);
-  assert.match(detail, /<ReaderMenu label="更多文章操作"/);
-  assert.match(detail, /safeMessageUrl\(article\.url\)/);
-  assert.match(detail, /Linking\.openURL\(url\)/);
-  // 操作栏是 ScrollView 的兄弟节点（固定底部），未明回读与解锁同栏，不随正文滚动。
+  // 顶栏不再有外链按钮和三个点菜单；原文链接入口整体移除。
+  assert.doesNotMatch(detail, /ExternalLink|safeMessageUrl|Linking\.openURL|news-original-link|news-detail-more|<ReaderMenu/);
+  assert.match(detail, /内容来自 RSS 订阅源。/);
+  // 底部固定操作栏：讨论按钮在反馈组左侧，整组靠右；未明回读与讨论核对提示同栏。
   assert.match(detail, /\{article && <View style=\{\[styles\.detailFooter, \{ borderTopColor: colors\.line \}\]\} testID="news-detail-footer">/);
   assert.ok(detail.indexOf('</ScrollView>') < detail.indexOf('<NewsArticleActions'), '反馈行在滚动区之外固定底部');
+  assert.ok(detail.indexOf('testID="news-discuss"') < detail.indexOf('<NewsArticleActions'), '讨论按钮在底部栏内');
+  assert.ok(detail.indexOf('testID="news-discuss"') > detail.indexOf('</ScrollView>'), '讨论按钮不随正文滚动');
+  assert.match(detail, /disabled=\{discussDisabled\}/);
+  assert.match(detail, /核对新闻承接会话/);
   assert.ok(detail.indexOf('styles.body,') < detail.indexOf('</ScrollView>'));
   assert.match(page, /detailFooter: \{ borderTopWidth: StyleSheet\.hairlineWidth, paddingHorizontal: l\.sidePadding, paddingVertical: spacing\[6\], gap: spacing\[8\] \},/);
   assert.doesNotMatch(page, /detailActions/);
