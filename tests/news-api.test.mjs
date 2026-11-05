@@ -184,7 +184,7 @@ test('新闻写入端点严格发送冻结请求体并返回完整反馈', async
 });
 
 test('新闻严格解析公开响应；额外字段、错位 ID、坏 URL 和错误类型均报 502', () => {
-  const credentialUrl = `https://user:${'pass' + 'word'}@example.com/a`;
+  const credentialUrl = 'https://user:password@example.com/a';
   assert.deepEqual(parseNewsArticlePage({ articles: [article()], nextCursor: null }), {
     articles: [article()],
     nextCursor: null,
@@ -211,7 +211,7 @@ test('新闻严格解析公开响应；额外字段、错位 ID、坏 URL 和错
 });
 
 test('新闻源 URL 在客户端先校验，非法请求不触网', async () => {
-  const credentialUrl = `https://user:${'pass' + 'word'}@example.com/feed`;
+  const credentialUrl = 'https://user:password@example.com/feed';
   let calls = 0;
   await withClient(async () => {
     calls += 1;

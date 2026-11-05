@@ -50,7 +50,7 @@ const reaction = (value: unknown): NewsReaction | null =>
   value === null || value === 'like' || value === 'dislike' ? value : invalid();
 
 /** 客户端只挡明显非法与带凭据 URL；SSRF/公网判定仍以服务端校验为准。 */
-export function assertNewsHttpUrl(value: string): string {
+function assertNewsHttpUrl(value: string): string {
   if (value.length > 2048 || value !== value.trim() || !/^https?:\/\//.test(value)) {
     throw new ApiError(400, 'RSS 地址必须是无凭据的 http(s) URL');
   }
@@ -60,9 +60,8 @@ export function assertNewsHttpUrl(value: string): string {
   } catch {
     throw new ApiError(400, 'RSS 地址必须是无凭据的 http(s) URL');
   }
-  const passwordKey = 'pass' + 'word';
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:' ||
-    parsed.username !== '' || parsed[passwordKey as keyof URL] !== '') {
+    parsed.username !== '' || parsed.password !== '') {
     throw new ApiError(400, 'RSS 地址必须是无凭据的 http(s) URL');
   }
   return value;
@@ -125,7 +124,7 @@ export function parseNewsStatus(value: unknown): NewsStatus {
   };
 }
 
-export function parseNewsSource(value: unknown): NewsSource {
+function parseNewsSource(value: unknown): NewsSource {
   if (!isRecord(value) || !hasOnlyKeys(value, [
     'id', 'title', 'url', 'createdAt', 'lastFetchedAt', 'lastError',
   ])) return invalid();
