@@ -170,16 +170,17 @@ function ArticleDetail({ store, snapshot, visible, onDiscuss, discussing, discus
         </View>
         <Text selectable style={[styles.body, { color: colors.ink }]}>{article.content || 'RSS 未提供可显示的正文。'}</Text>
         <Text style={[styles.detailNote, { color: colors.muted }]}>内容来自 RSS 订阅源，完整内容可查看原文。</Text>
-        <View style={[styles.detailActions, { borderTopColor: colors.line }]}>
-          <NewsArticleActions article={article} store={store} work={snapshot.articleWork[id]} />
-          <UncertainArticle articleId={id} snapshot={snapshot} store={store} />
-        </View>
       </>}
       {/* 讨论仍有独立失败与核对语义；即使入口收进更多菜单，未明状态也不能藏起来。 */}
       <FeedbackNotice tone="danger" text={discussionError} />
       {uncertainDiscussion && onCheckDiscussion && <ActionButton label="核对新闻承接会话" text="前往承接会话核对" onPress={onCheckDiscussion} />}
       {uncertainDiscussion && onConfirmDiscussion && <ActionButton label="已核对恢复新闻讨论" text="已核对，恢复操作" disabled={discussing} onPress={onConfirmDiscussion} />}
     </ScrollView>
+    {/* 固定底部操作栏：正文滚到任何位置三个操作都一步可达；未明回读与解锁提示同栏呈现，不随正文滚动。 */}
+    {article && <View style={[styles.detailFooter, { borderTopColor: colors.line }]} testID="news-detail-footer">
+      <NewsArticleActions article={article} store={store} work={snapshot.articleWork[id]} />
+      <UncertainArticle articleId={id} snapshot={snapshot} store={store} />
+    </View>}
   </View>;
 }
 
@@ -386,7 +387,7 @@ const styles = StyleSheet.create({
   detailReason: { ...n.detailReason },
   detailNote: { ...n.detailNote },
   body: { ...n.detailBody },
-  detailActions: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: spacing[12], gap: spacing[12] },
+  detailFooter: { borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: l.sidePadding, paddingVertical: spacing[6], gap: spacing[8] },
   sourceForm: { gap: spacing[12] },
   sourceRow: { paddingVertical: spacing[12], borderBottomWidth: StyleSheet.hairlineWidth, gap: spacing[8] },
   confirm: { gap: spacing[12] },

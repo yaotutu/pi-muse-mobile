@@ -64,7 +64,7 @@ test('阅读反馈常驻三个独立按钮，显式选中态、命中区和写�
   assert.equal(newsActionLocked({ reactionReviewed: true, savedReviewed: true }), false);
 });
 
-test('详情专注完整正文，保留文字选择与三个反馈，讨论收进更多', () => {
+test('详情专注完整正文，三个反馈固定底部操作栏，讨论收进更多', () => {
   const page = read('workspace/NewsPage.tsx');
   const detail = page.split('function ArticleDetail(')[1].split('function Sources(')[0];
   assert.match(detail, /<Text selectable style=\{\[styles\.body/);
@@ -72,7 +72,12 @@ test('详情专注完整正文，保留文字选择与三个反馈，讨论收�
   assert.match(detail, /<ReaderMenu label="更多文章操作"/);
   assert.match(detail, /safeMessageUrl\(article\.url\)/);
   assert.match(detail, /Linking\.openURL\(url\)/);
-  assert.ok(detail.indexOf('styles.body,') < detail.indexOf('<NewsArticleActions'));
+  // 操作栏是 ScrollView 的兄弟节点（固定底部），未明回读与解锁同栏，不随正文滚动。
+  assert.match(detail, /\{article && <View style=\{\[styles\.detailFooter, \{ borderTopColor: colors\.line \}\]\} testID="news-detail-footer">/);
+  assert.ok(detail.indexOf('</ScrollView>') < detail.indexOf('<NewsArticleActions'), '反馈行在滚动区之外固定底部');
+  assert.ok(detail.indexOf('styles.body,') < detail.indexOf('</ScrollView>'));
+  assert.match(page, /detailFooter: \{ borderTopWidth: StyleSheet\.hairlineWidth, paddingHorizontal: l\.sidePadding, paddingVertical: spacing\[6\], gap: spacing\[8\] \},/);
+  assert.doesNotMatch(page, /detailActions/);
   assert.doesNotMatch(detail, /numberOfLines|newsListExcerpt|onLongPress|commentDraft|发布评论|<FormInput/);
   assert.ok(themeTokens.newsReading.detailTitle.fontSize < 30);
   assert.ok(themeTokens.newsReading.detailBody.lineHeight > themeTokens.newsReading.listExcerpt.lineHeight);
