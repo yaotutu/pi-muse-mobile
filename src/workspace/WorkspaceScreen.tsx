@@ -29,6 +29,7 @@ import { spacing, sizing, workspaceTheme, type WorkspaceColors } from '../ui/tok
 import { ConnectionPanel } from './ConnectionPanel';
 import { NewsPage, NewsSourcesPage } from './NewsPage';
 import { createNewsStore } from '../news/news-store';
+import { useNews } from '../news/useNews';
 import { NewsPreferencesStore } from '../features/news-preferences-store';
 import { useJobs } from '../jobs/JobProvider';
 import { useMonitors } from '../monitors/MonitorProvider';
@@ -206,6 +207,8 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
   const api = useApi();
   // 连接键改变会卸载整层；新闻 Store 在此持续挂载，切智能体与重置会话不会丢草稿。
   const [news] = useState(() => createNewsStore(api));
+  // 外壳需感知文章详情是否打开：详情是整页，隐藏头像栏；列表返回后恢复。
+  const newsSnapshot = useNews(news).snapshot;
   const [newsPreferences] = useState(() => new NewsPreferencesStore(api));
   // Store 随 ApiProvider 的连接键创建和销毁，票据不会跨服务地址复用。
   const [browser] = useState(() => createBrowserStore(api, snapshot.serverUrl ?? ''));
@@ -248,6 +251,8 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
   const targetScale = Math.max(25, Math.ceil((Math.hypot(contentWidth / 2, height - avatarCenterY) / bloomRadius) * 1.08));
   const inSettingsSubpage = page === 'settings' && settingsSubpage !== null;
   const newsVisible = page === 'news' || (page === 'feature' && settingsSubpage === 'news-sources');
+  // 文章详情按整页呈现：隐藏头像栏与分隔线；其余新闻页（列表、来源管理）保留。
+  const newsDetailOpen = page === 'news' && newsSnapshot.selectedArticleId != null;
   const statusLabel = snapshot.status === 'authentication-required' || snapshot.status === 'reset-error' || snapshot.status === 'storage-error'
     ? connectionLabel(snapshot) : runtime.label;
   const labelIds = agents.agents.map((agent) => agent.id).sort().join('|');
@@ -489,9 +494,11 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
           {/* 唯一键盘避让层：Android 按真实重叠缩小阅读区，iOS 保留 padding；不再另算键盘高度。 */}
           <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled={Platform.OS !== 'web'} accessibilityViewIsModal={sessionMounted}>
             {page === 'settings' && !inSettingsSubpage && <AgentHeader title="全局设置" backLabel="返回聊天" onBack={returnChat} />}
-            {(page === 'chat' || page === 'group' || page === 'news') && <AgentAvatarStrip targets={targets} selected={selectedAvatar}
+            {(page === 'chat' || page === 'group' || page === 'news') && !newsDetailOpen && <AgentAvatarStrip targets={targets} selected={selectedAvatar}
               title={avatarTitle} compact={keyboardVisible} disabled={sessionMounted} onSelect={selectAvatar}
               onSettings={(id) => id === 'group' ? openGlobalSettings() : openAgentSettings(id)} />}
+            {/* 阅读视图的头像栏与内容区以细分隔线明确分层；聊天与群页保持原样。 */}
+            {page === 'news' && !newsDetailOpen && <View style={styles.stripDivider} testID="news-strip-divider" />}
             <View style={styles.bodyStage}>
               <BlurTargetView ref={chatBlurTarget} style={styles.bodyStage}>
                 {/* Expo 的原生 BlurTargetView 仅负责采样；普通 RN View 承担触控和读屏隔离。 */}
@@ -577,6 +584,7 @@ const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: c.canvas }, viewport: { flex: 1, alignSelf: 'center', overflow: 'hidden', backgroundColor: c.canvas }, screen: { flex: 1 },
   foreground: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: c.canvas, overflow: 'hidden' },
   bodyStage: { flex: 1 },
+  stripDivider: { height: StyleSheet.hairlineWidth, backgroundColor: c.line },
   sessionLayer: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden' },
   frostedWrap: { flex: 1 },
   sessionContentWrap: { flex: 1 },

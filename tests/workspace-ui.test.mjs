@@ -267,7 +267,7 @@ test('新闻按主视图偏好进入，阅读保留头像栏与现场，切视�
   const profile = read('src/workspace/AgentPage.tsx');
   const reader = read('src/workspace/NewsPage.tsx');
   assert.match(source, /setPage\(conversation \? 'chat' : homePage\(id\)\)/);
-  assert.match(source, /page === 'chat' \|\| page === 'group' \|\| page === 'news'\) && <AgentAvatarStrip/);
+  assert.match(source, /page === 'chat' \|\| page === 'group' \|\| page === 'news'\) && !newsDetailOpen && <AgentAvatarStrip/);
   assert.match(source, /<NewsPage store={news} visible={page === 'news'}/);
   assert.match(source, /onMainView={\(view\) => views.save\(focusedAgentId, view\)}/);
   assert.match(profile, /agentId === 'news-internal'/);
@@ -276,6 +276,18 @@ test('新闻按主视图偏好进入，阅读保留头像栏与现场，切视�
   assert.doesNotMatch(profile, /onReadNews/);
   assert.doesNotMatch(reader, /label="返回新闻设置"/);
   assert.match(reader, /visible && anchor && <Modal/);
+});
+
+test('阅读列表以细分隔线区分头像栏与内容；文章详情整页隐藏头像栏', () => {
+  const source = read('src/workspace/WorkspaceScreen.tsx');
+  // 详情整页：外壳订阅新闻快照，selectedArticleId 打开时不渲染头像栏与分隔线。
+  assert.match(source, /const newsSnapshot = useNews\(news\)\.snapshot;/);
+  assert.match(source, /const newsDetailOpen = page === 'news' && newsSnapshot\.selectedArticleId != null;/);
+  assert.match(source, /page === 'news' && !newsDetailOpen && <View style=\{styles\.stripDivider\} testID="news-strip-divider" \/>/);
+  assert.match(source, /stripDivider: \{ height: StyleSheet\.hairlineWidth, backgroundColor: c\.line \},/);
+  // 列表与来源管理仍保留头像栏；详情内横扫切换智能体由 ChatSwipeArea 承担。
+  const reader = read('src/workspace/NewsPage.tsx');
+  assert.match(reader, /snapshot\.selectedArticleId \? <ChatSwipeArea onSwipe=\{onSwipe\}>/);
 });
 
 test('智能体维护归智能体子页，全局设置来自群组信息，会话面板只处理当前执行', () => {

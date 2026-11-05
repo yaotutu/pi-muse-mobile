@@ -76,7 +76,7 @@ Current source uses the top avatar strip to switch between All and individual ag
 
 ### News reading
 
-- **A lightweight reading feed.** The News view uses a single text column: source and Chinese-formatted local time, headline, and a two-line excerpt. Open an article for its full RSS text and recommendation reason, with selectable text; returning preserves the list position.
+- **A lightweight reading feed.** The News view uses a single text column: source and Chinese-formatted local time, headline, and a two-line excerpt, with a hairline separating the avatar bar from the content. Opening an article is a full page without the avatar bar; its full RSS text and recommendation reason are shown with selectable text, and returning preserves the list position.
 - **Personal feedback.** Every article offers Like, Dislike, and Save directly. Like and Dislike are mutually exclusive and can be toggled off; Save is independent. Disliking an article does not immediately remove it. The reader has no comments UI and does not delete historical comments stored on the server.
 - **Compact tools.** Choose Recommended or All from a menu, filter saved articles separately, and use More for source management, fetch status, and manual fetching. Original links and conversation discussion are in the detail toolbar. The client adds no click tracking, view counts, or interest extraction, and does not claim a successful feedback write has already changed recommendations.
 
