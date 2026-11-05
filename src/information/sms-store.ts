@@ -104,6 +104,24 @@ export class SmsStore {
       notice: `已上报 ${result.length} 条信息到待处理队列`,
     }), !!externalId);
   };
+  ingestBatch = async (items: { content: string; title?: string; externalId?: string; receivedAt?: string }[]) => {
+    const valid = items.filter((item) => item.content.trim());
+    if (!valid.length) return;
+    return this.write('ingesting', async (signal) => {
+      const result = await this.api.ingestSmsItems(valid.map((item, index) => ({
+        source: 'sms',
+        externalId: item.externalId ?? `sms-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}`,
+        content: item.content,
+        title: item.title?.trim() || undefined,
+        receivedAt: item.receivedAt ?? new Date().toISOString(),
+      })), signal);
+      void this.api.triggerSmsRun().catch(() => undefined);
+      return result;
+    }, (result) => this.publish({
+      items: [...result, ...this.state.items.filter((item) => !result.some((next) => next.id === item.id))].slice(0, 10),
+      notice: `已上报 ${result.length} 条历史短信，后台自动启动全面分析`,
+    }), true);
+  };
   triggerRun = async () => {
     await this.write('triggering', (signal) => this.api.triggerSmsRun(signal), () => this.publish({ notice: '本轮信息分析已完成，请查看条目状态' }));
   };

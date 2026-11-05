@@ -51,3 +51,30 @@ test('页面只控制刷新生命周期，权限与监听在连接所有者，�
  const read=p=>readFileSync(new URL('../src/'+p,import.meta.url),'utf8');const ui=read('information/SmsSettingsCard.tsx');assert.match(ui,/setVisible\(true\); return \(\) => setVisible\(false\)/);assert.match(ui,/processing: '分析中'/);assert.match(ui,/failed: '分析失败'/);
  const hook=read('information/useSmsInformation.ts');assert.match(hook,/AppState.addEventListener/);assert.match(hook,/store.setForeground\(next === 'active'\)/);assert.match(hook,/hasSmsPermission !== true/);assert.doesNotMatch(ui,/setInterval|addSmsListener|requestSmsPermission/);
 });
+
+test('批量导入短信自动触发分析，条目进入待处理列表并展示中文提示',async()=>{
+  let triggered = 0;
+  let ingested = [];
+  const f = fixture({
+    ingestSmsItems: async (items) => {
+      ingested = items;
+      const created = items.map((item, idx) => ({ id: `batch-${idx}`, status: 'pending' }));
+      f.remote.items = [...created, ...f.remote.items];
+      return created;
+    },
+    triggerSmsRun: async () => { triggered++; },
+  });
+  try {
+    await f.store.reload();
+    await f.store.ingestBatch([
+      { content: '短信一', title: '标题一' },
+      { content: '短信二', title: '标题二' },
+    ]);
+    assert.equal(ingested.length, 2);
+    assert.equal(triggered, 1);
+    assert.match(f.store.getSnapshot().notice, /已上报 2 条历史短信/);
+    assert.equal(f.store.getSnapshot().items.length, 3);
+  } finally {
+    f.store.dispose();
+  }
+});

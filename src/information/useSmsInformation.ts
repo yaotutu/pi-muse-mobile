@@ -40,7 +40,7 @@ export function useSmsInformation() {
   }, [store, state.settings?.enabled, hasSmsPermission]);
   return { ...state, error: state.error ?? permissionError,
     setDraftNotes: store.setDraftNotes, toggleEnabled: store.toggleEnabled, saveNotes: store.saveNotes,
-    ingestSms: store.ingestSms, triggerRun: store.triggerRun, reload: store.reload, setVisible: store.setVisible,
+    ingestSms: store.ingestSms, ingestBatch: store.ingestBatch, triggerRun: store.triggerRun, reload: store.reload, setVisible: store.setVisible,
     isSmsAvailable: isSmsReceiverAvailable(), hasSmsPermission, checkPermission, requestPermission,
   };
 }
