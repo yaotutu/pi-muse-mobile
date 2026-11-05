@@ -16,6 +16,7 @@ import { Message } from '../workspace/ConversationView';
 import { discussionTurns, notificationKey, groupRows, resolveGroupTarget, type GroupSnapshot, type GroupTurn, type NotificationReference } from './contracts';
 
 let groupSequence = 0;
+const nextGroupId = () => `group-${Date.now()}-${++groupSequence}`;
 const { layout: l, typography: t, radius: r } = workspaceTheme;
 /** 连接内只挂一份群聊所有者；换页面不重发、不把私聊草稿或历史带进群里。 */
 export function GroupChat({ visible, members, onAgentSettings, onApprovals, notification, onOpenNotification, onBack, onSwipe }: {
@@ -34,7 +35,7 @@ export function GroupChat({ visible, members, onAgentSettings, onApprovals, noti
   const [composers] = useState(() => new Map<string, GroupComposer>());
   if (!composers.has(scope)) composers.set(scope, new GroupComposer());
   const composer = composers.get(scope)!;
-  const { draft, target, pending: pendingDraft } = useSyncExternalStore(composer.subscribe, composer.getSnapshot, composer.getSnapshot);
+  const { draft, target, pending: pendingDraft, suggestion } = useSyncExternalStore(composer.subscribe, composer.getSnapshot, composer.getSnapshot);
   const [choosing, setChoosing] = useState(false); const [loading, setLoading] = useState(false);
   const [runningScope, setRunningScope] = useState<string>();
   const running = runningScope !== undefined;
@@ -42,13 +43,13 @@ export function GroupChat({ visible, members, onAgentSettings, onApprovals, noti
   const mounted = useRef(true); const request = useRef<AbortController | null>(null);
   const pending = useRef<{ id: string; scope: string } | null>(null); const readVersion = useRef(0); const scroll = useRef<ScrollViewInstance>(null);
   const following = useRef(true);
-  const reload = useCallback(async () => {
+  const reload = useCallback(async (preserveSendError = false) => {
     const version = ++readVersion.current;
     setLoading(true);
     try {
       const next = await api.getGroup();
       if (!mounted.current || version !== readVersion.current) return;
-      setSnapshot(next); setError('');
+      setSnapshot(next); if (!preserveSendError) setError('');
       if (!request.current && (!pending.current || next.running !== pending.current.id)) {
         for (const item of composers.values()) item.reconcile(next);
         pending.current = null; setUncertain(false); setLive([]);
@@ -60,7 +61,7 @@ export function GroupChat({ visible, members, onAgentSettings, onApprovals, noti
       }
     }
     finally { if (mounted.current && version === readVersion.current) setLoading(false); }
-  }, [api, composers]);
+  }, [api, composers, setError]);
   useEffect(() => { following.current = true; }, [scope]);
   useEffect(() => {
     mounted.current = true;
@@ -76,19 +77,21 @@ export function GroupChat({ visible, members, onAgentSettings, onApprovals, noti
   const source = notification ? snapshot?.notifications.find((item) => notificationKey(item) === scope) : undefined;
   const rows = groupRows(selectedTurns, notification ? [] : snapshot?.notifications);
   const busy = running || !!snapshot?.running;
+  const availableMembers = members.filter((member) => snapshot?.memberIds.includes(member.id));
   const activeHere = !notification || runningScope === scope || selectedTurns.some((turn) => turn.rootId === snapshot?.running);
-  const send = async () => {
-    if (!draft.trim() || request.current || busy || uncertain || pendingDraft || !snapshot || loading || (notification && !source)) return;
+  const send = async (confirmedTarget?: string) => {
+    if ((!confirmedTarget && (!draft.trim() || suggestion)) || request.current || busy || uncertain || pendingDraft || !snapshot || loading || (notification && !source)) return;
     let input: ReturnType<typeof resolveGroupTarget>;
-    try { input = notification ? { content: draft.trim() } : resolveGroupTarget(draft, members, target); if (!input.content.trim()) throw new Error('请输入要发送的消息'); }
+    try { input = confirmedTarget ? { content: suggestion!.content, targetAgentId: confirmedTarget } : notification ? { content: draft.trim() } : resolveGroupTarget(draft, availableMembers, target); if (!input.content.trim()) throw new Error('请输入要发送的消息'); }
     catch (failure) { setError((failure as Error).message); return; }
-    const id = `group-${Date.now()}-${++groupSequence}`; const controller = new AbortController();
-    if (!composer.submit({ id, ...input, ...(notification ? { notification } : {}) })) return;
+    const id = nextGroupId(); const controller = new AbortController();
+    if (confirmedTarget ? !composer.confirmSuggestion(id, confirmedTarget) : !composer.submit({ id, ...input, ...(notification ? { notification } : {}) })) return;
     request.current = controller; pending.current = { id, scope }; setRunningScope(scope); setError(''); setChoosing(false);
     following.current = true; ++readVersion.current;
     try {
       await api.sendGroup({ id, ...input, ...(notification ? { notification } : {}) }, (event) => {
         if (!mounted.current) return;
+        if (event.type === 'suggestion') composer.suggest(event);
         if (event.type === 'turn') {
           composer.accept(event.turn.id);
           setLive((items) => [...items.filter((turn) => turn.id !== event.turn.id), { ...event.turn, messages: event.turn.id === id ? [{ id, role: 'user', content: input.content }] : [] }]);
@@ -100,7 +103,7 @@ export function GroupChat({ visible, members, onAgentSettings, onApprovals, noti
     } catch (failure) { if (mounted.current) { setUncertain(true); setError(failure instanceof Error ? failure.message : '结果未明，请同步核对，不要重复发送'); } }
     finally {
       request.current = null;
-      if (mounted.current) { setRunningScope(undefined); await reload(); }
+      if (mounted.current) { setRunningScope(undefined); await reload(true); }
     }
   };
   const pendingApprovals = approvals.snapshot.pendingIds.map((id) => approvals.snapshot.records[id]).filter((item) => item && item.agentId && selectedTurns.some((turn) => turn.rootId === item.runId));
@@ -133,6 +136,16 @@ export function GroupChat({ visible, members, onAgentSettings, onApprovals, noti
           {row.status && <Text style={{ ...t.caption, color: row.status === 'failed' ? c.danger : c.muted }}>{row.status === 'cancelled' ? '已停止' : '处理失败，不会自动重试'}</Text>}
         </View>
       </View>)}
+      {!notification && suggestion && <View style={{ padding: spacing[16], gap: spacing[12], borderRadius: r.card, backgroundColor: c.surface }}>
+        <Text style={{ ...t.itemTitle, color: c.ink }}>这条消息交给谁？</Text>
+        <Text style={{ ...t.caption, color: c.muted }}>{suggestion.reason || '有多个可能的对象，请选择一个。选择前不会发送给任何智能体。'}</Text>
+        <Text selectable style={{ ...t.detail, color: c.ink }}>{suggestion.content}</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing[8] }}>
+          {suggestion.targetAgentIds.map((id) => <ActionButton key={id} label={`确认转交给${title(id)}`} text={`@${title(id)}`} disabled={busy || uncertain || loading || !snapshot?.memberIds.includes(id)} onPress={() => void send(id)} />)}
+          <ActionButton label="取消本次转交" text="取消" disabled={busy} onPress={composer.cancelSuggestion} />
+        </View>
+        <Text style={{ ...t.caption, color: c.muted }}>确认后只发送这段原文；输入框的新草稿不受影响。</Text>
+      </View>}
       {pendingDraft && !selectedTurns.some((turn) => turn.id === pendingDraft.id) && <View style={{ gap: spacing[8] }}>
         <Message message={{ id: pendingDraft.id, role: 'user', text: pendingDraft.content, toolCalls: [], feedbackAvailable: false }} layout="group" />
         <Text style={{ ...t.caption, color: c.muted }}>{pendingDraft.absent ? '服务器未接收这条消息。原内容已保留，请先处理当前草稿后恢复，或明确丢弃。' : '正在发送；原内容已保留，未确认时不会重复发送。'}</Text>
@@ -149,7 +162,7 @@ export function GroupChat({ visible, members, onAgentSettings, onApprovals, noti
     </ScrollView></ChatSwipeArea>
     {pendingApprovals.length > 0 && <ActionButton label="查看全部视图待处理审批" text={`待处理审批（${pendingApprovals.length}）`} onPress={() => onApprovals(pendingApprovals[0].agentId!)} style={{ marginHorizontal: l.sidePadding }} />}
     {!notification && choosing && <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 200, marginHorizontal: l.sidePadding, borderRadius: r.card, backgroundColor: c.surface }}>
-      {members.map((member) => <Pressable key={member.id} accessibilityRole="button" accessibilityLabel={`全部视图艾特${member.name}`} onPress={() => { composer.setTarget(member.id); setChoosing(false); composer.setDraft(draft.endsWith('@') ? draft.slice(0, -1) : draft); }} style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', padding: spacing[12], gap: spacing[12] }}>
+      {availableMembers.map((member) => <Pressable key={member.id} accessibilityRole="button" accessibilityLabel={`全部视图艾特${member.name}`} onPress={() => { composer.setTarget(member.id); setChoosing(false); composer.setDraft(draft.endsWith('@') ? draft.slice(0, -1) : draft); }} style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', padding: spacing[12], gap: spacing[12] }}>
         <MemberAvatar agentId={member.id} size={30} /><Text style={{ ...t.detail, color: c.ink }}>{member.name}</Text>
       </Pressable>)}
     </ScrollView>}
@@ -159,7 +172,7 @@ export function GroupChat({ visible, members, onAgentSettings, onApprovals, noti
       <TextInput accessibilityLabel={notification ? '通知讨论输入框' : '全部消息输入框'} placeholder={notification ? (source ? `回复${title(`${source.featureId}-internal`)}…` : '通知已失效') : '消息'} placeholderTextColor={c.faint} multiline value={draft} editable={!notification || !!source}
         onChangeText={(text) => { composer.setDraft(text); if (!notification && text.endsWith('@')) setChoosing(true); }}
         style={{ ...t.input, flex: 1, minWidth: 0, minHeight: 44, maxHeight: l.composerMaxHeight, padding: spacing[8], color: c.ink }} />
-      <IconControl icon={busy ? Square : ArrowUp} label={busy ? (activeHere ? '停止全部视图回复' : '等待其他讨论结束') : notification ? '发送通知讨论消息' : '发送全部视图消息'} disabled={busy ? !activeHere : !draft.trim() || uncertain || !!pendingDraft || !snapshot || loading || (!!notification && !source)}
+      <IconControl icon={busy ? Square : ArrowUp} label={busy ? (activeHere ? '停止全部视图回复' : '等待其他讨论结束') : notification ? '发送通知讨论消息' : '发送全部视图消息'} disabled={busy ? !activeHere : !draft.trim() || !!suggestion || uncertain || !!pendingDraft || !snapshot || loading || (!!notification && !source)}
         onPress={() => { if (busy) { const id = pending.current?.id ?? snapshot?.running; if (id) void api.stopGroup(id).catch((failure) => setError((failure as Error).message)); } else void send(); }} />
     </View>
   </View>;

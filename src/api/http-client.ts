@@ -1,4 +1,4 @@
-import { parseGroup, parseGroupEvent, type GroupInput, type GroupEvent } from '../group/contracts';
+import { parseGroup, parseGroupEvent, parseGroupSettings, parseAgentCapability, type GroupSettings, type GroupInput, type GroupEvent } from '../group/contracts';
 import { parseFeatures, parseFeature, parseDiscussion, type FeatureId } from "../features/contracts";
 /**
  * 真实 HTTP 客户端：expo/fetch（原生流式支持）+ Bearer token + SSE 分帧消费。
@@ -281,6 +281,10 @@ export class HttpApiClient implements ApiClient {
   }
 
   async getGroup(signal?: AbortSignal) { return parseGroup(await this.request('/api/group', { signal })); }
+  async getGroupSettings(signal?: AbortSignal) { return parseGroupSettings(await this.request('/api/group/settings', { signal })); }
+  async saveGroupSettings(settings: GroupSettings, signal?: AbortSignal) { return parseGroupSettings(await this.request('/api/group/settings', { method: 'PUT', body: settings, signal })); }
+  async getAgentCapability(agentId: string, signal?: AbortSignal) { return parseAgentCapability(await this.request(`/api/agents/${encodeURIComponent(agentId)}/capability`, { signal }), agentId); }
+  async saveAgentCapability(agentId: string, capability: string, signal?: AbortSignal) { return parseAgentCapability(await this.request(`/api/agents/${encodeURIComponent(agentId)}/capability`, { method: 'PUT', body: { capability }, signal }), agentId); }
   async stopGroup(id: string, signal?: AbortSignal) {
     const result = await this.request<{ stopped: boolean }>(`/api/group/messages/${encodeURIComponent(id)}/stop`, { method: 'POST', body: {}, signal });
     if (typeof result?.stopped !== 'boolean') throw new ApiError(502, '停止结果不正确，请同步核对');

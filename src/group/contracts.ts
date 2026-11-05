@@ -7,10 +7,17 @@ export type GroupTurn = { id: string; rootId: string; sourceAgentId: string | nu
   createdAt: string; finishedAt: string | null; status: 'running' | 'completed' | 'failed' | 'cancelled'; messages: GroupMessage[]; notification?: NotificationReference };
 export type NotificationReference = { targetAgentId: string; sessionId: string; messageId: string };
 export type GroupNotification = { id: string; featureId: 'news' | 'sms'; targetAgentId: string; sessionId: string; messageId: string; createdAt: string; content: string };
-export type GroupSnapshot = { id: 'main'; defaultAgentId: 'local-main'; running: string | null; turns: GroupTurn[]; notifications: GroupNotification[] };
+export type GroupSettings = { name: string; purpose: string; memberIds: string[]; defaultAgentId: string; instructions: string };
+export type AgentCapability = { agentId: string; capability: string };
+export type GroupSnapshot = { id: 'main'; defaultAgentId: string; memberIds: string[]; running: string | null; turns: GroupTurn[]; notifications: GroupNotification[] };
 export type GroupInput = { id: string; content: string; targetAgentId?: string; notification?: NotificationReference };
-export type GroupEvent = { type: 'turn'; turn: Omit<GroupTurn, 'messages'> } | { type: 'delta'; id: string; text: string } | { type: 'settled' } | { type: 'error'; code: string; message: string };
+export type RouteSuggestion = { type: 'suggestion'; id: string; content: string; targetAgentIds: string[]; reason: string };
+export type GroupEvent = RouteSuggestion | { type: 'turn'; turn: Omit<GroupTurn, 'messages'> } | { type: 'delta'; id: string; text: string } | { type: 'settled' } | { type: 'error'; code: string; message: string };
 export interface GroupClient {
+  getGroupSettings(signal?: AbortSignal): Promise<GroupSettings>;
+  saveGroupSettings(settings: GroupSettings, signal?: AbortSignal): Promise<GroupSettings>;
+  getAgentCapability(agentId: string, signal?: AbortSignal): Promise<AgentCapability>;
+  saveAgentCapability(agentId: string, capability: string, signal?: AbortSignal): Promise<AgentCapability>;
   getGroup(signal?: AbortSignal): Promise<GroupSnapshot>;
   sendGroup(input: GroupInput, onEvent: (event: GroupEvent) => void, signal?: AbortSignal): Promise<void>;
   stopGroup(id: string, signal?: AbortSignal): Promise<void>;
@@ -21,6 +28,17 @@ const uuid = (value: unknown): value is string => typeof value === 'string' && /
 const agent = (value: unknown): value is string => typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(value);
 const date = (value: unknown) => typeof value === 'string' && !Number.isNaN(Date.parse(value));
 const invalid = () => new ApiError(502, '「全部」消息数据不正确，请重新同步核对');
+const agentIds = (value: unknown): value is string[] => Array.isArray(value) && value.length > 0 && value.length <= 100 && value.every(agent) && new Set(value).size === value.length;
+export function parseGroupSettings(value: unknown): GroupSettings {
+  if (!record(value) || typeof value.name !== 'string' || !value.name.trim() || value.name.length > 80 ||
+    typeof value.purpose !== 'string' || value.purpose.length > 1000 || typeof value.instructions !== 'string' || value.instructions.length > 4000 ||
+    !agentIds(value.memberIds) || !agent(value.defaultAgentId) || !value.memberIds.includes(value.defaultAgentId)) throw invalid();
+  return value as GroupSettings;
+}
+export function parseAgentCapability(value: unknown, expectedId: string): AgentCapability {
+  if (!record(value) || value.agentId !== expectedId || typeof value.capability !== 'string' || value.capability.length > 1000) throw invalid();
+  return value as AgentCapability;
+}
 const reference = (value: unknown): value is NotificationReference => record(value) && agent(value.targetAgentId) &&
   typeof value.sessionId === 'string' && !!value.sessionId && value.sessionId.length <= 128 && typeof value.messageId === 'string' && !!value.messageId && value.messageId.length <= 128;
 function turn(value: unknown): GroupTurn {
@@ -36,7 +54,7 @@ function turn(value: unknown): GroupTurn {
   return value as unknown as GroupTurn;
 }
 export function parseGroup(value: unknown): GroupSnapshot {
-  if (!record(value) || value.id !== 'main' || value.defaultAgentId !== 'local-main' || !(value.running === null || messageId(value.running)) || !Array.isArray(value.turns) || !Array.isArray(value.notifications)) throw invalid();
+  if (!record(value) || value.id !== 'main' || !agentIds(value.memberIds) || !agent(value.defaultAgentId) || !value.memberIds.includes(value.defaultAgentId) || !(value.running === null || messageId(value.running)) || !Array.isArray(value.turns) || !Array.isArray(value.notifications)) throw invalid();
   const turns = value.turns.map(turn);
   const notifications = value.notifications.map((item): GroupNotification => {
     if (!record(item) || typeof item.id !== 'string' || !item.id || (item.featureId !== 'news' && item.featureId !== 'sms') ||
@@ -46,11 +64,13 @@ export function parseGroup(value: unknown): GroupSnapshot {
   });
   if (new Set(turns.map((item) => item.id)).size !== turns.length) throw invalid();
   if (new Set(notifications.map(notificationKey)).size !== notifications.length) throw invalid();
-  return { id: 'main', defaultAgentId: 'local-main', running: value.running, turns, notifications };
+  return { id: 'main', defaultAgentId: value.defaultAgentId, memberIds: value.memberIds, running: value.running, turns, notifications };
 }
 export function parseGroupEvent(value: unknown): GroupEvent {
   if (!record(value)) throw invalid();
   if (value.type === 'settled') return { type: 'settled' };
+  if (value.type === 'suggestion' && messageId(value.id) && typeof value.content === 'string' && !!value.content.trim() && value.content.length <= 20000 &&
+    agentIds(value.targetAgentIds) && typeof value.reason === 'string' && value.reason.length <= 500) return value as RouteSuggestion;
   if (value.type === 'turn' && record(value.turn)) { const parsed = turn({ ...value.turn, messages: [] }); return { type: 'turn', turn: parsed }; }
   if (value.type === 'delta' && messageId(value.id) && typeof value.text === 'string') return { type: 'delta', id: value.id, text: value.text };
   if (value.type === 'error' && typeof value.code === 'string' && typeof value.message === 'string') return { type: 'error', code: value.code, message: value.message };

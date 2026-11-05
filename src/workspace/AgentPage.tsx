@@ -11,17 +11,21 @@ import { AgentSettings } from './AgentSettings';
 import type { AgentSection } from './agent-navigation';
 import { MemberAvatar } from './MemberAvatar';
 import { isBuiltinMember } from './agent-labels';
+import { CapabilityPanel } from '../group/RoutingSettingsPanel';
+import type { RoutingSettingsStore } from '../group/routing-settings-store';
 
-const titles: Record<AgentSection, string> = { home: '智能体设置', files: '文件', rules: '专属规则', skills: '技能', maintenance: '会话管理' };
+const titles: Record<AgentSection, string> = { home: '智能体设置', files: '文件', rules: '专属规则', capability: '公开能力', skills: '技能', maintenance: '会话管理' };
 const entries: { section: Exclude<AgentSection, 'home'>; title: string; detail: string; icon: LucideIcon }[] = [
   { section: 'files', title: '文件', detail: '浏览目录、直接编辑 Markdown 与文本原文', icon: FolderOpen },
   { section: 'rules', title: '专属规则', detail: '只在这个智能体生效的指令', icon: FileText },
+  { section: 'capability', title: '公开能力', detail: '向组内路由说明擅长处理的任务', icon: Sparkles },
   { section: 'skills', title: '技能', detail: '选择这个智能体可以使用的技能', icon: Sparkles },
   { section: 'maintenance', title: '会话管理', detail: '重置这个智能体的会话', icon: Settings2 },
 ];
 
 /** 智能体页只组织当前智能体的功能；不持有聊天/SSE，也不创建另一份规则文件。 */
-export function AgentPage({ agentId, name, section, onSection, onBack, onActivity, onFeatureSettings, mainView, viewSaving, viewError, onMainView, onSaved, maintenance, pinned, pinDisabled, pinError, onPin, onPinRetry, statusLabel }: {
+export function AgentPage({ agentId, name, section, onSection, onBack, onActivity, onFeatureSettings, mainView, viewSaving, viewError, onMainView, onSaved, maintenance, pinned, pinDisabled, pinError, onPin, onPinRetry, statusLabel, routing }: {
+  routing: RoutingSettingsStore;
   agentId: string; name: string; section: AgentSection; onSection: (section: AgentSection) => void;
   onBack: () => void; onActivity: () => void; onFeatureSettings: () => void;
   mainView: AgentMainView; viewSaving: boolean; viewError?: string; onMainView: (view: AgentMainView) => Promise<boolean>;
@@ -83,6 +87,7 @@ export function AgentPage({ agentId, name, section, onSection, onBack, onActivit
         </View>
       </>}
       {(section === 'rules' || section === 'skills') && <AgentSettings key={`${agentId}:${section}`} agentId={agentId} section={section} onSaved={onSaved} />}
+      {section === 'capability' && <CapabilityPanel store={routing} agentId={agentId} />}
       {section === 'maintenance' && maintenance}
     </ScrollView></>}
   </View>;

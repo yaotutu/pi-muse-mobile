@@ -15,7 +15,7 @@ test('群聊不艾特时不发送目标，显式艾特只发送一个成员，�
   assert.throws(() => resolveGroupTarget('@不存在 hello', members));
 });
 test('群聊读取与流事件校验真实归属，重复身份和非法状态拒绝', () => {
-  const snapshot = { id: 'main', defaultAgentId: 'local-main', running: null, turns: [turn], notifications: [] };
+  const snapshot = { id: 'main', defaultAgentId: 'local-main', memberIds: ['local-main', 'sms-internal', 'news-internal'], running: null, turns: [turn], notifications: [] };
   assert.deepEqual(parseGroup(snapshot), snapshot);
   assert.throws(() => parseGroup({ ...snapshot, turns: [turn, turn] }));
   assert.throws(() => parseGroup({ ...snapshot, turns: [{ ...turn, targetAgentId: '../escape' }] }));
@@ -25,7 +25,7 @@ test('群聊读取与流事件校验真实归属，重复身份和非法状态�
 });
 const notification = { id: 'notice-one', featureId: 'sms', targetAgentId: 'local-main', sessionId: 'private-session', messageId: 'private-notice', createdAt: '2026-11-02T00:00:01.000Z', content: '明天出行请提前准备' };
 test('功能通知必须有真实来源、归属、时间，旧快照、重复身份和非法归属不能默默接受', () => {
-  const snapshot = { id: 'main', defaultAgentId: 'local-main', running: null, turns: [], notifications: [notification] };
+  const snapshot = { id: 'main', defaultAgentId: 'local-main', memberIds: ['local-main', 'sms-internal', 'news-internal'], running: null, turns: [], notifications: [notification] };
   assert.deepEqual(parseGroup(snapshot), snapshot);
   for (const item of [{ ...notification, featureId: 'guessed' }, { ...notification, featureId: ['sms'] }, { ...notification, targetAgentId: '../escape' }, { ...notification, sessionId: '' }, { ...notification, createdAt: 'unknown' }, { ...notification, messageId: null }]) {
     assert.throws(() => parseGroup({ ...snapshot, notifications: [item] }));
@@ -103,7 +103,7 @@ test('群信息返回群聊，群聊为根层；群所有者持续挂载，私�
   assert.match(read('workspace/ResetSessionDialog.tsx'), /本成员的私聊历史、在「全部」中的讨论与显示记录/);
   const ui = read('group/GroupChat.tsx');
   assert.doesNotMatch(ui, /getConversation|subscribeRuntime/);
-  assert.match(ui, /resolveGroupTarget\(draft, members, target\)/);
+  assert.match(ui, /resolveGroupTarget\(draft, availableMembers, target\)/);
 });
 test('定向成员与正文共用原生 Text 流，无底色；蓝气泡保留白字，浅色气泡才用强调色', () => {
   const read = (file) => readFileSync(new URL('../src/' + file, import.meta.url), 'utf8');

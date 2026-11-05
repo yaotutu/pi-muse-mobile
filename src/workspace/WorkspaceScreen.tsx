@@ -1,3 +1,5 @@
+import { RoutingSettingsStore } from '../group/routing-settings-store';
+import { GroupSettingsPanel } from '../group/RoutingSettingsPanel';
 import { AgentViewPreferences, agentHomePage, defaultAgentView } from './agent-view-preferences';
 import { deviceAgentViews } from './device-agent-views';
 import { GroupChat } from '../group/GroupChat';
@@ -64,7 +66,7 @@ import { BrowserPanel } from '../browser/BrowserPanel';
 import { createBrowserStore } from '../browser/browser-store';
 
 type WorkspacePage = 'group' | 'chat' | 'discussion' | 'news' | 'goals' | 'settings' | 'agent' | 'feature';
-type SettingsSubpage = 'agents' | 'memory' | 'profile' | 'dream' | 'news-sources' | FeatureSection | null;
+type SettingsSubpage = 'group-routing' | 'agents' | 'memory' | 'profile' | 'dream' | 'news-sources' | FeatureSection | null;
 type WorkspaceNotice = { text: string; tone: 'success' | 'error' };
 const { layout: l, radius: r, typography: t } = workspaceTheme;
 function useStyles() { const { colors } = useTheme(); return useMemo(() => createStyles(colors), [colors]); }
@@ -141,9 +143,10 @@ function AnimatedSubpage({ children }: { children: ReactNode }) {
   );
 }
 
-function SettingsPage({ snapshot, openConnection, openBrowser, openAgents, memoryAvailable = false, profileAvailable = false, dreamAvailable = false, currentAgentId, subpage, onSubpage }: Pick<WorkspaceConnectionProps, 'snapshot' | 'openConnection'> & { openBrowser?: () => void; openAgents?: () => void; memoryAvailable?: boolean; profileAvailable?: boolean; dreamAvailable?: boolean; currentAgentId?: string; subpage: SettingsSubpage; onSubpage: (page: SettingsSubpage) => void }) {
+function SettingsPage({ snapshot, openConnection, openBrowser, openAgents, memoryAvailable = false, profileAvailable = false, dreamAvailable = false, currentAgentId, subpage, onSubpage, routing, members }: Pick<WorkspaceConnectionProps, 'snapshot' | 'openConnection'> & { routing?: RoutingSettingsStore; members?: { id: string; name: string }[]; openBrowser?: () => void; openAgents?: () => void; memoryAvailable?: boolean; profileAvailable?: boolean; dreamAvailable?: boolean; currentAgentId?: string; subpage: SettingsSubpage; onSubpage: (page: SettingsSubpage) => void }) {
   const styles = useStyles(); const update = useAppUpdate();
-  const management = subpage === 'memory' && memoryAvailable ? { title: '长期记忆', content: <MemoryPanel /> }
+  const management = subpage === 'group-routing' && routing && members ? { title: '默认组协作', content: <GroupSettingsPanel store={routing} members={members} /> }
+    : subpage === 'memory' && memoryAvailable ? { title: '长期记忆', content: <MemoryPanel /> }
     : subpage === 'profile' && profileAvailable ? { title: '助手与用户资料', content: <ProfilePanel /> }
     : subpage === 'dream' && dreamAvailable && currentAgentId ? { title: 'Dream 记忆整理', content: <DreamPanel currentAgentId={currentAgentId} /> }
     : undefined;
@@ -161,6 +164,7 @@ function SettingsPage({ snapshot, openConnection, openBrowser, openAgents, memor
       </View>
     </View>
     {openAgents && <View style={styles.appSettingsGroup}><SettingRow title="智能体管理" label="打开智能体管理" description="添加、删除与设置智能体" icon={Users} onPress={openAgents} /></View>}
+    {routing && <View style={styles.appSettingsGroup}><SettingRow title="默认组协作" label="打开默认组协作" description="成员、默认回复者与协作说明" icon={Users} onPress={() => onSubpage('group-routing')} /></View>}
     <View style={styles.appSection}><Text accessibilityRole="header" style={styles.appSectionTitle}>助手与个人资料</Text>
       <View style={styles.appSettingsGroup}><SettingRow title="助手与用户资料" label="打开助手与用户资料" description={profileAvailable ? '名字、语气、人设与用户资料' : '连接真实服务后可用'} icon={UserRound} onPress={() => onSubpage('profile')} disabled={!profileAvailable} /></View>
     </View>
@@ -207,6 +211,8 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
   const homePage = useCallback((id: string) => agentHomePage(id, viewState.views[id] ?? defaultAgentView(id)), [viewState.views]);
   const focusedAgentId = settingsAgentId ?? agents.currentAgent;
   const api = useApi();
+  const [routing] = useState(() => new RoutingSettingsStore(api));
+  useEffect(() => () => routing.dispose(), [routing]);
   // 连接键改变会卸载整层；新闻 Store 在此持续挂载，切智能体与重置会话不会丢草稿。
   const [news] = useState(() => createNewsStore(api));
   // 外壳需感知文章详情是否打开：详情是整页，隐藏头像栏；列表返回后恢复。
@@ -490,7 +496,7 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
       agents={agents.sourceAgents.filter((agent) => !!agent.sessionId).map((agent) => ({ id: agent.id, title: labels.title(agent.id) }))}
       onNewsSettings={() => setSettingsSubpage('news-sources')} />;
   } else if (page === 'agent') {
-    otherPage = <AgentPage agentId={focusedAgentId} name={labels.title(focusedAgentId)} section={agentSection}
+    otherPage = <AgentPage agentId={focusedAgentId} routing={routing} name={labels.title(focusedAgentId)} section={agentSection}
       pinned={avatarPreferences.pinned.includes(focusedAgentId)} pinDisabled={avatarPreferences.loading || avatarPreferences.saving || !!avatarPreferences.error}
       pinError={avatarPreferences.error} onPin={() => avatarPreferences.toggle(focusedAgentId)} onPinRetry={avatarPreferences.retry}
       statusLabel={avatarStatusDetail(focusedAgentId)}
@@ -510,7 +516,7 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
       error={notice?.tone === 'error' ? notice.text : agents.error} onReload={() => void checkDeletion()} onDelete={confirmRemoval}
       onCreate={() => { void agents.createAgent().then((id) => { if (id) openAgentSettings(id, true); }); }} />;
   } else if (page === 'settings') {
-    otherPage = <SettingsPage snapshot={snapshot} openConnection={openConnection} memoryAvailable profileAvailable dreamAvailable
+    otherPage = <SettingsPage routing={routing} members={groupMembers} snapshot={snapshot} openConnection={openConnection} memoryAvailable profileAvailable dreamAvailable
       currentAgentId={agents.currentAgent} openAgents={() => setSettingsSubpage('agents')} openBrowser={openBrowser} subpage={settingsSubpage} onSubpage={setSettingsSubpage} />;
   } else if (page === 'goals' && !sessionOpen) {
     otherPage = <GoalsPanel openDrawer={openGroup} />;

@@ -1,7 +1,7 @@
-import type { GroupInput, GroupSnapshot } from './contracts';
+import type { GroupInput, GroupSnapshot, RouteSuggestion } from './contracts';
 
 type PendingDraft = { id: string; draft: string; target?: string; content: string; absent: boolean };
-type ComposerSnapshot = { draft: string; target?: string; pending?: PendingDraft };
+type ComposerSnapshot = { draft: string; target?: string; pending?: PendingDraft; suggestion?: RouteSuggestion };
 
 /** 输入草稿与已提交正文分离：发送即交接所有权，不用模型回复完成来清输入框。
  * 未确认正文留在 pending；权威回读确认未接收后才能恢复，绝不自动重发或覆盖下一条草稿。
@@ -18,9 +18,23 @@ export class GroupComposer {
   setDraft = (draft: string) => { this.publish({ draft }); };
   setTarget = (target?: string) => { this.publish({ target }); };
   submit = (input: GroupInput): boolean => {
-    if (this.state.pending) return false;
+    if (this.state.pending || this.state.suggestion) return false;
     this.publish({ pending: { id: input.id, draft: this.state.draft, target: this.state.target, content: input.content, absent: false }, draft: '', target: undefined });
     return true;
+  };
+  suggest = (suggestion: RouteSuggestion) => {
+    // 只接纳本次发送的建议；确认前不产生目标执行，不覆盖已经输入的下一条消息。
+    if (this.state.pending?.id !== suggestion.id || this.state.pending.content !== suggestion.content) return;
+    this.publish({ pending: undefined, suggestion });
+  };
+  cancelSuggestion = () => this.publish({ suggestion: undefined });
+  confirmSuggestion = (id: string, targetAgentId: string): GroupInput | undefined => {
+    const suggestion = this.state.suggestion;
+    if (!suggestion || this.state.pending || !suggestion.targetAgentIds.includes(targetAgentId)) return;
+    const content = suggestion.content;
+    // 与普通提交相同地保留未确认原文，但不消费当前输入框里的新草稿。
+    this.publish({ suggestion: undefined, pending: { id, content, draft: content, target: targetAgentId, absent: false } });
+    return { id, content, targetAgentId };
   };
   accept = (id: string) => {
     if (this.state.pending?.id === id) this.publish({ pending: undefined });

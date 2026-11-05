@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { GroupComposer } from '../src/group/group-composer.ts';
-const snapshot = (turns = [], running = null) => ({ id: 'main', defaultAgentId: 'local-main', turns, running, notifications: [] });
+const snapshot = (turns = [], running = null) => ({ id: 'main', defaultAgentId: 'local-main', memberIds: ['local-main', 'sms-internal', 'news-internal'], turns, running, notifications: [] });
 
 test('交接提交立即清空正文和定向，原文保留；模型未回复也可准备下一条', () => {
   const composer = new GroupComposer(); composer.setDraft('第一条'); composer.setTarget('news-internal');
