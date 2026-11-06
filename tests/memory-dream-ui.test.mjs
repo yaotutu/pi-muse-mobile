@@ -33,7 +33,7 @@ test('三个全局管理页的系统返回均先收键盘和覆盖层，再回�
     assert.equal(workspaceBackAction(state), 'settings');
     assert.equal(workspaceBackAction({ ...state, keyboardVisible: true }), 'keyboard');
     assert.equal(workspaceBackAction({ ...state, sessionMounted: true }), 'session');
-    assert.equal(workspaceBackAction({ ...state, settingsSubpage: null }), 'chat-return');
+    assert.equal(workspaceBackAction({ ...state, settingsSubpage: null }), 'none');
   }
 });
 

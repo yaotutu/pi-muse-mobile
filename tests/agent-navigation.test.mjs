@@ -25,7 +25,7 @@ test('智能体由根层统一处理 Back，键盘和覆盖层保持更高优先
   assert.equal(workspaceBackAction(root), 'agent');
   assert.equal(workspaceBackAction({ ...root, keyboardVisible: true }), 'keyboard');
   assert.equal(workspaceBackAction({ ...root, page: 'feature' }), 'feature');
-  assert.equal(workspaceBackAction({ ...root, page: 'chat' }), 'group');
+  assert.equal(workspaceBackAction({ ...root, page: 'chat' }), 'chat-return');
   assert.equal(workspaceBackAction({ ...root, sessionMounted: true }), 'session');
 });
 

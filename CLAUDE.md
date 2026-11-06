@@ -33,7 +33,7 @@ node --import ./tests/register-source.mjs --test --test-name-pattern="新闻源 
 客户端不执行模型、不保存服务端业务事实的第二份权威副本。模型、Agent、文件和调度均归后端，当前服务端契约是接入依据。
 
 - **根与连接**：`src/app/AppRoot.tsx` 组装安全区、主题、错误边界和独立更新。`WorkspaceScreen.tsx` 内的 ConnectedWorkspace 按 `workspaceKey` 创建 ApiProvider/业务 Provider；换服务器销毁整个连接子树。不要按主题或当前页面重建它。
-- **导航与聊天持有者**：页面由工作区状态切换，没有 Expo Router/react-navigation。冷启动进入「全部」，顶部头像单击切换、长按进设置；新闻的阅读/聊天主视图是设备偏好。`ConversationHost` 保留访问过的私聊所有者，隐藏不卸载运行中的 SSE。设置检查对象与正在聊天的 Agent 分离。
+- **导航与聊天持有者**：页面由工作区状态切换，没有 Expo Router/react-navigation。一级只有「消息 / 新闻 / 设置」三项，仅根页显示 PrimaryTabBar 底栏，键盘可见或处于二级时隐藏；冷启动进入「消息」。顶部「消息」+「成员」按钮，头像单击进入二级独立私聊，不进设置、不长按。`ConversationHost` 保留访问过的私聊所有者，隐藏不卸载运行中的 SSE。设置检查对象与正在聊天的 Agent 分离。
 - **协议层**：`src/api/` 提供 HTTP 与严格响应解析；`src/chat/` 聚合聊天 AG-UI SSE。`RuntimeProvider` 是连接内唯一通知流订阅者，领域 Store 消费通知失效并回读 REST，不各开第二条 SSE 或全局轮询。
 - **Store 生命周期**：领域 Store 负责读取、写入、草稿、未明结果和迟到响应保护，组件订阅并展示。close/隐藏通常只停止读取，dispose 才释放连接状态；不要用页面局部 state 重复持有业务草稿。
 - **群与来源讨论**：`src/group/` 持有独立群/通知讨论输入与流，不复用普通私聊上下文。显式 @、薄路由建议和待确认原文有各自发送资格；客户端接管提交后清空当前输入，完成不能清掉后来输入的新草稿。

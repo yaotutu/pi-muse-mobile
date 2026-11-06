@@ -557,7 +557,7 @@ const createStyles = (c: WorkspaceColors) =>
     hidden: { display: 'none' },
     chatScroll: { flex: 1 },
     messageList: {
-      // 头像栏已占正常布局，正文不再为浮动头像预留空白。
+      // 二级私聊标题在正常布局中，正文不为悬浮导航预留空白。
       flexGrow: 1,
       paddingTop: spacing[12],
       paddingHorizontal: l.sidePadding,

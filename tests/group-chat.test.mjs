@@ -80,7 +80,7 @@ test('停止和失败贴在原回复位置，无正文也保留成员身份；�
 test('群聊布局与私聊分离：顶栏不悬浮，收件人与紧凑工具跟随消息', () => {
   const read = (file) => readFileSync(new URL('../src/' + file, import.meta.url), 'utf8');
   const root = read('workspace/WorkspaceScreen.tsx');
-  assert.match(root, /<AgentDock/);
+  assert.match(root, /<PrimaryTabBar/);
   assert.doesNotMatch(root, /chatHeader:/);
   const group = read('group/GroupChat.tsx');
   assert.doesNotMatch(group, /compactHeader|chatContentTop|combined.filter\(\(turn\) => turn.status/);
@@ -91,14 +91,14 @@ test('群聊布局与私聊分离：顶栏不悬浮，收件人与紧凑工具�
 });
 test('群信息返回群聊，群聊为根层；群所有者持续挂载，私聊设置保持独立', () => {
   const state = { keyboardVisible: false, sessionMounted: false, settingsSubpage: null, goalCreating: false };
-  assert.equal(workspaceBackAction({ ...state, page: 'settings' }), 'chat-return');
+  assert.equal(workspaceBackAction({ ...state, page: 'settings' }), 'none');
   assert.equal(workspaceBackAction({ ...state, page: 'group' }), 'none');
   const read = (file) => readFileSync(new URL('../src/' + file, import.meta.url), 'utf8');
   const root = read('workspace/WorkspaceScreen.tsx');
   assert.match(root, /useState<WorkspacePage>\('group'\)/);
   assert.match(root, /<GroupChat visible={page === 'group' \|\| page === 'discussion'}/);
-  assert.match(root, /const openGlobalSettings =/);
-  assert.match(root, /onAgentSettings={openAgentSettings}/);
+  assert.match(root, /<PrimaryTabBar/);
+  assert.match(root, /onPrivateChat={/);
   assert.match(root, /私聊历史、「全部」中的讨论与显示记录/);
   assert.match(read('workspace/ResetSessionDialog.tsx'), /本成员的私聊历史、在「全部」中的讨论与显示记录/);
   const ui = read('group/GroupChat.tsx');
@@ -167,9 +167,8 @@ test('通知页 Back 返回来源，输入直发来源而非解析艾特，草�
   assert.match(ui, /notification && !source/);
   assert.doesNotMatch(ui, /onSwipe|ChatSwipeArea/);
   assert.match(ui, /!notification \|\| !!row.sender/);
-  assert.doesNotMatch(ui, /onPrivateChat/);
+  assert.match(ui, /onPrivateChat/);
   const workspace = readFileSync(new URL('../src/workspace/WorkspaceScreen.tsx', import.meta.url), 'utf8');
   assert.match(workspace, /'chat' \| 'group' \| 'news' \| 'discussion'/);
-  assert.match(workspace, /else setPage\(chatReturn\)/);
-  assert.match(workspace, /focusedAgentId === agents.currentAgent && \(chatReturn === 'chat' \|\| chatReturn === 'news'\)/);
+  assert.match(workspace, /chatReturn === 'news'/);
 });

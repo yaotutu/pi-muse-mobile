@@ -61,7 +61,7 @@ test('features client uses feature facade and never sends the selected workspace
 test('feature settings are separate from agent UI and SMS listener lives for the connection, not a settings page', () => {
   assert.doesNotMatch(read('workspace/AgentPage.tsx'), /InformationSettingsCard|SmsSettingsCard|section.*information/);
   assert.match(read('workspace/WorkspaceScreen.tsx'), /<SmsProvider><FilesProvider/);
-  assert.match(read('workspace/WorkspaceScreen.tsx'), /const openGlobalSettings =/);
+  assert.match(read('workspace/WorkspaceScreen.tsx'), /<PrimaryTabBar/);
   assert.match(read('information/sms-store.ts'), /api\.ingestSmsItems\(\[/);
   assert.doesNotMatch(read('information/useSmsInformation.ts'), /agentId|\.catch\(\(\) => \(\{ items: \[\]/);
   assert.match(read('information/useSmsInformation.ts'), /hasSmsPermission !== true/);

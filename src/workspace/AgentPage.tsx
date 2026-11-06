@@ -1,8 +1,6 @@
-import { useMemo, useState, type ReactNode } from 'react';
-import type { AgentMainView } from './agent-view-preferences';
-import { FeedbackNotice } from '../ui/Feedback';
+import { useMemo, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Activity, Check, ChevronDown, ChevronRight, FileText, FolderOpen, PanelsTopLeft, Pin, Settings2, Sparkles, type LucideIcon } from 'lucide-react-native';
+import { Activity, ChevronRight, FileText, FolderOpen, Settings2, Sparkles, type LucideIcon } from 'lucide-react-native';
 import { useTheme } from '../theme/ThemeProvider';
 import { workspaceTheme, spacing, sizing } from '../ui/tokens';
 import { FilesScreen } from './FilesScreen';
@@ -24,15 +22,13 @@ const entries: { section: Exclude<AgentSection, 'home'>; title: string; detail: 
 ];
 
 /** 智能体页只组织当前智能体的功能；不持有聊天/SSE，也不创建另一份规则文件。 */
-export function AgentPage({ agentId, name, section, onSection, onBack, onActivity, onFeatureSettings, mainView, viewSaving, viewError, onMainView, onSaved, maintenance, pinned, pinDisabled, pinLimitReached, pinError, onPin, onPinRetry, statusLabel, routing }: {
+export function AgentPage({ agentId, name, section, onSection, onBack, onActivity, onFeatureSettings, onSaved, maintenance, statusLabel, routing }: {
   routing: RoutingSettingsStore;
   agentId: string; name: string; section: AgentSection; onSection: (section: AgentSection) => void;
   onBack: () => void; onActivity: () => void; onFeatureSettings: () => void;
-  mainView: AgentMainView; viewSaving: boolean; viewError?: string; onMainView: (view: AgentMainView) => Promise<boolean>;
   onSaved: () => void; maintenance: ReactNode;
-  pinned: boolean; pinDisabled: boolean; pinLimitReached?: boolean; pinError?: string; onPin: () => void; onPinRetry: () => void; statusLabel: string;
+  statusLabel: string;
 }) {
-  const [choosingView, setChoosingView] = useState(false);
   const { colors } = useTheme();
   const styles = useMemo(() => StyleSheet.create({
     root: { flex: 1 }, caption: { ...workspaceTheme.typography.caption, color: colors.muted },
@@ -45,34 +41,10 @@ export function AgentPage({ agentId, name, section, onSection, onBack, onActivit
   }), [colors]);
   return <View style={styles.root} testID="workspace-agent-page">
     {section === 'files' ? <FilesScreen currentAgentId={agentId} agentName={name} onBack={onBack} /> : <>
-    <AgentHeader title={titles[section]} caption={section === 'home' ? undefined : name} onBack={() => { if (!viewSaving) onBack(); }} backLabel={section === 'home' ? '返回上一页' : undefined} />
+    <AgentHeader title={titles[section]} caption={section === 'home' ? undefined : name} onBack={onBack} backLabel={section === 'home' ? '返回智能体管理' : undefined} />
     <ScrollView key={section} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
       {section === 'home' && <>
         <View style={styles.identity}><MemberAvatar agentId={agentId} size={72} /><Text style={styles.name}>{name}</Text><Text accessibilityLiveRegion="polite" style={styles.caption}>{statusLabel}</Text></View>
-        <View style={styles.group}><Pressable accessibilityRole="switch" accessibilityLabel={!pinned && pinLimitReached ? '底部固定已满' : '固定到底部'} accessibilityState={{ checked: pinned, disabled: pinDisabled }} disabled={pinDisabled} onPress={onPin} style={styles.row}>
-          <Pin size={sizing.iconMedium} color={colors.blue} /><View style={styles.rowText}><Text style={styles.label}>固定到底部</Text><Text style={styles.caption}>{!pinned && pinLimitReached ? '底部固定已满（最多 3 个）' : '固定在底部导航栏'}</Text></View>
-          {pinned ? <Check size={sizing.iconMedium} color={colors.accentText} /> : <Text style={styles.caption}>未固定</Text>}
-        </Pressable>{!!pinError && <Pressable accessibilityRole="button" accessibilityLabel="重试读取固定偏好" onPress={onPinRetry} style={styles.row}><Text style={styles.caption}>{pinError}，点击重新读取</Text></Pressable>}</View>
-        {agentId === 'news-internal' && <View style={styles.group}>
-          <Pressable accessibilityRole="button" accessibilityLabel={`主视图，${mainView === 'reading' ? '阅读' : '对话'}`}
-            accessibilityState={{ expanded: choosingView, busy: viewSaving, disabled: viewSaving }} disabled={viewSaving}
-            onPress={() => setChoosingView(!choosingView)} style={styles.row} testID="agent-main-view">
-            <PanelsTopLeft size={sizing.iconMedium} color={colors.blue} />
-            <View style={styles.rowText}><Text style={styles.label}>主视图</Text><Text style={styles.caption}>{viewSaving ? '正在保存…' : mainView === 'reading' ? '阅读' : '对话'}</Text></View>
-            {choosingView ? <ChevronDown size={sizing[18]} color={colors.faint} /> : <ChevronRight size={sizing[18]} color={colors.faint} />}
-          </Pressable>
-          {choosingView && <View accessibilityRole="radiogroup" accessibilityLabel="选择新闻主视图">
-            {(['reading', 'chat'] as const).map((view) => <Pressable key={view} accessibilityRole="radio"
-              accessibilityLabel={view === 'reading' ? '阅读视图' : '对话视图'} accessibilityState={{ checked: mainView === view, disabled: viewSaving }} disabled={viewSaving}
-              testID={`agent-main-view-${view}`} style={styles.row}
-              onPress={() => { void onMainView(view).then((saved) => { if (saved) setChoosingView(false); }); }}>
-              <View style={styles.rowText}><Text style={styles.label}>{view === 'reading' ? '阅读' : '对话'}</Text>
-                <Text style={styles.caption}>{view === 'reading' ? '浏览新闻、推荐和收藏' : '与新闻智能体交流'}</Text></View>
-              {mainView === view && <Check size={sizing.iconMedium} color={colors.blue} />}
-            </Pressable>)}
-          </View>}
-          <FeedbackNotice tone="danger" text={viewError} />
-        </View>}
         <View style={styles.group}>{entries.map(({ section: target, title, detail, icon: Icon }) => <Pressable key={target} accessibilityRole="button" accessibilityLabel={`打开${title}`} testID={`agent-open-${target}`}
           onPress={() => onSection(target)} style={({ pressed }) => [styles.row, pressed && styles.pressed]}>
           <Icon size={sizing.iconMedium} color={colors.blue} /><View style={styles.rowText}><Text style={styles.label}>{title}</Text><Text style={styles.caption}>{detail}</Text></View><ChevronRight size={sizing[18]} color={colors.faint} />

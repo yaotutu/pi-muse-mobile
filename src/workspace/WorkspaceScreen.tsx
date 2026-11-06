@@ -1,7 +1,5 @@
 import { RoutingSettingsStore } from '../group/routing-settings-store';
 import { GroupSettingsPanel } from '../group/RoutingSettingsPanel';
-import { AgentViewPreferences, agentHomePage, defaultAgentView } from './agent-view-preferences';
-import { deviceAgentViews } from './device-agent-views';
 import { GroupChat } from '../group/GroupChat';
 import type { NotificationReference } from '../group/contracts';
 import { AgentManagement } from './AgentManagement';
@@ -58,10 +56,8 @@ import { ThemePicker } from '../theme/ThemePicker';
 import { IconControl, MuseAvatar, StatusPill, useReducedMotion } from './primitives';
 import { FrostedSurface } from '../ui/FrostedSurface';
 import { ActionButton } from '../ui/ActionButton';
-import { AgentDock } from './AgentDock';
-import { AgentPickerSheet } from './AgentPickerSheet';
-import { DOCK_PIN_LIMIT } from './dock-preferences';
-import { useDockPreferences } from './useDockPreferences';
+import { PrimaryTabBar } from './PrimaryTabBar';
+import { isRootWorkspacePage, resolveNotificationReturn, type NotificationOrigin, type PrimaryTabId } from './primary-nav';
 import { MemberAvatar } from './MemberAvatar';
 import { BrowserPanel } from '../browser/BrowserPanel';
 import { createBrowserStore } from '../browser/browser-store';
@@ -206,17 +202,15 @@ function LiveWorkspace(props: WorkspaceConnectionProps) {
 function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, setSettingsAgentId }: WorkspaceConnectionProps & {
   agents: ReturnType<typeof useAgents>; settingsAgentId: string | null; setSettingsAgentId: (id: string | null) => void;
 }) {
-  const [views] = useState(() => new AgentViewPreferences(snapshot.serverUrl ?? '', deviceAgentViews));
-  const viewState = useSyncExternalStore(views.subscribe, views.getSnapshot, views.getSnapshot);
-  useEffect(() => { void views.load(); }, [views]);
-  const homePage = useCallback((id: string) => agentHomePage(id, viewState.views[id] ?? defaultAgentView(id)), [viewState.views]);
+  const [sessionAgentId, setSessionAgentId] = useState<string | null>(null);
   const focusedAgentId = settingsAgentId ?? agents.currentAgent;
+  const inspectedSessionAgentId = sessionAgentId ?? focusedAgentId;
   const api = useApi();
   const [routing] = useState(() => new RoutingSettingsStore(api));
   useEffect(() => () => routing.dispose(), [routing]);
   // 连接键改变会卸载整层；新闻 Store 在此持续挂载，切智能体与重置会话不会丢草稿。
   const [news] = useState(() => createNewsStore(api));
-  // 外壳需感知文章详情是否打开：详情是整页，隐藏头像栏；列表返回后恢复。
+  // 外壳跟随新闻详情状态判定层级：文章页隐藏一级底栏，列表返回后恢复。
   const newsSnapshot = useNews(news).snapshot;
   const [newsPreferences] = useState(() => new NewsPreferencesStore(api));
   // Store 随 ApiProvider 的连接键创建和销毁，票据不会跨服务地址复用。
@@ -238,11 +232,17 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
   const [settingsSubpage, setSettingsSubpage] = useState<SettingsSubpage>(null);
   const [chatReturn, setChatReturn] = useState<'chat' | 'group' | 'news' | 'discussion'>('group');
   const [notification, setNotification] = useState<NotificationReference>();
-  const [notificationReturn, setNotificationReturn] = useState<'chat' | 'group'>('group');
+  const [notificationOrigin, setNotificationOrigin] = useState<NotificationOrigin>({ type: 'group' });
   const openNotification = (reference: NotificationReference) => {
     Keyboard.dismiss();
     setNotification({ targetAgentId: reference.targetAgentId, sessionId: reference.sessionId, messageId: reference.messageId });
-    setNotificationReturn(page === 'chat' ? 'chat' : 'group'); setPage('discussion');
+    if (page === 'chat') {
+      const originReturn: 'group' | 'news' = chatReturn === 'news' ? 'news' : 'group';
+      setNotificationOrigin({ type: 'chat', agentId: agents.currentAgent, chatReturn: originReturn });
+    } else {
+      setNotificationOrigin({ type: 'group' });
+    }
+    setPage('discussion');
   };
   const [agentReturn, setAgentReturn] = useState<'chat' | 'management'>('chat');
   const [sessionOpen, setSessionOpen] = useState(false);
@@ -260,7 +260,6 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
   const [historyRefresh, setHistoryRefresh] = useState<Record<string, number>>({});
   const [labelState, setLabelState] = useState(() => ({ ids: '', labels: new AgentLabels() }));
   const [keyboardVisible, setKeyboardVisible] = useState(false);
-  const [pickerOpen, setPickerOpen] = useState(false);
   const { colors } = useTheme(); const styles = useStyles();
   const { width, height } = useWindowDimensions(); const contentWidth = Math.min(width, l.maxWidth);
   const avatarCenterY = l.headerTop + l.headerAvatar / 2;
@@ -268,13 +267,13 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
   const targetScale = Math.max(25, Math.ceil((Math.hypot(contentWidth / 2, height - avatarCenterY) / bloomRadius) * 1.08));
   const inSettingsSubpage = page === 'settings' && settingsSubpage !== null;
   const newsVisible = page === 'news' || (page === 'feature' && settingsSubpage === 'news-sources');
-  // 文章详情按整页呈现：隐藏头像栏与分隔线；其余新闻页（列表、来源管理）保留。
+  // 文章详情和来源管理均为二级；仅新闻列表属于一级根页。
   const newsDetailOpen = page === 'news' && newsSnapshot.selectedArticleId != null;
   const labelIds = agents.agents.map((agent) => agent.id).sort().join('|');
   if (labelState.ids !== labelIds) setLabelState({ ids: labelIds, labels: labelState.labels.sync(agents.agents) });
   const labels = labelState.ids === labelIds ? labelState.labels : labelState.labels.sync(agents.agents);
-  const groupMembers = agents.agents.filter((agent) => agent.sessionId || agent.id === MAIN_AGENT || isBuiltinMember(agent.id)).map((agent) => ({ id: agent.id, name: labels.title(agent.id) }));
-  const sessionName = focusedAgentId === MAIN_AGENT ? null : labels.title(focusedAgentId);
+  const groupMembers = agents.agents.map((agent) => ({ id: agent.id, name: labels.title(agent.id) }));
+  const sessionName = inspectedSessionAgentId === MAIN_AGENT ? null : labels.title(inspectedSessionAgentId);
   const reloadAgents = agents.reload;
   const refresh = useCallback((agentId = agents.currentAgent) => { void reloadAgents(); activities.invalidate(); jobs.invalidate(); monitors.invalidate(); goals.invalidate(); setHistoryRefresh((value) => ({ ...value, [agentId]: (value[agentId] ?? 0) + 1 })); }, [reloadAgents, activities, jobs, monitors, goals, agents.currentAgent]);
   useEffect(() => {
@@ -305,7 +304,7 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
     if (runtime.synchronized) void reloadAgents();
   }, [runtime.synchronized, reloadAgents]);
   useEffect(() => {
-    // 原生键盘出现时压缩头像栏；系统 Back 收起键盘后恢复名称。
+    // 原生键盘展开时隐藏一级底栏；系统 Back 优先收起键盘。
     const show = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => setKeyboardVisible(true));
     const hide = Keyboard.addListener('keyboardDidHide', () => {
       setKeyboardVisible(false);
@@ -320,6 +319,7 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
   }, [notice]);
   const onSessionCloseFinished = useCallback((finished = true) => {
     if (finished && !sessionOpen) setSessionMounted(false);
+    if (finished && !sessionOpen) setSessionAgentId(null);
   }, [sessionOpen]);
   const closeSession = useCallback(() => {
     if (session.deleting || session.resetting) return;
@@ -336,7 +336,17 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
       ...(!busy ? [{ text: '丢弃并继续', style: 'destructive' as const, onPress: () => { files.cancelSavePreview(); files.cancelDelete(); files.cancelEditor(); action(); } }] : []),
     ]);
   }, [files]);
-  const returnChat = useCallback(() => changeAgent(() => { setSettingsAgentId(null); setPage(chatReturn); }), [changeAgent, setSettingsAgentId, chatReturn]);
+  const returnChat = useCallback(() => changeAgent(() => {
+    Keyboard.dismiss();
+    setSettingsAgentId(null);
+    if (chatReturn === 'news') {
+      setPage('news');
+    } else if (chatReturn === 'discussion') {
+      setPage('discussion');
+    } else {
+      setPage('group');
+    }
+  }), [changeAgent, chatReturn, setSettingsAgentId]);
   const leaveAgentChild = useCallback(() => {
     if (sessions.hasSettingsWrite(focusedAgentId)) return;
     if ((agentSection === 'rules' && session.instructions.draft !== session.instructions.saved) || (agentSection === 'skills' && !equalSwitches(session.skills.draft, session.skills.saved))) {
@@ -347,6 +357,23 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
       ]);
     } else setAgentSection('home');
   }, [sessions, focusedAgentId, agentSection, session.instructions.draft, session.instructions.saved, session.skills.draft, session.skills.saved]);
+  const returnFromNotification = useCallback(() => {
+    changeAgent(() => {
+      Keyboard.dismiss();
+      const result = resolveNotificationReturn(notificationOrigin, agents.agents.map((a) => a.id));
+      if (result.page === 'chat') {
+        agents.selectAgent(result.agentId);
+        setChatReturn(result.chatReturn);
+        setSettingsAgentId(null);
+        setPage('chat');
+      } else {
+        if (result.errorNotice) {
+          setNotice({ text: result.errorNotice, tone: 'error' });
+        }
+        setPage('group');
+      }
+    });
+  }, [changeAgent, notificationOrigin, agents, setSettingsAgentId]);
   const backAgent = useCallback(() => {
     if (agentSection === 'home') { changeAgent(() => { setSettingsAgentId(null); if (agentReturn === 'management') { setPage('settings'); setSettingsSubpage('agents'); } else setPage(chatReturn); }); return; }
     if (agentSection !== 'files') { leaveAgentChild(); return; }
@@ -366,7 +393,7 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
   }, [files, leaveAgentChild, agentSection, changeAgent, setSettingsAgentId, agentReturn, chatReturn]);
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (deleteBusy.current || agents.creating || views.getSnapshot().saving) return true;
+      if (deleteBusy.current || agents.creating) return true;
       const action = workspaceBackAction({ keyboardVisible, browserOpen, sessionMounted, page, newsArticleOpen: !!news.getSnapshot().selectedArticleId,
         newsManaging, settingsSubpage, goalCreating: !!goals.getSnapshot().creator });
       if (action === 'keyboard') { pendingSessionOpen.current = false; Keyboard.dismiss(); }
@@ -374,8 +401,7 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
       else if (action === 'session') closeSession();
       else if (action === 'news-article') news.closeArticle();
       else if (action === 'news-sources') setNewsManaging(false);
-      else if (action === 'group') setPage('group');
-      else if (action === 'discussion') setPage(notificationReturn);
+      else if (action === 'discussion') returnFromNotification();
       else if (action === 'chat-return') returnChat();
       else if (action === 'feature') { if (settingsSubpage === 'news-sources') setSettingsSubpage('news-feature'); else { setPage('agent'); setSettingsSubpage(null); } }
       else if (action === 'settings') setSettingsSubpage(settingsSubpage === 'news-sources' ? 'news-feature' : null);
@@ -384,59 +410,73 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
       return action !== 'none';
     });
     return () => subscription.remove();
-  }, [keyboardVisible, browserOpen, closeBrowser, sessionMounted, closeSession, page, news, newsManaging, settingsSubpage, goals, backAgent, returnChat, agents.creating, notificationReturn, views]);
-  const openSession = useCallback((tab?: unknown) => {
+  }, [keyboardVisible, browserOpen, closeBrowser, sessionMounted, closeSession, page, news, newsManaging, settingsSubpage, goals, backAgent, returnChat, agents.creating, returnFromNotification]);
+  const openSession = useCallback((tab?: unknown, targetAgentId?: string) => {
     if (typeof tab === 'string') setSessionTab(tab as SessionTab);
+    if (targetAgentId) setSessionAgentId(targetAgentId);
     if (keyboardVisible) { pendingSessionOpen.current = true; Keyboard.dismiss(); return; }
     setSessionMounted(true); setSessionOpen(true);
   }, [keyboardVisible]);
-  const select = (id: string, conversation = false) => changeAgent(() => { Keyboard.dismiss(); agents.selectAgent(id); setSettingsAgentId(null); setSessionOpen(false); setPage(conversation ? 'chat' : homePage(id)); setAgentSection('home'); setNotice(undefined); });
-  // 通知与新闻讨论显式进入实际承接私聊，不改已保存的主视图偏好。
-  const selectConversation = (id: string) => select(id, true);
-  // 显式切换聊天才改变聊天所有者；查看设置只改变检查对象。
-  const openGroup = () => changeAgent(() => { Keyboard.dismiss(); setSettingsAgentId(null); setSessionOpen(false); setPage('group'); });
-  const dockPreferences = useDockPreferences(snapshot.serverUrl ?? '');
+  const openPrivateChat = (agentId: string, from: 'group' | 'news' | 'discussion' = 'group') => {
+    if (!agents.agents.some((item) => item.id === agentId)) {
+      setNotice({ text: `智能体 ${agentId} 不存在或已被删除`, tone: 'error' });
+      return;
+    }
+    changeAgent(() => {
+      Keyboard.dismiss();
+      setChatReturn(from);
+      agents.selectAgent(agentId);
+      setSettingsAgentId(null);
+      setPage('chat');
+    });
+  };
+  const selectTab = (tab: PrimaryTabId) => {
+    changeAgent(() => {
+      Keyboard.dismiss();
+      if (tab === 'settings') {
+        setSettingsAgentId(null);
+        setSettingsSubpage(null);
+      }
+      setPage(tab);
+    });
+  };
+  const openGroup = () => selectTab('group');
+  const isRootPage = isRootWorkspacePage({
+    page,
+    newsDetailOpen,
+    newsManaging,
+    settingsSubpage,
+    sessionMounted,
+  });
   const runtimeSnapshot = useSyncExternalStore(runtimeStore.subscribe, runtimeStore.getSnapshot, runtimeStore.getSnapshot);
-  const isDockFull = dockPreferences.pinned.length >= DOCK_PIN_LIMIT;
-  const isFocusedPinned = dockPreferences.pinned.includes(focusedAgentId);
-  const isPinDisabled = dockPreferences.loading || dockPreferences.saving || (!isFocusedPinned && isDockFull);
-  const dockAgents = useMemo(() => {
-    const memberMap = new Map(groupMembers.map((m) => [m.id, m]));
-    return dockPreferences.pinned
-      .filter((id) => memberMap.has(id))
-      .map((id) => ({
-        id,
-        name: memberMap.get(id)!.name,
-      }));
-  }, [dockPreferences.pinned, groupMembers]);
   const avatarStatus = (id: string) => runtimeSnapshot.connection !== 'live' ? 'unknown' as const : runtimeSnapshot.presences.find((item) => item.agentId === id)?.state ?? 'idle';
   const avatarStatusDetail = (id: string) => runtimeSnapshot.connection !== 'live' ? '连接已断开，状态待同步' : runtimeSnapshot.presences.find((item) => item.agentId === id)?.label ?? '空闲';
   // 面板检查整个智能体；私聊运行状态不包含通知讨论或后台处理，不能据此显示“就绪”。
-  const inspectedStatus = avatarStatus(focusedAgentId);
+  const inspectedStatus = avatarStatus(inspectedSessionAgentId);
   const connectionError = snapshot.status === 'authentication-required' || snapshot.status === 'reset-error' || snapshot.status === 'storage-error';
-  const statusLabel = connectionError ? connectionLabel(snapshot) : avatarStatusDetail(focusedAgentId);
+  const statusLabel = connectionError ? connectionLabel(snapshot) : avatarStatusDetail(inspectedSessionAgentId);
   const statusTone = connectionError || inspectedStatus === 'error' ? 'danger'
     : inspectedStatus === 'waiting' || inspectedStatus === 'unknown' ? 'warning'
     : inspectedStatus === 'working' ? 'accent' : 'neutral';
-  const currentTitle = page === 'group' ? '全部' : labels.title(agents.currentAgent);
-  const hideTitleBar = page === 'news' && (newsDetailOpen || newsManaging);
   const openAgentSettings = (id: string, fromManagement = false) => changeAgent(() => {
     Keyboard.dismiss();
     if (page === 'chat' || page === 'group' || page === 'discussion' || page === 'news') setChatReturn(page);
-    setSettingsAgentId(id); setAgentReturn(fromManagement ? 'management' : 'chat');
-    setPage('agent'); setAgentSection('home'); setSessionOpen(false);
-  });
-  const openGlobalSettings = () => changeAgent(() => {
-    Keyboard.dismiss();
-    if (page === 'chat' || page === 'group' || page === 'news') setChatReturn(page);
-    setSettingsAgentId(null); setPage('settings'); setSettingsSubpage(null);
+    setSettingsAgentId(id);
+    setAgentReturn(fromManagement ? 'management' : 'chat');
+    setPage('agent');
+    setAgentSection('home');
+    setSessionOpen(false);
+    setSessionMounted(false);
+    setSessionAgentId(null);
   });
   const openAgentManagement = () => changeAgent(() => {
     Keyboard.dismiss();
     if (page === 'chat' || page === 'group' || page === 'news') setChatReturn(page);
     setSettingsAgentId(null); setPage('settings'); setSettingsSubpage('agents'); setSessionOpen(false);
+    setSessionMounted(false);
+    setSessionAgentId(null);
   });
-  const discussion = useNewsDiscussion((agentId) => { refresh(agentId); selectConversation(agentId); });
+  const discussion = useNewsDiscussion((agentId) => { refresh(agentId); openPrivateChat(agentId, 'news'); });
   const finishRemoval = (id: string) => {
     const deletedCurrentChat = id === agents.currentAgent;
     sessions.clear(id); runtimeStore.forgetAgent(id); activities.forgetAgent(id); jobs.invalidate(); monitors.invalidate(); agents.removeAgent(id);
@@ -502,19 +542,11 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
       onNewsSettings={() => setSettingsSubpage('news-sources')} />;
   } else if (page === 'agent') {
     otherPage = <AgentPage agentId={focusedAgentId} routing={routing} name={labels.title(focusedAgentId)} section={agentSection}
-      pinned={isFocusedPinned} pinDisabled={isPinDisabled} pinLimitReached={isDockFull}
-      pinError={dockPreferences.error} onPin={() => void dockPreferences.togglePin(focusedAgentId)} onPinRetry={dockPreferences.retry}
       statusLabel={avatarStatusDetail(focusedAgentId)}
       onSection={(next) => { setAgentSection(next); }} onBack={backAgent}
       onActivity={() => openSession('activity')}
       onFeatureSettings={() => { setPage('feature'); setSettingsSubpage(focusedAgentId === 'sms-internal' ? 'sms' : 'news-feature'); }}
-      mainView={views.view(focusedAgentId)} viewSaving={viewState.saving} viewError={viewState.error}
-      onMainView={async (view) => {
-        const saved = await views.save(focusedAgentId, view);
-        // 主视图选择只改变当前智能体主页面的返回，不吞掉通知独立讨论或其他智能体的来源。
-        if (saved && focusedAgentId === agents.currentAgent && (chatReturn === 'chat' || chatReturn === 'news')) setChatReturn(agentHomePage(focusedAgentId, view));
-        return saved;
-      }} onSaved={() => refresh(focusedAgentId)} maintenance={maintenance} />;
+      onSaved={() => refresh(focusedAgentId)} maintenance={maintenance} />;
   } else if (page === 'settings' && settingsSubpage === 'agents') {
     otherPage = <AgentManagement members={groupMembers} onBack={() => { if (!deleting && !agents.creating) setSettingsSubpage(null); }}
       onSettings={(id) => openAgentSettings(id, true)} creating={agents.creating} deleting={deleting} uncertain={deleteUncertain}
@@ -522,15 +554,10 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
       onCreate={() => { void agents.createAgent().then((id) => { if (id) openAgentSettings(id, true); }); }} />;
   } else if (page === 'settings') {
     otherPage = <SettingsPage routing={routing} members={groupMembers} snapshot={snapshot} openConnection={openConnection} memoryAvailable profileAvailable dreamAvailable
-      currentAgentId={agents.currentAgent} openAgents={() => setSettingsSubpage('agents')} openBrowser={openBrowser} subpage={settingsSubpage} onSubpage={setSettingsSubpage} />;
+      currentAgentId={agents.currentAgent} openAgents={openAgentManagement} openBrowser={openBrowser} subpage={settingsSubpage} onSubpage={setSettingsSubpage} />;
   } else if (page === 'goals' && !sessionOpen) {
     otherPage = <GoalsPanel openDrawer={openGroup} />;
   }
-  // 本地偏好完成读取前不挂载默认页面，避免先显示聊天再跳阅读。
-  if (!viewState.ready) return <SafeAreaView style={styles.root}>
-    <Text style={styles.mutedText}>{viewState.error ?? '正在读取主视图偏好…'}</Text>
-    {viewState.error && <ActionButton label="重试读取主视图偏好" text="重试" onPress={() => { void views.load(); }} />}
-  </SafeAreaView>;
   // 文件 Provider 与聊天所有者随连接持有；页面切换不销毁草稿或运行。
   return <View style={styles.root} testID="workspace-screen"><ThemeStatusBar />
     <View style={[styles.viewport, { width: contentWidth }]}
@@ -539,29 +566,18 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
         <SafeAreaView style={styles.screen} edges={['top', 'bottom', 'left', 'right']}>
           {/* 唯一键盘避让层：Android 按真实重叠缩小阅读区，iOS 保留 padding；不再另算键盘高度。 */}
           <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled={Platform.OS !== 'web'} accessibilityViewIsModal={sessionMounted}>
-            {page === 'settings' && !inSettingsSubpage && <AgentHeader title="全局设置" backLabel="返回聊天" onBack={returnChat} />}
-            {(page === 'chat' || page === 'group' || page === 'news') && !hideTitleBar && (
-              <Pressable
-                testID="workspace-title-bar"
-                accessibilityRole="button"
-                accessibilityLabel={page === 'group' ? '打开全局设置' : `打开${currentTitle}设置`}
-                accessibilityHint={page === 'group' ? '点击进入全局设置' : '点击进入智能体设置'}
-                disabled={sessionMounted}
-                onPress={() => {
-                  if (sessionMounted) return;
-                  if (page === 'group') openGlobalSettings();
-                  else openAgentSettings(agents.currentAgent);
-                }}
-                style={({ pressed }) => [
-                  styles.titleBar,
-                  pressed && { opacity: workspaceTheme.interaction.pressedOpacity },
-                ]}
-              >
-                <Text numberOfLines={1} style={styles.titleBarName}>
-                  {currentTitle}
-                </Text>
-                <StatusPill label={statusLabel} tone={statusTone} />
-              </Pressable>
+            {page === 'chat' && (
+              <AgentHeader
+                title={labels.title(agents.currentAgent)}
+                caption={avatarStatusDetail(agents.currentAgent)}
+                backLabel={chatReturn === 'news' ? '返回新闻' : chatReturn === 'discussion' ? '返回讨论' : '返回消息'}
+                onBack={returnChat}
+              />
+            )}
+            {page === 'settings' && !inSettingsSubpage && (
+              <View style={styles.titleBar} testID="workspace-title-bar">
+                <Text style={styles.titleBarName}>设置</Text>
+              </View>
             )}
             <View style={styles.bodyStage}>
               <BlurTargetView ref={chatBlurTarget} style={styles.bodyStage}>
@@ -572,33 +588,28 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
                   accessibilityElementsHidden={sessionMounted} importantForAccessibility={sessionMounted ? 'no-hide-descendants' : 'auto'}>
                   <View style={[styles.bodyStage, (page === 'group' || page === 'discussion' || page === 'news') && { display: 'none' }]}><ConversationHost currentAgentId={agents.currentAgent} agentIds={agents.agents.map((agent) => agent.id)} chatVisible={page === 'chat'} otherPage={otherPage}
                     refreshVersions={historyRefresh} onSettled={refresh} onBindingMismatch={reloadAgents} openConnection={openConnection} onOpenApprovals={() => openSession('approvals')} onContinueNotification={openNotification} /></View>
-                  {/* 阅读视图与聊天所有者并列保留，切头像不卸载文章或滚动现场。 */}
+                  {/* 阅读视图与聊天所有者并列保留，切 Tab 与私聊不卸载文章或滚动现场。 */}
                   <View style={[styles.bodyStage, page !== 'news' && { display: 'none' }]} pointerEvents={page === 'news' ? 'auto' : 'none'}
                     accessibilityElementsHidden={page !== 'news'} importantForAccessibility={page === 'news' ? 'auto' : 'no-hide-descendants'}>
                     <NewsPage store={news} visible={page === 'news'} managing={newsManaging} onManaging={setNewsManaging}
                       onDiscuss={(id) => changeAgent(() => void discussion.discuss(id))} discussing={discussion.busy} discussionError={discussion.error}
-                      uncertainDiscussion={!!discussion.uncertainTarget} onCheckDiscussion={() => { if (discussion.uncertainTarget) selectConversation(discussion.uncertainTarget); }}
+                      uncertainDiscussion={!!discussion.uncertainTarget} onCheckDiscussion={() => { if (discussion.uncertainTarget) openPrivateChat(discussion.uncertainTarget, 'news'); }}
                       onConfirmDiscussion={() => Alert.alert('确认已核对承接会话？', '恢复后不会重发上一次讨论。请先确认会话里是否已经收到这条新闻。', [
                         { text: '取消', style: 'cancel' }, { text: '已核对', onPress: () => void discussion.confirmChecked() },
                       ])} />
                   </View>
-                  <GroupChat visible={page === 'group' || page === 'discussion'} notification={page === 'discussion' || chatReturn === 'discussion' && page === 'agent' ? notification : undefined}
-                    onOpenNotification={openNotification} onBack={() => setPage(notificationReturn)} members={groupMembers} onAgentSettings={openAgentSettings} onApprovals={(agentId) => { setChatReturn(page === 'discussion' ? 'discussion' : 'group'); setAgentReturn('chat'); setSettingsAgentId(agentId); setAgentSection('home'); setPage('agent'); openSession('approvals'); }} />
+                  <GroupChat visible={page === 'group' || page === 'discussion'} allAgents={agents.agents.map((agent) => ({ id: agent.id, name: labels.title(agent.id) }))}
+                    members={groupMembers} notification={page === 'discussion' ? notification : undefined}
+                    onOpenNotification={openNotification} onBack={returnFromNotification} onPrivateChat={(id) => openPrivateChat(id, page === 'discussion' ? 'discussion' : 'group')}
+                    onApprovals={(agentId) => openSession('approvals', agentId)} />
                   {!!notice && <Text accessibilityRole="alert" style={[styles.notice, notice.tone === 'error' && styles.error]}>{notice.text}</Text>}
                 </View>
               </BlurTargetView>
             </View>
-            {!keyboardVisible && (page === 'chat' || page === 'group' || page === 'news') && !newsDetailOpen && (
-              <AgentDock
-                agents={dockAgents}
-                currentId={page === 'group' ? 'group' : agents.currentAgent}
-                status={avatarStatus}
-                onSelect={(id) => {
-                  if (id === 'group') openGroup();
-                  else select(id);
-                }}
-                onOpenMore={() => setPickerOpen(true)}
-                disabled={sessionMounted}
+            {!keyboardVisible && isRootPage && (
+              <PrimaryTabBar
+                currentTab={page as PrimaryTabId}
+                onSelectTab={selectTab}
               />
             )}
             {sessionMounted && (
@@ -626,7 +637,7 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
                 }
                 headerCenter={
                   <View style={styles.identity}>
-                    <MemberAvatar agentId={focusedAgentId} size={l.headerAvatar} />
+                    <MemberAvatar agentId={inspectedSessionAgentId} size={l.headerAvatar} />
                     <View style={[styles.identityLabel, styles.sessionIdentityLabel]}>{sessionName && <Text numberOfLines={1} style={styles.identityName}>{sessionName}</Text>}<StatusPill label={statusLabel} testID="workspace-session-status" tone={statusTone} /></View>
                   </View>
                 }
@@ -637,7 +648,7 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
                   </FrostedSurface>
                 )}
               >
-                <SessionPanel agentId={focusedAgentId}
+                <SessionPanel agentId={inspectedSessionAgentId}
                   tab={sessionTab}
                   onTab={(next) => {
                     if (session.resetting || session.deleting) return;
@@ -645,7 +656,7 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
                   }}
                   deleting={session.deleting}
                   resetting={session.resetting}
-                  onSettled={() => refresh(focusedAgentId)}
+                  onSettled={() => refresh(inspectedSessionAgentId)}
                 />
               </AvatarBloomTransition>
             )}
@@ -656,18 +667,6 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
     {browserOpen && <BrowserPanel store={browser} baseUrl={snapshot.serverUrl ?? ''} onClose={closeBrowser} />}
     {resetTarget && <ResetSessionDialog key={resetTarget} agentId={resetTarget} available={!!connection?.enabled} error={resetError}
       onCancel={() => { setResetTarget(undefined); setResetError(undefined); }} onConfirm={reset} />}
-    {pickerOpen && (
-      <AgentPickerSheet
-        agents={groupMembers}
-        currentId={page === 'group' ? 'group' : agents.currentAgent}
-        pinnedIds={dockPreferences.pinned}
-        onSelect={(id) => { setPickerOpen(false); select(id); }}
-        onTogglePin={(id) => { void dockPreferences.togglePin(id); }}
-        onOpenSettings={(id) => { setPickerOpen(false); openAgentSettings(id); }}
-        onOpenManage={() => { setPickerOpen(false); openAgentManagement(); }}
-        onClose={() => setPickerOpen(false)}
-      />
-    )}
   </View>;
 }
 const createStyles = (c: WorkspaceColors) => StyleSheet.create({

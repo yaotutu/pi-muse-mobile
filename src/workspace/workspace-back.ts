@@ -16,12 +16,12 @@ export function workspaceBackAction(state: {
   if (state.sessionMounted) return 'session';
   if (state.page === 'news' && state.newsArticleOpen) return 'news-article';
   if (state.page === 'news' && state.newsManaging) return 'news-sources';
-  if (state.page === 'news') return 'group';
+  if (state.page === 'news') return 'none';
   if (state.page === 'settings' && state.settingsSubpage) return 'settings';
-  if (state.page === 'settings') return 'chat-return';
+  if (state.page === 'settings') return 'none';
   if (state.page === 'feature') return 'feature';
   if (state.page === 'group') return 'none';
-  if (state.page === 'chat') return 'group';
+  if (state.page === 'chat') return 'chat-return';
   if (state.page === 'discussion') return 'discussion';
   if (state.page === 'agent') return 'agent';
   if (state.page === 'goals' && state.goalCreating) return 'goal';

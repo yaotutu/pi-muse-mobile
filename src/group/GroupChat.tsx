@@ -1,5 +1,5 @@
 import { GroupComposer } from './group-composer';
-import { ArrowUp, AtSign, Square, X } from 'lucide-react-native';
+import { ArrowUp, AtSign, Square, Users, X } from 'lucide-react-native';
 import { type ScrollViewInstance, Alert, AppState, Keyboard, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useApi } from '../api/ApiProvider';
@@ -11,6 +11,7 @@ import { IconControl } from '../ui/IconControl';
 import { spacing, workspaceTheme } from '../ui/tokens';
 import { MemberAvatar } from '../workspace/MemberAvatar';
 import { AgentHeader } from '../workspace/AgentHeader';
+import { GroupMemberSheet } from '../workspace/GroupMemberSheet';
 import { Message } from '../workspace/ConversationView';
 import { discussionTurns, notificationKey, groupRows, resolveGroupTarget, type GroupSnapshot, type GroupTurn, type NotificationReference } from './contracts';
 
@@ -18,9 +19,9 @@ let groupSequence = 0;
 const nextGroupId = () => `group-${Date.now()}-${++groupSequence}`;
 const { layout: l, typography: t, radius: r } = workspaceTheme;
 /** 连接内只挂一份群聊所有者；换页面不重发、不把私聊草稿或历史带进群里。 */
-export function GroupChat({ visible, members, onAgentSettings, onApprovals, notification, onOpenNotification, onBack }: {
-  visible: boolean; members: { id: string; name: string }[];
-  onAgentSettings: (id: string) => void; onApprovals: (agentId: string) => void;
+export function GroupChat({ visible, allAgents, members, onPrivateChat, onApprovals, notification, onOpenNotification, onBack }: {
+  visible: boolean; allAgents?: { id: string; name: string }[]; members: { id: string; name: string }[];
+  onPrivateChat: (agentId: string) => void; onApprovals: (agentId: string) => void;
   notification?: NotificationReference; onOpenNotification: (reference: NotificationReference) => void; onBack: () => void;
 }) {
   const api = useApi(); const { colors: c } = useTheme(); const approvals = useApprovals();
@@ -35,6 +36,7 @@ export function GroupChat({ visible, members, onAgentSettings, onApprovals, noti
   const composer = composers.get(scope)!;
   const { draft, target, pending: pendingDraft, suggestion } = useSyncExternalStore(composer.subscribe, composer.getSnapshot, composer.getSnapshot);
   const [choosing, setChoosing] = useState(false); const [loading, setLoading] = useState(false);
+  const candidateAgents = allAgents ?? members;
   const [runningScope, setRunningScope] = useState<string>();
   const running = runningScope !== undefined;
   const [uncertain, setUncertain] = useState(false); const [error, setError] = useState('');
@@ -54,7 +56,7 @@ export function GroupChat({ visible, members, onAgentSettings, onApprovals, noti
       }
     } catch (failure) {
       if (mounted.current && version === readVersion.current) {
-        const message = failure instanceof Error ? failure.message : '「全部」消息读取失败';
+        const message = failure instanceof Error ? failure.message : '消息读取失败';
         setError(message);
       }
     }
@@ -108,6 +110,12 @@ export function GroupChat({ visible, members, onAgentSettings, onApprovals, noti
   const title = (id: string) => members.find((member) => member.id === id)?.name ?? id;
   const anchor = () => { if (visible && following.current) scroll.current?.scrollToEnd({ animated: false }); };
   return <View style={{ flex: 1, minHeight: 0, display: visible ? 'flex' : 'none' }} accessibilityElementsHidden={!visible} importantForAccessibility={visible ? 'auto' : 'no-hide-descendants'}>
+    {!notification && (
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: l.sidePadding, paddingVertical: spacing[12] }}>
+        <Text accessibilityRole="header" style={{ ...t.heroName, color: c.ink }}>消息</Text>
+        <ActionButton label="打开群聊成员面板" text="成员" icon={Users} tone="secondary" testID="group-members-button" onPress={() => setChoosing(true)} />
+      </View>
+    )}
     {notification && <AgentHeader title={source ? `与${title(`${source.featureId}-internal`)}讨论` : '通知讨论'} caption="继续处理这条通知" backLabel="返回通知所在聊天" onBack={() => { Keyboard.dismiss(); onBack(); }} />}
     <ScrollView key={scope} ref={scroll} keyboardShouldPersistTaps="handled" onContentSizeChange={anchor} onLayout={anchor} scrollEventThrottle={16}
       onScroll={(event) => { const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent; following.current = contentSize.height - contentOffset.y - layoutMeasurement.height < l.scrollThreshold; }}
@@ -120,7 +128,7 @@ export function GroupChat({ visible, members, onAgentSettings, onApprovals, noti
       {notification && snapshot && !source && <Text accessibilityRole="alert" style={{ ...t.detail, color: c.danger }}>原通知已失效，不能继续发送。已有讨论仍可查看。</Text>}
       {snapshot && !rows.length && !busy && (!notification || !!source) && <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}><Text style={{ ...t.detail, color: c.muted }}>{notification ? '想如何处理这条通知？' : '有什么想聊的？'}</Text></View>}
       {rows.map((row) => <View key={row.key} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing[8] }}>
-        {row.sender && <Pressable accessibilityRole="button" accessibilityLabel={`查看${title(row.sender)}的智能体设置`} onPress={() => { Keyboard.dismiss(); onAgentSettings(row.sender!); }} style={{ width: l.smallControl, minHeight: l.smallControl, alignItems: 'center', justifyContent: 'center' }}>
+        {row.sender && <Pressable accessibilityRole="button" accessibilityLabel={`与${title(row.sender)}单独聊`} accessibilityHint="点击进入私聊" onPress={() => { Keyboard.dismiss(); onPrivateChat(row.sender!); }} style={{ width: l.smallControl, minHeight: l.smallControl, alignItems: 'center', justifyContent: 'center' }}>
           <MemberAvatar agentId={row.sender} size={l.groupAvatar} />
         </Pressable>}
         <View style={{ flex: 1, minWidth: 0, gap: spacing[2] }}>
@@ -154,23 +162,27 @@ export function GroupChat({ visible, members, onAgentSettings, onApprovals, noti
           ])} />
         </View>}
       </View>}
-      {busy && <Text accessibilityLabel="全部视图正在回复" style={{ ...t.caption, color: c.muted }}>{activeHere ? '正在回复…' : '其他讨论正在处理，请稍候…'}</Text>}
+      {busy && <Text accessibilityLabel="群聊正在回复" style={{ ...t.caption, color: c.muted }}>{activeHere ? '正在回复…' : '其他讨论正在处理，请稍候…'}</Text>}
       {!!error && <Text accessibilityRole="alert" style={{ ...t.caption, color: c.danger }}>{error}</Text>}
-      {(!!error || uncertain || (!!snapshot?.running && !running)) && <ActionButton label="重新同步全部消息" text="同步核对" onPress={() => void reload()} />}
+      {(!!error || uncertain || (!!snapshot?.running && !running)) && <ActionButton label="重新同步消息" text="同步核对" onPress={() => void reload()} />}
     </ScrollView>
-    {pendingApprovals.length > 0 && <ActionButton label="查看全部视图待处理审批" text={`待处理审批（${pendingApprovals.length}）`} onPress={() => onApprovals(pendingApprovals[0].agentId!)} style={{ marginHorizontal: l.sidePadding }} />}
-    {!notification && choosing && <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 200, marginHorizontal: l.sidePadding, borderRadius: r.card, backgroundColor: c.surface }}>
-      {availableMembers.map((member) => <Pressable key={member.id} accessibilityRole="button" accessibilityLabel={`全部视图艾特${member.name}`} onPress={() => { composer.setTarget(member.id); setChoosing(false); composer.setDraft(draft.endsWith('@') ? draft.slice(0, -1) : draft); }} style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', padding: spacing[12], gap: spacing[12] }}>
-        <MemberAvatar agentId={member.id} size={30} /><Text style={{ ...t.detail, color: c.ink }}>{member.name}</Text>
-      </Pressable>)}
-    </ScrollView>}
-    {!notification && !!target && <Pressable accessibilityRole="button" accessibilityLabel="取消全部视图艾特" onPress={() => composer.setTarget(undefined)} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[8], alignSelf: 'flex-start', marginHorizontal: l.sidePadding, padding: spacing[10] }}><Text style={{ ...t.caption, color: c.accentText }}>@{title(target)}</Text><X size={16} color={c.muted} /></Pressable>}
+    {pendingApprovals.length > 0 && <ActionButton label="查看待处理审批" text={`待处理审批（${pendingApprovals.length}）`} onPress={() => onApprovals(pendingApprovals[0].agentId!)} style={{ marginHorizontal: l.sidePadding }} />}
+    <GroupMemberSheet
+      visible={!notification && choosing}
+      agents={candidateAgents}
+      memberIds={snapshot?.memberIds ?? []}
+      defaultAgentId={snapshot?.defaultAgentId}
+      onMention={(agentId) => { composer.setTarget(agentId); setChoosing(false); if (draft.endsWith('@')) composer.setDraft(draft.slice(0, -1)); }}
+      onPrivateChat={(agentId) => { setChoosing(false); onPrivateChat(agentId); }}
+      onClose={() => setChoosing(false)}
+    />
+    {!notification && !!target && <Pressable accessibilityRole="button" accessibilityLabel="取消艾特" onPress={() => composer.setTarget(undefined)} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[8], alignSelf: 'flex-start', marginHorizontal: l.sidePadding, padding: spacing[10] }}><Text style={{ ...t.caption, color: c.accentText }}>@{title(target)}</Text><X size={16} color={c.muted} /></Pressable>}
     <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: l.composerHeight, padding: l.composerPadding, marginHorizontal: l.sidePadding, marginBottom: l.composerBottom, borderRadius: r.round, backgroundColor: c.surface }}>
-      {!notification && <IconControl icon={AtSign} label="选择全部视图回复成员" onPress={() => setChoosing(!choosing)} />}
-      <TextInput accessibilityLabel={notification ? '通知讨论输入框' : '全部消息输入框'} placeholder={notification ? (source ? `回复${title(`${source.featureId}-internal`)}…` : '通知已失效') : '消息'} placeholderTextColor={c.faint} multiline value={draft} editable={!notification || !!source}
+      {!notification && <IconControl icon={AtSign} label="选择回复成员" onPress={() => setChoosing(!choosing)} />}
+      <TextInput accessibilityLabel={notification ? '通知讨论输入框' : '消息输入框'} placeholder={notification ? (source ? `回复${title(`${source.featureId}-internal`)}…` : '通知已失效') : '发消息，或 @成员'} placeholderTextColor={c.faint} multiline value={draft} editable={!notification || !!source}
         onChangeText={(text) => { composer.setDraft(text); if (!notification && text.endsWith('@')) setChoosing(true); }}
         style={{ ...t.input, flex: 1, minWidth: 0, minHeight: 44, maxHeight: l.composerMaxHeight, padding: spacing[8], color: c.ink }} />
-      <IconControl icon={busy ? Square : ArrowUp} label={busy ? (activeHere ? '停止全部视图回复' : '等待其他讨论结束') : notification ? '发送通知讨论消息' : '发送全部视图消息'} disabled={busy ? !activeHere : !draft.trim() || !!suggestion || uncertain || !!pendingDraft || !snapshot || loading || (!!notification && !source)}
+      <IconControl icon={busy ? Square : ArrowUp} label={busy ? (activeHere ? '停止消息回复' : '等待其他讨论结束') : notification ? '发送通知讨论消息' : '发送消息'} disabled={busy ? !activeHere : !draft.trim() || !!suggestion || uncertain || !!pendingDraft || !snapshot || loading || (!!notification && !source)}
         onPress={() => { if (busy) { const id = pending.current?.id ?? snapshot?.running; if (id) void api.stopGroup(id).catch((failure) => setError((failure as Error).message)); } else void send(); }} />
     </View>
   </View>;

@@ -52,9 +52,9 @@ test('内置成员有自己的身份，不占用普通成员编号', () => {
   assert.equal(isBuiltinMember('sms-internal-extra'), false);
 });
 
-test('私聊返回群聊，功能设置返回成员层，覆盖层优先', () => {
+test('私聊返回原来源，功能设置返回成员层，覆盖层优先', () => {
   const state = { page: 'chat', keyboardVisible: false, sessionMounted: false, settingsSubpage: null, goalCreating: false };
-  assert.equal(workspaceBackAction(state), 'group');
+  assert.equal(workspaceBackAction(state), 'chat-return');
   assert.equal(workspaceBackAction({ ...state, page: 'feature' }), 'feature');
   assert.equal(workspaceBackAction({ ...state, page: 'agent' }), 'agent');
   assert.equal(workspaceBackAction({ ...state, page: 'feature', sessionMounted: true }), 'session');
@@ -64,7 +64,7 @@ test('私聊返回群聊，功能设置返回成员层，覆盖层优先', () =>
 test('群聊是返回根层，阅读器保留独立返回来源，子页先退一层', () => {
   const state = { page: 'group', keyboardVisible: false, sessionMounted: false, settingsSubpage: null, goalCreating: false };
   assert.equal(workspaceBackAction(state), 'none');
-  assert.equal(workspaceBackAction({ ...state, page: 'news' }), 'group');
+  assert.equal(workspaceBackAction({ ...state, page: 'news' }), 'none');
   assert.equal(workspaceBackAction({ ...state, page: 'news', newsManaging: true }), 'news-sources');
   assert.equal(workspaceBackAction({ ...state, page: 'news', newsManaging: true, newsArticleOpen: true }), 'news-article');
   assert.equal(workspaceBackAction({ ...state, page: 'news', newsArticleOpen: true, sessionMounted: true }), 'session');
