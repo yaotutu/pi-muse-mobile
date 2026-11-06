@@ -1,5 +1,4 @@
 import { GroupComposer } from './group-composer';
-import { ChatSwipeArea } from '../ui/ChatSwipeArea';
 import { ArrowUp, AtSign, Square, X } from 'lucide-react-native';
 import { type ScrollViewInstance, Alert, AppState, Keyboard, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
@@ -19,11 +18,10 @@ let groupSequence = 0;
 const nextGroupId = () => `group-${Date.now()}-${++groupSequence}`;
 const { layout: l, typography: t, radius: r } = workspaceTheme;
 /** 连接内只挂一份群聊所有者；换页面不重发、不把私聊草稿或历史带进群里。 */
-export function GroupChat({ visible, members, onAgentSettings, onApprovals, notification, onOpenNotification, onBack, onSwipe }: {
+export function GroupChat({ visible, members, onAgentSettings, onApprovals, notification, onOpenNotification, onBack }: {
   visible: boolean; members: { id: string; name: string }[];
   onAgentSettings: (id: string) => void; onApprovals: (agentId: string) => void;
   notification?: NotificationReference; onOpenNotification: (reference: NotificationReference) => void; onBack: () => void;
-  onSwipe?: (direction: -1 | 1) => void;
 }) {
   const api = useApi(); const { colors: c } = useTheme(); const approvals = useApprovals();
   const runtimeStore = useRuntimeStore();
@@ -111,7 +109,7 @@ export function GroupChat({ visible, members, onAgentSettings, onApprovals, noti
   const anchor = () => { if (visible && following.current) scroll.current?.scrollToEnd({ animated: false }); };
   return <View style={{ flex: 1, minHeight: 0, display: visible ? 'flex' : 'none' }} accessibilityElementsHidden={!visible} importantForAccessibility={visible ? 'auto' : 'no-hide-descendants'}>
     {notification && <AgentHeader title={source ? `与${title(`${source.featureId}-internal`)}讨论` : '通知讨论'} caption="继续处理这条通知" backLabel="返回通知所在聊天" onBack={() => { Keyboard.dismiss(); onBack(); }} />}
-    <ChatSwipeArea onSwipe={notification ? undefined : onSwipe}><ScrollView key={scope} ref={scroll} keyboardShouldPersistTaps="handled" onContentSizeChange={anchor} onLayout={anchor} scrollEventThrottle={16}
+    <ScrollView key={scope} ref={scroll} keyboardShouldPersistTaps="handled" onContentSizeChange={anchor} onLayout={anchor} scrollEventThrottle={16}
       onScroll={(event) => { const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent; following.current = contentSize.height - contentOffset.y - layoutMeasurement.height < l.scrollThreshold; }}
       contentContainerStyle={{ flexGrow: 1, paddingTop: spacing[12], paddingHorizontal: l.sidePadding, paddingBottom: spacing[24], gap: l.groupMessageGap }}>
       {!snapshot && loading && <Text style={{ ...t.caption, color: c.muted }}>正在读取消息…</Text>}
@@ -159,7 +157,7 @@ export function GroupChat({ visible, members, onAgentSettings, onApprovals, noti
       {busy && <Text accessibilityLabel="全部视图正在回复" style={{ ...t.caption, color: c.muted }}>{activeHere ? '正在回复…' : '其他讨论正在处理，请稍候…'}</Text>}
       {!!error && <Text accessibilityRole="alert" style={{ ...t.caption, color: c.danger }}>{error}</Text>}
       {(!!error || uncertain || (!!snapshot?.running && !running)) && <ActionButton label="重新同步全部消息" text="同步核对" onPress={() => void reload()} />}
-    </ScrollView></ChatSwipeArea>
+    </ScrollView>
     {pendingApprovals.length > 0 && <ActionButton label="查看全部视图待处理审批" text={`待处理审批（${pendingApprovals.length}）`} onPress={() => onApprovals(pendingApprovals[0].agentId!)} style={{ marginHorizontal: l.sidePadding }} />}
     {!notification && choosing && <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 200, marginHorizontal: l.sidePadding, borderRadius: r.card, backgroundColor: c.surface }}>
       {availableMembers.map((member) => <Pressable key={member.id} accessibilityRole="button" accessibilityLabel={`全部视图艾特${member.name}`} onPress={() => { composer.setTarget(member.id); setChoosing(false); composer.setDraft(draft.endsWith('@') ? draft.slice(0, -1) : draft); }} style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', padding: spacing[12], gap: spacing[12] }}>

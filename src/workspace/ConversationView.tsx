@@ -1,5 +1,4 @@
 import type { NotificationReference } from '../group/contracts';
-import { ChatSwipeArea } from '../ui/ChatSwipeArea';
 /**
  * 聊天会话主视图：消息列表、工具调用卡片、输入框与运行终态历史同步。
  *
@@ -39,7 +38,6 @@ function useStyles() {
 export type ConversationViewProps = {
   agentId: string;
   visible: boolean;
-  onSwipe?: (direction: -1 | 1) => void;
   refreshKey: string | number;
   onSettled: () => void;
   openConnection: () => void;
@@ -50,7 +48,6 @@ export type ConversationViewProps = {
 export function ConversationView({
   agentId,
   visible,
-  onSwipe,
   refreshKey,
   onSettled,
   openConnection,
@@ -261,7 +258,7 @@ export function ConversationView({
   return (
     <>
       <View style={[styles.chatBody, !visible && styles.hidden]}>
-        <ChatSwipeArea onSwipe={onSwipe}><ScrollView
+        <ScrollView
           ref={scroll}
           style={styles.chatScroll}
           keyboardShouldPersistTaps="handled"
@@ -354,7 +351,7 @@ export function ConversationView({
               }}
             />
           )}
-        </ScrollView></ChatSwipeArea>
+        </ScrollView>
         {showLatest && <Pressable accessibilityRole="button" accessibilityLabel="回到最新消息" onPress={() => { scrollFollow.current.returnLatest(); setShowLatest(false); scroll.current?.scrollToEnd({ animated: true }); }} style={styles.latestButton}><ArrowDown size={sizing[18]} color={colors.ink} /><Text style={styles.caption}>回到最新</Text></Pressable>}
       </View>
       {visible && <>

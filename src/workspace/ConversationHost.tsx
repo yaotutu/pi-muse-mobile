@@ -10,8 +10,8 @@ import type { NotificationReference } from '../group/contracts';
 import { ConversationView } from './ConversationView';
 import { conversationRefreshKey, reconcileConversationOwners } from './conversation-host-state';
 
-function AgentConversation({ agentId, visible, onSwipe, refreshVersion, onSettled, onBindingMismatch, openConnection, onOpenApprovals, onContinueNotification }: {
-  agentId: string; visible: boolean; onSwipe?: (direction: -1 | 1) => void; refreshVersion: number;
+function AgentConversation({ agentId, visible, refreshVersion, onSettled, onBindingMismatch, openConnection, onOpenApprovals, onContinueNotification }: {
+  agentId: string; visible: boolean; refreshVersion: number;
   onSettled: (agentId: string) => void; onBindingMismatch: () => void; openConnection: () => void;
   onOpenApprovals?: () => void; onContinueNotification?: (reference: NotificationReference) => void;
 }) {
@@ -25,13 +25,13 @@ function AgentConversation({ agentId, visible, onSwipe, refreshVersion, onSettle
   const settled = useCallback(() => onSettled(agentId), [onSettled, agentId]);
   return <View style={[styles.owner, !visible && styles.hidden]} accessibilityElementsHidden={!visible}
     importantForAccessibility={visible ? 'auto' : 'no-hide-descendants'} pointerEvents={visible ? 'auto' : 'none'}>
-    <ConversationView key={`${agentId}:${session.epoch}`} agentId={agentId} visible={visible} onSwipe={onSwipe} refreshKey={refreshKey}
+    <ConversationView key={`${agentId}:${session.epoch}`} agentId={agentId} visible={visible} refreshKey={refreshKey}
       onSettled={settled} openConnection={openConnection} onOpenApprovals={onOpenApprovals} onContinueNotification={onContinueNotification} />
   </View>;
 }
 
-export function ConversationHost({ currentAgentId, agentIds, chatVisible, onSwipe, otherPage, refreshVersions, onSettled, onBindingMismatch, openConnection, onOpenApprovals, onContinueNotification }: {
-  currentAgentId: string; agentIds: string[]; chatVisible: boolean; onSwipe?: (direction: -1 | 1) => void; otherPage: ReactNode;
+export function ConversationHost({ currentAgentId, agentIds, chatVisible, otherPage, refreshVersions, onSettled, onBindingMismatch, openConnection, onOpenApprovals, onContinueNotification }: {
+  currentAgentId: string; agentIds: string[]; chatVisible: boolean; otherPage: ReactNode;
   refreshVersions: Record<string, number>; onSettled: (agentId: string) => void; onBindingMismatch: () => void; openConnection: () => void;
   onOpenApprovals?: () => void; onContinueNotification?: (reference: NotificationReference) => void;
 }) {
@@ -40,7 +40,7 @@ export function ConversationHost({ currentAgentId, agentIds, chatVisible, onSwip
   const owners = reconcileConversationOwners(visited, currentAgentId, agentIds);
   if (owners !== visited) setVisited(owners);
   return <View style={styles.host}>
-    {owners.map((id) => <AgentConversation key={id} agentId={id} visible={chatVisible && id === currentAgentId} onSwipe={onSwipe}
+    {owners.map((id) => <AgentConversation key={id} agentId={id} visible={chatVisible && id === currentAgentId}
       refreshVersion={refreshVersions[id] ?? 0} onSettled={onSettled} onBindingMismatch={onBindingMismatch} openConnection={openConnection} onOpenApprovals={onOpenApprovals} onContinueNotification={onContinueNotification} />)}
     {!chatVisible && <View style={styles.owner}>{otherPage}</View>}
   </View>;

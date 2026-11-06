@@ -8,7 +8,7 @@ const read = (path) => readFileSync(new URL(path, root), 'utf8');
 
 test('Muse 配色和形象保留在头像栏和浏览器入口，不恢复灵动岛或底部目标入口', () => {
   const screen = read('src/workspace/WorkspaceScreen.tsx');
-  assert.match(screen, /<AgentAvatarStrip targets={targets}/);
+  assert.match(screen, /<AgentDock/);
   assert.doesNotMatch(screen, /DynamicIsland|settingsCapsule|capsuleLabel/);
   assert.equal(existsSync(new URL('src/workspace/DynamicIsland.tsx', root)), false);
   assert.equal(existsSync(new URL('src/ui/Subpage.tsx', root)), false);
@@ -95,16 +95,17 @@ test('聊天空态只留短句，本地头像与真实流动画均有稳定入�
   assert.doesNotMatch(primitives, /https?:\/\//);
 });
 
-test('聊天顶部头像栏在正常布局，隐藏智能体不重复挂载其他页面', () => {
-  assert.match(read('src/workspace/WorkspaceScreen.tsx'), /<AgentAvatarStrip targets={targets}/);
+test('聊天顶部紧凑标题行在正常布局，隐藏智能体不重复挂载其他页面', () => {
+  assert.match(read('src/workspace/WorkspaceScreen.tsx'), /<AgentDock/);
   assert.match(read('src/workspace/ConversationView.tsx'), /paddingTop: spacing\[12\]/);
   assert.match(read('src/workspace/ConversationHost.tsx'), /!chatVisible && <View style={styles.owner}>{otherPage}/);
   assert.match(read('src/workspace/SessionPanel.tsx'), /<ScrollView\s+key={tab}/);
 });
 
-test('头像栏承担切换，动态面板继续显示当前智能体的真实状态', () => {
+test('标题行与底栏承担设置与切换，动态面板继续显示当前智能体的真实状态', () => {
   const screen = read('src/workspace/WorkspaceScreen.tsx');
-  assert.match(screen, /onSettings={\(id\) => id === 'group' \? openGlobalSettings\(\) : openAgentSettings\(id\)}/);
+  assert.match(screen, /openGlobalSettings/);
+  assert.match(screen, /openAgentSettings/);
   assert.match(screen, /<StatusPill label={statusLabel} testID="workspace-session-status"/);
   assert.match(screen, /sessionName && <Text numberOfLines={1}/);
   assert.doesNotMatch(screen, /chatHeader:|identityLabelSurface:/);
@@ -197,7 +198,7 @@ test('会话文字操作共用点击区与状态，重置由独立确认承载',
 
 test('原生输入时压缩会话信息区且不挂载底栏，键盘事件监听随宿主卸载清理', () => {
   const source = read('src/workspace/WorkspaceScreen.tsx');
-  assert.match(source, /compact={keyboardVisible}/);
+  assert.match(source, /!keyboardVisible[\s\S]*?<AgentDock/);
   assert.doesNotMatch(source, /<Navigation/);
   assert.match(source, /return \(\) => \{ show\.remove\(\); hide\.remove\(\); \}/);
   const chat = read('src/workspace/ConversationView.tsx');
@@ -244,12 +245,12 @@ test('放弃 failed 暂存须二次确认并回读权威历史，当前草稿保
   assert.match(chat, /sessions\.restorePendingSubmissionToDraft\(agentId\)/);
 });
 
-test('启动直达群聊，点击和滑动共用同一个受保护切换入口', () => {
+test('启动直达群聊，底栏与选择面板共用同一个受保护切换入口', () => {
   const source = read('src/workspace/WorkspaceScreen.tsx');
   assert.match(source.split('function WorkspaceContent')[1], /useState<WorkspacePage>\('group'\)/);
-  assert.match(source, /const selectAvatar = .*openGroup\(\) : select\(id\)/);
-  assert.match(source, /const next = adjacentAvatar\(targets, selectedAvatar, direction\)/);
   assert.match(source, /const select = .*changeAgent/);
+  assert.match(source, /<AgentDock/);
+  assert.match(source, /<AgentPickerSheet/);
 });
 
 test('长按直接打开智能体设置，不再区分主页或保留发消息中间动作', () => {
@@ -262,12 +263,12 @@ test('长按直接打开智能体设置，不再区分主页或保留发消息�
   assert.match(source, /backLabel="返回智能体设置"/);
 });
 
-test('新闻按主视图偏好进入，阅读保留头像栏与现场，切视图只在设置', () => {
+test('新闻按主视图偏好进入，阅读保留底栏与标题行，切视图只在设置', () => {
   const source = read('src/workspace/WorkspaceScreen.tsx');
   const profile = read('src/workspace/AgentPage.tsx');
   const reader = read('src/workspace/NewsPage.tsx');
   assert.match(source, /setPage\(conversation \? 'chat' : homePage\(id\)\)/);
-  assert.match(source, /page === 'chat' \|\| page === 'group' \|\| page === 'news'\) && !newsDetailOpen && <AgentAvatarStrip/);
+  assert.match(source, /page === 'chat' \|\| page === 'group' \|\| page === 'news'/);
   assert.match(source, /<NewsPage store={news} visible={page === 'news'}/);
   assert.match(source, /await views.save\(focusedAgentId, view\)/);
   assert.match(source, /setChatReturn\(agentHomePage\(focusedAgentId, view\)\)/);
@@ -279,18 +280,17 @@ test('新闻按主视图偏好进入，阅读保留头像栏与现场，切视�
   assert.match(reader, /visible && anchor && <Modal/);
 });
 
-test('阅读列表以细分隔线区分头像栏与内容；文章详情整页隐藏头像栏', () => {
+test('文章详情整页隐藏标题行；无顶部头像栏与分隔线', () => {
   const source = read('src/workspace/WorkspaceScreen.tsx');
-  // 详情整页：外壳订阅新闻快照，selectedArticleId 打开时不渲染头像栏与分隔线。
+  // 详情整页：外壳订阅新闻快照，selectedArticleId 打开时不渲染标题行与底栏。
   assert.match(source, /const newsSnapshot = useNews\(news\)\.snapshot;/);
   assert.match(source, /const newsDetailOpen = page === 'news' && newsSnapshot\.selectedArticleId != null;/);
-  // 新闻详情显隐与主分支头像状态同时保留，避免合并时二选一覆盖。
-  assert.match(source, /!newsDetailOpen && <AgentAvatarStrip[^>]*status=\{avatarStatus\}/);
-  assert.match(source, /page === 'news' && !newsDetailOpen && <View style=\{styles\.stripDivider\} testID="news-strip-divider" \/>/);
-  assert.match(source, /stripDivider: \{ height: StyleSheet\.hairlineWidth, backgroundColor: c\.line \},/);
-  // 列表与来源管理仍保留头像栏；详情内横扫切换智能体由 ChatSwipeArea 承担。
+  assert.match(source, /hideTitleBar/);
+  assert.match(source, /testID="workspace-title-bar"/);
+  assert.doesNotMatch(source, /AgentAvatarStrip/);
+  assert.doesNotMatch(source, /news-strip-divider/);
   const reader = read('src/workspace/NewsPage.tsx');
-  assert.match(reader, /snapshot\.selectedArticleId \? <ChatSwipeArea onSwipe=\{onSwipe\}>/);
+  assert.doesNotMatch(reader, /ChatSwipeArea/);
 });
 
 test('智能体维护归智能体子页，全局设置来自群组信息，会话面板只处理当前执行', () => {

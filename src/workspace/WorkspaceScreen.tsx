@@ -58,10 +58,11 @@ import { ThemePicker } from '../theme/ThemePicker';
 import { IconControl, MuseAvatar, StatusPill, useReducedMotion } from './primitives';
 import { FrostedSurface } from '../ui/FrostedSurface';
 import { ActionButton } from '../ui/ActionButton';
-import { AgentAvatarStrip } from './AgentAvatarStrip';
-import { adjacentAvatar, avatarTargets } from './avatar-navigation';
+import { AgentDock } from './AgentDock';
+import { AgentPickerSheet } from './AgentPickerSheet';
+import { DOCK_PIN_LIMIT } from './dock-preferences';
+import { useDockPreferences } from './useDockPreferences';
 import { MemberAvatar } from './MemberAvatar';
-import { useAvatarPreferences } from './useAvatarPreferences';
 import { BrowserPanel } from '../browser/BrowserPanel';
 import { createBrowserStore } from '../browser/browser-store';
 
@@ -259,6 +260,7 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
   const [historyRefresh, setHistoryRefresh] = useState<Record<string, number>>({});
   const [labelState, setLabelState] = useState(() => ({ ids: '', labels: new AgentLabels() }));
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const { colors } = useTheme(); const styles = useStyles();
   const { width, height } = useWindowDimensions(); const contentWidth = Math.min(width, l.maxWidth);
   const avatarCenterY = l.headerTop + l.headerAvatar / 2;
@@ -393,17 +395,20 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
   const selectConversation = (id: string) => select(id, true);
   // 显式切换聊天才改变聊天所有者；查看设置只改变检查对象。
   const openGroup = () => changeAgent(() => { Keyboard.dismiss(); setSettingsAgentId(null); setSessionOpen(false); setPage('group'); });
-  const avatarPreferences = useAvatarPreferences(snapshot.serverUrl ?? '');
+  const dockPreferences = useDockPreferences(snapshot.serverUrl ?? '');
   const runtimeSnapshot = useSyncExternalStore(runtimeStore.subscribe, runtimeStore.getSnapshot, runtimeStore.getSnapshot);
-  const recency = Object.fromEntries(runtimeSnapshot.presences.map((item) => [item.agentId, item.lastActiveAt]));
-  const avatarIds = groupMembers.map((member) => member.id).join(',');
-  const desiredOrder = avatarTargets(avatarIds.split(',').filter(Boolean), avatarPreferences.pinned, recency).join(',');
-  const desiredTargets = useMemo(() => desiredOrder.split(','), [desiredOrder]);
-  // 手指落下时冻结当前顺序；消息、头像点击与横扫完成后才应用最新活跃排列。
-  const [frozenTargets, setFrozenTargets] = useState<string[] | null>(null);
-  const targets = frozenTargets ?? desiredTargets;
-  const avatarRelease = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => () => clearTimeout(avatarRelease.current), []);
+  const isDockFull = dockPreferences.pinned.length >= DOCK_PIN_LIMIT;
+  const isFocusedPinned = dockPreferences.pinned.includes(focusedAgentId);
+  const isPinDisabled = dockPreferences.loading || dockPreferences.saving || (!isFocusedPinned && isDockFull);
+  const dockAgents = useMemo(() => {
+    const memberMap = new Map(groupMembers.map((m) => [m.id, m]));
+    return dockPreferences.pinned
+      .filter((id) => memberMap.has(id))
+      .map((id) => ({
+        id,
+        name: memberMap.get(id)!.name,
+      }));
+  }, [dockPreferences.pinned, groupMembers]);
   const avatarStatus = (id: string) => runtimeSnapshot.connection !== 'live' ? 'unknown' as const : runtimeSnapshot.presences.find((item) => item.agentId === id)?.state ?? 'idle';
   const avatarStatusDetail = (id: string) => runtimeSnapshot.connection !== 'live' ? '连接已断开，状态待同步' : runtimeSnapshot.presences.find((item) => item.agentId === id)?.label ?? '空闲';
   // 面板检查整个智能体；私聊运行状态不包含通知讨论或后台处理，不能据此显示“就绪”。
@@ -413,13 +418,8 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
   const statusTone = connectionError || inspectedStatus === 'error' ? 'danger'
     : inspectedStatus === 'waiting' || inspectedStatus === 'unknown' ? 'warning'
     : inspectedStatus === 'working' ? 'accent' : 'neutral';
-  const selectedAvatar = page === 'group' ? 'group' : agents.currentAgent;
-  const avatarTitle = (id: string) => id === 'group' ? '全部' : labels.title(id);
-  const selectAvatar = (id: string) => id === 'group' ? openGroup() : select(id);
-  const switchAdjacent = (direction: -1 | 1) => {
-    const next = adjacentAvatar(targets, selectedAvatar, direction);
-    if (next) selectAvatar(next);
-  };
+  const currentTitle = page === 'group' ? '全部' : labels.title(agents.currentAgent);
+  const hideTitleBar = page === 'news' && (newsDetailOpen || newsManaging);
   const openAgentSettings = (id: string, fromManagement = false) => changeAgent(() => {
     Keyboard.dismiss();
     if (page === 'chat' || page === 'group' || page === 'discussion' || page === 'news') setChatReturn(page);
@@ -430,6 +430,11 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
     Keyboard.dismiss();
     if (page === 'chat' || page === 'group' || page === 'news') setChatReturn(page);
     setSettingsAgentId(null); setPage('settings'); setSettingsSubpage(null);
+  });
+  const openAgentManagement = () => changeAgent(() => {
+    Keyboard.dismiss();
+    if (page === 'chat' || page === 'group' || page === 'news') setChatReturn(page);
+    setSettingsAgentId(null); setPage('settings'); setSettingsSubpage('agents'); setSessionOpen(false);
   });
   const discussion = useNewsDiscussion((agentId) => { refresh(agentId); selectConversation(agentId); });
   const finishRemoval = (id: string) => {
@@ -497,8 +502,8 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
       onNewsSettings={() => setSettingsSubpage('news-sources')} />;
   } else if (page === 'agent') {
     otherPage = <AgentPage agentId={focusedAgentId} routing={routing} name={labels.title(focusedAgentId)} section={agentSection}
-      pinned={avatarPreferences.pinned.includes(focusedAgentId)} pinDisabled={avatarPreferences.loading || avatarPreferences.saving || !!avatarPreferences.error}
-      pinError={avatarPreferences.error} onPin={() => avatarPreferences.toggle(focusedAgentId)} onPinRetry={avatarPreferences.retry}
+      pinned={isFocusedPinned} pinDisabled={isPinDisabled} pinLimitReached={isDockFull}
+      pinError={dockPreferences.error} onPin={() => void dockPreferences.togglePin(focusedAgentId)} onPinRetry={dockPreferences.retry}
       statusLabel={avatarStatusDetail(focusedAgentId)}
       onSection={(next) => { setAgentSection(next); }} onBack={backAgent}
       onActivity={() => openSession('activity')}
@@ -527,10 +532,7 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
     {viewState.error && <ActionButton label="重试读取主视图偏好" text="重试" onPress={() => { void views.load(); }} />}
   </SafeAreaView>;
   // 文件 Provider 与聊天所有者随连接持有；页面切换不销毁草稿或运行。
-  return <View style={styles.root} testID="workspace-screen"
-    onTouchStartCapture={() => { clearTimeout(avatarRelease.current); setFrozenTargets(targets); }}
-    onTouchEndCapture={() => { clearTimeout(avatarRelease.current); avatarRelease.current = setTimeout(() => setFrozenTargets(null), 200); }}
-    onTouchCancel={() => { clearTimeout(avatarRelease.current); setFrozenTargets(null); }}><ThemeStatusBar />
+  return <View style={styles.root} testID="workspace-screen"><ThemeStatusBar />
     <View style={[styles.viewport, { width: contentWidth }]}
       pointerEvents={browserOpen ? 'none' : 'auto'} accessibilityElementsHidden={browserOpen} importantForAccessibility={browserOpen ? 'no-hide-descendants' : 'auto'}>
       <View style={styles.foreground}>
@@ -538,12 +540,29 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
           {/* 唯一键盘避让层：Android 按真实重叠缩小阅读区，iOS 保留 padding；不再另算键盘高度。 */}
           <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled={Platform.OS !== 'web'} accessibilityViewIsModal={sessionMounted}>
             {page === 'settings' && !inSettingsSubpage && <AgentHeader title="全局设置" backLabel="返回聊天" onBack={returnChat} />}
-            {(page === 'chat' || page === 'group' || page === 'news') && !newsDetailOpen && <AgentAvatarStrip targets={targets} selected={selectedAvatar}
-              status={avatarStatus}
-              title={avatarTitle} compact={keyboardVisible} disabled={sessionMounted} onSelect={selectAvatar}
-              onSettings={(id) => id === 'group' ? openGlobalSettings() : openAgentSettings(id)} />}
-            {/* 阅读视图的头像栏与内容区以细分隔线明确分层；聊天与群页保持原样。 */}
-            {page === 'news' && !newsDetailOpen && <View style={styles.stripDivider} testID="news-strip-divider" />}
+            {(page === 'chat' || page === 'group' || page === 'news') && !hideTitleBar && (
+              <Pressable
+                testID="workspace-title-bar"
+                accessibilityRole="button"
+                accessibilityLabel={page === 'group' ? '打开全局设置' : `打开${currentTitle}设置`}
+                accessibilityHint={page === 'group' ? '点击进入全局设置' : '点击进入智能体设置'}
+                disabled={sessionMounted}
+                onPress={() => {
+                  if (sessionMounted) return;
+                  if (page === 'group') openGlobalSettings();
+                  else openAgentSettings(agents.currentAgent);
+                }}
+                style={({ pressed }) => [
+                  styles.titleBar,
+                  pressed && { opacity: workspaceTheme.interaction.pressedOpacity },
+                ]}
+              >
+                <Text numberOfLines={1} style={styles.titleBarName}>
+                  {currentTitle}
+                </Text>
+                <StatusPill label={statusLabel} tone={statusTone} />
+              </Pressable>
+            )}
             <View style={styles.bodyStage}>
               <BlurTargetView ref={chatBlurTarget} style={styles.bodyStage}>
                 {/* Expo 的原生 BlurTargetView 仅负责采样；普通 RN View 承担触控和读屏隔离。 */}
@@ -551,12 +570,12 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
                   pointerEvents={sessionMounted ? 'none' : 'auto'} aria-hidden={sessionMounted}
                   {...(Platform.OS === 'web' && sessionMounted ? { inert: true } : {})}
                   accessibilityElementsHidden={sessionMounted} importantForAccessibility={sessionMounted ? 'no-hide-descendants' : 'auto'}>
-                  <View style={[styles.bodyStage, (page === 'group' || page === 'discussion' || page === 'news') && { display: 'none' }]}><ConversationHost currentAgentId={agents.currentAgent} agentIds={agents.agents.map((agent) => agent.id)} chatVisible={page === 'chat'} onSwipe={switchAdjacent} otherPage={otherPage}
+                  <View style={[styles.bodyStage, (page === 'group' || page === 'discussion' || page === 'news') && { display: 'none' }]}><ConversationHost currentAgentId={agents.currentAgent} agentIds={agents.agents.map((agent) => agent.id)} chatVisible={page === 'chat'} otherPage={otherPage}
                     refreshVersions={historyRefresh} onSettled={refresh} onBindingMismatch={reloadAgents} openConnection={openConnection} onOpenApprovals={() => openSession('approvals')} onContinueNotification={openNotification} /></View>
                   {/* 阅读视图与聊天所有者并列保留，切头像不卸载文章或滚动现场。 */}
                   <View style={[styles.bodyStage, page !== 'news' && { display: 'none' }]} pointerEvents={page === 'news' ? 'auto' : 'none'}
                     accessibilityElementsHidden={page !== 'news'} importantForAccessibility={page === 'news' ? 'auto' : 'no-hide-descendants'}>
-                    <NewsPage store={news} visible={page === 'news'} managing={newsManaging} onManaging={setNewsManaging} onSwipe={switchAdjacent}
+                    <NewsPage store={news} visible={page === 'news'} managing={newsManaging} onManaging={setNewsManaging}
                       onDiscuss={(id) => changeAgent(() => void discussion.discuss(id))} discussing={discussion.busy} discussionError={discussion.error}
                       uncertainDiscussion={!!discussion.uncertainTarget} onCheckDiscussion={() => { if (discussion.uncertainTarget) selectConversation(discussion.uncertainTarget); }}
                       onConfirmDiscussion={() => Alert.alert('确认已核对承接会话？', '恢复后不会重发上一次讨论。请先确认会话里是否已经收到这条新闻。', [
@@ -564,11 +583,24 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
                       ])} />
                   </View>
                   <GroupChat visible={page === 'group' || page === 'discussion'} notification={page === 'discussion' || chatReturn === 'discussion' && page === 'agent' ? notification : undefined}
-                    onOpenNotification={openNotification} onBack={() => setPage(notificationReturn)} members={groupMembers} onAgentSettings={openAgentSettings} onSwipe={switchAdjacent} onApprovals={(agentId) => { setChatReturn(page === 'discussion' ? 'discussion' : 'group'); setAgentReturn('chat'); setSettingsAgentId(agentId); setAgentSection('home'); setPage('agent'); openSession('approvals'); }} />
+                    onOpenNotification={openNotification} onBack={() => setPage(notificationReturn)} members={groupMembers} onAgentSettings={openAgentSettings} onApprovals={(agentId) => { setChatReturn(page === 'discussion' ? 'discussion' : 'group'); setAgentReturn('chat'); setSettingsAgentId(agentId); setAgentSection('home'); setPage('agent'); openSession('approvals'); }} />
                   {!!notice && <Text accessibilityRole="alert" style={[styles.notice, notice.tone === 'error' && styles.error]}>{notice.text}</Text>}
                 </View>
               </BlurTargetView>
             </View>
+            {!keyboardVisible && (page === 'chat' || page === 'group' || page === 'news') && !newsDetailOpen && (
+              <AgentDock
+                agents={dockAgents}
+                currentId={page === 'group' ? 'group' : agents.currentAgent}
+                status={avatarStatus}
+                onSelect={(id) => {
+                  if (id === 'group') openGroup();
+                  else select(id);
+                }}
+                onOpenMore={() => setPickerOpen(true)}
+                disabled={sessionMounted}
+              />
+            )}
             {sessionMounted && (
               <AvatarBloomTransition
                 open={sessionOpen}
@@ -624,13 +656,26 @@ function WorkspaceContent({ snapshot, openConnection, agents, settingsAgentId, s
     {browserOpen && <BrowserPanel store={browser} baseUrl={snapshot.serverUrl ?? ''} onClose={closeBrowser} />}
     {resetTarget && <ResetSessionDialog key={resetTarget} agentId={resetTarget} available={!!connection?.enabled} error={resetError}
       onCancel={() => { setResetTarget(undefined); setResetError(undefined); }} onConfirm={reset} />}
+    {pickerOpen && (
+      <AgentPickerSheet
+        agents={groupMembers}
+        currentId={page === 'group' ? 'group' : agents.currentAgent}
+        pinnedIds={dockPreferences.pinned}
+        onSelect={(id) => { setPickerOpen(false); select(id); }}
+        onTogglePin={(id) => { void dockPreferences.togglePin(id); }}
+        onOpenSettings={(id) => { setPickerOpen(false); openAgentSettings(id); }}
+        onOpenManage={() => { setPickerOpen(false); openAgentManagement(); }}
+        onClose={() => setPickerOpen(false)}
+      />
+    )}
   </View>;
 }
 const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: c.canvas }, viewport: { flex: 1, alignSelf: 'center', overflow: 'hidden', backgroundColor: c.canvas }, screen: { flex: 1 },
   foreground: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: c.canvas, overflow: 'hidden' },
   bodyStage: { flex: 1 },
-  stripDivider: { height: StyleSheet.hairlineWidth, backgroundColor: c.line },
+  titleBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', minHeight: sizing.touchTarget, paddingHorizontal: spacing[16], paddingVertical: spacing[6], gap: spacing[8], backgroundColor: c.canvas },
+  titleBarName: { ...t.name, color: c.ink, maxWidth: 200 },
   sessionIdentityLabel: { maxWidth: l.identityMaxWidth },
   pressed: { opacity: workspaceTheme.interaction.pressedOpacity },
   identity: { alignSelf: 'center', alignItems: 'center', maxWidth: l.identityMaxWidth },

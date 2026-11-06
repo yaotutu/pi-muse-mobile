@@ -80,7 +80,7 @@ test('停止和失败贴在原回复位置，无正文也保留成员身份；�
 test('群聊布局与私聊分离：顶栏不悬浮，收件人与紧凑工具跟随消息', () => {
   const read = (file) => readFileSync(new URL('../src/' + file, import.meta.url), 'utf8');
   const root = read('workspace/WorkspaceScreen.tsx');
-  assert.match(root, /<AgentAvatarStrip targets={targets}/);
+  assert.match(root, /<AgentDock/);
   assert.doesNotMatch(root, /chatHeader:/);
   const group = read('group/GroupChat.tsx');
   assert.doesNotMatch(group, /compactHeader|chatContentTop|combined.filter\(\(turn\) => turn.status/);
@@ -165,7 +165,7 @@ test('通知页 Back 返回来源，输入直发来源而非解析艾特，草�
   assert.match(ui, /for \(const item of composers.values\(\)\) item.reconcile\(next\)/);
   assert.match(ui, /composer.submit\(\{ id, ...input, ...\(notification/);
   assert.match(ui, /notification && !source/);
-  assert.match(ui, /notification \? undefined : onSwipe/);
+  assert.doesNotMatch(ui, /onSwipe|ChatSwipeArea/);
   assert.match(ui, /!notification \|\| !!row.sender/);
   assert.doesNotMatch(ui, /onPrivateChat/);
   const workspace = readFileSync(new URL('../src/workspace/WorkspaceScreen.tsx', import.meta.url), 'utf8');

@@ -1,4 +1,3 @@
-import { ChatSwipeArea } from '../ui/ChatSwipeArea';
 import { ChevronDown, ChevronUp, Bookmark, Check, ChevronLeft, MessageSquare, MoreHorizontal, Plus, RefreshCw, Rss, X, type LucideIcon } from 'lucide-react-native';
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Keyboard, Modal, Pressable, ScrollView, StyleSheet, Text, View, type ViewInstance } from 'react-native';
@@ -291,9 +290,8 @@ function Sources({ store, snapshot, onBack, backToSettings = false }: { store: N
 }
 
 /** 页面只呈现连接级 NewsStore；阅读列表持续挂载，详情返回和来源管理不丢浏览位置。 */
-export function NewsPage({ store, visible, managing, onManaging, onSwipe, ...discussion }: {
+export function NewsPage({ store, visible, managing, onManaging, ...discussion }: {
   store: NewsStore; visible: boolean; managing: boolean; onManaging: (value: boolean) => void;
-  onSwipe: (direction: -1 | 1) => void;
 } & DiscussionProps) {
   const { colors } = useTheme();
   const { snapshot } = useNews(store);
@@ -329,7 +327,7 @@ export function NewsPage({ store, visible, managing, onManaging, onSwipe, ...dis
           </ReaderMenu>
         </View>
       </View>
-      <ChatSwipeArea onSwipe={onSwipe}><ScrollView keyboardShouldPersistTaps="handled"
+      <ScrollView keyboardShouldPersistTaps="handled"
         contentContainerStyle={styles.readerContent} testID="news-page">
         {snapshot.feedRefreshing && <Text style={[styles.meta, { color: colors.muted }]}>正在抓取来源…</Text>}
         <FeedbackNotice tone="danger" text={snapshot.listError} />
@@ -346,11 +344,11 @@ export function NewsPage({ store, visible, managing, onManaging, onSwipe, ...dis
         </View>}
         {snapshot.articles.map((article) => <ArticleCard key={article.id} article={article} store={store} snapshot={snapshot} />)}
         {snapshot.hasMore && <ActionButton label="加载更多文章" text="加载更多" busy={snapshot.loading} onPress={() => store.loadMore()} testID="news-load-more" />}
-      </ScrollView></ChatSwipeArea>
+      </ScrollView>
     </View>
-    {snapshot.selectedArticleId ? <ChatSwipeArea onSwipe={onSwipe}>
+    {snapshot.selectedArticleId ? (
       <ArticleDetail key={snapshot.selectedArticleId} store={store} snapshot={snapshot} {...discussion} />
-    </ChatSwipeArea> : managing && <Sources store={store} snapshot={snapshot} onBack={() => onManaging(false)} />}
+    ) : managing && <Sources store={store} snapshot={snapshot} onBack={() => onManaging(false)} />}
   </View>;
 }
 

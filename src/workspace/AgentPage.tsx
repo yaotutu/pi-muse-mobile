@@ -24,13 +24,13 @@ const entries: { section: Exclude<AgentSection, 'home'>; title: string; detail: 
 ];
 
 /** 智能体页只组织当前智能体的功能；不持有聊天/SSE，也不创建另一份规则文件。 */
-export function AgentPage({ agentId, name, section, onSection, onBack, onActivity, onFeatureSettings, mainView, viewSaving, viewError, onMainView, onSaved, maintenance, pinned, pinDisabled, pinError, onPin, onPinRetry, statusLabel, routing }: {
+export function AgentPage({ agentId, name, section, onSection, onBack, onActivity, onFeatureSettings, mainView, viewSaving, viewError, onMainView, onSaved, maintenance, pinned, pinDisabled, pinLimitReached, pinError, onPin, onPinRetry, statusLabel, routing }: {
   routing: RoutingSettingsStore;
   agentId: string; name: string; section: AgentSection; onSection: (section: AgentSection) => void;
   onBack: () => void; onActivity: () => void; onFeatureSettings: () => void;
   mainView: AgentMainView; viewSaving: boolean; viewError?: string; onMainView: (view: AgentMainView) => Promise<boolean>;
   onSaved: () => void; maintenance: ReactNode;
-  pinned: boolean; pinDisabled: boolean; pinError?: string; onPin: () => void; onPinRetry: () => void; statusLabel: string;
+  pinned: boolean; pinDisabled: boolean; pinLimitReached?: boolean; pinError?: string; onPin: () => void; onPinRetry: () => void; statusLabel: string;
 }) {
   const [choosingView, setChoosingView] = useState(false);
   const { colors } = useTheme();
@@ -49,10 +49,10 @@ export function AgentPage({ agentId, name, section, onSection, onBack, onActivit
     <ScrollView key={section} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
       {section === 'home' && <>
         <View style={styles.identity}><MemberAvatar agentId={agentId} size={72} /><Text style={styles.name}>{name}</Text><Text accessibilityLiveRegion="polite" style={styles.caption}>{statusLabel}</Text></View>
-        <View style={styles.group}><Pressable accessibilityRole="switch" accessibilityLabel="置顶智能体" accessibilityState={{ checked: pinned, disabled: pinDisabled }} disabled={pinDisabled} onPress={onPin} style={styles.row}>
-          <Pin size={sizing.iconMedium} color={colors.blue} /><View style={styles.rowText}><Text style={styles.label}>置顶智能体</Text><Text style={styles.caption}>置顶优先，其余按最近活跃排列</Text></View>
-          {pinned ? <Check size={sizing.iconMedium} color={colors.accentText} /> : <Text style={styles.caption}>未置顶</Text>}
-        </Pressable>{!!pinError && <Pressable accessibilityRole="button" accessibilityLabel="重试读取置顶偏好" onPress={onPinRetry} style={styles.row}><Text style={styles.caption}>{pinError}，点击重新读取</Text></Pressable>}</View>
+        <View style={styles.group}><Pressable accessibilityRole="switch" accessibilityLabel={!pinned && pinLimitReached ? '底部固定已满' : '固定到底部'} accessibilityState={{ checked: pinned, disabled: pinDisabled }} disabled={pinDisabled} onPress={onPin} style={styles.row}>
+          <Pin size={sizing.iconMedium} color={colors.blue} /><View style={styles.rowText}><Text style={styles.label}>固定到底部</Text><Text style={styles.caption}>{!pinned && pinLimitReached ? '底部固定已满（最多 3 个）' : '固定在底部导航栏'}</Text></View>
+          {pinned ? <Check size={sizing.iconMedium} color={colors.accentText} /> : <Text style={styles.caption}>未固定</Text>}
+        </Pressable>{!!pinError && <Pressable accessibilityRole="button" accessibilityLabel="重试读取固定偏好" onPress={onPinRetry} style={styles.row}><Text style={styles.caption}>{pinError}，点击重新读取</Text></Pressable>}</View>
         {agentId === 'news-internal' && <View style={styles.group}>
           <Pressable accessibilityRole="button" accessibilityLabel={`主视图，${mainView === 'reading' ? '阅读' : '对话'}`}
             accessibilityState={{ expanded: choosingView, busy: viewSaving, disabled: viewSaving }} disabled={viewSaving}
