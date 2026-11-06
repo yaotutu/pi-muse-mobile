@@ -10,7 +10,7 @@
  */
 
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import { MoreHorizontal, Plus, Users } from 'lucide-react-native';
+import { MoreHorizontal, Users } from 'lucide-react-native';
 import { useTheme } from '../theme/ThemeProvider';
 import { sizing, spacing, themeTokens } from '../theme/tokens';
 import { AgentStatusBadge, avatarStatusLabel, type AvatarStatus } from './AgentStatusBadge';
@@ -98,36 +98,18 @@ export function AgentDock({
         </Text>
       </Pressable>
 
-      {/* 格 1~3: 用户固定 Agent 槽位；空槽提供"添加"入口，不显示未设置占位框 */}
+      {/* 格 1~3: 用户固定 Agent 槽位；未固定的槽完全留白（不可点、读屏隐藏），固定操作只在「更多」面板 */}
       {fixedSlots.map((agent, index) => {
         const slotTestID = `agent-dock-slot-${index}`;
         if (!agent) {
           return (
-            <Pressable
+            <View
               key={`empty-slot-${index}`}
               testID={slotTestID}
-              accessibilityRole="button"
-              accessibilityLabel="添加固定智能体"
-              accessibilityHint="打开智能体选择面板，选择要固定到底部的智能体"
-              accessibilityState={{ disabled }}
-              disabled={disabled}
-              onPress={() => {
-                if (!disabled) onOpenMore();
-              }}
-              style={({ pressed }) => [
-                styles.slot,
-                { opacity: disabled ? themeTokens.interaction.disabledOpacity : pressed ? themeTokens.interaction.pressedOpacity : 1 },
-              ]}
-            >
-              <View style={[styles.avatarRing, { borderColor: 'transparent' }]}>
-                <View style={[styles.allIconBox, { backgroundColor: c.surface }]}>
-                  <Plus size={18} color={c.faint} />
-                </View>
-              </View>
-              <Text numberOfLines={1} style={[styles.label, { color: c.faint }]}>
-                添加
-              </Text>
-            </Pressable>
+              style={styles.slot}
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+            />
           );
         }
 

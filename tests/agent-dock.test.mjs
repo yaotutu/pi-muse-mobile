@@ -30,6 +30,11 @@ test('AgentDock 五格静态渲染契约：五格布局、固定槽上限 3、�
   assert.doesNotMatch(source, /agent-dock-more[\s\S]*?<MemberAvatar/);
   assert.doesNotMatch(source, /agent-dock-more[\s\S]*?<Image/);
 
+  // 空固定槽完全留白：不渲染添加按钮或图标，固定操作只在「更多」面板
+  assert.doesNotMatch(source, /添加固定智能体/, '空槽不得提供添加入口');
+  assert.doesNotMatch(source, /<Plus/, '空槽不得渲染加号图标');
+  assert.match(source, /accessibilityElementsHidden\s+importantForAccessibility="no-hide-descendants"/, '空槽对读屏完全隐藏');
+
   // 消费语义颜色，绝不硬编码十六进制色值
   assert.doesNotMatch(source, /#[0-9a-f]{3,8}\b/i, '严禁硬编码色值');
   assert.match(source, /const \{ colors: c \} = useTheme\(\);/);
