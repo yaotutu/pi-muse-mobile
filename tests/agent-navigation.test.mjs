@@ -49,10 +49,10 @@ test('目录返回不清空列表，编辑/未明状态不能被 closeFile 绕�
 });
 
 test('文件只展示和编辑完整原文，Markdown 渲染与聊天清理不进入文件页', () => {
-  assert.doesNotMatch(read('ui/MarkdownContent.tsx'), /text\.replace|<think>/);
+  assert.doesNotMatch(read('ui/MarkdownContent.tsx'), /text\.replace|<think>|getChatVisibleText|chat-visible-text/);
   assert.match(read('ui/MarkdownContent.tsx'), /marked\.lexer\(text,/);
-  assert.match(read('workspace/MessageContent.tsx'), /text\.replace\(/);
-  assert.doesNotMatch(read('workspace/FilesScreen.tsx'), /MarkdownContent|marked|<WebView/);
+  assert.match(read('workspace/MessageContent.tsx'), /getChatVisibleText\(text\)/);
+  assert.doesNotMatch(read('workspace/FilesScreen.tsx'), /MarkdownContent|marked|<WebView|getChatVisibleText|chat-visible-text/);
   assert.match(read('workspace/FilesScreen.tsx'), /onChangeText=\{store.editFileContent\}/);
   assert.doesNotMatch(read('workspace/FilesScreen.tsx'), /selectShared|共享文件"|查看全部智能体/);
 });

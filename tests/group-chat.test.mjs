@@ -113,7 +113,7 @@ test('定向成员与正文共用原生 Text 流，无底色；蓝气泡保留�
   assert.doesNotMatch(view, /!!recipient && <Text|\\u00a0/);
   assert.match(view, /recipient: \{ color: c.accentText, fontWeight: '600' \}/);
   assert.match(view, /userRecipient: \{ color: c.onAccent \}/);
-  assert.match(view, /<MessageContent text={message.text} compact={layout === 'group'} inlinePrefix=/);
+  assert.match(view, /<MessageContent text={visibleText} compact={layout === 'group'} inlinePrefix=/);
   assert.match(read('workspace/MessageContent.tsx'), /<MarkdownContent text={cleaned} compact={compact} inlinePrefix={inlinePrefix}/);
 });
 test('群工具每条回复只用一个可展开摘要，失败和缺失结果不隐藏，私聊保留工具卡', () => {

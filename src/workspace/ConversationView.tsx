@@ -22,6 +22,7 @@ import { sizing, spacing, workspaceTheme, type WorkspaceColors } from '../ui/tok
 import { useTheme } from '../theme/ThemeProvider';
 import { TypingIndicator } from './primitives';
 import { MessageContent } from './MessageContent';
+import { getChatVisibleText } from '../chat/chat-visible-text';
 import { ToolResultCard } from './ToolResultCard';
 import { ToolCallSummary } from './ToolCallSummary';
 import { ActionButton } from '../ui/ActionButton';
@@ -476,7 +477,8 @@ export function Message({ message, pendingStatus, feedbackScope, layout = 'priva
   feedbackScope?: { agentId: string; sessionId: string; initialFeedback: NonNullable<MessageView['feedback']> };
 }) {
   const styles = useStyles();
-  const hasText = layout === 'group' ? !!message.text.trim() : !!message.text;
+  const visibleText = message.role === 'user' ? message.text : getChatVisibleText(message.text);
+  const hasText = layout === 'group' ? !!visibleText.trim() : (message.role === 'user' ? !!visibleText : !!visibleText.trim());
   const bubbleRef = useRef<ViewInstance>(null);
   const [bubbleLayout, setBubbleLayout] = useState<LayoutRectangle | null>(null);
   const [anchor, setAnchor] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
@@ -499,12 +501,12 @@ export function Message({ message, pendingStatus, feedbackScope, layout = 'priva
   const mention = recipient ? <Text style={[styles.recipient, message.role === 'user' && styles.userRecipient]}>{recipient}</Text> : undefined;
   const bubbleContent = <>
     {message.featureSource && <Text style={styles.featureSourceLabel}>来自{message.featureSource.featureId === 'news' ? '新闻' : '短信'}</Text>}
-    {!!message.text && (message.role === 'user'
+    {!!visibleText && (message.role === 'user'
       ? <Text selectable={!feedbackScope} onLongPress={feedbackScope ? openFeedback : undefined}
         accessibilityActions={feedbackScope ? [{ name: 'openMessageActions', label: '打开消息操作' }] : undefined}
         onAccessibilityAction={feedbackScope ? (event) => { if (event.nativeEvent.actionName === 'openMessageActions') openFeedback(); } : undefined}
         style={[styles.messageText, layout === 'group' && styles.groupMessageText, styles.userMessageText]}>{mention}{mention && ' '}{message.text}</Text>
-      : <MessageContent text={message.text} compact={layout === 'group'} inlinePrefix={mention && <>{mention}{' '}</>} onMessageLongPress={feedbackScope ? openFeedback : undefined} />)}
+      : <MessageContent text={visibleText} compact={layout === 'group'} inlinePrefix={mention && <>{mention}{' '}</>} onMessageLongPress={feedbackScope ? openFeedback : undefined} />)}
     {message.role === 'user' && !!message.attachments?.length && <MessageAttachments items={message.attachments} />}
     {pendingStatus === 'sending' && <Text style={styles.messageSubtext}>发送中…</Text>}
     {pendingStatus === 'failed' && <Text style={styles.messageSubtext}>未发送</Text>}
@@ -539,7 +541,7 @@ export function Message({ message, pendingStatus, feedbackScope, layout = 'priva
           agentId={feedbackScope.agentId}
           sessionId={feedbackScope.sessionId}
           messageId={message.id}
-          messageText={message.text}
+          messageText={visibleText}
           role={message.role}
           initialFeedback={feedbackScope.initialFeedback}
         />}

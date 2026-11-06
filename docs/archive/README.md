@@ -4,6 +4,7 @@
 
 | 资料 | 范围 |
 | --- | --- |
+| [聊天流式正文稳定性](2026-11-06-chat-stream-visibility.md) | 思考块闪烁的真实分片/Android 复现、可见投影修复与验收边界 |
 | [历史交接](mobile-handoff.md) | 分批功能和验收记录；其中描述不保证仍适用于当前源码 |
 | [SSE 与审批交接](sse-approvals-handoff.md) | 早期界面与接口接入过程，含已删除页面与路径 |
 | [历史接口问题](interface-notes.md) | 当时部署的观察和阻塞；原失败保留，不自动当成当前 bug |
