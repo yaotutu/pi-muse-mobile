@@ -10,7 +10,7 @@ export function responseError(status: number, payload: unknown, fallback = `请�
   const data = payload && typeof payload === 'object' ? payload as { error?: unknown; code?: unknown } : undefined;
   const code = typeof data?.code === 'string' ? data.code : undefined;
   const message = status === 409 && code === 'AGENT_DELETING'
-    ? '智能体正在删除，请刷新智能体列表后重新选择，不要重试原智能体'
+    ? '会话正在删除，请刷新会话列表后重新选择，不要重试原会话'
     : typeof data?.error === 'string' ? data.error : fallback;
   // 审批 409 含当前完整视图；由审批边界校验后消费，不日志记录或持久化错误正文。
   return new ApiError(status, message, code, status === 409 ? payload : undefined);

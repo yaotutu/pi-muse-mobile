@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { NewsPreferencesStore } from '../src/features/news-preferences-store.ts';
+import { NewsPreferencesStore } from '../src/news/news-preferences-store.ts';
 
 const deferred = () => {
   let resolve, reject;
@@ -107,10 +107,10 @@ test('离页丢弃迟到 GET，连接销毁取消保存且新连接没有旧草�
 
 test('唯一偏好所有者位于连接内，页面只订阅草稿，不保存到设备或重复持有 notes', () => {
   const source = p => readFileSync(new URL('../src/' + p, import.meta.url), 'utf8');
-  const root = source('workspace/WorkspaceScreen.tsx'), card = source('features/NewsPreferencesCard.tsx');
+  const root = source('workspace/WorkspaceScreen.tsx'), card = source('news/NewsPreferencesCard.tsx');
   assert.match(root, /useState\(\(\) => new NewsPreferencesStore\(api\)\)/);
   assert.match(root, /newsPreferences\.dispose\(\)/); assert.match(root, /newsPreferences\.setActive/);
   assert.match(card, /store\.open\(\); return \(\) => store\.close\(\)/);
   assert.match(card, /value=\{draftNotes\}/); assert.doesNotMatch(card, /useState|useApi|saveNewsPreferences/);
-  assert.doesNotMatch(source('features/news-preferences-store.ts'), /AsyncStorage|SecureStore|setInterval/);
+  assert.doesNotMatch(source('news/news-preferences-store.ts'), /AsyncStorage|SecureStore|setInterval/);
 });

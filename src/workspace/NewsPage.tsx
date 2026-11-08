@@ -3,7 +3,7 @@ import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Keyboard, Modal, Pressable, ScrollView, StyleSheet, Text, View, type ViewInstance } from 'react-native';
 import { useTheme } from '../theme/ThemeProvider';
 import { spacing, themeTokens } from '../theme/tokens';
-import { AgentHeader } from './AgentHeader';
+import { PageHeader } from './PageHeader';
 import { ActionButton } from '../ui/ActionButton';
 import { FeedbackNotice } from '../ui/Feedback';
 import { FormInput } from '../ui/FormInput';
@@ -97,7 +97,7 @@ function ArticleCard({ article, store, snapshot }: { article: NewsArticle; store
   const { colors } = useTheme();
   const excerpt = newsListExcerpt(article.content);
   return <View style={[styles.article, { borderBottomColor: colors.line }]}>
-    {/* 阅读区与三个反馈按钮是兄弟节点；反馈点击不打开详情，也不触发智能体横扫。 */}
+    {/* 阅读区与三个反馈按钮是兄弟节点；反馈点击不打开详情，也不触发会话横扫。 */}
     <Pressable accessibilityRole="button" accessibilityLabel={`阅读文章，${article.title}`}
       onPress={() => store.openArticle(article.id)} testID={`news-article-${article.id}`}
       style={({ pressed }) => [styles.articleOpen, pressed && styles.pressed]}>
@@ -195,7 +195,7 @@ function Sources({ store, snapshot, onBack, backToSettings = false }: { store: N
   // 展开只控制可见性，不清草稿、不解锁未明写入；正在写入和待核对状态始终可见。
   const adding = showAddSource || snapshot.sourceWriting || snapshot.sourceUncertain;
   return <View style={styles.readerContainer}>
-    <AgentHeader title="RSS 来源" backLabel={backToSettings ? '返回新闻设置' : '返回新闻列表'} onBack={onBack} />
+    <PageHeader title="RSS 来源" backLabel={backToSettings ? '返回新闻设置' : '返回新闻列表'} onBack={onBack} />
     <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content} testID="news-sources">
       <FeedFeedback snapshot={snapshot} store={store} />
       <NewsNotice notice={snapshot.notice} store={store} success={routineNotice(snapshot.notice)} />

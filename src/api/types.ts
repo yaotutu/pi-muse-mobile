@@ -13,18 +13,8 @@ import type { MessageFeedback } from '../feedback/types';
 // 会话与历史
 // ---------------------------------------------------------------------------
 
-/** 智能体持有配置与文件；sessionId 是当前聊天绑定，重置时改变，不能作为智能体 ID 发请求。 */
-export type AgentInfo = { id: string; sessionId: string; updatedAt: string; name?: string; extensions: ('news' | 'sms')[] };
-/** 未持久化的本地智能体草稿不伪造服务端 sessionId。 */
-export type AgentEntry = Omit<AgentInfo, 'sessionId' | 'extensions'> & { sessionId: string | null; extensions?: ('news' | 'sms')[] };
-
-export type ResetAgentResult = {
-  ok: true;
-  agentId: string;
-  sessionId: string;
-  cancelledApprovals: number;
-  removed: { jobs: number; monitors: number };
-};
+export type { SessionRecord } from '../sessions/types';
+export type ResetSessionResult = { session: import('../sessions/types').SessionRecord; cancelledApprovals: number; removed: { jobs: number; monitors: number } };
 
 export type ChatRole = 'user' | 'assistant' | 'tool';
 
@@ -66,7 +56,7 @@ export type ConversationMessageMetadata = {
   jobId: string | null;
   notificationId: string | null;
   feedbackAvailable: boolean;
-  featureSource?: import("../features/contracts").FeatureSource;
+  featureSource?: import('../notifications/contracts').FeatureSource;
 };
 
 type ConversationMessageBase = {
@@ -102,9 +92,10 @@ export type ConversationMessage =
   | ConversationAssistantMessage
   | ConversationToolMessage;
 
-/** 历史、版本与当前会话必须同时保存；sessionId=null 表示智能体合法但当前无绑定。 */
+/** 历史、版本与当前会话必须同时保存；piSessionId=null 表示会话合法但当前无绑定。 */
 export type ConversationSnapshot = {
-  sessionId: string | null;
+  sessionId: string;
+  piSessionId: string | null;
   revision: string;
   messages: ConversationMessage[];
 };
@@ -120,8 +111,8 @@ export type ConversationSnapshot = {
 export type AgUiEvent = {
   type: string;
   /** RUN_STARTED / RUN_FINISHED */
-  agentId?: string;
-  /** 本轮运行 ID；停止请求以 agentId 与 runId 双重匹配 */
+  sessionId?: string;
+  /** 本轮运行 ID；停止请求以 sessionId 与 runId 双重匹配 */
   runId?: string;
   /** TEXT_MESSAGE_START */
   role?: string;
@@ -173,8 +164,8 @@ export type JobItem = {
   lastResult?: string;
   /** 错误信息（上次执行失败时非 null） */
   error: string | null;
-  /** 所属智能体 ID */
-  originAgentId?: string;
+  /** 所属会话 ID */
+  originSessionId?: string;
 };
 
 /** 定时任务详情时间线条目（GET /api/jobs/:id） */
@@ -201,7 +192,7 @@ export type JobDetail = { job: JobItem; events: JobEvent[] };
 
 /** GET /api/jobs 查询参数 */
 export type JobsQuery = {
-  agentId?: string;
+  sessionId?: string;
   sort?: 'nextRunAt' | 'updatedAt' | 'createdAt';
   order?: 'asc' | 'desc';
 };
@@ -214,7 +205,7 @@ export type UpdateJobInput = {
   prompt?: string;
   daily?: boolean;
   at?: string;
-  originAgentId?: string;
+  originSessionId?: string;
 };
 
 /** DELETE /api/jobs/:id 响应契约 */
@@ -258,7 +249,7 @@ export type DeleteGoalResult = {
 
 /** GET /api/monitors 查询参数 */
 export type MonitorsQuery = {
-  agentId?: string;
+  sessionId?: string;
   sort?: 'createdAt' | 'lastCheckedAt' | 'status';
   order?: 'asc' | 'desc';
 };
@@ -277,8 +268,8 @@ export type Monitor = {
   lastCheckedAt?: string;
   checks: number;
   error?: string;
-  /** 服务端回填来源智能体 ID；未提供来源时缺省 */
-  originAgentId?: string;
+  /** 服务端回填来源会话 ID；未提供来源时缺省 */
+  originSessionId?: string;
   lastNotifiedAt?: string;
   lastMatched?: boolean;
 };
@@ -289,27 +280,27 @@ export type DeleteMonitorResult = {
   id: string;
 };
 
-/** 智能体专属规则；重置聊天会话时保留，空串表示清空规则内容。 */
-export type AgentInstructions = { instructions: string };
+/** 会话专属规则；重置聊天会话时保留，空串表示清空规则内容。 */
+export type SessionInstructions = { instructions: string };
 
-/** 单条智能体级技能；name 为后端注册键，defaultEnabled 来自服务端列表，enabled 为当前生效值。 */
-export type AgentSkill = {
+/** 单条会话级技能；name 为后端注册键，defaultEnabled 来自服务端列表，enabled 为当前生效值。 */
+export type SessionSkill = {
   name: string;
   description: string;
   defaultEnabled: boolean;
   enabled: boolean;
 };
 
-/** GET /api/agents/:id/skills 返回结果：技能列表 + 服务端可选诊断（如本地 YAML 读取失败等） */
-export type AgentSkills = {
-  skills: AgentSkill[];
+/** GET /api/sessions/:id/skills 返回结果：技能列表 + 服务端可选诊断（如本地 YAML 读取失败等） */
+export type SessionSkills = {
+  skills: SessionSkill[];
   diagnostics?: { path: string; message: string }[];
 };
 
-/** 删除智能体的响应仅清点级联移除的定时任务与监控，不代表只删除这两类数据。 */
-export type DeleteAgentResult = {
+/** 删除会话的响应仅清点级联移除的定时任务与监控，不代表只删除这两类数据。 */
+export type DeleteSessionResult = {
   ok: true;
-  removed: { jobs: number; monitors: number };
+  removed: { sessions: number };
 };
 
 export type MemoryItem = {

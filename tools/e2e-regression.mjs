@@ -4,17 +4,17 @@
  *
  * 验收流程：
  * 1. 真实鉴权（E2E_ACCESS_KEY 或已有连接认证），核对 /docs、/openapi.json 与 /api/health 部署一致性。
- * 2. 真实大模型调用至少一次：在专属智能体下通过 runAgent 进行真实对话，验证流式返回及落盘。
- * 3. 监控控制契约回归：创建专属智能体与网页监控，通过 HttpApiClient.controlMonitor 走现行 /api/monitors/:id/control 路径，
+ * 2. 真实大模型调用至少一次：在专属会话下通过 runSession 进行真实对话，验证流式返回及落盘。
+ * 3. 监控控制契约回归：创建专属会话与网页监控，通过 HttpApiClient.controlMonitor 走现行 /api/monitors/:id/control 路径，
  *    进行 pause -> resume -> pause 并回读确认持久化状态。
- * 4. 幂等清理：finally 块走 API 删除本轮创建的测试智能体（级联清理关联监控与文件），绝不遗留测试数据，脱敏记录日志。
+ * 4. 幂等清理：finally 块走 API 删除本轮创建的测试会话（级联清理关联监控与文件），绝不遗留测试数据，脱敏记录日志。
  */
 import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { HttpApiClient } from '../src/api/http-client.ts';
-import { AgentStore } from '../src/agents/agent-store.ts';
+import { ChatSessionStore } from '../src/sessions/chat-session-store.ts';
 import { StreamAggregator, projectHistory } from '../src/chat/chat-state.ts';
 import { ApiError } from '../src/api/errors.ts';
 
@@ -28,7 +28,7 @@ assert.ok(process.env.E2E_API_BASE_URL, 'Explicitly set E2E_API_BASE_URL to the 
 const base = process.env.E2E_API_BASE_URL.replace(/\/$/, '');
 const output = mkdtempSync(join(tmpdir(), 'pimuse-mobile-regression.'));
 const stamp = Date.now().toString(36);
-const agentId = `reg-agent-${stamp}`;
+let sessionId;
 const monitorTitle = `Regression Monitor ${stamp}`;
 const chatMarker = `REGRESSION_OK_${stamp}`;
 
@@ -36,7 +36,7 @@ const checks = [];
 let token;
 let cleanupRequired = false;
 let failure;
-let baselineAgents = [];
+let baselineSessions = [];
 let createdMonitor;
 
 const api = new HttpApiClient(
@@ -46,7 +46,7 @@ const api = new HttpApiClient(
     throw new Error('Real authentication failed');
   },
 );
-const agents = new AgentStore(api);
+const sessions = new ChatSessionStore(api);
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const pass = (name, data = {}) => {
@@ -79,15 +79,15 @@ async function verifyDeployment() {
   assert.equal(health.ok, true, 'Health check must be ok');
   assert.deepEqual(spec['x-service-version'], health.serviceVersion, 'Service version match');
 
-  // 验证 OpenAPI 契约包含现行 /api/monitors/:id/control 且已移除 /api/agent/monitors
+  // 验证 OpenAPI 契约包含现行 /api/monitors/:id/control 且已移除 /api/session/monitors
   assert.ok(
     spec.paths['/api/monitors/{id}/control']?.post,
     'OpenAPI must declare POST /api/monitors/{id}/control',
   );
   assert.equal(
-    spec.paths['/api/agent/monitors/{id}/control'],
+    spec.paths['/api/session/monitors/{id}/control'],
     undefined,
-    'OpenAPI must not declare deprecated /api/agent/monitors/{id}/control',
+    'OpenAPI must not declare deprecated /api/session/monitors/{id}/control',
   );
 
   return health.serviceVersion;
@@ -99,37 +99,38 @@ try {
   pass('docs/OpenAPI/health deployment verification', { serviceVersion });
 
   // 2. 真实鉴权交换会话
-  const auth = await api.createSession(process.env.E2E_ACCESS_KEY);
+  const auth = await api.createConnectionSession(process.env.E2E_ACCESS_KEY);
   assert.equal(auth.mode, 'live', 'Authentication mode must be live');
   assert.ok(auth.token, 'Session token must be provided');
   token = auth.token;
   pass('authenticated real session');
 
-  baselineAgents = (await api.listAgents()).map((s) => s.id);
-  assert.ok(!baselineAgents.includes(agentId), 'Dedicated test agent must not exist initially');
+  baselineSessions = (await api.listSessions()).map((s) => s.id);
+  assert.ok(!baselineSessions.includes(sessionId), 'Dedicated test session must not exist initially');
 
   // 从首次创建资源起标记清理
   cleanupRequired = true;
 
-  // 3. 创建专属智能体及指令配置
-  await api.saveAgentInstructions(
-    agentId,
-    'Dedicated regression test agent. Reply directly to questions. Do not invoke external tools or background schedules.',
+  // 3. 创建专属会话及指令配置
+  sessionId = (await api.createSession(marker)).id;
+  await api.saveSessionInstructions(
+    sessionId,
+    'Dedicated regression test session. Reply directly to questions. Do not invoke external tools or background schedules.',
   );
-  await agents.loadSettings(agentId);
-  pass('created isolated test agent with instructions');
+  await sessions.loadSettings(sessionId);
+  pass('created isolated test session with instructions');
 
-  // 4. 真实外部大模型调用：通过 runAgent 流式聊天验证真实响应
-  const initialHistory = await api.getConversation(agentId);
+  // 4. 真实外部大模型调用：通过 runSession 流式聊天验证真实响应
+  const initialHistory = await api.getConversation(sessionId);
   const runId = `reg-run-${stamp}`;
   let streamFinished = false;
   let streamError;
   const events = [];
   const aggregator = new StreamAggregator(projectHistory(initialHistory.messages));
 
-  await api.runAgent(
+  await api.runSession(
     {
-      agentId,
+      sessionId,
       runId,
       expectedRevision: initialHistory.revision,
       message: {
@@ -155,7 +156,7 @@ try {
   assert.ok(events.includes('RUN_FINISHED'), 'Real model stream must finish with RUN_FINISHED');
 
   // 回读权威历史确认已落盘
-  const freshHistory = await api.getConversation(agentId);
+  const freshHistory = await api.getConversation(sessionId);
   const assistantReply = freshHistory.messages.find((m) => m.role === 'assistant');
   assert.ok(assistantReply, 'Authoritative history must contain assistant reply');
   assert.ok(
@@ -173,13 +174,13 @@ try {
       condition: 'change',
       title: monitorTitle,
       intervalMinutes: 1440,
-      originAgentId: agentId,
+      originSessionId: sessionId,
     },
   });
   assert.ok(createdMonitor?.id, 'Monitor ID must be generated');
-  assert.equal(createdMonitor.originAgentId, agentId, 'Monitor must belong to test agent');
+  assert.equal(createdMonitor.originSessionId, sessionId, 'Monitor must belong to test session');
   assert.equal(createdMonitor.status, 'active', 'Initial status must be active');
-  pass('created test monitor under test agent');
+  pass('created test monitor under test session');
 
   // 使用 HttpApiClient.controlMonitor 暂停监控（走现行 /api/monitors/:id/control）
   const pausedMonitor = await api.controlMonitor(createdMonitor.id, 'pause');
@@ -214,34 +215,34 @@ try {
   failure = err;
   console.error('FAIL', err instanceof Error ? err.message : String(err));
 } finally {
-  agents.dispose();
+  sessions.dispose();
   try {
     if (cleanupRequired) {
-      // 级联删除专属测试智能体（将级联清理该智能体关联的监控和对话）
-      await api.deleteAgent(agentId);
-      const remainingAgents = (await api.listAgents()).map((s) => s.id);
-      assert.ok(!remainingAgents.includes(agentId), 'Test agent must be removed');
+      // 级联删除专属测试会话（将级联清理该会话关联的监控和对话）
+      await api.deleteSession(sessionId);
+      const remainingSessions = (await api.listSessions()).map((s) => s.id);
+      assert.ok(!remainingSessions.includes(sessionId), 'Test session must be removed');
       assert.ok(
-        baselineAgents.every((id) => remainingAgents.includes(id)),
-        'Pre-existing baseline agents must remain intact',
+        baselineSessions.every((id) => remainingSessions.includes(id)),
+        'Pre-existing baseline sessions must remain intact',
       );
 
       // 核对关联监控已被级联清理且单项查询 404
       const monitorsResp = await api.request('/api/monitors');
       assert.ok(Array.isArray(monitorsResp?.monitors), 'Monitors response must have monitors array');
       const agentMonitors = monitorsResp.monitors.filter(
-        (m) => m.originAgentId === agentId || (createdMonitor && m.id === createdMonitor.id),
+        (m) => m.originSessionId === sessionId || (createdMonitor && m.id === createdMonitor.id),
       );
       assert.equal(agentMonitors.length, 0, 'Associated monitors must be cleaned up');
       if (createdMonitor?.id) {
         try {
           await api.request(`/api/monitors/${encodeURIComponent(createdMonitor.id)}`);
-          assert.fail('Monitor should return 404 after cascade agent deletion');
+          assert.fail('Monitor should return 404 after cascade session deletion');
         } catch (e) {
           assert.ok(e instanceof ApiError && e.status === 404, 'Deleted monitor must return HTTP 404');
         }
       }
-      pass('cleaned up test agent and associated monitors');
+      pass('cleaned up test session and associated monitors');
     }
   } catch (cleanErr) {
     failure ??= cleanErr;
@@ -253,7 +254,7 @@ try {
   const summary = {
     passed: !failure,
     base,
-    agentId,
+    sessionId,
     checks,
     error: failure?.message,
   };

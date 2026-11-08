@@ -34,12 +34,13 @@ function execution(value: unknown): ApprovalExecution | null {
 
 function state(value: unknown): ApprovalState {
   const entry = object(value);
+  if (Object.keys(entry).some((key) => !['id', 'revision', 'sessionId', 'runId', 'toolCallId', 'subagentId', 'activityId', 'status', 'execution', 'createdAt', 'expiresAt', 'resolvedAt', 'decidedAt', 'title', 'kind', 'preview', 'instanceId'].includes(key))) invalid();
   if (!Number.isSafeInteger(entry.revision) || (entry.revision as number) < 1 || !statuses.includes(entry.status as string)) invalid();
   const result: ApprovalState = {
     id: text(entry.id, true), revision: entry.revision as number,
-    agentId: nullableText(entry.agentId), runId: nullableText(entry.runId),
+    sessionId: nullableText(entry.sessionId), runId: nullableText(entry.runId),
     toolCallId: nullableText(entry.toolCallId), subagentId: nullableText(entry.subagentId),
-    workspaceAgentId: nullableText(entry.workspaceAgentId), activityId: nullableText(entry.activityId),
+    activityId: nullableText(entry.activityId),
     status: entry.status as ApprovalState['status'], execution: execution(entry.execution),
     createdAt: date(entry.createdAt), expiresAt: date(entry.expiresAt),
     resolvedAt: nullableDate(entry.resolvedAt), decidedAt: nullableDate(entry.decidedAt),
@@ -58,14 +59,13 @@ export function parseApprovalSummary(value: unknown): ApprovalSummary {
 export function parseApprovalView(value: unknown): ApprovalView {
   const entry = object(value);
   const preview = object(entry.preview);
-  const ownerAgentId = nullableText(preview.ownerAgentId);
-  if (preview.scope !== 'agent' && preview.scope !== 'shared' && preview.scope !== 'skill') invalid();
-  if (preview.scope === 'agent' ? ownerAgentId === null : ownerAgentId !== null) invalid();
+  if (preview.scope !== 'workspace' && preview.scope !== 'skill') invalid();
+  if (Object.keys(preview).some((key) => !['scope', 'path', 'before', 'after', 'beforeExists'].includes(key))) invalid();
   if (typeof preview.beforeExists !== 'boolean') invalid();
   return {
     ...parseApprovalSummary(entry),
     preview: {
-      scope: preview.scope as 'agent' | 'shared' | 'skill', ownerAgentId,
+      scope: preview.scope as 'workspace' | 'skill',
       path: text(preview.path, true), before: text(preview.before), after: text(preview.after),
       beforeExists: preview.beforeExists as boolean,
     },

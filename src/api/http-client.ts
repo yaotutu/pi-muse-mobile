@@ -1,5 +1,3 @@
-import { parseGroup, parseGroupEvent, parseGroupSettings, parseAgentCapability, type GroupSettings, type GroupInput, type GroupEvent } from '../group/contracts';
-import { parseFeatures, parseFeature, parseDiscussion, type FeatureId } from "../features/contracts";
 /**
  * 真实 HTTP 客户端：expo/fetch（原生流式支持）+ Bearer token + SSE 分帧消费。
  *
@@ -17,7 +15,7 @@ import type {
   DeleteGoalResult,
   DeleteJobResult,
   DeleteMonitorResult,
-  DeleteAgentResult,
+  DeleteSessionResult,
   Goal,
   GoalStatus,
   GoalsQuery,
@@ -29,10 +27,10 @@ import type {
   MemoryItem,
   Monitor,
   MonitorsQuery,
-  AgentInfo,
-  AgentInstructions,
-  AgentSkill,
-  AgentSkills,
+  SessionRecord,
+  SessionInstructions,
+  SessionSkill,
+  SessionSkills,
   UpdateGoalInput,
   UpdateJobInput,
   WorkspaceSnapshot,
@@ -53,19 +51,19 @@ import {
 import { attachmentUploadOf, validateOutgoingMessage } from '../attachments/validation';
 import { ApiError, isRequestCancelled, requestCancelled, responseError } from './errors';
 import { parseSseFrames } from './sse';
-import { parseCreatedAgent, parseResetAgent, parseAgents } from './agent-contracts';
+import { parseSession, parseResetSession, parseSessions } from './session-contracts';
 import { parseGoal, parseGoals, parseMilestoneToggle, parseGoalRemoval } from './goal-contracts';
 import { parseDeleteMonitorResult, parseMonitor, parseMonitors } from './monitor-contracts';
 import type {
-  AgentStatusResponse,
+  SessionStatusResponse,
   RuntimeEvent,
 } from '../runtime/types';
 import {
   parseConversationUpdated,
-  parseAgentStatusResponse,
-  parseAgentStatusUpdate,
+  parseSessionStatusResponse,
+  parseSessionStatusUpdate,
   parseRuntimeReady,
-  parseAgentPresence,
+  parseSessionPresence,
 } from '../runtime/contracts';
 import { RuntimeSseParser, RuntimeSseParseError, decodeRuntimeFrame } from '../runtime/sse';
 import type { ApprovalPage, ApprovalQuery, ApprovalView } from '../approvals/types';
@@ -76,8 +74,8 @@ import type { MemoryQuery } from '../memories/types';
 import { parseMemoryItem, parseMemoryPage, parseMemoryRemoval } from '../memories/contracts';
 import { parseJob, parseJobDetail, parseJobRemoval, parseJobs, parseServerTimeZone } from './job-contracts';
 import { parseIdentity, parseProfile, parseWorkspaceSnapshot } from './profile-contracts';
-import { parseDreamOverview, parseDreamAgent } from '../dream/contracts';
-import { DREAM_RUN_TIMEOUT_MS, type DreamPendingDecision, type DreamAgentSettingsInput } from '../dream/types';
+import { parseDreamOverview } from '../dream/contracts';
+import { DREAM_RUN_TIMEOUT_MS, type DreamPendingDecision, type DreamSettingsInput } from '../dream/types';
 import {
   parseWorkspaceDelete,
   parseWorkspaceFileDetail,
@@ -89,7 +87,6 @@ import {
 } from '../files/contracts';
 import type {
   WorkspaceFileDetail,
-  WorkspaceFileSelector,
   WorkspaceFileTarget,
   WorkspaceListResult,
   WorkspaceTextDetail,
@@ -141,9 +138,9 @@ type RequestControl = {
   assertActive: () => void;
 };
 
-const messageFeedbackPath = (agentId: string, messageId: string, suffix = '') =>
-  `/api/agents/${encodeURIComponent(agentId)}/messages/${encodeURIComponent(messageId)}/feedback${suffix}`;
-const sessionQuery = (sessionId: string) => `?sessionId=${encodeURIComponent(sessionId)}`;
+const messageFeedbackPath = (sessionId: string, messageId: string, suffix = '') =>
+  `/api/sessions/${encodeURIComponent(sessionId)}/messages/${encodeURIComponent(messageId)}/feedback${suffix}`;
+const sessionQuery = (piSessionId: string) => `?piSessionId=${encodeURIComponent(piSessionId)}`;
 const normalizedComment = (text: string): string => {
   const trimmed = text.trim();
   if (!trimmed || trimmed.length > 4000) {
@@ -157,7 +154,7 @@ export class HttpApiClient implements ApiClient {
   private retired = false;
   private paused = false;
   private pending = new Set<AbortController>();
-  private activeRuns = new Set<{ agentId: string; runId: string; token?: string }>();
+  private activeRuns = new Set<{ sessionId: string; runId: string; token?: string }>();
 
   constructor(
     private readonly baseUrl: string,
@@ -212,7 +209,7 @@ export class HttpApiClient implements ApiClient {
     this.generation++;
     for (const controller of this.pending) controller.abort();
     for (const run of runs) {
-      void this.request('/api/conversation/stop', { method: 'POST', body: { agentId: run.agentId, runId: run.runId }, tokenOverride: { value: run.token } }).catch(() => {});
+      void this.request('/api/conversation/stop', { method: 'POST', body: { sessionId: run.sessionId, runId: run.runId }, tokenOverride: { value: run.token } }).catch(() => {});
     }
   }
 
@@ -280,54 +277,7 @@ export class HttpApiClient implements ApiClient {
     }
   }
 
-  async getGroup(signal?: AbortSignal) { return parseGroup(await this.request('/api/group', { signal })); }
-  async getGroupSettings(signal?: AbortSignal) { return parseGroupSettings(await this.request('/api/group/settings', { signal })); }
-  async saveGroupSettings(settings: GroupSettings, signal?: AbortSignal) { return parseGroupSettings(await this.request('/api/group/settings', { method: 'PUT', body: settings, signal })); }
-  async getAgentCapability(agentId: string, signal?: AbortSignal) { return parseAgentCapability(await this.request(`/api/agents/${encodeURIComponent(agentId)}/capability`, { signal }), agentId); }
-  async saveAgentCapability(agentId: string, capability: string, signal?: AbortSignal) { return parseAgentCapability(await this.request(`/api/agents/${encodeURIComponent(agentId)}/capability`, { method: 'PUT', body: { capability }, signal }), agentId); }
-  async stopGroup(id: string, signal?: AbortSignal) {
-    const result = await this.request<{ stopped: boolean }>(`/api/group/messages/${encodeURIComponent(id)}/stop`, { method: 'POST', body: {}, signal });
-    if (typeof result?.stopped !== 'boolean') throw new ApiError(502, '停止结果不正确，请同步核对');
-  }
-  async sendGroup(input: GroupInput, onEvent: (event: GroupEvent) => void, signal?: AbortSignal) {
-    if (this.retired || this.paused) throw requestCancelled();
-    const token = this.getToken();
-    const control = this.control(this.options.headerTimeoutMs ?? 15_000, signal);
-    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
-    const cancel = () => { void reader?.cancel().catch(() => {}); };
-    try {
-      const response = await expoFetch(`${this.baseUrl}/api/group/messages`, {
-        method: 'POST', headers: { 'content-type': 'application/json', accept: 'text/event-stream', ...(token ? { authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify(input), signal: control.controller.signal, redirect: 'error',
-      });
-      control.assertActive();
-      if (response.status === 401) { this.onUnauthorized(token); throw new ApiError(401, '请重新认证'); }
-      if (!response.ok) throw responseError(response.status, await response.json().catch(() => undefined));
-      if (!response.body) throw new ApiError(502, '「全部」未返回数据流');
-      control.stopTimeout();
-      reader = response.body.getReader();
-      control.controller.signal.addEventListener('abort', cancel, { once: true });
-      const decoder = new TextDecoder(); let buffer = ''; let terminal = false;
-      for (;;) {
-        const result = await reader.read(); control.assertActive();
-        buffer += decoder.decode(result.value, { stream: !result.done });
-        const frames = parseSseFrames(buffer); buffer = frames.rest;
-        for (const raw of frames.events) {
-          if (terminal) throw new ApiError(502, '「全部」回复结束后出现额外事件');
-          const event = parseGroupEvent(raw);
-          terminal = event.type === 'settled' || event.type === 'error';
-          onEvent(event);
-          if (event.type === 'error') throw new ApiError(409, event.message);
-        }
-        if (result.done) break;
-      }
-      if (!terminal || buffer.trim()) throw new ApiError(502, '「全部」消息连接中断，请同步核对，勿重复发送');
-      this.notify(control, { kind: 'online', token });
-    } catch (error) { throw this.failure(error, control, token); }
-    finally { control.controller.signal.removeEventListener('abort', cancel); await reader?.cancel().catch(() => {}); control.finish(); }
-  }
-
-  async createSession(accessKey?: string): Promise<{ token: string; mode: string }> {
+  async createConnectionSession(accessKey?: string): Promise<{ token: string; mode: string }> {
     const session = await this.request<{ token: string; mode: string }>('/api/session', {
       method: 'POST', body: accessKey ? { accessKey } : {}, anonymous: true,
     });
@@ -341,18 +291,17 @@ export class HttpApiClient implements ApiClient {
     return parseServerTimeZone(await this.request('/api/health', { anonymous: true, signal }));
   }
 
-  async listAgents(signal?: AbortSignal): Promise<AgentInfo[]> {
-    return parseAgents(await this.request('/api/agents', { signal }));
+  async listSessions(signal?: AbortSignal): Promise<SessionRecord[]> {
+    return parseSessions(await this.request('/api/sessions', { signal }));
   }
-
-  async createAgent(agentId: string, signal?: AbortSignal): Promise<AgentInfo> {
-    return parseCreatedAgent(await this.request('/api/agents', { method: 'POST', body: { agentId }, signal }), agentId);
+  async createSession(title?: string, signal?: AbortSignal): Promise<SessionRecord> {
+    return parseSession(await this.request('/api/sessions', { method: 'POST', body: title === undefined ? {} : { title }, signal }));
   }
-
-  async resetAgent(agentId: string, options: { clearSchedules?: boolean } = {}, signal?: AbortSignal) {
-    return parseResetAgent(await this.request(`/api/agents/${encodeURIComponent(agentId)}/reset`, {
-      method: 'POST', body: { clearSchedules: options.clearSchedules ?? false }, signal,
-    }), agentId);
+  async renameSession(sessionId: string, title: string, signal?: AbortSignal): Promise<SessionRecord> {
+    return parseSession(await this.request(`/api/sessions/${encodeURIComponent(sessionId)}`, { method: 'PATCH', body: { title }, signal }), sessionId);
+  }
+  async resetSession(sessionId: string, options: { clearSchedules?: boolean } = {}, signal?: AbortSignal) {
+    return parseResetSession(await this.request(`/api/sessions/${encodeURIComponent(sessionId)}/reset`, { method: 'POST', body: options, signal }), sessionId);
   }
 
   /** 只读活动接口；游标绑定筛选，原样编码传输，绝不解析/拼造游标。 */
@@ -360,7 +309,7 @@ export class HttpApiClient implements ApiClient {
     const params = new URLSearchParams();
     if (query.limit !== undefined) params.set('limit', String(query.limit));
     if (query.cursor !== undefined) params.set('cursor', query.cursor);
-    if (query.agentId !== undefined) params.set('agentId', query.agentId);
+    if (query.sessionId !== undefined) params.set('sessionId', query.sessionId);
     if (query.status !== undefined) params.set('status', query.status);
     const suffix = params.toString();
     return parseActivityPage(await this.request(`/api/activities${suffix ? `?${suffix}` : ''}`, { signal }));
@@ -370,165 +319,164 @@ export class HttpApiClient implements ApiClient {
     return parseActivityDetail(await this.request(`/api/activities/${encodeURIComponent(id)}`, { signal }), id);
   }
 
-  async getConversation(agentId: string, signal?: AbortSignal): Promise<ConversationSnapshot> {
+  async getConversation(sessionId: string, signal?: AbortSignal): Promise<ConversationSnapshot> {
     return parseConversationSnapshot(
-      await this.request<unknown>(`/api/conversation?agentId=${encodeURIComponent(agentId)}`, { signal }),
+      await this.request<unknown>(`/api/conversation?sessionId=${encodeURIComponent(sessionId)}`, { signal }),
     );
   }
 
   async getMessageFeedback(
-    agentId: string,
-    messageId: string,
     sessionId: string,
+    messageId: string,
+    piSessionId: string,
     signal?: AbortSignal,
   ): Promise<MessageFeedback> {
     return parseMessageFeedback(await this.request<unknown>(
-      `${messageFeedbackPath(agentId, messageId)}${sessionQuery(sessionId)}`,
+      `${messageFeedbackPath(sessionId, messageId)}${sessionQuery(piSessionId)}`,
       { signal },
     ));
   }
 
   async getMessageFeedbackEvents(
-    agentId: string,
-    messageId: string,
     sessionId: string,
+    messageId: string,
+    piSessionId: string,
     signal?: AbortSignal,
   ): Promise<MessageFeedbackEvents> {
     return parseMessageFeedbackEvents(await this.request<unknown>(
-      `${messageFeedbackPath(agentId, messageId, '/events')}${sessionQuery(sessionId)}`,
+      `${messageFeedbackPath(sessionId, messageId, '/events')}${sessionQuery(piSessionId)}`,
       { signal },
     ));
   }
 
   async setMessageReaction(
-    agentId: string,
-    messageId: string,
     sessionId: string,
+    messageId: string,
+    piSessionId: string,
     reaction: MessageReaction | null,
     signal?: AbortSignal,
   ): Promise<MessageFeedback> {
     return parseMessageFeedback(await this.request<unknown>(
-      messageFeedbackPath(agentId, messageId, '/reaction'),
-      { method: 'PUT', body: { sessionId, reaction }, signal },
+      messageFeedbackPath(sessionId, messageId, '/reaction'),
+      { method: 'PUT', body: { piSessionId, reaction }, signal },
     ));
   }
 
   async addMessageComment(
-    agentId: string,
-    messageId: string,
     sessionId: string,
+    messageId: string,
+    piSessionId: string,
     text: string,
     signal?: AbortSignal,
   ): Promise<MessageFeedback> {
     return parseMessageFeedback(await this.request<unknown>(
-      messageFeedbackPath(agentId, messageId, '/comments'),
-      { method: 'POST', body: { sessionId, text: normalizedComment(text) }, signal },
+      messageFeedbackPath(sessionId, messageId, '/comments'),
+      { method: 'POST', body: { piSessionId, text: normalizedComment(text) }, signal },
     ));
   }
 
   async editMessageComment(
-    agentId: string,
+    sessionId: string,
     messageId: string,
     commentId: string,
-    sessionId: string,
+    piSessionId: string,
     text: string,
     signal?: AbortSignal,
   ): Promise<MessageFeedback> {
     return parseMessageFeedback(await this.request<unknown>(
-      messageFeedbackPath(agentId, messageId, `/comments/${encodeURIComponent(commentId)}`),
-      { method: 'PATCH', body: { sessionId, text: normalizedComment(text) }, signal },
+      messageFeedbackPath(sessionId, messageId, `/comments/${encodeURIComponent(commentId)}`),
+      { method: 'PATCH', body: { piSessionId, text: normalizedComment(text) }, signal },
     ));
   }
 
   async deleteMessageComment(
-    agentId: string,
+    sessionId: string,
     messageId: string,
     commentId: string,
-    sessionId: string,
+    piSessionId: string,
     signal?: AbortSignal,
   ): Promise<MessageFeedback> {
     return parseMessageFeedback(await this.request<unknown>(
-      `${messageFeedbackPath(agentId, messageId, `/comments/${encodeURIComponent(commentId)}`)}` +
-        sessionQuery(sessionId),
+      `${messageFeedbackPath(sessionId, messageId, `/comments/${encodeURIComponent(commentId)}`)}` +
+        sessionQuery(piSessionId),
       { method: 'DELETE', signal },
     ));
   }
 
-  // --- 智能体配置：响应字段必须存在且类型正确，200 但结构错位报 502（与服务端快照校验一致） ---
+  // --- 会话配置：响应字段必须存在且类型正确，200 但结构错位报 502（与服务端快照校验一致） ---
 
-  async getAgentInstructions(agentId: string, signal?: AbortSignal): Promise<AgentInstructions> {
-    const path = `/api/agents/${encodeURIComponent(agentId)}/instructions`;
-    const data = await this.request<AgentInstructions>(path, { signal });
+  async getSessionInstructions(sessionId: string, signal?: AbortSignal): Promise<SessionInstructions> {
+    const path = `/api/sessions/${encodeURIComponent(sessionId)}/instructions`;
+    const data = await this.request<SessionInstructions>(path, { signal });
     if (typeof data?.instructions !== 'string') {
-      throw new ApiError(502, '服务器没有返回有效智能体指令，请确认服务器版本与地址');
+      throw new ApiError(502, '服务器没有返回有效会话指令，请确认服务器版本与地址');
     }
     return data;
   }
 
-  async saveAgentInstructions(agentId: string, instructions: string, signal?: AbortSignal): Promise<AgentInstructions> {
-    const path = `/api/agents/${encodeURIComponent(agentId)}/instructions`;
-    const data = await this.request<AgentInstructions>(path, { method: 'PUT', body: { instructions }, signal });
+  async saveSessionInstructions(sessionId: string, instructions: string, signal?: AbortSignal): Promise<SessionInstructions> {
+    const path = `/api/sessions/${encodeURIComponent(sessionId)}/instructions`;
+    const data = await this.request<SessionInstructions>(path, { method: 'PUT', body: { instructions }, signal });
     if (typeof data?.instructions !== 'string') {
-      throw new ApiError(502, '服务器没有返回有效智能体指令，请确认服务器版本与地址');
+      throw new ApiError(502, '服务器没有返回有效会话指令，请确认服务器版本与地址');
     }
     return data;
   }
 
   // diagnostics 可缺省；skills 字段必须为条目数组，每条字段类型严格。
-  async getAgentSkills(agentId: string, signal?: AbortSignal): Promise<AgentSkills> {
-    const path = `/api/agents/${encodeURIComponent(agentId)}/skills`;
-    const data = await this.request<AgentSkills>(path, { signal });
-    if (!Array.isArray(data?.skills) || data.skills.some((item) => !this.isValidAgentSkill(item))) {
-      throw new ApiError(502, '服务器没有返回有效智能体技能列表，请确认服务器版本与地址');
+  async getSessionSkills(sessionId: string, signal?: AbortSignal): Promise<SessionSkills> {
+    const path = `/api/sessions/${encodeURIComponent(sessionId)}/skills`;
+    const data = await this.request<SessionSkills>(path, { signal });
+    if (!Array.isArray(data?.skills) || data.skills.some((item) => !this.isValidSessionSkill(item))) {
+      throw new ApiError(502, '服务器没有返回有效会话技能列表，请确认服务器版本与地址');
     }
     if (data.diagnostics !== undefined && (!Array.isArray(data.diagnostics) || data.diagnostics.some((item) => typeof item?.path !== 'string' || typeof item?.message !== 'string'))) {
-      throw new ApiError(502, '服务器没有返回有效智能体技能列表，请确认服务器版本与地址');
+      throw new ApiError(502, '服务器没有返回有效会话技能列表，请确认服务器版本与地址');
     }
     return data;
   }
 
-  async saveAgentSkills(
-    agentId: string,
+  async saveSessionSkills(
+    sessionId: string,
     overrides: Record<string, boolean>,
     signal?: AbortSignal,
-  ): Promise<AgentSkills> {
-    const path = `/api/agents/${encodeURIComponent(agentId)}/skills`;
-    const data = await this.request<AgentSkills>(path, { method: 'PUT', body: { overrides }, signal });
-    if (!Array.isArray(data?.skills) || data.skills.some((item) => !this.isValidAgentSkill(item))) {
-      throw new ApiError(502, '服务器没有返回有效智能体技能列表，请确认服务器版本与地址');
+  ): Promise<SessionSkills> {
+    const path = `/api/sessions/${encodeURIComponent(sessionId)}/skills`;
+    const data = await this.request<SessionSkills>(path, { method: 'PUT', body: { overrides }, signal });
+    if (!Array.isArray(data?.skills) || data.skills.some((item) => !this.isValidSessionSkill(item))) {
+      throw new ApiError(502, '服务器没有返回有效会话技能列表，请确认服务器版本与地址');
     }
     if (data.diagnostics !== undefined && (!Array.isArray(data.diagnostics) || data.diagnostics.some((item) => typeof item?.path !== 'string' || typeof item?.message !== 'string'))) {
-      throw new ApiError(502, '服务器没有返回有效智能体技能列表，请确认服务器版本与地址');
+      throw new ApiError(502, '服务器没有返回有效会话技能列表，请确认服务器版本与地址');
     }
     return data;
   }
 
   // DELETE 必须无 body；服务端 404/409 语义保留，不做自动重试副作用。
-  async deleteAgent(agentId: string, signal?: AbortSignal): Promise<DeleteAgentResult> {
-    const path = `/api/agents/${encodeURIComponent(agentId)}`;
-    const data = await this.request<DeleteAgentResult>(path, { method: 'DELETE', signal });
+  async deleteSession(sessionId: string, signal?: AbortSignal): Promise<DeleteSessionResult> {
+    const path = `/api/sessions/${encodeURIComponent(sessionId)}`;
+    const data = await this.request<DeleteSessionResult>(path, { method: 'DELETE', signal });
     const removed = data?.removed;
     if (
       data?.ok !== true ||
       !removed ||
-      !Number.isSafeInteger(removed.jobs) || removed.jobs < 0 ||
-      !Number.isSafeInteger(removed.monitors) || removed.monitors < 0
+      !Number.isSafeInteger(removed.sessions) || removed.sessions < 0
     ) {
-      throw new ApiError(502, '服务器没有返回有效智能体删除结果，请确认服务器版本与地址');
+      throw new ApiError(502, '服务器没有返回有效会话删除结果，请确认服务器版本与地址');
     }
     return data;
   }
 
-  private isValidAgentSkill(item: unknown): item is AgentSkill {
+  private isValidSessionSkill(item: unknown): item is SessionSkill {
     if (!item || typeof item !== 'object') return false;
-    const skill = item as AgentSkill;
+    const skill = item as SessionSkill;
     return typeof skill.name === 'string'
       && typeof skill.description === 'string'
       && typeof skill.defaultEnabled === 'boolean'
       && typeof skill.enabled === 'boolean';
   }
 
-  async runAgent(
+  async runSession(
     input: RunInput,
     onEvent: (event: import('./types').AgUiEvent) => void,
     signal?: AbortSignal,
@@ -538,7 +486,7 @@ export class HttpApiClient implements ApiClient {
     if (!outgoing.ok) throw new ApiError(400, outgoing.error);
     const token = this.getToken();
     const control = this.control(this.options.headerTimeoutMs ?? this.options.timeoutMs ?? 15_000, signal);
-    const run = { agentId: input.agentId, runId: input.runId, token };
+    const run = { sessionId: input.sessionId, runId: input.runId, token };
     this.activeRuns.add(run);
     let callbackFailed = false;
     try {
@@ -563,7 +511,7 @@ export class HttpApiClient implements ApiClient {
         throw new ApiError(401, '当前凭证未被服务器接受，请重新认证');
       }
       if (!response.ok) {
-        // 删除中的智能体与普通版本冲突必须保留区别，不能引导重试旧 ID。
+        // 删除中的会话与普通版本冲突必须保留区别，不能引导重试旧 ID。
         const payload = await response.json().catch(() => undefined);
         control.assertActive();
         const fallback = response.status === 409 ? '会话状态已更新或仍在运行，请重新加载后重试' : undefined;
@@ -610,10 +558,10 @@ export class HttpApiClient implements ApiClient {
     }
   }
 
-  async stopRun(agentId: string, runId: string): Promise<boolean> {
+  async stopRun(sessionId: string, runId: string): Promise<boolean> {
     const data = await this.request<{ stopped: boolean }>(
       '/api/conversation/stop',
-      { method: 'POST', body: { agentId, runId } },
+      { method: 'POST', body: { sessionId, runId } },
     );
     return data.stopped;
   }
@@ -629,7 +577,7 @@ export class HttpApiClient implements ApiClient {
 
   async listJobs(query?: JobsQuery, signal?: AbortSignal): Promise<JobItem[]> {
     const params = new URLSearchParams();
-    if (query?.agentId) params.set('agentId', query.agentId);
+    if (query?.sessionId) params.set('sessionId', query.sessionId);
     if (query?.sort) params.set('sort', query.sort);
     if (query?.order) params.set('order', query.order);
     const suffix = params.toString() ? `?${params.toString()}` : '';
@@ -666,7 +614,7 @@ export class HttpApiClient implements ApiClient {
   async listMonitors(query: MonitorsQuery = {}, signal?: AbortSignal): Promise<Monitor[]> {
     const params = new URLSearchParams();
     // 显式传入的筛选字段必须原样上送；空串/非法值交给服务端 400，不能静默扩大查询范围。
-    if (query.agentId !== undefined) params.set('agentId', query.agentId);
+    if (query.sessionId !== undefined) params.set('sessionId', query.sessionId);
     if (query.sort !== undefined) params.set('sort', query.sort);
     if (query.order !== undefined) params.set('order', query.order);
     const suffix = params.toString();
@@ -698,7 +646,7 @@ export class HttpApiClient implements ApiClient {
 
   async listApprovals(query: ApprovalQuery = {}, signal?: AbortSignal): Promise<ApprovalPage> {
     const params = new URLSearchParams();
-    for (const key of ['limit', 'cursor', 'status', 'agentId', 'activityId'] as const) {
+    for (const key of ['limit', 'cursor', 'status', 'sessionId', 'activityId'] as const) {
       const value = query[key];
       if (value !== undefined) params.set(key, String(value));
     }
@@ -841,7 +789,7 @@ export class HttpApiClient implements ApiClient {
     }));
   }
 
-  // --- 新闻 V1（/api/news）；全部接口鉴权，不携带 agentId ---
+  // --- 新闻 V1（/api/news）；全部接口鉴权，不携带 sessionId ---
 
   async getNewsStatus(signal?: AbortSignal) {
     return parseNewsStatus(await this.request<unknown>('/api/news/status', { signal }));
@@ -915,10 +863,10 @@ export class HttpApiClient implements ApiClient {
   // --- 工作区文件（/api/workspace/files）；响应归属必须与请求完全一致 ---
 
   async listWorkspaceFiles(
-    selector: WorkspaceFileSelector & { path?: string },
+    selector: { path?: string },
     signal?: AbortSignal,
   ): Promise<WorkspaceListResult> {
-    const target = workspaceFileTarget(selector.scope, selector.agentId, selector.path ?? '.', 'read');
+    const target = workspaceFileTarget(selector.path ?? '.', 'read');
     return parseWorkspaceList(
       await this.request<unknown>(`/api/workspace/files?${workspaceFileQuery(target)}`, { signal }),
       target,
@@ -928,8 +876,8 @@ export class HttpApiClient implements ApiClient {
   async readWorkspaceFile(
     target: WorkspaceFileTarget,
     signal?: AbortSignal,
-  ): Promise<WorkspaceFileDetail & WorkspaceFileSelector> {
-    const selected = workspaceFileTarget(target.scope, target.agentId, target.path, 'file');
+  ): Promise<WorkspaceFileDetail> {
+    const selected = workspaceFileTarget(target.path, 'file');
     return parseWorkspaceFileDetail(
       await this.request<unknown>(`/api/workspace/files/content?${workspaceFileQuery(selected)}`, { signal }),
       selected,
@@ -940,14 +888,12 @@ export class HttpApiClient implements ApiClient {
     target: WorkspaceFileTarget,
     content: string,
     signal?: AbortSignal,
-  ): Promise<WorkspaceTextDetail & WorkspaceFileSelector> {
-    const selected = workspaceFileTarget(target.scope, target.agentId, target.path, 'write');
+  ): Promise<WorkspaceTextDetail> {
+    const selected = workspaceFileTarget(target.path, 'write');
     assertWorkspaceTextForWrite(content);
     return parseWorkspaceTextDetail(await this.request<unknown>('/api/workspace/files/text', {
       method: 'POST',
       body: {
-        scope: selected.scope,
-        ...(selected.scope === 'agent' ? { agentId: selected.agentId } : {}),
         path: selected.path,
         content,
         confirmed: true,
@@ -960,14 +906,12 @@ export class HttpApiClient implements ApiClient {
     target: WorkspaceFileTarget,
     content: string,
     signal?: AbortSignal,
-  ): Promise<WorkspaceTextDetail & WorkspaceFileSelector> {
-    const selected = workspaceFileTarget(target.scope, target.agentId, target.path, 'write');
+  ): Promise<WorkspaceTextDetail> {
+    const selected = workspaceFileTarget(target.path, 'write');
     assertWorkspaceTextForWrite(content);
     return parseWorkspaceTextDetail(await this.request<unknown>('/api/workspace/files/text', {
       method: 'PUT',
       body: {
-        scope: selected.scope,
-        ...(selected.scope === 'agent' ? { agentId: selected.agentId } : {}),
         path: selected.path,
         content,
         confirmed: true,
@@ -980,74 +924,37 @@ export class HttpApiClient implements ApiClient {
     target: WorkspaceFileTarget,
     signal?: AbortSignal,
   ) {
-    const selected = workspaceFileTarget(target.scope, target.agentId, target.path, 'write');
+    const selected = workspaceFileTarget(target.path, 'write');
     return parseWorkspaceDelete(await this.request<unknown>(`/api/workspace/files?${workspaceFileQuery(selected)}`, {
       method: 'DELETE',
       signal,
     }), selected);
   }
 
-  // --- Dream（/api/dream + /api/agents/:id/dream） ---
+  // --- Dream（/api/dream + /api/sessions/:id/dream） ---
 
   async getDreamOverview(signal?: AbortSignal) {
     return parseDreamOverview(await this.request<unknown>('/api/dream', { signal }));
   }
 
-  async saveGlobalDreamPrompt(prompt: string, signal?: AbortSignal) {
-    return parseDreamOverview(await this.request<unknown>('/api/dream', {
-      method: 'PUT',
-      body: { globalPrompt: prompt },
-      signal,
-    }));
+  async saveDreamSettings(settings: DreamSettingsInput, signal?: AbortSignal) {
+    return parseDreamOverview(await this.request('/api/dream', { method: 'PUT', body: settings, signal }));
   }
-
-  async getAgentDream(agentId: string, signal?: AbortSignal) {
-    const path = `/api/agents/${encodeURIComponent(agentId)}/dream`;
-    return parseDreamAgent(await this.request<unknown>(path, { signal }), agentId);
+  async runDream(signal?: AbortSignal) {
+    return parseDreamOverview(await this.request('/api/dream/run', { method: 'POST', signal, timeoutMs: DREAM_RUN_TIMEOUT_MS }));
   }
-
-  async updateAgentDream(agentId: string, settings: DreamAgentSettingsInput, signal?: AbortSignal) {
-    const path = `/api/agents/${encodeURIComponent(agentId)}/dream`;
-    return parseDreamAgent(await this.request<unknown>(path, {
-      method: 'PUT',
-      body: settings,
-      signal,
-    }), agentId);
-  }
-
-  async runAgentDream(agentId: string, signal?: AbortSignal) {
-    const path = `/api/agents/${encodeURIComponent(agentId)}/dream/run`;
-    // 同步等待受限模型轮；300 秒只作用于本请求，不改变全局 HTTP 预算。
-    return parseDreamAgent(await this.request<unknown>(path, {
-      method: 'POST',
-      body: {},
-      signal,
-      timeoutMs: DREAM_RUN_TIMEOUT_MS,
-    }), agentId);
-  }
-
-  async resolveAgentDreamPending(
-    agentId: string,
-    pendingId: string,
-    decision: DreamPendingDecision,
-    signal?: AbortSignal,
-  ) {
-    const path = `/api/agents/${encodeURIComponent(agentId)}/dream/pending/${encodeURIComponent(pendingId)}`;
-    return parseDreamAgent(await this.request<unknown>(path, {
-      method: 'POST',
-      body: decision,
-      signal,
-    }), agentId);
+  async resolveDreamPending(pendingId: string, decision: DreamPendingDecision, signal?: AbortSignal) {
+    return parseDreamOverview(await this.request(`/api/dream/pending/${encodeURIComponent(pendingId)}`, { method: 'POST', body: decision, signal }));
   }
 
   // --- 运行状态（GET /api/runs/status + GET /api/events） ---
 
-  async getAgentStatus(agentId: string, runId: string, signal?: AbortSignal): Promise<AgentStatusResponse> {
-    // 单点查询：agentId 与 runId 都必填，服务端 400 透传，404 表示运行不存在或已被清理。
-    const path = `/api/runs/status?agentId=${encodeURIComponent(agentId)}&runId=${encodeURIComponent(runId)}`;
+  async getSessionStatus(sessionId: string, runId: string, signal?: AbortSignal): Promise<SessionStatusResponse> {
+    // 单点查询：sessionId 与 runId 都必填，服务端 400 透传，404 表示运行不存在或已被清理。
+    const path = `/api/runs/status?sessionId=${encodeURIComponent(sessionId)}&runId=${encodeURIComponent(runId)}`;
     const raw = await this.request<unknown>(path, { signal });
-    const response = parseAgentStatusResponse(raw);
-    if (response.status.agentId !== agentId || response.status.runId !== runId) throw new ApiError(502, '服务器返回的运行状态归属不正确');
+    const response = parseSessionStatusResponse(raw);
+    if (response.status.sessionId !== sessionId || response.status.runId !== runId) throw new ApiError(502, '服务器返回的运行状态归属不正确');
     return response;
   }
 
@@ -1151,8 +1058,8 @@ export class HttpApiClient implements ApiClient {
           }
           if (decoded.data.instanceId !== readyInstanceId) throw new ApiError(502, '推送事件与 ready 的 instanceId 不一致');
           let event: RuntimeEvent;
-          if (decoded.event === 'agent_status_updated') event = { event: decoded.event, data: parseAgentStatusUpdate(decoded.data, readyInstanceId) };
-          else if (decoded.event === 'agent_presence_updated') event = { event: decoded.event, data: { ...parseAgentPresence(decoded.data), instanceId: readyInstanceId } };
+          if (decoded.event === 'session_status_updated') event = { event: decoded.event, data: parseSessionStatusUpdate(decoded.data, readyInstanceId) };
+          else if (decoded.event === 'session_presence_updated') event = { event: decoded.event, data: { ...parseSessionPresence(decoded.data), instanceId: readyInstanceId } };
           else if (decoded.event === 'approval_pending') {
             const approval = parseApprovalView(decoded.data);
             if (approval.status !== 'pending') throw new ApiError(502, '待审批事件不是 pending 状态');
@@ -1193,82 +1100,17 @@ export class HttpApiClient implements ApiClient {
     );
   }
 
-  // --- 信息后台与短信（/api/agents/:agentId/information/*） ---
-
-  async getInformationSettings(agentId: string, signal?: AbortSignal): Promise<InformationSettings> {
-    return parseInformationSettings(
-      await this.request<unknown>(`/api/agents/${encodeURIComponent(agentId)}/information/settings`, { signal }),
-    );
-  }
-
-  async saveInformationSettings(agentId: string, settings: InformationSettings, signal?: AbortSignal): Promise<InformationSettings> {
-    return parseInformationSettings(
-      await this.request<unknown>(`/api/agents/${encodeURIComponent(agentId)}/information/settings`, {
-        method: 'PUT',
-        body: settings,
-        signal,
-      }),
-    );
-  }
-
-  async getInformationPreferences(agentId: string, signal?: AbortSignal): Promise<InformationPreferences> {
-    return parseInformationPreferences(
-      await this.request<unknown>(`/api/agents/${encodeURIComponent(agentId)}/information/preferences`, { signal }),
-    );
-  }
-
-  async saveInformationPreferences(agentId: string, preferences: { notes: string }, signal?: AbortSignal): Promise<InformationPreferences> {
-    return parseInformationPreferences(
-      await this.request<unknown>(`/api/agents/${encodeURIComponent(agentId)}/information/preferences`, {
-        method: 'PUT',
-        body: preferences,
-        signal,
-      }),
-    );
-  }
-
-  async ingestInformationItems(agentId: string, items: InformationInputItem[], signal?: AbortSignal): Promise<InformationItem[]> {
-    return parseInformationIngestResult(
-      await this.request<unknown>(`/api/agents/${encodeURIComponent(agentId)}/information/items`, {
-        method: 'POST',
-        body: { items },
-        signal,
-      }),
-    );
-  }
-
-  async listInformationItems(agentId: string, query?: InformationItemsQuery, signal?: AbortSignal): Promise<InformationItemsPage> {
-    const params = new URLSearchParams();
-    if (query?.limit !== undefined) params.set('limit', String(query.limit));
-    if (query?.cursor) params.set('cursor', query.cursor);
-    if (query?.status) params.set('status', query.status);
-    const qs = params.toString() ? `?${params.toString()}` : '';
-    return parseInformationItemsPage(
-      await this.request<unknown>(`/api/agents/${encodeURIComponent(agentId)}/information/items${qs}`, { signal }),
-    );
-  }
-
-  async triggerInformationRun(agentId: string, signal?: AbortSignal): Promise<void> {
-    await this.request<unknown>(`/api/agents/${encodeURIComponent(agentId)}/information/runs`, {
-      method: 'POST',
-      body: {},
-      signal,
-    });
-  }
-  async listFeatures(signal?: AbortSignal) { return parseFeatures(await this.request<unknown>('/api/features', { signal })); }
-  async bindFeature(id: FeatureId, agentId: string, signal?: AbortSignal) { return parseFeature(await this.request<unknown>(`/api/features/${id}/binding`, { method: 'PUT', body: { agentId }, signal })); }
-  async discussNews(articleId: string, signal?: AbortSignal) { return parseDiscussion(await this.request<unknown>('/api/features/news/discussions', { method: 'POST', body: { articleId }, signal })); }
-  // --- 独立短信功能：不接收当前智能体 ID ---
+  // --- 信息后台与短信（/api/sessions/:sessionId/information/*） ---
 
   async getSmsSettings(signal?: AbortSignal): Promise<InformationSettings> {
     return parseInformationSettings(
-      await this.request<unknown>(`/api/features/sms/settings`, { signal }),
+      await this.request<unknown>(`/api/information/settings`, { signal }),
     );
   }
 
   async saveSmsSettings(settings: InformationSettings, signal?: AbortSignal): Promise<InformationSettings> {
     return parseInformationSettings(
-      await this.request<unknown>(`/api/features/sms/settings`, {
+      await this.request<unknown>(`/api/information/settings`, {
         method: 'PUT',
         body: settings,
         signal,
@@ -1278,13 +1120,13 @@ export class HttpApiClient implements ApiClient {
 
   async getSmsPreferences(signal?: AbortSignal): Promise<InformationPreferences> {
     return parseInformationPreferences(
-      await this.request<unknown>(`/api/features/sms/preferences`, { signal }),
+      await this.request<unknown>(`/api/information/preferences`, { signal }),
     );
   }
 
   async saveSmsPreferences(preferences: { notes: string }, signal?: AbortSignal): Promise<InformationPreferences> {
     return parseInformationPreferences(
-      await this.request<unknown>(`/api/features/sms/preferences`, {
+      await this.request<unknown>(`/api/information/preferences`, {
         method: 'PUT',
         body: preferences,
         signal,
@@ -1294,7 +1136,7 @@ export class HttpApiClient implements ApiClient {
 
   async ingestSmsItems(items: InformationInputItem[], signal?: AbortSignal): Promise<InformationItem[]> {
     return parseInformationIngestResult(
-      await this.request<unknown>(`/api/features/sms/items`, {
+      await this.request<unknown>(`/api/information/items`, {
         method: 'POST',
         body: { items },
         signal,
@@ -1309,12 +1151,12 @@ export class HttpApiClient implements ApiClient {
     if (query?.status) params.set('status', query.status);
     const qs = params.toString() ? `?${params.toString()}` : '';
     return parseInformationItemsPage(
-      await this.request<unknown>(`/api/features/sms/items${qs}`, { signal }),
+      await this.request<unknown>(`/api/information/items${qs}`, { signal }),
     );
   }
 
   async triggerSmsRun(signal?: AbortSignal): Promise<void> {
-    await this.request<unknown>(`/api/features/sms/runs`, {
+    await this.request<unknown>(`/api/information/runs`, {
       method: 'POST',
       body: {},
       signal,

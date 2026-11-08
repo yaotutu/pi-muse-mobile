@@ -4,7 +4,7 @@ import test from 'node:test';
 import { HttpApiClient } from '../src/api/http-client.ts';
 
 const json = (value, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } });
-const input = { agentId: 'agent-a', runId: 'run-a', expectedRevision: 'v1', message: { id: 'user-a', content: 'hello' } };
+const input = { sessionId: '22222222-2222-4222-8222-222222222222', runId: 'run-a', expectedRevision: 'v1', message: { id: 'user-a', content: 'hello' } };
 const deferred = () => { let resolve; const promise = new Promise((done) => { resolve = done; }); return { promise, resolve }; };
 async function withFetch(fetcher, action) {
   const original = globalThis.fetch;
@@ -23,7 +23,7 @@ test('会话交换始终匿名，即使活动客户端已有Token也不发送旧
     return json({ token: 'permanent-token', mode: 'live' });
   }, async () => {
     const api = new HttpApiClient('https://server-a', () => 'old-token', () => unauthorized++);
-    assert.equal((await api.createSession('new-key')).token, 'permanent-token');
+    assert.equal((await api.createConnectionSession('new-key')).token, 'permanent-token');
     assert.equal(unauthorized, 0);
   });
 });
@@ -32,7 +32,7 @@ test('测试Key被拒绝不触发活动连接的401失效回调', async () => {
   let unauthorized = 0;
   await withFetch(async () => json({ error: 'wrong key' }, 401), async () => {
     const api = new HttpApiClient('https://server-a', () => 'active-token', () => unauthorized++);
-    await assert.rejects(api.createSession('wrong-key'), (e) => e.status === 401);
+    await assert.rejects(api.createConnectionSession('wrong-key'), (e) => e.status === 401);
     assert.equal(unauthorized, 0);
   });
 });
@@ -119,7 +119,7 @@ test('外部取消的只读请求不会报告离线', async () => {
   const controller = new AbortController(); const events = [];
   await withFetch((url, init) => new Promise((resolve, reject) => init.signal.addEventListener('abort', () => reject(abortError()), { once: true })), async () => {
     const api = new HttpApiClient('https://server-a', () => 'token-a', () => {}, { onTransportState: (e) => events.push(e) });
-    const pending = api.listAgents(controller.signal); controller.abort();
+    const pending = api.listSessions(controller.signal); controller.abort();
     await assert.rejects(pending, (e) => e.name === 'AbortError');
     assert.deepEqual(events, []);
   });
@@ -131,7 +131,7 @@ test('SSE只限制响应头等待，不中止已经建立的长流', async () =>
   await withFetch(async (url, init) => { assert.equal(init.redirect, 'error'); return new Response(body); }, async () => {
     const api = new HttpApiClient('https://server-a', () => 'token-a', () => {}, { headerTimeoutMs: 5 });
     const events = [];
-    const pending = api.runAgent(input, (e) => events.push(e));
+    const pending = api.runSession(input, (e) => events.push(e));
     await new Promise((resolve) => setTimeout(resolve, 20));
     streamController.enqueue(new TextEncoder().encode('data: {"type":"RUN_FINISHED"}\n\n'));
     streamController.close(); await pending;
@@ -144,7 +144,7 @@ test('SSE等待响应头超时会报告离线，但不撤销凭证', async () =>
   let unauthorized = 0; const events = [];
   await withFetch((url, init) => new Promise((resolve, reject) => init.signal.addEventListener('abort', () => reject(abortError()), { once: true })), async () => {
     const api = new HttpApiClient('https://server-a', () => 'token-a', () => unauthorized++, { headerTimeoutMs: 5, onTransportState: (e) => events.push(e) });
-    await assert.rejects(api.runAgent(input, () => {}), (e) => e.status === 408);
+    await assert.rejects(api.runSession(input, () => {}), (e) => e.status === 408);
     assert.equal(unauthorized, 0);
     assert.equal(events.at(-1).kind, 'offline');
   });
@@ -155,7 +155,7 @@ test('SSE回调异常归还reader，但不能伪装成网络断连', async () =>
   const body = new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode('data: {"type":"RUN_STARTED"}\n\n')); }, cancel() { cancelled = true; } });
   await withFetch(async () => new Response(body), async () => {
     const api = new HttpApiClient('https://server-a', () => 'token-a', () => {}, { onTransportState: (e) => events.push(e) });
-    await assert.rejects(api.runAgent(input, () => { throw new Error('UI callback failed'); }), /UI callback failed/);
+    await assert.rejects(api.runSession(input, () => { throw new Error('UI callback failed'); }), /UI callback failed/);
     assert.equal(cancelled, true);
     assert.equal(body.locked, false);
     assert.equal(events.filter((e) => e.kind === 'offline').length, 0);
@@ -165,8 +165,8 @@ test('SSE回调异常归还reader，但不能伪装成网络断连', async () =>
 test('错误服务/畸形会话和会话列表不能被当成连接成功', async () => {
   const api = new HttpApiClient('https://server-a', () => undefined, () => {});
   for (const payload of [{ token: '', mode: 'live' }, { token: 'bad\r\ntoken', mode: 'live' }, { token: 'token' }]) {
-    await withFetch(async () => json(payload), async () => assert.rejects(api.createSession(), (e) => e.status === 502));
+    await withFetch(async () => json(payload), async () => assert.rejects(api.createConnectionSession(), (e) => e.status === 502));
   }
-  await withFetch(async () => new Response('<html>not Pi Muse</html>'), async () => assert.rejects(api.createSession(), (e) => e.status === 502));
-  await withFetch(async () => json({ agents: [{ id: 'a' }] }), async () => assert.rejects(api.listAgents(), (e) => e.status === 502));
+  await withFetch(async () => new Response('<html>not Pi Muse</html>'), async () => assert.rejects(api.createConnectionSession(), (e) => e.status === 502));
+  await withFetch(async () => json({ agents: [{ id: 'a' }] }), async () => assert.rejects(api.listSessions(), (e) => e.status === 502));
 });

@@ -72,7 +72,7 @@ export function SmsSettingsCard() {
         <Text style={styles.section}>短信处理</Text>
       </View>
       <Text style={styles.caption}>
-        短信由短信智能体保存和处理；仅重要结果进入绑定的承接会话，不随当前页面切换。
+        短信由短信会话保存和处理；仅重要结果进入绑定的承接会话，不随当前页面切换。
       </Text>
       {info.loading && <Text style={styles.caption}>正在读取短信状态…</Text>}
 
@@ -99,7 +99,7 @@ export function SmsSettingsCard() {
         <>
           <View style={styles.body}>
             <Text style={styles.text}>过滤规则与偏好</Text>
-            <Text style={styles.caption}>与短信智能体规则（INSTRUCTIONS.md）统一：指导智能体如何筛选与判断（重要通知 vs 静默）。</Text>
+            <Text style={styles.caption}>与短信会话规则（INSTRUCTIONS.md）统一：指导会话如何筛选与判断（重要通知 vs 静默）。</Text>
             <FormInput
               accessibilityLabel="信息过滤指示"
               multiline

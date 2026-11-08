@@ -114,11 +114,6 @@ export const themeTokens = {
     headerHeight: 124,
     headerTop: 12,
     headerAvatar: 64,
-    groupAvatar: 34,
-    groupMessageRadius: 18,
-    groupMessagePaddingHorizontal: 14,
-    groupMessagePaddingVertical: 10,
-    groupMessageGap: 16,
     welcomeAvatar: 80,
     sessionHeaderBottom: 28,
     /** 面板内容在持续挂载的会话信息区下方展开。 */
@@ -134,7 +129,7 @@ export const themeTokens = {
     composerBottom: 12,
     sessionTabsHeight: 66,
     sessionTabInset: 6,
-    /** 普通私聊消息的纵向间距；群聊有自己的紧凑规格。 */
+    /** 普通聊天消息的纵向间距；紧凑正文使用独立规格。 */
     messageGap: 16,
     /** 聊天气泡独有的内边距，不波及连接页的通用消息容器。 */
     chatMessagePadding: 16,
@@ -193,7 +188,7 @@ export const themeTokens = {
   },
   typography: {
     message: { fontSize: 16, lineHeight: 25 },
-    groupMessage: { fontSize: 16, lineHeight: 24 },
+    compactMessage: { fontSize: 16, lineHeight: 24 },
     name: { fontSize: 16, lineHeight: 22 },
     status: { fontSize: 14, lineHeight: 21 },
     heroName: { fontSize: 28, lineHeight: 36, letterSpacing: -0.8 },

@@ -8,8 +8,8 @@ import type { ApprovalResolution, ApprovalView } from '../approvals/types';
 import type { ActivityOverview } from '../activities/types';
 
 export type RunSource = 'chat' | 'job';
-export type AgentPresence = {
-  agentId: string;
+export type SessionPresence = {
+  sessionId: string;
   state: 'idle' | 'working' | 'waiting' | 'error';
   label: string;
   lastActiveAt: string | null;
@@ -28,7 +28,7 @@ export type RunPhase =
   | 'finalizing'
   | null;
 
-/** 子代理阶段集合与父运行相同，但不含 waiting_subagents。 */
+/** 子任务阶段集合与父运行相同，但不含 waiting_subagents。 */
 export type SubagentPhase =
   | 'preparing'
   | 'waiting_model'
@@ -42,7 +42,7 @@ export type ToolStatus = 'running' | 'waiting_approval';
 
 export type SubagentStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 
-export type AgentToolState = {
+export type SessionToolState = {
   toolCallId: string;
   name: string | null;
   label: string;
@@ -61,9 +61,9 @@ export type SubagentState = {
   endedAt: string | null;
 };
 
-export type AgentStatus = {
+export type SessionStatus = {
   activityId: string | null;
-  agentId: string;
+  sessionId: string;
   runId: string;
   revision: number;
   source: RunSource;
@@ -72,7 +72,7 @@ export type AgentStatus = {
   status: RunStatus;
   phase: RunPhase;
   label: string;
-  tools: AgentToolState[];
+  tools: SessionToolState[];
   subagents: SubagentState[];
   pendingApprovalIds: string[];
   startedAt: string;
@@ -81,9 +81,9 @@ export type AgentStatus = {
 };
 
 /** GET /api/runs/status 响应；instanceId 由服务端进程决定。 */
-export type AgentStatusResponse = {
+export type SessionStatusResponse = {
   instanceId: string;
-  status: AgentStatus;
+  status: SessionStatus;
 };
 
 /** 三个集合分别完整替换；活动集合不包含终态，不能拿它清空持久历史。 */
@@ -92,27 +92,27 @@ export type RuntimeReadyEvent = {
   data: {
     instanceId: string;
     serverTime: string;
-    agentStatuses: AgentStatus[];
-    agentPresences: AgentPresence[];
+    sessionStatuses: SessionStatus[];
+    sessionPresences: SessionPresence[];
     pendingApprovals: ApprovalView[];
     activities: ActivityOverview[];
   };
 };
 
-export type RuntimeAgentStatusUpdatedEvent = {
-  event: 'agent_status_updated';
-  data: AgentStatus & { instanceId: string };
+export type RuntimeSessionStatusUpdatedEvent = {
+  event: 'session_status_updated';
+  data: SessionStatus & { instanceId: string };
 };
 
-/** 通知已落盘的瞬时历史失效信号；不含消息正文，也不得推导 agent 状态。 */
+/** 通知已落盘的瞬时历史失效信号；不含消息正文，也不得推导会话状态。 */
 export type ConversationInvalidation = {
-  agentId: string;
   sessionId: string;
+  piSessionId: string;
 };
 
 /** 本轮订阅对外契约；未知事件由传输层直接跳过，不向上抛。 */
-export type RuntimeEvent = RuntimeReadyEvent | RuntimeAgentStatusUpdatedEvent
-  | { event: 'agent_presence_updated'; data: AgentPresence & { instanceId: string } }
+export type RuntimeEvent = RuntimeReadyEvent | RuntimeSessionStatusUpdatedEvent
+  | { event: 'session_presence_updated'; data: SessionPresence & { instanceId: string } }
   | { event: 'approval_pending'; data: ApprovalView & { instanceId: string } }
   | { event: 'approval_updated'; data: ApprovalResolution & { instanceId: string } }
   | { event: 'activity_updated'; data: ActivityOverview & { instanceId: string } }

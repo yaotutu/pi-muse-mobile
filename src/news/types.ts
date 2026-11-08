@@ -1,4 +1,4 @@
-/** 新闻属于当前 API 连接，不跟随聊天智能体；连接销毁时由上层丢弃整个 Store。 */
+/** 新闻属于当前 API 连接，不跟随聊天会话；连接销毁时由上层丢弃整个 Store。 */
 export type NewsView = 'recommended' | 'all';
 export type NewsReaction = 'like' | 'dislike';
 

@@ -40,36 +40,6 @@ test('只允许同源 desktop 页面，拒绝跨域、scheme、弹窗及 noVNC �
   assert.equal(allowed(`${base}/browser/desktop/vnc.html`, false), false);
 });
 
-test('关闭再打开取得新票据；UI 不向 WebView 传鉴权头或重载旧票据', async () => {
-  let tickets = 0;
-  const store = createBrowserStore({
-    async getBrowserStatus() { return { enabled: true, viewerPath: '/browser', desktopPath: '/browser/desktop/vnc.html', desktopAvailable: true }; },
-    async createBrowserDesktopTicket() { tickets += 1; return { launchPath: `/browser/desktop/launch?ticket=once_${tickets}`, expiresAt: new Date().toISOString() }; },
-  }, base);
-  await store.open();
-  assert.equal(store.getSnapshot().launchUrl, launch);
-  store.close();
-  assert.equal(store.getSnapshot().launchUrl, null);
-  await store.open();
-  assert.equal(store.getSnapshot().launchUrl, `${base}/browser/desktop/launch?ticket=once_2`);
-  assert.equal(tickets, 2);
-  store.dispose();
-
-  const panel = readFileSync(new URL('../src/browser/BrowserPanel.tsx', import.meta.url), 'utf8');
-  const workspace = readFileSync(new URL('../src/workspace/WorkspaceScreen.tsx', import.meta.url), 'utf8');
-  assert.match(panel, /source=\{\{ uri: launchUrl \}\}/);
-  assert.match(panel, /incognito/);
-  assert.match(panel, /originWhitelist=\{\['\*'\]\}/);
-  assert.match(panel, /onOpenWindow=\{\(\) =>/);
-  assert.doesNotMatch(panel, /Linking|\.reload\(|Authorization|Bearer|onMessage=/);
-  assert.match(workspace, /chatVisible=\{page === 'chat'\}/);
-  assert.match(workspace, /\{browserOpen && <BrowserPanel/);
-  assert.doesNotMatch(workspace, /<Navigation/);
-  assert.match(workspace, /pointerEvents=\{browserOpen \? 'none' : 'auto'\}/);
-  assert.match(workspace, /browser\.close\(\);\s*setBrowserOpen\(false\)/);
-  assert.match(workspace, /browser\.dispose\(\)/);
-});
-
 test('BrowserPanel 在订阅时补读稳定快照，防止请求在 render 与 effect 之间完成后卡住', () => {
   const panel = readFileSync(new URL('../src/browser/BrowserPanel.tsx', import.meta.url), 'utf8');
   assert.match(panel, /const snapshot = useSyncExternalStore\(store\.subscribe, store\.getSnapshot, store\.getSnapshot\)/);

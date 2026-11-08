@@ -171,7 +171,7 @@ function MarkdownTable({ token, inline, onMessageLongPress }: { token: MarkdownT
 
 const createStyles = (c: WorkspaceColors, compact = false) => StyleSheet.create({
   root: { width: compact ? 'auto' : '100%', minWidth: 0, gap: compact ? spacing[8] : spacing[10] },
-  body: { ...(compact ? t.groupMessage : t.message), color: c.ink },
+  body: { ...(compact ? t.compactMessage : t.message), color: c.ink },
   heading1: { ...m.heading1, fontWeight: '700' },
   heading2: { ...m.heading2, fontWeight: '700' },
   heading3: { ...m.heading3, fontWeight: '700' },
@@ -183,8 +183,8 @@ const createStyles = (c: WorkspaceColors, compact = false) => StyleSheet.create(
   quote: { borderLeftWidth: sizing[3], borderLeftColor: c.blue, paddingLeft: spacing[12], gap: spacing[8] },
   list: { gap: spacing[6] },
   listItem: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing[8] },
-  listMarker: { ...(compact ? t.groupMessage : t.message), color: c.muted },
-  // flexBasis 必须是 auto：群聊气泡按内容测宽，basis 为 0 的 flex 子项会把
+  listMarker: { ...(compact ? t.compactMessage : t.message), color: c.muted },
+  // flexBasis 必须是 auto：紧凑气泡按内容测宽，basis 为 0 的 flex 子项会把
   // 整个列表压成单字竖排；定宽气泡内仍靠 grow 占满、shrink 换行。
   listBody: { flexGrow: 1, flexShrink: 1, flexBasis: 'auto', minWidth: 0, gap: spacing[4] },
   rule: { height: StyleSheet.hairlineWidth, backgroundColor: c.line, marginVertical: spacing[4] },

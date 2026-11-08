@@ -38,7 +38,6 @@ export type InformationItemStatus = 'pending' | 'processing' | 'processed' | 'fa
 
 export type InformationItem = {
   id: string;
-  agentId: string;
   source: string;
   externalId: string;
   title?: string;

@@ -21,10 +21,10 @@ export function parseActivityOverview(value: unknown): ActivityOverview {
   if (new Set(runIds).size !== runIds.length || currentRunId !== null && !runIds.includes(currentRunId)) return invalid();
   const result = nullableText(v.result);
   if (v.status !== 'completed' && result !== null) return invalid();
-  const agentId = text(v.agentId, true);
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(agentId)) return invalid();
+  const sessionId = text(v.sessionId, true);
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(sessionId)) return invalid();
   // 只挑选公开安全投影，额外字段绝不透传给 UI 或缓存。
-  return { id: text(v.id, true), agentId, title: text(v.title), goal: text(v.goal), deliverable: text(v.deliverable),
+  return { id: text(v.id, true), sessionId, title: text(v.title), goal: text(v.goal), deliverable: text(v.deliverable),
     status: v.status as ActivityOverview['status'], progress: text(v.progress), result, runIds, currentRunId,
     createdAt: date(v.createdAt), updatedAt: date(v.updatedAt), finishedAt: nullableDate(v.finishedAt) };
 }

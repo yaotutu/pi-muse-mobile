@@ -28,6 +28,7 @@ export type MessageAttachmentView = Omit<ConversationAttachment, 'sha256'>;
 
 /** 消息渲染视图：assistant 消息可同时含文本与多个工具卡 */
 export type MessageView = {
+  featureSource?: import('../notifications/contracts').FeatureSource;
   id: string;
   role: 'user' | 'assistant';
   text: string;
@@ -38,7 +39,6 @@ export type MessageView = {
   feedbackAvailable: boolean;
   /** 权威历史反馈初值；流式与本地未确认消息不携带。 */
   feedback?: MessageFeedback;
-  featureSource?: import("../features/contracts").FeatureSource;
   /** 运行中的 assistant 消息（流式聚合中） */
   streaming?: boolean;
 };
@@ -55,8 +55,8 @@ export function projectHistory(messages: ConversationMessage[]): MessageView[] {
         ...(message.attachments?.length ? { attachments: message.attachments } : {}),
         toolCalls: [],
         feedbackAvailable: message.metadata.feedbackAvailable,
-        feedback: message.feedback,
         ...(message.metadata.featureSource ? { featureSource: message.metadata.featureSource } : {}),
+        feedback: message.feedback,
       });
     } else if (message.role === 'assistant') {
       views.push({
@@ -69,8 +69,8 @@ export function projectHistory(messages: ConversationMessage[]): MessageView[] {
           args: call.function.arguments,
         })),
         feedbackAvailable: message.metadata.feedbackAvailable,
-        feedback: message.feedback,
         ...(message.metadata.featureSource ? { featureSource: message.metadata.featureSource } : {}),
+        feedback: message.feedback,
       });
     } else if (message.role === 'tool' && message.toolCallId) {
       for (let i = views.length - 1; i >= 0; i--) {

@@ -1,5 +1,4 @@
-import type { GroupClient } from '../group/contracts';
-import { parseFeatureSource, type FeatureClient } from "../features/contracts";
+import { parseFeatureSource } from '../notifications/contracts';
 /** 页面依赖的客户端契约；网络实现不向上泄露传输细节。 */
 import type {
   AgUiEvent,
@@ -10,7 +9,7 @@ import type {
   DeleteGoalResult,
   DeleteJobResult,
   DeleteMonitorResult,
-  DeleteAgentResult,
+  DeleteSessionResult,
   Goal,
   GoalStatus,
   GoalsQuery,
@@ -24,15 +23,16 @@ import type {
   MessageAttachmentInput,
   Monitor,
   MonitorsQuery,
-  ResetAgentResult,
-  AgentInfo,
-  AgentInstructions,
-  AgentSkills,
+  ResetSessionResult,
+  SessionRecord,
+  SessionInstructions,
+  SessionSkills,
   UpdateGoalInput,
   UpdateJobInput,
   WorkspaceSnapshot,
 } from './types';
 import { ApiError } from './errors';
+import { isSessionId } from '../sessions/types';
 import { isCanonicalBase64 } from '../attachments/validation';
 import type {
   MessageComment,
@@ -42,7 +42,7 @@ import type {
   MessageFeedbackRole,
   MessageReaction,
 } from '../feedback/types';
-import type { AgentStatusResponse, RuntimeEvent } from '../runtime/types';
+import type { SessionStatusResponse, RuntimeEvent } from '../runtime/types';
 import type { ApprovalClient } from '../approvals/types';
 import type { ActivityClient } from '../activities/types';
 import type { MemoryClient } from '../memories/types';
@@ -54,7 +54,7 @@ import type { InformationClient } from '../information/contracts';
 
 /** 增量聊天只提交一条新用户消息；历史与工具消息始终由服务端持有。 */
 export type RunInput = {
-  agentId: string;
+  sessionId: string;
   /** 本轮唯一 ID；成功请求可幂等重放。 */
   runId: string;
   /** 来自 GET /api/conversation；空会话也是明确的 empty 版本。 */
@@ -277,13 +277,14 @@ export function parseConversationMessages(value: unknown): ConversationMessage[]
 }
 
 export function parseConversationSnapshot(value: unknown): ConversationSnapshot {
-  if (!isRecord(value) || !hasOnlyKeys(value, ['sessionId', 'revision', 'messages']) ||
-    typeof value.revision !== 'string' || !value.revision ||
-    (value.sessionId !== null && (typeof value.sessionId !== 'string' || !SESSION_ID.test(value.sessionId)))) {
+  if (!isRecord(value) || !hasOnlyKeys(value, ['sessionId', 'piSessionId', 'revision', 'messages']) ||
+    typeof value.sessionId !== 'string' || !isSessionId(value.sessionId) || typeof value.revision !== 'string' || !value.revision ||
+    (value.piSessionId !== null && (typeof value.piSessionId !== 'string' || !SESSION_ID.test(value.piSessionId)))) {
     throw invalidHistory();
   }
   return {
     sessionId: value.sessionId,
+    piSessionId: value.piSessionId,
     revision: value.revision,
     messages: parseConversationMessages(value.messages),
   };
@@ -297,110 +298,111 @@ export function parseMessagesSnapshotEvent(event: AgUiEvent): AgUiEvent {
 /**
  * 客户端接口：页面只依赖此抽象，不感知 mock/HTTP 差异。
  */
-export interface ApiClient extends DreamClient, ApprovalClient, ActivityClient, MemoryClient, FilesClient, NewsClient, BrowserClient, InformationClient, FeatureClient, GroupClient {
+export interface ApiClient extends DreamClient, ApprovalClient, ActivityClient, MemoryClient, FilesClient, NewsClient, BrowserClient, InformationClient {
   /** 免鉴权 health 的权威 IANA 时区；不猜测服务端与手机处于相同时区。 */
   getServerTimeZone(signal?: AbortSignal): Promise<string>;
   /** POST /api/session → {token, mode}；客户端不按时间过期，失效以服务端401为准。 */
-  createSession(accessKey?: string): Promise<{ token: string; mode: string }>;
-  /** GET /api/agents：统一目录，包含新闻与短信，extensions 仅声明附加业务。 */
-  listAgents(signal?: AbortSignal): Promise<AgentInfo[]>;
-  /** 显式建立普通成员；只确认同一 ID，不插入消息或重置已有智能体。 */
-  createAgent(agentId: string, signal?: AbortSignal): Promise<AgentInfo>;
+  createConnectionSession(accessKey?: string): Promise<{ token: string; mode: string }>;
+  /** GET /api/sessions：统一目录，包含新闻与短信，extensions 仅声明附加业务。 */
+  listSessions(signal?: AbortSignal): Promise<SessionRecord[]>;
+  /** 显式建立普通会话；只确认同一 ID，不插入消息或重置已有会话。 */
+  createSession(title?: string, signal?: AbortSignal): Promise<SessionRecord>;
+  renameSession(sessionId: string, title: string, signal?: AbortSignal): Promise<SessionRecord>;
   /** 重置只替换聊天绑定；默认保留规则、技能、文件、定时任务和监控。副作用绝不自动重试。 */
-  resetAgent(agentId: string, options?: { clearSchedules?: boolean }, signal?: AbortSignal): Promise<ResetAgentResult>;
-  /** GET /api/conversation?agentId= 权威历史；empty 不代表智能体存在，存在性以智能体列表为准。 */
-  getConversation(agentId: string, signal?: AbortSignal): Promise<ConversationSnapshot>;
+  resetSession(sessionId: string, options?: { clearSchedules?: boolean }, signal?: AbortSignal): Promise<ResetSessionResult>;
+  /** GET /api/conversation?sessionId= 权威历史；empty 不代表会话存在，存在性以会话列表为准。 */
+  getConversation(sessionId: string, signal?: AbortSignal): Promise<ConversationSnapshot>;
   /** GET 消息当前反馈；读取失败由调用方保留旧值，不用空反馈冒充。 */
   getMessageFeedback(
-    agentId: string,
-    messageId: string,
     sessionId: string,
+    messageId: string,
+    piSessionId: string,
     signal?: AbortSignal,
   ): Promise<MessageFeedback>;
   /** GET 服务端保留的原始反馈操作事件。 */
   getMessageFeedbackEvents(
-    agentId: string,
-    messageId: string,
     sessionId: string,
+    messageId: string,
+    piSessionId: string,
     signal?: AbortSignal,
   ): Promise<MessageFeedbackEvents>;
   /** PUT 互斥反应；null 表示撤销。成功返回完整反馈，不改变聊天 revision。 */
   setMessageReaction(
-    agentId: string,
-    messageId: string,
     sessionId: string,
+    messageId: string,
+    piSessionId: string,
     reaction: MessageReaction | null,
     signal?: AbortSignal,
   ): Promise<MessageFeedback>;
   /** POST 新评论；服务端 trim 后必须为 1..4000 字。 */
   addMessageComment(
-    agentId: string,
-    messageId: string,
     sessionId: string,
+    messageId: string,
+    piSessionId: string,
     text: string,
     signal?: AbortSignal,
   ): Promise<MessageFeedback>;
   /** PATCH 编辑评论；成功返回完整反馈。 */
   editMessageComment(
-    agentId: string,
+    sessionId: string,
     messageId: string,
     commentId: string,
-    sessionId: string,
+    piSessionId: string,
     text: string,
     signal?: AbortSignal,
   ): Promise<MessageFeedback>;
   /** DELETE 评论；成功返回完整反馈。 */
   deleteMessageComment(
-    agentId: string,
+    sessionId: string,
     messageId: string,
     commentId: string,
-    sessionId: string,
+    piSessionId: string,
     signal?: AbortSignal,
   ): Promise<MessageFeedback>;
   /** 发起一轮对话：SSE 流式回调 AG-UI 事件；signal 中断即停止消费 */
-  runAgent(
+  runSession(
     input: RunInput,
     onEvent: (event: AgUiEvent) => void,
     signal?: AbortSignal,
   ): Promise<void>;
   /** 只停止指定运行；迟到停止返回 false，不影响下一轮。 */
-  stopRun(agentId: string, runId: string): Promise<boolean>;
+  stopRun(sessionId: string, runId: string): Promise<boolean>;
   /** 保留的全量快照消费者；新版顶栏、审批与活动不调用此方法，也不恢复盲轮询。 */
   getSnapshot(signal?: AbortSignal): Promise<WorkspaceSnapshot>;
 
-  // --- 智能体配置与生命周期 ---
+  // --- 会话配置与生命周期 ---
 
-  /** GET /api/agents/:id/instructions 读取智能体规则 */
-  getAgentInstructions(agentId: string, signal?: AbortSignal): Promise<AgentInstructions>;
-  /** PUT /api/agents/:id/instructions 保存智能体规则；空串允许（等价"清空"） */
-  saveAgentInstructions(agentId: string, instructions: string, signal?: AbortSignal): Promise<AgentInstructions>;
-  /** GET /api/agents/:id/skills 读取智能体级技能生效值；diagnostics 缺省视为无诊断 */
-  getAgentSkills(agentId: string, signal?: AbortSignal): Promise<AgentSkills>;
-  /** PUT /api/agents/:id/skills 用名称→启用态覆盖写入；空对象等价"恢复默认" */
-  saveAgentSkills(
-    agentId: string,
+  /** GET /api/sessions/:id/instructions 读取会话规则 */
+  getSessionInstructions(sessionId: string, signal?: AbortSignal): Promise<SessionInstructions>;
+  /** PUT /api/sessions/:id/instructions 保存会话规则；空串允许（等价"清空"） */
+  saveSessionInstructions(sessionId: string, instructions: string, signal?: AbortSignal): Promise<SessionInstructions>;
+  /** GET /api/sessions/:id/skills 读取会话级技能生效值；diagnostics 缺省视为无诊断 */
+  getSessionSkills(sessionId: string, signal?: AbortSignal): Promise<SessionSkills>;
+  /** PUT /api/sessions/:id/skills 用名称→启用态覆盖写入；空对象等价"恢复默认" */
+  saveSessionSkills(
+    sessionId: string,
     overrides: Record<string, boolean>,
     signal?: AbortSignal,
-  ): Promise<AgentSkills>;
-  /** DELETE /api/agents/:id 彻底删除智能体并清点副作用；服务端 401/404/409 语义保留 */
-  deleteAgent(agentId: string, signal?: AbortSignal): Promise<DeleteAgentResult>;
+  ): Promise<SessionSkills>;
+  /** DELETE /api/sessions/:id 彻底删除会话并清点副作用；服务端 401/404/409 语义保留 */
+  deleteSession(sessionId: string, signal?: AbortSignal): Promise<DeleteSessionResult>;
 
   // --- 定时任务（GET /api/jobs, GET /api/jobs/:id, POST /api/jobs/:id/control, PATCH /api/jobs/:id, DELETE /api/jobs/:id） ---
 
-  /** 查询定时任务列表：全量返回不分页，支持智能体过滤与排序 */
+  /** 查询定时任务列表：全量返回不分页，支持会话过滤与排序 */
   listJobs(query?: JobsQuery, signal?: AbortSignal): Promise<JobItem[]>;
   /** 读取指定定时任务详情（含时间线 events） */
   getJob(id: string, signal?: AbortSignal): Promise<JobDetail>;
   /** 控制定时任务生命周期（pause/resume/cancel/retry） */
   controlJob(id: string, action: JobAction, signal?: AbortSignal): Promise<JobItem>;
-  /** 直接编辑定时任务提示词、时刻周期或归属智能体 */
+  /** 直接编辑定时任务提示词、时刻周期或归属会话 */
   updateJob(id: string, updates: UpdateJobInput, signal?: AbortSignal): Promise<JobItem>;
   /** 彻底删除指定定时任务 */
   deleteJob(id: string, signal?: AbortSignal): Promise<DeleteJobResult>;
 
   // --- 监控（创建走聊天 monitor 工具，页面只做控制） ---
 
-  /** 查询网页监控列表：全量返回不分页，支持 agentId、sort (createdAt/lastCheckedAt/status)、order (asc/desc) 过滤与排序 */
+  /** 查询网页监控列表：全量返回不分页，支持 sessionId、sort (createdAt/lastCheckedAt/status)、order (asc/desc) 过滤与排序 */
   listMonitors(query?: MonitorsQuery, signal?: AbortSignal): Promise<Monitor[]>;
   /** 读取指定网页监控详情 */
   getMonitor(id: string, signal?: AbortSignal): Promise<Monitor>;
@@ -438,8 +440,8 @@ export interface ApiClient extends DreamClient, ApprovalClient, ActivityClient, 
 
   // --- 运行状态（GET /api/runs/status + GET /api/events） ---
 
-  /** 单点查询指定 (agentId, runId) 的最新状态；运行不存在或被清理返回 404。 */
-  getAgentStatus(agentId: string, runId: string, signal?: AbortSignal): Promise<AgentStatusResponse>;
+  /** 单点查询指定 (sessionId, runId) 的最新状态；运行不存在或被清理返回 404。 */
+  getSessionStatus(sessionId: string, runId: string, signal?: AbortSignal): Promise<SessionStatusResponse>;
   /**
    * 订阅唯一工作区通知流；首帧 ready 同时给出运行和待审批完整集合。
    * 后续运行状态与审批新增／回执事件交由各自领域消费，不额外建立审批 SSE。

@@ -10,9 +10,9 @@ import { parsePendingApprovals } from '../approvals/contracts';
 import { parseActivityOverview } from '../activities/contracts';
 import { isActiveActivity } from '../activities/types';
 import type {
-  AgentPresence,
-  AgentStatus,
-  AgentStatusResponse,
+  SessionPresence,
+  SessionStatus,
+  SessionStatusResponse,
   ConversationInvalidation,
   RunPhase,
   RuntimeEvent,
@@ -79,25 +79,25 @@ function ensureStringArray(value: unknown, field: string): string[] {
   return value as string[];
 }
 
-function ensureToolState(value: unknown): AgentStatus['tools'][number] {
+function ensureToolState(value: unknown): SessionStatus['tools'][number] {
   if (!value || typeof value !== 'object') throw new ApiError(502, '运行状态 tools 项不是对象');
   const entry = value as Record<string, unknown>;
   return {
     toolCallId: ensureString(entry.toolCallId, 'tools[].toolCallId'),
     name: entry.name === null ? null : ensureString(entry.name, 'tools[].name'),
     label: ensureText(entry.label, 'tools[].label'),
-    status: ensureEnum<AgentStatus['tools'][number]['status']>(entry.status, TOOL_STATUSES, 'tools[].status'),
+    status: ensureEnum<SessionStatus['tools'][number]['status']>(entry.status, TOOL_STATUSES, 'tools[].status'),
     subagentId: entry.subagentId === null ? null : ensureString(entry.subagentId, 'tools[].subagentId'),
   };
 }
 
-function ensureSubagentState(value: unknown): AgentStatus['subagents'][number] {
+function ensureSubagentState(value: unknown): SessionStatus['subagents'][number] {
   if (!value || typeof value !== 'object') throw new ApiError(502, '运行状态 subagents 项不是对象');
   const entry = value as Record<string, unknown>;
   return {
     id: ensureString(entry.id, 'subagents[].id'),
     role: ensureString(entry.role, 'subagents[].role'),
-    status: ensureEnum<AgentStatus['subagents'][number]['status']>(entry.status, SUBAGENT_STATUSES, 'subagents[].status'),
+    status: ensureEnum<SessionStatus['subagents'][number]['status']>(entry.status, SUBAGENT_STATUSES, 'subagents[].status'),
     phase: ensurePhase<SubagentPhase>(entry.phase, SUBAGENT_PHASES, 'subagents[].phase'),
     label: ensureText(entry.label, 'subagents[].label'),
     startedAt: ensureOptionalString(entry.startedAt, 'subagents[].startedAt'),
@@ -106,20 +106,20 @@ function ensureSubagentState(value: unknown): AgentStatus['subagents'][number] {
   };
 }
 
-export function ensureAgentStatus(value: unknown): AgentStatus {
+export function ensureSessionStatus(value: unknown): SessionStatus {
   if (!value || typeof value !== 'object') throw new ApiError(502, '运行状态 status 不是对象');
   const entry = value as Record<string, unknown>;
   if (!Array.isArray(entry.tools) || entry.tools.length > 64) throw new ApiError(502, '运行状态 tools 不是长度 ≤64 的数组');
   if (!Array.isArray(entry.subagents) || entry.subagents.length > 64) throw new ApiError(502, '运行状态 subagents 不是长度 ≤64 的数组');
   return {
     activityId: entry.activityId === null ? null : ensureString(entry.activityId, 'status.activityId'),
-    agentId: ensureString(entry.agentId, 'status.agentId'),
+    sessionId: ensureString(entry.sessionId, 'status.sessionId'),
     runId: ensureString(entry.runId, 'status.runId'),
     revision: ensureRevision(entry.revision, 'status.revision'),
-    source: ensureEnum<AgentStatus['source']>(entry.source, RUN_SOURCES, 'status.source'),
+    source: ensureEnum<SessionStatus['source']>(entry.source, RUN_SOURCES, 'status.source'),
     jobId: entry.jobId === null ? null : ensureString(entry.jobId, 'status.jobId'),
     title: ensureText(entry.title, 'status.title'),
-    status: ensureEnum<AgentStatus['status']>(entry.status, RUN_STATUSES, 'status.status'),
+    status: ensureEnum<SessionStatus['status']>(entry.status, RUN_STATUSES, 'status.status'),
     phase: ensurePhase<RunPhase>(entry.phase, RUN_PHASES, 'status.phase'),
     label: ensureText(entry.label, 'status.label'),
     tools: entry.tools.map(ensureToolState),
@@ -131,11 +131,11 @@ export function ensureAgentStatus(value: unknown): AgentStatus {
   };
 }
 
-export function parseAgentStatusResponse(value: unknown): AgentStatusResponse {
+export function parseSessionStatusResponse(value: unknown): SessionStatusResponse {
   if (!value || typeof value !== 'object') throw new ApiError(502, '运行状态响应不是对象');
   const entry = value as Record<string, unknown>;
   const instanceId = ensureString(entry.instanceId, 'instanceId');
-  return { instanceId, status: ensureAgentStatus(entry.status) };
+  return { instanceId, status: ensureSessionStatus(entry.status) };
 }
 
 export function parseRuntimeReady(value: unknown): Extract<RuntimeEvent, { event: 'ready' }>['data'] {
@@ -143,10 +143,10 @@ export function parseRuntimeReady(value: unknown): Extract<RuntimeEvent, { event
   const entry = value as Record<string, unknown>;
   const instanceId = ensureString(entry.instanceId, 'ready.data.instanceId');
   const serverTime = ensureString(entry.serverTime, 'ready.data.serverTime');
-  if (!Array.isArray(entry.agentStatuses)) throw new ApiError(502, 'ready.data.agentStatuses 不是数组');
-  if (!Array.isArray(entry.agentPresences)) throw new ApiError(502, 'ready.data.agentPresences 不是数组');
-  const agentPresences = entry.agentPresences.map(parseAgentPresence);
-  if (new Set(agentPresences.map((item) => item.agentId)).size !== agentPresences.length) throw new ApiError(502, '头像状态集合存在重复智能体');
+  if (!Array.isArray(entry.sessionStatuses)) throw new ApiError(502, 'ready.data.sessionStatuses 不是数组');
+  if (!Array.isArray(entry.sessionPresences)) throw new ApiError(502, 'ready.data.sessionPresences 不是数组');
+  const sessionPresences = entry.sessionPresences.map(parseSessionPresence);
+  if (new Set(sessionPresences.map((item) => item.sessionId)).size !== sessionPresences.length) throw new ApiError(502, '头像状态集合存在重复会话');
   if (!Array.isArray(entry.activities)) throw new ApiError(502, 'ready.data.activities 不是数组');
   const activities = entry.activities.map(parseActivityOverview);
   if (new Set(activities.map((item) => item.id)).size !== activities.length || activities.some((item) => !isActiveActivity(item))) {
@@ -155,33 +155,33 @@ export function parseRuntimeReady(value: unknown): Extract<RuntimeEvent, { event
   return {
     instanceId,
     serverTime,
-    agentStatuses: entry.agentStatuses.map(ensureAgentStatus),
-    agentPresences,
+    sessionStatuses: entry.sessionStatuses.map(ensureSessionStatus),
+    sessionPresences,
     pendingApprovals: parsePendingApprovals({ approvals: entry.pendingApprovals }),
     activities,
   };
 }
 
-export function parseAgentPresence(value: unknown): AgentPresence {
+export function parseSessionPresence(value: unknown): SessionPresence {
   if (!value || typeof value !== 'object') throw new ApiError(502, '头像状态不是对象');
   const entry = value as Record<string, unknown>;
   if (entry.lastActiveAt !== null && (typeof entry.lastActiveAt !== 'string' || !/^\d{4}-\d\d-\d\dT.*Z$/.test(entry.lastActiveAt) || !Number.isFinite(Date.parse(entry.lastActiveAt)))) throw new ApiError(502, '最近活动时间不合法');
   return {
-    agentId: ensureString(entry.agentId, 'presence.agentId'),
-    state: ensureEnum<AgentPresence['state']>(entry.state, new Set(['idle', 'working', 'waiting', 'error']), 'presence.state'),
+    sessionId: ensureString(entry.sessionId, 'presence.sessionId'),
+    state: ensureEnum<SessionPresence['state']>(entry.state, new Set(['idle', 'working', 'waiting', 'error']), 'presence.state'),
     label: ensureText(entry.label, 'presence.label'),
     lastActiveAt: entry.lastActiveAt as string | null,
   };
 }
 
-export function parseAgentStatusUpdate(value: unknown, expectedInstanceId: string): AgentStatus & { instanceId: string } {
-  if (!value || typeof value !== 'object') throw new ApiError(502, 'agent_status_updated data 不是对象');
+export function parseSessionStatusUpdate(value: unknown, expectedInstanceId: string): SessionStatus & { instanceId: string } {
+  if (!value || typeof value !== 'object') throw new ApiError(502, 'session_status_updated data 不是对象');
   const entry = value as Record<string, unknown>;
-  const instanceId = ensureString(entry.instanceId, 'agent_status_updated.data.instanceId');
+  const instanceId = ensureString(entry.instanceId, 'session_status_updated.data.instanceId');
   if (instanceId !== expectedInstanceId) {
-    throw new ApiError(502, 'agent_status_updated 与 ready 的 instanceId 不一致，按服务端约定视为非法帧');
+    throw new ApiError(502, 'session_status_updated 与 ready 的 instanceId 不一致，按服务端约定视为非法帧');
   }
-  const status = ensureAgentStatus(entry);
+  const status = ensureSessionStatus(entry);
   return { ...status, instanceId };
 }
 
@@ -192,7 +192,7 @@ export function parseConversationUpdated(
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ApiError(502, 'conversation_updated data 不是对象');
   const entry = value as Record<string, unknown>;
   // 契约是 strictObject；未知字段说明服务端与客户端协议版本不一致，不能悄悄当作状态或审批载荷。
-  if (Object.keys(entry).sort().join(',') !== 'agentId,instanceId,sessionId') {
+  if (Object.keys(entry).sort().join(',') !== 'instanceId,piSessionId,sessionId') {
     throw new ApiError(502, 'conversation_updated 字段不符合契约');
   }
   const instanceId = ensureString(entry.instanceId, 'conversation_updated.data.instanceId');
@@ -201,7 +201,7 @@ export function parseConversationUpdated(
   }
   return {
     instanceId,
-    agentId: ensureString(entry.agentId, 'conversation_updated.data.agentId'),
     sessionId: ensureString(entry.sessionId, 'conversation_updated.data.sessionId'),
+    piSessionId: ensureString(entry.piSessionId, 'conversation_updated.data.piSessionId'),
   };
 }

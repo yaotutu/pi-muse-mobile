@@ -1,13 +1,13 @@
 import type { ApiClient } from '../api/contracts';
 import { ApiError, isRequestCancelled } from '../api/errors';
-import type { DeleteAgentResult, ResetAgentResult, AgentSkills } from '../api/types';
+import type { DeleteSessionResult, ResetSessionResult, SessionSkills } from '../api/types';
 import { validateAttachmentDrafts } from '../attachments/validation';
 import type { AttachmentDraft, AttachmentDraftUpdateResult } from '../attachments/types';
-import { MAIN_AGENT } from './agent-state';
+import { MAIN_SESSION_ID } from './types';
 
 export const INSTRUCTIONS_LIMIT = 20_000;
 
-/** A01: 客户端未确认提交条目（内存持有，随智能体与 epoch 隔离，连接销毁即释放，不持久化正文）。 */
+/** A01: 客户端未确认提交条目（内存持有，随会话与 epoch 隔离，连接销毁即释放，不持久化正文）。 */
 export type PendingSubmission = {
   messageId: string;
   runId: string;
@@ -29,32 +29,34 @@ type Field<T> = {
   draft: T;
   error?: string;
 };
-export type AgentState = {
+export type SessionState = {
   epoch: number;
-  /** 仅作聊天上下文失效边界；HTTP 始终以智能体 ID 寻址。 */
-  sessionId: string | null;
+  /** 仅作聊天上下文失效边界；HTTP 始终以会话 ID 寻址。 */
+  piSessionId: string | null;
   deleted: boolean;
   deleting: boolean;
   resetting: boolean;
   resetUncertain: boolean;
+  resetReviewed: boolean;
+  deleteUncertain: boolean;
   draft: string;
-  /** 本智能体输入框当前附件；离线与系统选择器短暂失焦时保留。 */
+  /** 本会话输入框当前附件；离线与系统选择器短暂失焦时保留。 */
   draftAttachments: AttachmentDraft[];
-  /** A01: 单智能体单epoch独占一条未确认提交，收到权威历史包含原user ID前始终保留 */
+  /** A01: 单会话单epoch独占一条未确认提交，收到权威历史包含原user ID前始终保留 */
   pendingSubmission: PendingSubmission | null;
   instructions: Field<string>;
-  skills: Field<Record<string, boolean>> & { catalog: AgentSkills['skills']; diagnostics: NonNullable<AgentSkills['diagnostics']>; notice?: string };
+  skills: Field<Record<string, boolean>> & { catalog: SessionSkills['skills']; diagnostics: NonNullable<SessionSkills['diagnostics']>; notice?: string };
 };
 type ReadKind = 'instructions' | 'skills';
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
 const field = <T,>(value: T): Field<T> => ({ loaded: false, loading: false, saving: false, saved: value, draft: value });
-const effective = (data: AgentSkills) => Object.fromEntries(data.skills.map((skill) => [skill.name, skill.enabled]));
+const effective = (data: SessionSkills) => Object.fromEntries(data.skills.map((skill) => [skill.name, skill.enabled]));
 export const equalSwitches = (a: Record<string, boolean>, b: Record<string, boolean>) =>
   Object.keys(a).length === Object.keys(b).length && Object.keys(a).every((name) => a[name] === b[name]);
 
 /** 每个连接工作区独占内存；不持久化正文、凭据或服务端路径。 */
-export class AgentStore {
-  private sessions = new Map<string, AgentState>();
+export class ChatSessionStore {
+  private sessions = new Map<string, SessionState>();
   private reads = new Map<string, AbortController>();
   private listeners = new Set<() => void>();
   private version = 0;
@@ -63,6 +65,17 @@ export class AgentStore {
   private disposed = false;
 
   constructor(private readonly api: ApiClient) {}
+  /** 重置未明只回读历史绑定，不重发 reset；读取失败继续锁住旧上下文。 */
+  async verifyReset(id: string) {
+    if (!this.get(id).resetUncertain || this.disposed) return;
+    const history = await this.api.getConversation(id);
+    if (!this.disposed) { this.bindSession(id, history.piSessionId); if (this.get(id).resetUncertain) { this.get(id).resetReviewed = true; this.changed(); } }
+  }
+  acknowledgeReset(id: string) {
+    const entry = this.get(id);
+    if (!this.disposed && entry.resetUncertain && entry.resetReviewed) { entry.resetUncertain = false; entry.resetReviewed = false; this.changed(); }
+  }
+  acknowledgeDeletion(id: string) { if (!this.disposed) { this.get(id).deleteUncertain = false; this.changed(); } }
   setEnabled(enabled: boolean) { this.enabled = enabled; }
   private available(id: string) { return this.enabled && !this.disposed && this.canWrite(id); }
   /** dispose 后的工作区整体失效：阻止已销毁 Hook 发起新发送或回写正文。 */
@@ -72,10 +85,10 @@ export class AgentStore {
   getVersion = () => this.version;
   getLifecycleVersion = () => this.lifecycleVersion;
   private changed() { this.version++; for (const listener of this.listeners) listener(); }
-  get(id: string): AgentState {
+  get(id: string): SessionState {
     let entry = this.sessions.get(id);
     if (!entry) {
-      entry = { epoch: 0, sessionId: null, deleted: false, deleting: false, resetting: false, resetUncertain: false, draft: '', draftAttachments: [], pendingSubmission: null, instructions: field(''), skills: { ...field<Record<string, boolean>>({}), catalog: [], diagnostics: [] } };
+      entry = { epoch: 0, piSessionId: null, deleted: false, deleting: false, resetting: false, resetUncertain: false, resetReviewed: false, deleteUncertain: false, draft: '', draftAttachments: [], pendingSubmission: null, instructions: field(''), skills: { ...field<Record<string, boolean>>({}), catalog: [], diagnostics: [] } };
       this.sessions.set(id, entry);
     }
     return entry;
@@ -84,7 +97,7 @@ export class AgentStore {
     const entry = this.get(id);
     return entry.epoch === epoch && this.canWrite(id);
   }
-  canWrite(id: string) { const entry = this.get(id); return !this.disposed && !entry.deleted && !entry.deleting && !entry.resetting && !entry.resetUncertain; }
+  canWrite(id: string) { const entry = this.get(id); return !this.disposed && !entry.deleted && !entry.deleting && !entry.resetting && !entry.resetUncertain && !entry.deleteUncertain; }
   hasSettingsWrite(id: string) { const entry = this.get(id); return entry.instructions.saving || entry.skills.saving; }
   hasDirtySettings(id: string) { const entry = this.get(id); return entry.instructions.draft !== entry.instructions.saved || !equalSwitches(entry.skills.draft, entry.skills.saved); }
   setDraft(id: string, value: string) { if (this.canWrite(id)) { this.get(id).draft = value; this.changed(); } }
@@ -212,38 +225,41 @@ export class AgentStore {
     this.changed();
   }
 
-  /** 列表观察到另一设备重置时，只失效聊天，不能销毁智能体规则与未保存的设置草稿。 */
-  bindSession(id: string, sessionId: string) {
+  /** 列表观察到另一设备重置时，只失效聊天，不能销毁会话规则与未保存的设置草稿。 */
+  bindSession(id: string, piSessionId: string | null) {
     const entry = this.get(id);
-    if (entry.deleted || entry.resetting || entry.sessionId === sessionId) return;
-    if (entry.sessionId !== null || entry.resetUncertain) {
+    if (entry.deleted || entry.resetting || entry.piSessionId === piSessionId) return;
+    if (entry.piSessionId !== null || entry.resetUncertain) {
       entry.epoch++;
       entry.draft = '';
       entry.draftAttachments = [];
       entry.pendingSubmission = null;
       this.cancelReads(id);
     }
-    entry.sessionId = sessionId;
+    entry.piSessionId = piSessionId;
     entry.resetUncertain = false;
     this.changed();
   }
 
-  async resetAgent(id: string, clearSchedules = false): Promise<ResetAgentResult | undefined> {
+  async resetSession(id: string, clearSchedules = false): Promise<ResetSessionResult | undefined> {
     const entry = this.get(id);
     if (!this.available(id) || this.hasSettingsWrite(id)) return undefined;
     // 先切本地代次再请求：旧 SSE、历史回读和迟到 finally 都不能写入新上下文。
-    // 与删除不同，智能体设置（包括未保存草稿）和私有工作区必须保留。
-    entry.resetting = true;
+    // 请求被拒绝或结果未明时必须保留正文、附件与暂存，只在成功或权威绑定变化后清理。
+    entry.resetting = true; entry.resetReviewed = false;
     entry.epoch++;
-    entry.draftAttachments = [];
-    entry.pendingSubmission = null;
+    if (entry.pendingSubmission) {
+      entry.pendingSubmission = { ...entry.pendingSubmission, epoch: entry.epoch,
+        status: entry.pendingSubmission.status === 'sending' ? 'unconfirmed' : entry.pendingSubmission.status };
+    }
     this.lifecycleVersion++;
     this.cancelReads(id);
     this.changed();
     try {
-      const result = await this.api.resetAgent(id, { clearSchedules });
+      const result = await this.api.resetSession(id, { clearSchedules });
       if (this.get(id) !== entry) return undefined;
-      entry.sessionId = result.sessionId;
+      // reset 响应不泄漏底层绑定；下一次完整历史读取建立新绑定。
+      entry.piSessionId = null;
       entry.draft = '';
       entry.draftAttachments = [];
       entry.pendingSubmission = null;
@@ -295,7 +311,7 @@ export class AgentStore {
     }
   }
   loadInstructions(id: string) {
-    return this.read(id, 'instructions', (signal) => this.api.getAgentInstructions(id, signal), (data) => {
+    return this.read(id, 'instructions', (signal) => this.api.getSessionInstructions(id, signal), (data) => {
       const target = this.get(id).instructions;
       const dirty = target.draft !== target.saved;
       target.saved = data.instructions;
@@ -303,7 +319,7 @@ export class AgentStore {
       target.loaded = true;
     });
   }
-  private applySkills(id: string, data: AgentSkills, preserveDraft: boolean) {
+  private applySkills(id: string, data: SessionSkills, preserveDraft: boolean) {
     const target = this.get(id).skills;
     const draft = target.draft;
     const saved = effective(data);
@@ -316,7 +332,7 @@ export class AgentStore {
     target.loaded = true;
   }
   loadSkills(id: string) {
-    return this.read(id, 'skills', (signal) => this.api.getAgentSkills(id, signal), (data) => {
+    return this.read(id, 'skills', (signal) => this.api.getSessionSkills(id, signal), (data) => {
       const target = this.get(id).skills;
       this.applySkills(id, data, !equalSwitches(target.draft, target.saved));
     });
@@ -334,7 +350,7 @@ export class AgentStore {
     target.error = undefined;
     this.changed();
     try {
-      const data = await this.api.saveAgentInstructions(id, draft);
+      const data = await this.api.saveSessionInstructions(id, draft);
       if (!this.isCurrent(id, epoch)) return false;
       target.saved = data.instructions;
       if (target.draft === draft) target.draft = data.instructions;
@@ -357,7 +373,7 @@ export class AgentStore {
     this.changed();
     let refreshCatalog = false;
     try {
-      const data = await this.api.saveAgentSkills(id, overrides);
+      const data = await this.api.saveSessionSkills(id, overrides);
       if (!this.isCurrent(id, epoch)) return false;
       this.applySkills(id, data, false);
       return true;
@@ -378,8 +394,8 @@ export class AgentStore {
     }
   }
 
-  async deleteAgent(id: string): Promise<DeleteAgentResult | undefined> {
-    if (id === MAIN_AGENT) throw new ApiError(409, '主智能体不可删除');
+  async deleteSession(id: string): Promise<DeleteSessionResult | undefined> {
+    if (id === MAIN_SESSION_ID) throw new ApiError(409, '默认会话不可删除');
     const entry = this.get(id);
     if (!this.available(id) || this.hasSettingsWrite(id)) return undefined;
     entry.deleting = true;
@@ -387,14 +403,18 @@ export class AgentStore {
     this.cancelReads(id);
     this.changed();
     try {
-      let result: DeleteAgentResult;
-      try { result = await this.api.deleteAgent(id); }
+      let result: DeleteSessionResult;
+      try { result = await this.api.deleteSession(id); }
       catch (error) {
         if (!(error instanceof ApiError) || error.status !== 404) throw error;
-        result = { ok: true, removed: { jobs: 0, monitors: 0 } };
+        result = { ok: true, removed: { sessions: 0 } };
       }
+      if (this.disposed) return;
       this.clear(id);
       return result;
+    } catch (error) {
+      if (!this.disposed) entry.deleteUncertain = !(error instanceof ApiError) || error.status === 0 || error.status === 408 || error.status >= 500;
+      throw error;
     } finally { entry.deleting = false; this.changed(); }
   }
   clear(id: string) {
@@ -409,7 +429,6 @@ export class AgentStore {
     this.lifecycleVersion++;
     this.changed();
   }
-  revive(id: string) { const entry = this.get(id); if (entry.deleted) { entry.deleted = false; this.changed(); } }
   /**
    * 连接工作区整体销毁：释放全部内存态（含未确认提交正文与草稿），并拒绝任何迟到回写。
    * 与 setEnabled(false)（离线与草稿保留）不同，dispose 后 store 不可复用。

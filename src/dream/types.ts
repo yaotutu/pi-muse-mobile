@@ -1,5 +1,4 @@
 export const DREAM_PROMPT_LIMIT = 20_000;
-export const MAIN_DREAM_AGENT = 'local-main';
 export const DREAM_RUN_TIMEOUT_MS = 300_000;
 
 export type DreamTarget = 'user' | 'soul' | 'instructions' | 'memory';
@@ -12,6 +11,7 @@ export type DreamPending = {
   suggestedTarget: DreamTarget;
   reason: DreamPendingReason;
   createdAt: string;
+  sourceSessionId?: string;
 };
 
 export type DreamRun = {
@@ -22,32 +22,17 @@ export type DreamRun = {
   error?: string;
 };
 
-export type DreamAgent = {
-  agentId: string;
+export type DreamOverview = {
   enabled: boolean;
-  inheritGlobalPrompt: boolean;
-  cursor?: string;
+  cursors: Record<string, string>;
   lastRun?: DreamRun;
   pending: readonly DreamPending[];
-  prompt: string;
-  purpose: string;
-};
-
-export type DreamOverview = {
   globalPrompt: string;
   defaultPrompt: string;
   intervalHours: number;
   running: boolean;
-  agents: readonly DreamAgent[];
 };
-
-export type DreamAgentDraft = {
-  enabled: boolean;
-  inheritGlobalPrompt: boolean;
-  prompt: string;
-};
-
-export type DreamAgentSettingsInput = Partial<DreamAgentDraft>;
+export type DreamSettingsInput = { enabled?: boolean; prompt?: string };
 
 export type DreamPendingDecision =
   | { action: 'apply'; target?: DreamTarget }
@@ -59,9 +44,7 @@ export type DreamPendingDecision =
  */
 export interface DreamClient {
   getDreamOverview(signal?: AbortSignal): Promise<DreamOverview>;
-  saveGlobalDreamPrompt(prompt: string, signal?: AbortSignal): Promise<DreamOverview>;
-  getAgentDream(agentId: string, signal?: AbortSignal): Promise<DreamAgent>;
-  updateAgentDream(agentId: string, settings: DreamAgentSettingsInput, signal?: AbortSignal): Promise<DreamAgent>;
-  runAgentDream(agentId: string, signal?: AbortSignal): Promise<DreamAgent>;
-  resolveAgentDreamPending(agentId: string, pendingId: string, decision: DreamPendingDecision, signal?: AbortSignal): Promise<DreamAgent>;
+  saveDreamSettings(settings: DreamSettingsInput, signal?: AbortSignal): Promise<DreamOverview>;
+  runDream(signal?: AbortSignal): Promise<DreamOverview>;
+  resolveDreamPending(pendingId: string, decision: DreamPendingDecision, signal?: AbortSignal): Promise<DreamOverview>;
 }

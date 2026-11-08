@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { useApi } from '../api/ApiProvider';
-import { useAgentState, useAgentStore } from '../agents/AgentProvider';
+import { useSessionState, useChatSessionStore } from '../sessions/SessionProvider';
 import { ApiError, isRequestCancelled, requestCancelled } from '../api/errors';
 import { useServiceConnection } from '../connection/ConnectionProvider';
 import { StreamAggregator, projectHistory, type MessageView } from './chat-state';
@@ -9,16 +9,16 @@ import type { ConversationMessage, ConversationSnapshot } from '../api/types';
 import type { ApiClient } from '../api/contracts';
 import { validateOutgoingDraftMessage } from '../attachments/validation';
 import type { AttachmentDraft } from '../attachments/types';
-import type { PendingSubmission } from '../agents/agent-store';
+import type { PendingSubmission } from '../sessions/chat-session-store';
 
 let clientSequence = 0;
 const nextClientId = (prefix: string) => `${prefix}-${Date.now()}-${++clientSequence}`;
 const EMPTY_MESSAGE_IDS: ReadonlySet<string> = new Set();
 type ConversationAuthority = {
   api: ApiClient;
-  agentId: string;
+  sessionId: string;
   epoch: number;
-  sessionId: string | null;
+  piSessionId: string | null;
   persistedMessageIds: ReadonlySet<string>;
 };
 
@@ -31,9 +31,11 @@ const PRE_RUN_REJECTS: Record<string, { status: number; conflictsWithPersisted?:
   MODEL_NOT_CONFIGURED: { status: 503 },
   SHUTDOWN: { status: 503 },
   INVALID_INPUT: { status: 400 },
-  UNSUPPORTED_AGENT: { status: 400 },
+  SESSION_NOT_FOUND: { status: 404 },
+  UNSUPPORTED_SESSION: { status: 400 },
+  SESSION_DELETING: { status: 409 },
   REQUEST_TOO_LARGE: { status: 413 },
-  agent_locked: { status: 409 },
+  session_locked: { status: 409 },
   HISTORY_CONFLICT: { status: 409 },
   RUN_ID_CONFLICT: { status: 409, conflictsWithPersisted: true },
   MESSAGE_ID_CONFLICT: { status: 409, conflictsWithPersisted: true },
@@ -52,20 +54,20 @@ const preRunRejectMessage = (error: ApiError) =>
     : error.message || '服务端拒绝执行，消息未发送';
 
 /**
- * 单次挂载仅服务一个智能体的一个聊天代次；父级以 agentId + epoch 隔离重置前的请求。
+ * 单次挂载仅服务一个会话的一个聊天代次；父级以 sessionId + epoch 隔离重置前的请求。
  *
  * A01 所有权契约：消息出现在权威历史（role=user 且原 messageId 匹配）之前，
- * 正文所有权在客户端（AgentStore.pendingSubmission）；确认落盘后才移交服务端。
+ * 正文所有权在客户端（ChatSessionStore.pendingSubmission）；确认落盘后才移交服务端。
  * 任何终态判断只依据确切证据（权威历史包含原 ID、或终态运行证据后的完整历史核对），
  * 网络错误、404、仍 running 一律保持 unconfirmed，绝不自动重发。
  */
-export function useConversation(agentId: string, refreshKey: string | number = 0) {
+export function useConversation(sessionId: string, refreshKey: string | number = 0) {
   const api = useApi();
-  const sessions = useAgentStore();
-  const agentState = useAgentState(agentId);
-  const epoch = agentState.epoch;
-  const pendingSubmission = agentState.pendingSubmission;
-  const writable = sessions.canWrite(agentId);
+  const sessions = useChatSessionStore();
+  const sessionState = useSessionState(sessionId);
+  const epoch = sessionState.epoch;
+  const pendingSubmission = sessionState.pendingSubmission;
+  const writable = sessions.canWrite(sessionId);
   const connection = useServiceConnection();
   const enabled = connection?.enabled ?? true;
   const refreshVersion = connection?.snapshot.refreshVersion ?? 0;
@@ -73,9 +75,9 @@ export function useConversation(agentId: string, refreshKey: string | number = 0
   const [views, setViews] = useState<MessageView[]>([]);
   const [authorityState, setAuthorityState] = useState<ConversationAuthority>(() => ({
     api,
-    agentId,
+    sessionId,
     epoch,
-    sessionId: null,
+    piSessionId: null,
     persistedMessageIds: EMPTY_MESSAGE_IDS,
   }));
   const [running, setRunning] = useState(false);
@@ -89,24 +91,26 @@ export function useConversation(agentId: string, refreshKey: string | number = 0
   const aliveRef = useRef(false);
   const historyRequest = useRef<AbortController | null>(null);
   const submissionPromiseRef = useRef<Promise<void> | null>(null);
-  const current = () => aliveRef.current && sessions.isCurrent(agentId, epoch);
-  const authority = authorityState.api === api && authorityState.agentId === agentId && authorityState.epoch === epoch
+  const current = () => aliveRef.current && sessions.isCurrent(sessionId, epoch);
+  const authority = authorityState.api === api && authorityState.sessionId === sessionId && authorityState.epoch === epoch
     ? authorityState
     : null;
-  const sessionId = authority?.sessionId ?? null;
+  const piSessionId = authority?.piSessionId ?? null;
   const persistedMessageIds = authority?.persistedMessageIds ?? EMPTY_MESSAGE_IDS;
 
   /** 只有完整权威历史可以一次性替换视图、会话绑定与已落盘 ID 集合。 */
   const adoptHistory = useCallback((history: ConversationSnapshot) => {
+    if (history.sessionId !== sessionId) throw new ApiError(502, '服务器返回了其他会话的历史');
+    sessions.bindSession(sessionId, history.piSessionId);
     setAuthorityState({
       api,
-      agentId,
+      sessionId,
       epoch,
-      sessionId: history.sessionId,
+      piSessionId: history.piSessionId,
       persistedMessageIds: new Set(history.messages.map((message) => message.id)),
     });
     setViews(projectHistory(history.messages));
-  }, [api, epoch, agentId]);
+  }, [api, epoch, sessionId, sessions]);
 
   /** 权威历史核对：原 ID 已落盘则释放暂存；缺失且持有终态证据（含条目内存的流内 RUN_ERROR 记录）才可判定未发送。 */
   const reconcilePendingWithHistory = useCallback(
@@ -118,19 +122,19 @@ export function useConversation(agentId: string, refreshKey: string | number = 0
     ): boolean => {
       const persisted = messages.some((m) => m.role === 'user' && m.id === messageId);
       if (persisted) {
-        sessions.clearPendingSubmission(agentId, epoch, messageId);
+        sessions.clearPendingSubmission(sessionId, epoch, messageId);
         return true;
       }
-      const terminalSeen = sessions.get(agentId).pendingSubmission?.terminalError != null;
+      const terminalSeen = sessions.get(sessionId).pendingSubmission?.terminalError != null;
       if (allowFail || terminalSeen) {
-        sessions.updatePendingSubmissionStatus(agentId, epoch, messageId, {
+        sessions.updatePendingSubmissionStatus(sessionId, epoch, messageId, {
           status: 'failed',
-          error: failError ?? sessions.get(agentId).pendingSubmission?.terminalError ?? '消息未送达服务端',
+          error: failError ?? sessions.get(sessionId).pendingSubmission?.terminalError ?? '消息未送达服务端',
         });
       }
       return false;
     },
-    [sessions, agentId, epoch],
+    [sessions, sessionId, epoch],
   );
 
   /**
@@ -144,16 +148,16 @@ export function useConversation(agentId: string, refreshKey: string | number = 0
       runId: string,
     ): Promise<{ terminal: true; message?: string; latest: ConversationSnapshot } | null> => {
       try {
-        const response = await api.getAgentStatus(agentId, runId);
+        const response = await api.getSessionStatus(sessionId, runId);
         const status = response.status.status;
         if (status === 'running') return null;
-        const fresh = await api.getConversation(agentId);
+        const fresh = await api.getConversation(sessionId);
         return { terminal: true, message: status === 'failed' ? '消息未送达服务端' : undefined, latest: fresh };
       } catch {
         return null;
       }
     },
-    [api, agentId],
+    [api, sessionId],
   );
 
   useEffect(() => {
@@ -165,7 +169,7 @@ export function useConversation(agentId: string, refreshKey: string | number = 0
     return () => subscription.remove();
   }, []);
 
-  // 本 Hook 实例卸载仍取消旧流；正文与附件暂存由同连接 AgentStore 持有，重挂后继续可见。
+  // 本 Hook 实例卸载仍取消旧流；正文与附件暂存由同连接 ChatSessionStore 持有，重挂后继续可见。
   // reset/delete/logout/dispose 才是必须释放这些数据的生命周期边界。
   useEffect(() => {
     aliveRef.current = true;
@@ -174,10 +178,10 @@ export function useConversation(agentId: string, refreshKey: string | number = 0
       historyRequest.current?.abort();
       if (abortRef.current) {
         abortRef.current.abort();
-        if (runIdRef.current) void api.stopRun(agentId, runIdRef.current).catch(() => {});
+        if (runIdRef.current) void api.stopRun(sessionId, runIdRef.current).catch(() => {});
       }
     };
-  }, [api, agentId]);
+  }, [api, sessionId]);
 
   useEffect(() => {
     enabledRef.current = enabled;
@@ -195,10 +199,10 @@ export function useConversation(agentId: string, refreshKey: string | number = 0
       if (!alive) return;
       setLoading(true);
       try {
-        const history = await api.getConversation(agentId, controller.signal);
-        if (alive && sessions.isCurrent(agentId, epoch)) {
+        const history = await api.getConversation(sessionId, controller.signal);
+        if (alive && sessions.isCurrent(sessionId, epoch)) {
           revisionRef.current = history.revision;
-          const pending = sessions.get(agentId).pendingSubmission;
+          const pending = sessions.get(sessionId).pendingSubmission;
           if (pending && pending.epoch === epoch) {
             const persisted = history.messages.some((m) => m.role === 'user' && m.id === pending.messageId);
             if (!persisted && pending.status === 'unconfirmed') {
@@ -206,9 +210,9 @@ export function useConversation(agentId: string, refreshKey: string | number = 0
               const probe = pending.terminalError != null
                 ? { terminal: true as const, message: pending.terminalError, latest: history }
                 : await probeRunTerminal(pending.runId);
-              if (!alive || !sessions.isCurrent(agentId, epoch)) return;
+              if (!alive || !sessions.isCurrent(sessionId, epoch)) return;
               // 卸载/取消期间不得写 Hook 状态；代次与 messageId 校验后 probe 可能已被新提交替换。
-              if (sessions.get(agentId).pendingSubmission?.messageId !== pending.messageId) return;
+              if (sessions.get(sessionId).pendingSubmission?.messageId !== pending.messageId) return;
               if (probe) {
                 revisionRef.current = probe.latest.revision;
                 reconcilePendingWithHistory(probe.latest.messages, pending.messageId, true, probe.message);
@@ -232,30 +236,30 @@ export function useConversation(agentId: string, refreshKey: string | number = 0
           setError(undefined);
         }
       } catch (e) {
-        if (alive && sessions.isCurrent(agentId, epoch) && !isRequestCancelled(e)) {
+        if (alive && sessions.isCurrent(sessionId, epoch) && !isRequestCancelled(e)) {
           setHistoryFailed(true);
           setError(e instanceof Error ? e.message : String(e));
         }
       } finally {
-        if (alive && sessions.isCurrent(agentId, epoch)) setLoading(false);
+        if (alive && sessions.isCurrent(sessionId, epoch)) setLoading(false);
       }
     })();
     return () => { alive = false; controller.abort(); if (historyRequest.current === controller) historyRequest.current = null; };
-  }, [api, agentId, historyVersion, enabled, refreshVersion, refreshKey, epoch, sessions, writable, probeRunTerminal, reconcilePendingWithHistory, adoptHistory]);
+  }, [api, sessionId, historyVersion, enabled, refreshVersion, refreshKey, epoch, sessions, writable, probeRunTerminal, reconcilePendingWithHistory, adoptHistory]);
 
   useEffect(() => {
     if (!writable) {
       historyRequest.current?.abort();
       revisionRef.current = null;
     }
-  }, [sessions, agentId, epoch, writable]);
+  }, [sessions, sessionId, epoch, writable]);
 
   const syncAfterRun = async () => {
     if (!current()) throw requestCancelled();
     const controller = new AbortController();
     historyRequest.current?.abort();
     historyRequest.current = controller;
-    try { return await api.getConversation(agentId, controller.signal); }
+    try { return await api.getConversation(sessionId, controller.signal); }
     finally { if (historyRequest.current === controller) historyRequest.current = null; }
   };
 
@@ -287,9 +291,9 @@ export function useConversation(agentId: string, refreshKey: string | number = 0
     let runErrorMessage: string | undefined;
 
     try {
-      await api.runAgent(
+      await api.runSession(
         {
-          agentId,
+          sessionId,
           runId: submission.runId,
           expectedRevision: revisionRef.current!,
           message: {
@@ -305,10 +309,10 @@ export function useConversation(agentId: string, refreshKey: string | number = 0
             const snapshotIds = new Set(event.messages.map((message) => message.id));
             setAuthorityState((previous) => ({
               api,
-              agentId,
+              sessionId,
               epoch,
-              sessionId: previous.api === api && previous.agentId === agentId && previous.epoch === epoch
-                ? previous.sessionId
+              piSessionId: previous.api === api && previous.sessionId === sessionId && previous.epoch === epoch
+                ? previous.piSessionId
                 : null,
               persistedMessageIds: snapshotIds,
             }));
@@ -318,7 +322,7 @@ export function useConversation(agentId: string, refreshKey: string | number = 0
             runErrorMessage = event.message ?? '助手运行失败，请重试';
             // 终态证据持久在暂存条目内存：卸载/切回后首次完整历史对账仍可判定未发送。
             if (event.code !== 'STOPPED') {
-              sessions.updatePendingSubmissionStatus(agentId, epoch, submission.messageId, {
+              sessions.updatePendingSubmissionStatus(sessionId, epoch, submission.messageId, {
                 status: 'sending',
                 terminalError: runErrorMessage,
               });
@@ -333,8 +337,8 @@ export function useConversation(agentId: string, refreshKey: string | number = 0
       if (!current()) {
         // 组件已卸载但代次仍有效：只能保守标记待确认，交给重新挂载后的历史同步对账。
         // terminalError 已在 RUN_ERROR 事件回调写入条目，此处状态降级不丢终态证据。
-        if (sessions.isCurrent(agentId, epoch)) {
-          sessions.updatePendingSubmissionStatus(agentId, epoch, submission.messageId, { status: 'unconfirmed' });
+        if (sessions.isCurrent(sessionId, epoch)) {
+          sessions.updatePendingSubmissionStatus(sessionId, epoch, submission.messageId, { status: 'unconfirmed' });
         }
         return;
       }
@@ -345,7 +349,7 @@ export function useConversation(agentId: string, refreshKey: string | number = 0
           if (current()) {
             setViews([...aggregator.messages]);
             setHistoryFailed(true);
-            sessions.updatePendingSubmissionStatus(agentId, epoch, submission.messageId, { status: 'unconfirmed' });
+            sessions.updatePendingSubmissionStatus(sessionId, epoch, submission.messageId, { status: 'unconfirmed' });
           }
           return;
         }
@@ -366,7 +370,7 @@ export function useConversation(agentId: string, refreshKey: string | number = 0
             setHistoryFailed(false);
             setError(runErrorMessage);
           } else {
-            sessions.updatePendingSubmissionStatus(agentId, epoch, submission.messageId, {
+            sessions.updatePendingSubmissionStatus(sessionId, epoch, submission.messageId, {
               status: 'unconfirmed',
               error: '消息保存状态未明，请重新同步核对',
             });
@@ -381,7 +385,7 @@ export function useConversation(agentId: string, refreshKey: string | number = 0
           setViews([...aggregator.messages]);
           // 内容可以保留展示，但没有新版本不能安全发送下一轮。
           setHistoryFailed(true);
-          sessions.updatePendingSubmissionStatus(agentId, epoch, submission.messageId, {
+          sessions.updatePendingSubmissionStatus(sessionId, epoch, submission.messageId, {
             status: 'unconfirmed',
             error: '回复已结束，但会话同步失败，请重新加载后继续',
           });
@@ -395,7 +399,7 @@ export function useConversation(agentId: string, refreshKey: string | number = 0
       if (current() && (controller.signal.aborted || isRequestCancelled(e))) {
         if (!enabledRef.current) {
           setHistoryFailed(true);
-          sessions.updatePendingSubmissionStatus(agentId, epoch, submission.messageId, { status: 'unconfirmed' });
+          sessions.updatePendingSubmissionStatus(sessionId, epoch, submission.messageId, { status: 'unconfirmed' });
           return;
         }
         // 停止也可能已落盘部分回复；恢复服务端历史与版本后才允许发送下一轮。
@@ -407,7 +411,7 @@ export function useConversation(agentId: string, refreshKey: string | number = 0
             if (released) {
               adoptHistory(history);
             } else {
-              sessions.updatePendingSubmissionStatus(agentId, epoch, submission.messageId, {
+              sessions.updatePendingSubmissionStatus(sessionId, epoch, submission.messageId, {
                 status: 'unconfirmed',
                 error: '已停止但保存状态未确认',
               });
@@ -418,14 +422,16 @@ export function useConversation(agentId: string, refreshKey: string | number = 0
         } catch (syncError) {
           if (current()) {
             setHistoryFailed(true);
-            sessions.updatePendingSubmissionStatus(agentId, epoch, submission.messageId, { status: 'unconfirmed' });
+            sessions.updatePendingSubmissionStatus(sessionId, epoch, submission.messageId, { status: 'unconfirmed' });
             if (!isRequestCancelled(syncError)) setError('停止后无法同步会话，请重新加载');
           }
         }
       } else if (preRunRejectOf(e)) {
         // 契约明确的前置拒绝（SSE 开启前返回）：先与权威历史对账/刷新 revision，绝不清空旧历史。
         const message = e instanceof ApiError ? preRunRejectMessage(e) : '服务端拒绝执行，消息未发送';
-        sessions.updatePendingSubmissionStatus(agentId, epoch, submission.messageId, { status: 'sending', terminalError: message });
+        // 只有本次 POST 明确返回这些前置拒绝，才无需历史也能确认未接受；GET 的 404 不提供此证据。
+        const sessionRefusal = e instanceof ApiError && ['SESSION_NOT_FOUND', 'UNSUPPORTED_SESSION', 'SESSION_DELETING'].includes(e.code ?? '');
+        sessions.updatePendingSubmissionStatus(sessionId, epoch, submission.messageId, { status: 'sending', terminalError: message });
         try {
           if (!current()) throw requestCancelled();
           const history = await syncAfterRun();
@@ -439,11 +445,12 @@ export function useConversation(agentId: string, refreshKey: string | number = 0
             setError(message);
           }
         } catch (syncError) {
-          // 前置拒绝后历史回读失败：保守待确认并锁定发送，后续 reload 可解锁。
+          // 明确的会话前置拒绝保留可恢复稿；其它无完整历史的情况仍保守待确认。
+          // 无论暂存状态如何，都锁住旧 revision，不自动重发。
           if (current()) {
             setHistoryFailed(true);
-            sessions.updatePendingSubmissionStatus(agentId, epoch, submission.messageId, {
-              status: 'unconfirmed',
+            sessions.updatePendingSubmissionStatus(sessionId, epoch, submission.messageId, {
+              status: sessionRefusal ? 'failed' : 'unconfirmed',
               error: message,
             });
             if (!isRequestCancelled(syncError)) setError(message);
@@ -456,21 +463,21 @@ export function useConversation(agentId: string, refreshKey: string | number = 0
           setError(errText);
           setHistoryFailed(true);
         }
-        if (sessions.isCurrent(agentId, epoch)) {
-          sessions.updatePendingSubmissionStatus(agentId, epoch, submission.messageId, {
+        if (sessions.isCurrent(sessionId, epoch)) {
+          sessions.updatePendingSubmissionStatus(sessionId, epoch, submission.messageId, {
             status: 'unconfirmed',
             error: errText,
           });
         }
       }
     } finally {
-      const stale = !sessions.isCurrent(agentId, epoch);
+      const stale = !sessions.isCurrent(sessionId, epoch);
       if (stale && aliveRef.current) setHistoryFailed(true);
       abortRef.current = null;
       runIdRef.current = null;
       if (aliveRef.current) {
         setRunning(false);
-        if (stale && sessions.canWrite(agentId)) setHistoryVersion((value) => value + 1);
+        if (stale && sessions.canWrite(sessionId)) setHistoryVersion((value) => value + 1);
       }
     }
     })();
@@ -490,10 +497,10 @@ export function useConversation(agentId: string, refreshKey: string | number = 0
     attachments?: readonly AttachmentDraft[],
   ) => {
     const text = raw.trim();
-    if (!enabled || sessions.isDisposed() || !sessions.isCurrent(agentId, epoch) || loading || historyFailed || abortRef.current || !revisionRef.current) return;
-    if (sessions.get(agentId).pendingSubmission) return; // 上一条未确认提交未处理前，禁止重复发送或覆盖
+    if (!enabled || sessions.isDisposed() || !sessions.isCurrent(sessionId, epoch) || loading || historyFailed || abortRef.current || !revisionRef.current) return;
+    if (sessions.get(sessionId).pendingSubmission) return; // 上一条未确认提交未处理前，禁止重复发送或覆盖
 
-    const selectedAttachments = attachments ?? sessions.get(agentId).draftAttachments;
+    const selectedAttachments = attachments ?? sessions.get(sessionId).draftAttachments;
     const validated = validateOutgoingDraftMessage(text, selectedAttachments);
     if (!validated.ok) {
       setError(validated.error);
@@ -505,7 +512,7 @@ export function useConversation(agentId: string, refreshKey: string | number = 0
     const runId = nextClientId('run');
 
     // 发送前先暂存完整正文与附件，再清输入框（A01 核心契约：权威历史保存前客户端持有所有权）。
-    sessions.setPendingSubmission(agentId, epoch, {
+    sessions.setPendingSubmission(sessionId, epoch, {
       messageId,
       runId,
       text: validated.text,
@@ -515,15 +522,15 @@ export function useConversation(agentId: string, refreshKey: string | number = 0
     });
     onAccepted?.();
     setError(undefined);
-    await executeSubmission(sessions.get(agentId).pendingSubmission!);
+    await executeSubmission(sessions.get(sessionId).pendingSubmission!);
   };
 
   /** 只允许用户显式重试 failed 轮；复用原 ID 与原始附件，避免把失败轮改写成新消息。 */
   const retry = async (): Promise<boolean> => {
-    if (!enabled || sessions.isDisposed() || !sessions.isCurrent(agentId, epoch) || loading || historyFailed || abortRef.current || !revisionRef.current) return false;
-    const pending = sessions.get(agentId).pendingSubmission;
+    if (!enabled || sessions.isDisposed() || !sessions.isCurrent(sessionId, epoch) || loading || historyFailed || abortRef.current || !revisionRef.current) return false;
+    const pending = sessions.get(sessionId).pendingSubmission;
     if (!pending || pending.epoch !== epoch || pending.status !== 'failed') return false;
-    if (!sessions.retryPendingSubmission(agentId, epoch, pending.messageId)) return false;
+    if (!sessions.retryPendingSubmission(sessionId, epoch, pending.messageId)) return false;
     setError(undefined);
     await executeSubmission({ ...pending, status: 'sending', error: undefined, terminalError: undefined });
     return true;
@@ -536,7 +543,7 @@ export function useConversation(agentId: string, refreshKey: string | number = 0
     if (!controller || !runId) return false;
     try {
       // 捕获本轮 controller：迟到的停止响应不能中断下一轮；false 也不能伪装停止成功。
-      const stopped = await api.stopRun(agentId, runId);
+      const stopped = await api.stopRun(sessionId, runId);
       if (stopped && abortRef.current === controller) {
         controller.abort();
       }
@@ -561,7 +568,7 @@ export function useConversation(agentId: string, refreshKey: string | number = 0
     attachments?: readonly AttachmentDraft[],
   ): Promise<boolean> => {
     const text = raw.trim();
-    const selectedAttachments = attachments ?? sessions.get(agentId).draftAttachments;
+    const selectedAttachments = attachments ?? sessions.get(sessionId).draftAttachments;
     const validated = validateOutgoingDraftMessage(text, selectedAttachments);
     if (!validated.ok) {
       setError(validated.error);
@@ -575,12 +582,12 @@ export function useConversation(agentId: string, refreshKey: string | number = 0
     if (
       !enabled ||
       sessions.isDisposed() ||
-      !sessions.isCurrent(agentId, epoch) ||
+      !sessions.isCurrent(sessionId, epoch) ||
       loading ||
       historyFailed ||
       abortRef.current ||
       !revisionRef.current ||
-      sessions.get(agentId).pendingSubmission
+      sessions.get(sessionId).pendingSubmission
     ) {
       return false;
     }
@@ -590,7 +597,7 @@ export function useConversation(agentId: string, refreshKey: string | number = 0
   };
 
   const reload = () => {
-    if (abortRef.current || !sessions.canWrite(agentId)) return;
+    if (abortRef.current || !sessions.canWrite(sessionId)) return;
     setLoading(true);
     setHistoryVersion((value) => value + 1);
   };
@@ -613,7 +620,7 @@ export function useConversation(agentId: string, refreshKey: string | number = 0
 
   return {
     views: displayedViews,
-    sessionId,
+    piSessionId,
     persistedMessageIds,
     running,
     error,

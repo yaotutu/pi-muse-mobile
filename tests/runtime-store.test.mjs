@@ -1,17 +1,17 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import './register-source.mjs';
-import { RuntimeStore, agentRuntime } from '../src/runtime/runtime-store.ts';
+import { RuntimeStore, sessionRuntime } from '../src/runtime/runtime-store.ts';
 import { ApiError } from '../src/api/errors.ts';
 import { ApprovalStore } from '../src/approvals/approval-store.ts';
 import { approvalFixture, approvalResolution } from './helpers/approval-fixtures.ts';
 
-const status = (overrides = {}) => ({ activityId: null, agentId: 'a', runId: 'run-a', revision: 1, source: 'chat', jobId: null, title: '当前执行', status: 'running', phase: 'waiting_model', label: '等待模型响应', tools: [], subagents: [], pendingApprovalIds: [], startedAt: '2026-10-19T10:00:00.000Z', updatedAt: '2026-10-19T10:00:00.000Z', endedAt: null, ...overrides });
-const ready = (runs = [], instanceId = 'instance-a') => ({ event: 'ready', data: { instanceId, serverTime: '2026-10-19T10:00:00.000Z', agentPresences: [], agentStatuses: runs, pendingApprovals: [], activities: [] } });
-const update = (run, instanceId = 'instance-a') => ({ event: 'agent_status_updated', data: { ...run, instanceId } });
-const conversationUpdate = (agentId = 'a', sessionId = 'session-a', instanceId = 'instance-a') => ({
+const status = (overrides = {}) => ({ activityId: null, sessionId: 'a', runId: 'run-a', revision: 1, source: 'chat', jobId: null, title: '当前执行', status: 'running', phase: 'waiting_model', label: '等待模型响应', tools: [], subagents: [], pendingApprovalIds: [], startedAt: '2026-10-19T10:00:00.000Z', updatedAt: '2026-10-19T10:00:00.000Z', endedAt: null, ...overrides });
+const ready = (runs = [], instanceId = 'instance-a') => ({ event: 'ready', data: { instanceId, serverTime: '2026-10-19T10:00:00.000Z', sessionPresences: [], sessionStatuses: runs, pendingApprovals: [], activities: [] } });
+const update = (run, instanceId = 'instance-a') => ({ event: 'session_status_updated', data: { ...run, instanceId } });
+const conversationUpdate = (sessionId = 'a', piSessionId = 'session-a', instanceId = 'instance-a') => ({
   event: 'conversation_updated',
-  data: { instanceId, agentId, sessionId },
+  data: { instanceId, sessionId, piSessionId },
 });
 const tick = () => new Promise(setImmediate);
 function fixture() {
@@ -23,21 +23,21 @@ function fixture() {
         connections.push({ onEvent, signal, resolve, reject });
       });
     },
-    async getAgentStatus(agentId, runId) { queries.push([agentId, runId]); throw new ApiError(404, 'Not found'); },
+    async getSessionStatus(sessionId, runId) { queries.push([sessionId, runId]); throw new ApiError(404, 'Not found'); },
   };
   const store = new RuntimeStore(client, { retryDelay: () => 1 });
   return { store, client, connections, queries };
 }
 
-test('头像状态与运行共享通知流，增量只替换对应智能体，断线保留观测并由 ready 全量恢复', async () => {
+test('头像状态与运行共享通知流，增量只替换对应会话，断线保留观测并由 ready 全量恢复', async () => {
   const { store, connections } = fixture();
-  const presence = (agentId, state) => ({ agentId, state, label: state, lastActiveAt: null });
+  const presence = (sessionId, state) => ({ sessionId, state, label: state, lastActiveAt: null });
   store.setActive(true);
-  const first = ready(); first.data.agentPresences = [presence('a', 'working'), presence('b', 'waiting')];
+  const first = ready(); first.data.sessionPresences = [presence('a', 'working'), presence('b', 'waiting')];
   connections[0].onEvent(first);
-  connections[0].onEvent({ event: 'agent_presence_updated', data: { instanceId: 'instance-a', ...presence('a', 'idle') } });
-  assert.equal(store.getSnapshot().presences.find((item) => item.agentId === 'a').state, 'idle');
-  assert.equal(store.getSnapshot().presences.find((item) => item.agentId === 'b').state, 'waiting');
+  connections[0].onEvent({ event: 'session_presence_updated', data: { instanceId: 'instance-a', ...presence('a', 'idle') } });
+  assert.equal(store.getSnapshot().presences.find((item) => item.sessionId === 'a').state, 'idle');
+  assert.equal(store.getSnapshot().presences.find((item) => item.sessionId === 'b').state, 'waiting');
   assert.deepEqual(store.getSnapshot().runs, []);
   connections[0].resolve(); await tick();
   assert.equal(store.getSnapshot().connection, 'reconnecting');
@@ -45,7 +45,7 @@ test('头像状态与运行共享通知流，增量只替换对应智能体，�
   store.retry();
   connections.at(-1).onEvent(ready([], 'instance-b'));
   assert.deepEqual(store.getSnapshot().presences, [], '新的空快照不能保留旧等待或错误');
-  connections[0].onEvent({ event: 'agent_presence_updated', data: { instanceId: 'instance-a', ...presence('b', 'error') } });
+  connections[0].onEvent({ event: 'session_presence_updated', data: { instanceId: 'instance-a', ...presence('b', 'error') } });
   assert.deepEqual(store.getSnapshot().presences, []);
   store.dispose();
 });
@@ -54,13 +54,13 @@ test('通知流仅一条且按会话隔离，低版本和重复帧不倒退', ()
   const { store, connections } = fixture();
   store.setActive(true); store.setActive(true);
   assert.equal(connections.length, 1);
-  connections[0].onEvent(ready([status(), status({ agentId: 'b', runId: 'run-b', label: 'B 状态' })]));
+  connections[0].onEvent(ready([status(), status({ sessionId: 'b', runId: 'run-b', label: 'B 状态' })]));
   connections[0].onEvent(update(status({ revision: 3, label: '正在搜索' })));
   connections[0].onEvent(update(status({ revision: 2, label: '过时' })));
   connections[0].onEvent(update(status({ revision: 3, label: '重复' })));
-  assert.equal(agentRuntime(store.getSnapshot(), 'a').label, '正在搜索');
-  assert.equal(agentRuntime(store.getSnapshot(), 'b').label, 'B 状态');
-  assert.equal(agentRuntime(store.getSnapshot(), 'missing').label, '就绪');
+  assert.equal(sessionRuntime(store.getSnapshot(), 'a').label, '正在搜索');
+  assert.equal(sessionRuntime(store.getSnapshot(), 'b').label, 'B 状态');
+  assert.equal(sessionRuntime(store.getSnapshot(), 'missing').label, '就绪');
   store.dispose();
 });
 
@@ -79,19 +79,19 @@ test('运行与审批共享一条通知连接，审批事件不被误合并为�
 
 test('通知断流保留最后观测但不能伪装就绪，退避后ready整体替换并补查消失运行', async () => {
   const { store, connections, queries, client } = fixture();
-  client.getAgentStatus = async (...args) => { queries.push(args.slice(0, 2)); return { instanceId: 'instance-a', status: status({ revision: 8, status: 'cancelled', phase: null, endedAt: '2026-10-19T10:01:00.000Z', label: '执行已停止' }) }; };
+  client.getSessionStatus = async (...args) => { queries.push(args.slice(0, 2)); return { instanceId: 'instance-a', status: status({ revision: 8, status: 'cancelled', phase: null, endedAt: '2026-10-19T10:01:00.000Z', label: '执行已停止' }) }; };
   store.setActive(true);
   connections[0].onEvent(ready([status()]));
   connections[0].resolve();
   await tick();
-  assert.match(agentRuntime(store.getSnapshot(), 'a').label, /状态待同步/);
+  assert.match(sessionRuntime(store.getSnapshot(), 'a').label, /状态待同步/);
   await new Promise((resolve) => setTimeout(resolve, 5));
   assert.equal(connections.length, 2);
   connections[1].onEvent(ready([]));
   assert.deepEqual(store.getSnapshot().runs, []);
   await tick();
   assert.deepEqual(queries, [['a', 'run-a']]);
-  assert.equal(agentRuntime(store.getSnapshot(), 'a').label, '执行已停止');
+  assert.equal(sessionRuntime(store.getSnapshot(), 'a').label, '执行已停止');
   store.dispose();
 });
 
@@ -101,19 +101,19 @@ test('conversation_updated 只记录轻量历史失效，ready清除瞬时记录
   connections[0].onEvent(ready());
   connections[0].onEvent(conversationUpdate('a', 'session-1'));
   connections[0].onEvent(conversationUpdate('b', 'session-b'));
-  assert.deepEqual(agentRuntime(store.getSnapshot(), 'a'), {
-    ...agentRuntime(store.getSnapshot(), 'a'),
+  assert.deepEqual(sessionRuntime(store.getSnapshot(), 'a'), {
+    ...sessionRuntime(store.getSnapshot(), 'a'),
     conversationSyncVersion: 1,
     conversationInvalidationVersion: 1,
-    conversationInvalidationSessionId: 'session-1',
+    conversationInvalidationPiSessionId: 'session-1',
   });
-  assert.equal(agentRuntime(store.getSnapshot(), 'b').conversationInvalidationVersion, 2);
-  assert.equal(agentRuntime(store.getSnapshot(), 'missing').conversationInvalidationVersion, 0);
+  assert.equal(sessionRuntime(store.getSnapshot(), 'b').conversationInvalidationVersion, 2);
+  assert.equal(sessionRuntime(store.getSnapshot(), 'missing').conversationInvalidationVersion, 0);
 
   connections[0].onEvent(ready());
   assert.equal(store.getSnapshot().conversationSyncVersion, 2);
   assert.deepEqual(store.getSnapshot().conversationInvalidations, []);
-  assert.equal(agentRuntime(store.getSnapshot(), 'a').conversationInvalidationVersion, 0);
+  assert.equal(sessionRuntime(store.getSnapshot(), 'a').conversationInvalidationVersion, 0);
   store.dispose();
 });
 
@@ -126,9 +126,9 @@ test('暂停和旧连接迟到事件不污染重连状态，服务实例变化�
   connections[0].onEvent(update(status({ revision: 51, label: '迟到状态' })));
   store.setActive(true);
   connections[1].onEvent(ready([status({ revision: 1, label: '新实例状态' })], 'instance-b'));
-  assert.equal(agentRuntime(store.getSnapshot(), 'a').label, '新实例状态');
+  assert.equal(sessionRuntime(store.getSnapshot(), 'a').label, '新实例状态');
   connections[0].onEvent(update(status({ revision: 52, label: '旧实例' })));
-  assert.equal(agentRuntime(store.getSnapshot(), 'a').label, '新实例状态');
+  assert.equal(sessionRuntime(store.getSnapshot(), 'a').label, '新实例状态');
   store.dispose();
 });
 
@@ -147,26 +147,26 @@ test('401不无限重连，手动重试与销毁清理连接', async () => {
 
 test('ready中消失的运行补查失败时明确待同步，404后才恢复就绪', async () => {
   const { store, client, connections } = fixture();
-  client.getAgentStatus = async () => { throw new ApiError(503, '暂时不可用'); };
+  client.getSessionStatus = async () => { throw new ApiError(503, '暂时不可用'); };
   store.setActive(true);
   connections[0].onEvent(ready([status()]));
   store.retry();
   connections[1].onEvent(ready([]));
-  assert.equal(agentRuntime(store.getSnapshot(), 'a').label, '执行结果待同步');
+  assert.equal(sessionRuntime(store.getSnapshot(), 'a').label, '执行结果待同步');
   await tick();
-  assert.equal(agentRuntime(store.getSnapshot(), 'a').synchronized, false);
-  client.getAgentStatus = async () => { throw new ApiError(404, '已清理'); };
+  assert.equal(sessionRuntime(store.getSnapshot(), 'a').synchronized, false);
+  client.getSessionStatus = async () => { throw new ApiError(404, '已清理'); };
   store.retry();
   connections[2].onEvent(ready([]));
   await tick();
-  assert.equal(agentRuntime(store.getSnapshot(), 'a').label, '就绪');
+  assert.equal(sessionRuntime(store.getSnapshot(), 'a').label, '就绪');
   store.dispose();
 });
 
 test('HTTP终态补查不可覆盖已收到的较新版本，404不猜成功', async () => {
   const { store, client, connections } = fixture();
   let resolveQuery;
-  client.getAgentStatus = () => new Promise((resolve) => { resolveQuery = resolve; });
+  client.getSessionStatus = () => new Promise((resolve) => { resolveQuery = resolve; });
   store.setActive(true);
   connections[0].onEvent(ready([status()]));
   store.retry();
@@ -174,8 +174,8 @@ test('HTTP终态补查不可覆盖已收到的较新版本，404不猜成功', a
   connections[1].onEvent(update(status({ revision: 10, label: '新运行状态' })));
   resolveQuery({ instanceId: 'instance-a', status: status({ revision: 5, label: '旧查询' }) });
   await tick();
-  assert.equal(agentRuntime(store.getSnapshot(), 'a').label, '新运行状态');
-  store.forgetAgent('a');
+  assert.equal(sessionRuntime(store.getSnapshot(), 'a').label, '新运行状态');
+  store.forgetSession('a');
   assert.deepEqual(store.getSnapshot().runs, []);
   store.dispose();
 });

@@ -3,15 +3,12 @@ import type {
   WorkspaceDeleteResult,
   WorkspaceFileDetail,
   WorkspaceFileMetadata,
-  WorkspaceFileSelector,
-  WorkspaceFileScope,
   WorkspaceFileTarget,
   WorkspaceListEntry,
   WorkspaceListResult,
   WorkspaceTextDetail,
 } from './types';
 
-export const WORKSPACE_AGENT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 export const WORKSPACE_WRITE_SEGMENT = /^[A-Za-z0-9._-]+$/;
 export const MAX_WORKSPACE_TEXT_BYTES = 100_000;
 export const MAX_WORKSPACE_DOWNLOAD_BYTES = 8 * 1024 * 1024;
@@ -23,12 +20,11 @@ const invalid = (): never => {
 };
 
 const object = (value: unknown): Record<string, unknown> =>
-  value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : invalid();
+  value && typeof value === 'object' && !Array.isArray(value) && !['scope', 'sessionId', 'owner'].some((key) => key in value) ? value as Record<string, unknown> : invalid();
 
 const text = (value: unknown, nonempty = false): string =>
   typeof value === 'string' && (!nonempty || value.length > 0) ? value : invalid();
 
-const nullableText = (value: unknown): string | null => value === null ? null : text(value, true);
 
 const integer = (value: unknown, minimum = 0): number =>
   typeof value === 'number' && Number.isSafeInteger(value) && value >= minimum ? value : invalid();
@@ -57,24 +53,6 @@ export const isValidUnicodeText = (value: string): boolean => {
 export const isValidWorkspaceText = (value: string): boolean =>
   isValidUnicodeText(value) && utf8ByteLength(value) <= MAX_WORKSPACE_TEXT_BYTES;
 
-export function validateWorkspaceAgentId(value: string): string {
-  if (!WORKSPACE_AGENT_ID_PATTERN.test(value)) {
-    throw new ApiError(400, '工作区智能体 ID 不合法');
-  }
-  return value;
-}
-
-export function validateWorkspaceSelector(selector: WorkspaceFileSelector): WorkspaceFileSelector {
-  if (selector.scope !== 'agent' && selector.scope !== 'shared') throw new ApiError(400, '工作区范围不合法');
-  if (selector.scope === 'agent') {
-    if (typeof selector.agentId !== 'string') throw new ApiError(400, 'scope=agent 时必须提供 agentId');
-    validateWorkspaceAgentId(selector.agentId);
-    return { scope: 'agent', agentId: selector.agentId };
-  }
-  if (selector.agentId !== null) throw new ApiError(400, 'scope=shared 时不能提供 agentId');
-  return { scope: 'shared', agentId: null };
-}
-
 /**
  * 只读路径允许历史模型工具留下的非 ASCII 名称；列表根目录用 `.` 表示。
  * 任意路径都拒绝空段、`.`/`..`、反斜杠、绝对路径与 NUL。
@@ -101,32 +79,11 @@ export function validateWorkspaceWritePath(rawPath: string): string {
   return path;
 }
 
-export function workspaceFileTarget(scope: WorkspaceFileScope, agentId: string | null, path: string, mode: 'read' | 'write' | 'file'): WorkspaceFileTarget {
-  const selector = validateWorkspaceSelector({ scope, agentId });
-  const validated = mode === 'write'
-    ? validateWorkspaceWritePath(path)
-    : validateWorkspaceReadPath(path, { fileRequired: mode === 'file' });
-  return { ...selector, path: validated };
+export function workspaceFileTarget(path: string, mode: 'read' | 'write' | 'file'): WorkspaceFileTarget {
+  return { path: mode === 'write' ? validateWorkspaceWritePath(path) : validateWorkspaceReadPath(path, { fileRequired: mode === 'file' }) };
 }
-
 export function workspaceFileQuery(target: WorkspaceFileTarget): string {
-  const params = new URLSearchParams({ scope: target.scope, path: target.path });
-  if (target.scope === 'agent') params.set('agentId', target.agentId!);
-  return params.toString();
-}
-
-function selectorOf(value: unknown, expected?: WorkspaceFileSelector): WorkspaceFileSelector {
-  const item = object(value);
-  if (item.scope !== 'agent' && item.scope !== 'shared') return invalid();
-  const agentId = nullableText(item.agentId);
-  let selector: WorkspaceFileSelector;
-  try {
-    selector = validateWorkspaceSelector({ scope: item.scope, agentId });
-  } catch {
-    return invalid();
-  }
-  if (expected && (selector.scope !== expected.scope || selector.agentId !== expected.agentId)) return invalid();
-  return selector;
+  return new URLSearchParams({ path: target.path }).toString();
 }
 
 function entry(value: unknown, directoryPath: string): WorkspaceListEntry {
@@ -144,7 +101,6 @@ function entry(value: unknown, directoryPath: string): WorkspaceListEntry {
 
 export function parseWorkspaceList(value: unknown, expectedTarget?: WorkspaceFileTarget): WorkspaceListResult {
   const item = object(value);
-  const selector = selectorOf(item, expectedTarget);
   let path: string;
   try {
     path = validateWorkspaceReadPath(text(item.path, true));
@@ -161,7 +117,7 @@ export function parseWorkspaceList(value: unknown, expectedTarget?: WorkspaceFil
     if (left.kind === right.kind && !(left.name <= right.name)) return invalid();
   }
   if (new Set(entries.map((current) => current.path)).size !== entries.length) return invalid();
-  return { ...selector, path, entries };
+  return { path, entries };
 }
 
 const base64ByteLength = (value: string): number => {
@@ -190,23 +146,22 @@ function metadata(value: Record<string, unknown>, expectedTarget?: WorkspaceFile
   return { name, path, kind, size, updatedAt: date(value.updatedAt), mimeType };
 }
 
-export function parseWorkspaceFileDetail(value: unknown, expectedTarget?: WorkspaceFileTarget): WorkspaceFileDetail & WorkspaceFileSelector {
+export function parseWorkspaceFileDetail(value: unknown, expectedTarget?: WorkspaceFileTarget): WorkspaceFileDetail {
   const item = object(value);
-  const selector = selectorOf(item, expectedTarget);
   const base = metadata(item, expectedTarget);
   if (base.kind === 'text') {
     if (item.dataBase64 !== undefined || typeof item.content !== 'string') return invalid();
     if (!isValidUnicodeText(item.content)) return invalid();
     if (utf8ByteLength(item.content) !== base.size) return invalid();
-    return { ...selector, ...base, kind: 'text', content: item.content };
+    return { ...base, kind: 'text', content: item.content };
   }
   if (item.content !== undefined || typeof item.dataBase64 !== 'string') return invalid();
   const dataBase64 = item.dataBase64;
   if (!BASE64_PATTERN.test(dataBase64) || base64ByteLength(dataBase64) !== base.size) return invalid();
-  return { ...selector, ...base, kind: base.kind, dataBase64 };
+  return { ...base, kind: base.kind, dataBase64 };
 }
 
-export function parseWorkspaceTextDetail(value: unknown, expectedTarget?: WorkspaceFileTarget): WorkspaceTextDetail & WorkspaceFileSelector {
+export function parseWorkspaceTextDetail(value: unknown, expectedTarget?: WorkspaceFileTarget): WorkspaceTextDetail {
   const detail = parseWorkspaceFileDetail(value, expectedTarget);
   if (detail.kind !== 'text') return invalid();
   return detail;
@@ -214,7 +169,6 @@ export function parseWorkspaceTextDetail(value: unknown, expectedTarget?: Worksp
 
 export function parseWorkspaceDelete(value: unknown, expectedTarget?: WorkspaceFileTarget): WorkspaceDeleteResult {
   const item = object(value);
-  const selector = selectorOf(item, expectedTarget);
   let path: string;
   try {
     path = validateWorkspaceWritePath(text(item.path, true));
@@ -223,7 +177,7 @@ export function parseWorkspaceDelete(value: unknown, expectedTarget?: WorkspaceF
   }
   if (expectedTarget && path !== expectedTarget.path) return invalid();
   if (item.ok !== true) return invalid();
-  return { ...selector, path, ok: true };
+  return { path, ok: true };
 }
 
 export function assertWorkspaceTextForWrite(content: string): string {

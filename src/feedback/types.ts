@@ -1,4 +1,4 @@
-/** 消息反馈只属于 agentId + sessionId + messageId，不进入聊天历史或模型上下文。 */
+/** 消息反馈只属于 sessionId + piSessionId + messageId，不进入聊天历史或模型上下文。 */
 export type MessageReaction = 'like' | 'dislike';
 
 export type MessageComment = {

@@ -61,7 +61,7 @@ export class JobStore {
     if (this.visible && !this.state.writing) void this.refresh();
   };
   receive = (event: RuntimeEvent) => {
-    if (event.event === 'agent_status_updated' && event.data.source === 'job') this.invalidate();
+    if (event.event === 'session_status_updated' && event.data.source === 'job') this.invalidate();
   };
   refresh = async () => {
     if (!this.active || !this.visible || this.state.writing || this.disposed) return;

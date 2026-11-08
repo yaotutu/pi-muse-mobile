@@ -1,166 +1,38 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import './register-source.mjs';
 import test from 'node:test';
+import { parseDreamOverview } from '../src/dream/contracts.ts';
+import { DreamStore } from '../src/dream/dream-store.ts';
+import { HttpApiClient } from '../src/api/http-client.ts';
 import { ApiError } from '../src/api/errors.ts';
-import { parseDreamOverview, parseDreamAgent } from '../src/dream/contracts.ts';
-import { DREAM_PROMPT_LIMIT, DREAM_RUN_TIMEOUT_MS, MAIN_DREAM_AGENT } from '../src/dream/types.ts';
-
-const run = (patch = {}) => ({
-  at: '2026-10-23T17:07:07.144Z',
-  status: 'completed',
-  changed: [],
-  processed: 2,
-  ...patch,
+const overview = (patch = {}) => ({ enabled: true, cursors: { main: 'message-1' }, pending: [], globalPrompt: 'saved', defaultPrompt: 'default', intervalHours: 24, running: false, ...patch });
+const pending = { id: 'pending-1', text: '完整建议', suggestedTarget: 'instructions', reason: 'ambiguous', createdAt: '2026-11-09T00:00:00Z', sourceSessionId: 'main' };
+const tick = () => new Promise((resolve) => setImmediate(resolve));
+test('Dream 严格解析全局状态、逐会话游标和待决项来源，不接受配置列表', () => {
+ assert.deepEqual(parseDreamOverview(overview({ pending: [pending] })), overview({ pending: [pending] }));
+ for (const patch of [{ enabled: 'yes' }, { cursors: { unknown: 'x' } }, { pending: [{ ...pending, sourceSessionId: 'invalid' }] }, { pending: [{ ...pending, reason: 'other' }] }, { intervalHours: -1 }, { sessions: [] }]) assert.throws(() => parseDreamOverview(overview(patch)), ApiError);
 });
-
-const pending = (patch = {}) => ({
-  id: 'pending-1',
-  text: 'Preferred coding time: BEFORE_SUNRISE',
-  suggestedTarget: 'user',
-  reason: 'ambiguous',
-  createdAt: '2026-10-23T17:07:13.089Z',
-  ...patch,
+test('Dream HTTP 全局端点和提交形状固定，run 无 body，不带当前会话', async () => {
+ const original = globalThis.fetch; const calls = []; globalThis.fetch = async (url, init) => { calls.push({ url, init }); return Response.json(overview()); };
+ try {
+  const api = new HttpApiClient('https://example.com', () => 'token', () => {});
+  await api.getDreamOverview(); await api.saveDreamSettings({ enabled: false, prompt: '' }); await api.runDream(); await api.resolveDreamPending('a/b', { action: 'dismiss' });
+  assert.deepEqual(calls.map(({url})=>new URL(url).pathname), ['/api/dream', '/api/dream', '/api/dream/run', '/api/dream/pending/a%2Fb']);
+  assert.deepEqual(JSON.parse(calls[1].init.body), { enabled: false, prompt: '' }); assert.equal(calls[2].init.body, undefined);
+  assert.deepEqual(JSON.parse(calls[3].init.body), { action: 'dismiss' });
+ } finally { globalThis.fetch = original; }
 });
-
-const agent = (patch = {}) => ({
-  agentId: 'dream-e2e',
-  enabled: false,
-  inheritGlobalPrompt: true,
-  cursor: 'assistant-1',
-  lastRun: run(),
-  pending: [pending()],
-  prompt: 'Agent dream prompt',
-  purpose: 'Dedicated acceptance',
-  ...patch,
+test('Dream 读取失败保留已读数据与未保存草稿', async () => {
+ let fail = false; const store = new DreamStore({ getDreamOverview: async () => { if(fail) throw new Error('offline'); return overview(); } }); store.setActive(true); store.open(); await tick();
+ store.setDraft({ prompt: 'draft' }); fail = true; await store.refresh(); assert.equal(store.getSnapshot().overview.globalPrompt, 'saved'); assert.equal(store.getSnapshot().prompt, 'draft'); assert.equal(store.canWrite(), false); store.dispose();
 });
-
-test('Dream overview parser only consumes agents and validates every public field', () => {
-  const source = {
-    globalPrompt: '',
-    defaultPrompt: 'Default prompt',
-    intervalHours: 2,
-    running: false,
-    agents: [agent({ agentId: MAIN_DREAM_AGENT, enabled: true })],
-    future: 'ignored',
-  };
-  const parsed = parseDreamOverview(source);
-  assert.equal(Object.hasOwn(parsed, 'threads'), false);
-  assert.equal(parsed.agents.length, 1);
-  assert.equal(parsed.agents[0].agentId, MAIN_DREAM_AGENT);
-  assert.equal(parsed.agents[0].enabled, true);
-  assert.equal(parsed.agents[0].lastRun.processed, 2);
-  assert.equal(parsed.agents[0].pending[0].suggestedTarget, 'user');
+test('Dream 写入未明不自动重发，回读后需用户明确解锁', async () => {
+ let writes = 0; const store = new DreamStore({ getDreamOverview: async () => overview(), saveDreamSettings: async () => { writes++; throw new ApiError(500, 'failed'); } }); store.setActive(true); store.open(); await tick();
+ store.setDraft({ prompt: 'draft' }); assert.equal(await store.save(), false); assert.equal(writes, 1); assert.equal(store.getSnapshot().uncertain, true); await store.refresh(); assert.equal(store.canWrite(), false); assert.equal(await store.save(), false); store.acknowledgeReviewed(); assert.equal(store.canWrite(), true); assert.equal(store.getSnapshot().prompt, 'draft'); store.dispose();
 });
-
-test('Dream agent parser preserves optionals and rejects foreign identities', () => {
-  const parsed = parseDreamAgent(agent());
-  assert.equal(parsed.cursor, 'assistant-1');
-  assert.equal(parsed.lastRun.status, 'completed');
-  assert.deepEqual({ ...parsed, lastRun: undefined }, { ...agent(), lastRun: undefined });
-  assert.throws(() => parseDreamAgent(agent(), 'foreign'), (error) => error instanceof ApiError && error.status === 502);
+test('Dream 待决项仅处理当前权威条目，run 不使用未保存草稿', async () => {
+ let writes = 0; const store = new DreamStore({ getDreamOverview: async () => overview({pending:[pending]}), resolveDreamPending: async(id, decision) => { writes++; assert.equal(id,pending.id); assert.deepEqual(decision,{action:'apply',target:'memory'}); return overview(); } }); store.setActive(true); store.open(); await tick();
+ store.setDraft({prompt:'draft'}); assert.equal(store.canRun(),false); assert.equal(await store.resolvePending('unknown','apply','memory'),false); assert.equal(await store.resolvePending(pending.id,'apply','memory'),true); assert.equal(writes,1); assert.equal(store.getSnapshot().prompt,'draft'); store.dispose();
 });
-
-test('Dream parser rejects malformed enums, dates, counts and duplicate overview agents', () => {
-  const invalidAgents = [
-    agent({ enabled: 1 }),
-    agent({ inheritGlobalPrompt: 'yes' }),
-    agent({ cursor: null }),
-    agent({ lastRun: run({ status: 'queued' }) }),
-    agent({ lastRun: run({ processed: -1 }) }),
-    agent({ lastRun: run({ changed: ['profile'] }) }),
-    agent({ lastRun: run({ at: '2026-02-30T00:00:00Z' }) }),
-    agent({ pending: [pending({ reason: 'unauthorized' })] }),
-    agent({ pending: [pending({ suggestedTarget: 'profile' })] }),
-  ];
-  for (const item of invalidAgents) {
-    assert.throws(() => parseDreamAgent(item), (error) => error instanceof ApiError && error.status === 502);
-  }
-  const first = agent({ agentId: 'agent-1' });
-  const duplicate = agent({ agentId: 'agent-1' });
-  assert.throws(() => parseDreamOverview({
-    globalPrompt: '',
-    defaultPrompt: 'Default',
-    intervalHours: 2,
-    running: false,
-    agents: [first, duplicate],
-  }));
-});
-
-test('Dream response prompt length is not capped and empty string remains an explicit override clear', () => {
-  const prompt = 'D'.repeat(DREAM_PROMPT_LIMIT);
-  assert.equal(parseDreamAgent(agent({ prompt })).prompt.length, DREAM_PROMPT_LIMIT);
-  assert.equal(parseDreamOverview({
-    globalPrompt: prompt,
-    defaultPrompt: 'Default',
-    intervalHours: 2,
-    running: false,
-    agents: [],
-  }).globalPrompt.length, DREAM_PROMPT_LIMIT);
-  // 20000 是写入请求限制；响应 schema 只声明 string，合法长文档不能让整个页面读取失败。
-  assert.equal(parseDreamAgent(agent({ prompt: `${prompt}D` })).prompt.length, DREAM_PROMPT_LIMIT + 1);
-  assert.equal(parseDreamOverview({
-    globalPrompt: `${prompt}D`,
-    defaultPrompt: 'Default',
-    intervalHours: 2,
-    running: false,
-    agents: [],
-  }).globalPrompt.length, DREAM_PROMPT_LIMIT + 1);
-  assert.equal(parseDreamOverview({
-    globalPrompt: '',
-    defaultPrompt: 'Default',
-    intervalHours: 2,
-    running: false,
-    agents: [],
-  }).globalPrompt, '');
-});
-
-test('Dream HTTP and provider contracts are fixed for the non-visual UI integration', () => {
-  const contracts = readFileSync('src/api/contracts.ts', 'utf8');
-  const client = readFileSync('src/api/http-client.ts', 'utf8');
-  const provider = readFileSync('src/dream/DreamProvider.tsx', 'utf8');
-  const store = readFileSync('src/dream/dream-store.ts', 'utf8');
-
-  assert.match(contracts, /interface ApiClient extends DreamClient,/);
-  for (const member of [
-    'getDreamOverview',
-    'saveGlobalDreamPrompt',
-    'getAgentDream',
-    'updateAgentDream',
-    'runAgentDream',
-    'resolveAgentDreamPending',
-  ]) {
-    assert.ok(client.includes(`async ${member}(`), member);
-  }
-  assert.equal(DREAM_RUN_TIMEOUT_MS, 300_000);
-  assert.match(client, /timeoutMs: DREAM_RUN_TIMEOUT_MS/);
-  assert.doesNotMatch(client, /dream\/threads|threadId/);
-
-  assert.match(provider, /const api = useApi\(\)/);
-  assert.doesNotMatch(provider, /as unknown as DreamClient/);
-  assert.match(provider, /const connection = useServiceConnection\(\)/);
-  assert.match(provider, /AppState\.addEventListener\('change'/);
-  assert.match(provider, /useSyncExternalStore\(store\.subscribe, store\.getSnapshot, store\.getSnapshot\)/);
-  assert.match(provider, /export function useDream\(\)/);
-
-  for (const member of [
-    'setActive(',
-    'open()',
-    'close()',
-    'dispose()',
-    'selectAgent =',
-    'setGlobalPrompt =',
-    'setAgentDraft =',
-    'saveGlobalPrompt =',
-    'saveAgentSettings =',
-    'discardGlobal =',
-    'discardAgent =',
-    'refresh =',
-    'runNow =',
-    'resolvePending =',
-  ]) assert.ok(store.includes(member), member);
-  assert.match(store, /globalDraft: ''/);
-  assert.match(store, /!this\.state\.globalDirty && !this\.state\.agentDirty/);
-  assert.doesNotMatch(store, /threads|threadId|spaceId/);
-  assert.doesNotMatch(store, /setInterval|setTimeout/);
+test('Dream 后台中断与 dispose 不接受迟到结果', async () => {
+ let finish; const store = new DreamStore({getDreamOverview:()=>new Promise(resolve=>finish=resolve)}); store.setActive(true); store.open(); store.dispose(); finish(overview()); await tick(); assert.equal(store.getSnapshot().overview,undefined);
 });

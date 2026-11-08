@@ -8,7 +8,7 @@
 
 **The official React Native client for [Pi Muse](https://github.com/yaotutu/pi-muse), a self-hosted personal agent built on [pi](https://github.com/earendil-works/pi)**
 
-Keep conversations, isolated agents, approvals, recurring jobs, web monitors, goals, memory, and workspace files within reach—without moving your model credentials from your own server.
+Keep independent conversations with one Pi Muse assistant, approvals, recurring jobs, web monitors, goals, memory, and workspace files within reach—without moving your model credentials from your own server.
 
 [Features](#features) · [Quick start](#quick-start) · [Develop from source](#develop-from-source) · [Security](#security-and-data-handling) · [Documentation](#documentation)
 
@@ -26,13 +26,13 @@ Keep conversations, isolated agents, approvals, recurring jobs, web monitors, go
 
 ---
 
-Pi Muse Mobile is a native mobile interface, not a standalone assistant. It connects to a Pi Muse server over the product's public HTTP/SSE API; the server owns agent execution, model access, agents, files, schedules, approvals, and other persistent state.
+Pi Muse Mobile is a native mobile interface, not a standalone assistant. It connects to a Pi Muse server over the product's public HTTP/SSE API; the server owns assistant execution, model access, sessions, files, schedules, approvals, and other persistent state.
 
 The release workflow builds a signed Android APK and an unsigned iOS IPA for users who have their own iOS signing credentials. Check the assets attached to your chosen Release; the IPA is not directly installable. iOS otherwise remains a source-development target, and the Expo web output is a development preview rather than the official Pi Muse web client.
 
 ## Features
 
-### Chat and isolated agents
+### One assistant, multiple sessions
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/yaotutu/pi-muse/main/docs/assets/chat-preview.png" width="88%" alt="Chat with Markdown and tool cards in an earlier version">
@@ -42,7 +42,7 @@ The release workflow builds a signed Android APK and an unsigned iOS IPA for use
 - **Persistent message feedback.** Long-press a saved user or assistant message bubble for a nearby reaction pill and a compact Comments/Copy menu. A small badge on the bubble edge shows an existing Like/Dislike or comment count; messages without feedback have no badge. Reactions are mutually exclusive and undoable, while comments open in a separate view for adding, editing, and deleting. Edited and deleted comment text remains in the server ledger. Feedback never starts a model run or writes model preferences. Incomplete streaming messages are not eligible, and resetting or deleting a conversation clears its feedback.
 - **Purposeful Markdown rendering.** Assistant messages render headings, emphasis, lists, quotations, tables, and copyable code blocks with native React Native components. Markdown images are not loaded, HTML is shown as literal text, and message/search links are restricted to credential-free HTTP(S).
 - **Transparent tool cards.** Tool activity displays the projections returned by the server. The client does not infer hidden details or mark a result as saved or approved merely because a tool returned.
-- **Isolated agents.** Create, search, and switch contexts such as Work, Life, or Study. Each agent has its own conversation, instructions, skills, and private files.
+- **Independent sessions.** Messages opens a session list: the permanent main session plus topic sessions. Create, rename, reset, delete, and switch sessions without sharing conversation history. Instructions and skill overrides are session-specific; workspace files are shared.
 - **Useful attachments.** A message can contain up to four attachments: PNG, JPEG, GIF, or WebP images and recognized UTF-8 text/code files. The total attachment limit is 8 MiB, and text attachments together may contain at most 100,000 bytes. PDF, Office, archives, and other binary formats are not supported. Image understanding requires the server's configured model to support vision; the client does not silently switch models.
 
 ### Jobs, activity, and web monitoring
@@ -52,8 +52,8 @@ The release workflow builds a signed Android APK and an unsigned iOS IPA for use
 </p>
 
 - **Model-registered activity history.** Browse and filter registered activities, inspect status and steps, and refresh manually. Only activities reported by the server are shown; the client does not invent progress data.
-- **Scheduled jobs.** Create one-time or daily jobs through chat, then manage their content, schedule, and lifecycle in the Tasks screen. Pause, resume, cancel, retry failed work, and delete with explicit confirmation. Job controls manage schedule state; they are not a precise Stop button for an already-running agent run.
-- **Web monitors.** Create monitors through chat and use the Tasks screen to filter, refresh, pause, resume, stop, or delete them. Pi Muse Mobile shows cumulative checks and the most recent check, notification, or fetch error; the server does not expose a per-check history.
+- **Scheduled jobs.** Create one-time or daily jobs through chat, then manage their content, schedule, and lifecycle in the Settings task page. Pause, resume, cancel, retry failed work, and delete with explicit confirmation. Job controls manage schedule state; they are not a precise Stop button for an already-running conversation run.
+- **Web monitors.** Create monitors through chat and use the Settings task page to filter, refresh, pause, resume, stop, or delete them. Pi Muse Mobile shows cumulative checks and the most recent check, notification, or fetch error; the server does not expose a per-check history.
 
 ### Long-term goals and milestones
 
@@ -67,12 +67,12 @@ The release workflow builds a signed Android APK and an unsigned iOS IPA for use
 
 ### Session panel, approvals, and workspace files
 
-- **One full-screen session center.** Open agent settings via Settings → Agent Management, then Activity & Approvals for the session panel. Its Activity, Approvals, and execution History switch in place while the chat remains mounted behind it.
+- **Session information.** Open Conversation Actions in a chat or Activity & Approvals under Settings. Activity, Approvals, and execution History switch in place while visited chat streams stay mounted.
 - **Current execution and activity history.** Follow the current run, tool work, model-registered activities, progress, results, and related steps. Activity is not hidden model reasoning and is not represented as an archive of every chat run.
-- **Human-in-the-loop approvals.** Agent-initiated file writes and edits require full before/after review and explicit confirmation. A stale approval cannot overwrite content that changed after the approval was created.
-- **Agent files.** Open agent settings via Settings → Agent Management, then Files to browse the agent's private directories and files, read complete text, preview supported images, and download files without overwriting same-name files. Manual text saves require complete-content review and confirmation.
+- **Human-in-the-loop approvals.** Assistant-initiated file writes and edits require full before/after review and explicit confirmation. A stale approval cannot overwrite content that changed after the approval was created.
+- **One workspace.** Settings → Workspace Files opens the same flat workspace for every session. Browse directories, read full text, preview supported images, and download without overwriting same-name files. Manual saves require full before/after review and confirmation.
 
-The client features a primary 3-tab navigation bar: Messages, News, and Settings. The bottom bar is visible only on the three root pages and hides when the keyboard is open or inside any secondary view. Cold launch opens Messages (group chat): the top bar features a clear Members button opening a searchable member directory with separate options to "@ in group" and "Chat directly". Single-tapping any avatar opens an independent secondary private chat without entering settings or using long-press. Explicit "@" takes priority; without it, ordinary chat is handled by the configurable default responder. Group chat and private chat contexts remain completely isolated. News is a primary direct reading tab, with article detail and source management as secondary views without a bottom bar. Global settings and agent management are consolidated under Settings.
+The three primary tabs are Messages, News, and Settings. Cold launch opens the session list. Selecting a session opens a secondary chat without a bottom bar; tap the Pi Muse image above the chat to choose another session or create one. Main cannot be deleted. Article details and settings subpages also hide the bottom bar, as does an open keyboard. News Discuss selects a destination session and appends an editable article citation to its user draft; it never sends automatically.
 
 ### News reading
 
@@ -84,8 +84,8 @@ The client features a primary 3-tab navigation bar: Messages, News, and Settings
 
 - **Server connection management.** Save one reachable Pi Muse address, authenticate with the server AccessKey, and keep the resulting session token on the device. The plaintext AccessKey is not persisted by the client.
 - **Assistant and user profiles.** Edit the assistant name and tone plus global SOUL and USER profiles. Profile changes take effect on later conversations.
-- **Global long-term memory.** Search, create, edit, and delete memories shared across agents. Refreshes happen when the page opens or returns to the foreground, after successful writes, or manually.
-- **Dream memory maintenance.** Inspect Dream's global and per-agent status, review pending suggestions, adjust prompts and cycles, trigger maintenance, and explicitly apply or dismiss suggestions.
+- **Global long-term memory.** Search, create, edit, and delete memories shared across sessions. Refreshes happen when the page opens or returns to the foreground, after successful writes, or manually.
+- **Dream memory maintenance.** Inspect instance-global Dream status, review full pending suggestions and their source sessions, configure the global prompt and enable switch, trigger maintenance, and explicitly apply or dismiss suggestions.
 - **Three complete themes.** Choose Classic Blue, Morning Light, or Midnight Black. The selection is local, survives restarts, and never encodes server credentials.
 - **Android app updates.** The packaged Android app checks public GitHub releases, downloads stable APK assets, and hands installation to the Android system installer. If a check fails, including GitHub rate limiting, the update panel provides the official APK URL and a manual download button. Updates are not Expo OTA and are unavailable in Expo Go, web, or iOS builds.
 - **Current boundaries.** Voice input/transcription and lock-screen push notifications are not implemented. The client uses foreground SSE reconnection rather than claiming always-on background delivery.
@@ -158,14 +158,14 @@ These are local development gates. `npm test` uses local protocol and state fixt
 - **Credentials stay split.** Model provider keys and the server AccessKey live in the server deployment. The mobile app sends the AccessKey only for authentication and retains the returned session token, not the plaintext key.
 - **Changing servers is explicit.** Replacing the server connection clears the local business data and old credentials for the previous server; it does not delete data stored on that server.
 - **Cautious links and projections.** Message and search links are limited to credential-free HTTP(S), Markdown images are not fetched, and tool cards display server-provided projections without inventing hidden state.
-- **Approved file mutations.** Pi Muse's server policy provides no shell tool. Agent-initiated file writes and edits are workspace-scoped and require full human diff approval.
+- **Approved file mutations.** Pi Muse's server policy provides no shell tool. Assistant-initiated file writes and edits are workspace-scoped and require full human diff approval.
 - **Self-hosting is not offline AI.** The configured model provider receives the prompts and context needed for a task. Protect server configuration, backups, and any remotely exposed endpoint accordingly.
 
 ## Architecture notes
 
-- Cold launch opens Messages, with a primary 3-tab bottom bar (Messages, News, Settings) shown only on root pages and hidden when the keyboard is visible or in secondary pages. The group top bar provides a member sheet, and tapping an avatar enters secondary private chat. Navigation uses in-app state; the project does not use React Navigation or Expo Router.
+- Cold launch opens the Messages session list. Root tabs are Messages, News, and Settings; secondary chats, article details, settings subpages, and keyboard-visible views hide the bar. Navigation uses in-app state, not React Navigation or Expo Router.
 - The chat stream uses AG-UI SSE through `expo/fetch`, with custom framing and aggregation implemented in the client.
-- Runtime status, approvals, activities, and job invalidation share the server's notification SSE. Agents, files, memory, goals, jobs, monitors, profiles, and Dream use documented REST endpoints.
+- Runtime status, approvals, activities, and job invalidation share the server's notification SSE. Sessions, files, memory, goals, jobs, monitors, profiles, and Dream use documented REST endpoints.
 - Business state is kept in focused providers and stores around React context. The UI renders native React Native components rather than embedding a web app.
 - The source is purpose-written for this client; it is not a CopilotKit SDK wrapper.
 

@@ -1,10 +1,10 @@
 import type { ApprovalResolution, ApprovalSummary, ApprovalView } from '../../src/approvals/types';
 
 export const approvalFixture = (overrides: Partial<ApprovalView> = {}): ApprovalView => ({
-  id: 'approval-a', revision: 1, agentId: 'agent-a', runId: 'run-a', toolCallId: 'tool-a',
-  subagentId: null, workspaceAgentId: 'agent-a', activityId: null,
+  id: 'approval-a', revision: 1, sessionId: '22222222-2222-4222-8222-222222222222', runId: 'run-a', toolCallId: 'tool-a',
+  subagentId: null, activityId: null,
   kind: 'file_write', title: '写入验收文件', status: 'pending', execution: null,
-  preview: { scope: 'agent', ownerAgentId: 'agent-a', path: 'audit.txt', before: '', after: '完整中文内容\n第二行\n', beforeExists: false },
+  preview: { scope: 'workspace', path: 'audit.txt', before: '', after: '完整中文内容\n第二行\n', beforeExists: false },
   createdAt: '2026-10-20T00:00:00.000Z', expiresAt: '2035-10-20T00:05:00.000Z', resolvedAt: null, decidedAt: null,
   ...overrides,
 });

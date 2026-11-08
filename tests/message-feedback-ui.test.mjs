@@ -16,10 +16,10 @@ const within = ({ x, y }) => {
 test('锚定菜单在 320dp、首尾与长消息下不越界，并优先贴近消息', () => {
   const top = positionFeedbackMenu({ x: 220, y: 30, width: 90, height: 44 }, menu, viewport, safe, 'right', 8, 8, 0);
   within(top);
-  assert.ok(top.y >= 82, '首条消息智能体不足时放在下方');
+  assert.ok(top.y >= 82, '首条消息会话不足时放在下方');
   const bottom = positionFeedbackMenu({ x: 12, y: 540, width: 250, height: 48 }, menu, viewport, safe, 'left', 8, 8, 0);
   within(bottom);
-  assert.ok(bottom.y < 540, '尾条消息智能体不足时放在上方');
+  assert.ok(bottom.y < 540, '尾条消息会话不足时放在上方');
   const long = positionFeedbackMenu({ x: -6, y: -100, width: 300, height: 900 }, menu, viewport, safe, 'right', 8, 8, 0);
   within(long);
 });
@@ -48,7 +48,7 @@ test('Android 全屏 Modal 用安全区修正测量原点，上下菜单与气�
 test('反馈归属、唯一 Hook、无反馈时零徽标与菜单生命周期', () => {
   const view = read('src/workspace/ConversationView.tsx');
   const controls = read('src/feedback/MessageFeedbackControls.tsx');
-  assert.match(view, /message\.feedbackAvailable === true && conversation\.sessionId &&\s+conversation\.persistedMessageIds\.has\(message\.id\) && message\.feedback/);
+  assert.match(view, /message\.feedbackAvailable === true && conversation\.piSessionId &&\s+conversation\.persistedMessageIds\.has\(message\.id\) && message\.feedback/);
   assert.match(view, /<View key=\{message\.id\}><Message/);
   assert.match(view, /measureInWindow\(/);
   assert.match(view, /accessible=\{false\} focusable=\{false\}/);

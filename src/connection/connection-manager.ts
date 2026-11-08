@@ -149,9 +149,9 @@ export class ConnectionManager {
     const client = this.createClient(serverUrl, () => token, () => {}, { timeoutMs: 10_000 });
     this.probeClient = client;
     try {
-      if (!token) token = (await client.createSession(key || undefined)).token;
+      if (!token) token = (await client.createConnectionSession(key || undefined)).token;
       if (this.disposed || id !== this.probeVersion || this.probeClient !== client) throw requestCancelled();
-      await client.listAgents();
+      await client.listSessions();
       if (this.disposed || id !== this.probeVersion || this.probeClient !== client) throw requestCancelled();
       this.lastProbe = { id, serverUrl, token, key };
       return { id, serverUrl };
@@ -182,7 +182,7 @@ export class ConnectionManager {
     const operation = ++this.operation;
     this.publish({ status: 'connecting', busy: true, error: undefined });
     try {
-      await client.listAgents();
+      await client.listSessions();
       if (this.current(operation)) this.publish({ status: 'online', error: undefined, refreshVersion: this.state.refreshVersion + 1 });
     } catch (error) {
       if (this.current(operation) && !isRequestCancelled(error)) this.publish({ status: 'offline', error: message(error) });

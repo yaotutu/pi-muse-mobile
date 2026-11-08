@@ -78,7 +78,7 @@ test('新闻列表显式发送 savedOnly=false，空游标不发，筛选和游�
   }
 });
 
-test('新闻读取端点使用 /api/news 且不携带 agentId', async () => {
+test('新闻读取端点使用 /api/news 且不携带 sessionId', async () => {
   const urls = [];
   await withClient(async (url) => {
     urls.push(url);
@@ -108,7 +108,7 @@ test('新闻读取端点使用 /api/news 且不携带 agentId', async () => {
     'https://news.example/api/news/articles/article-1',
     'https://news.example/api/news/preferences',
   ]);
-  assert.equal(urls.some((url) => url.includes('agentId')), false);
+  assert.equal(urls.some((url) => url.includes('sessionId')), false);
 });
 
 test('新闻写入端点严格发送冻结请求体并返回完整反馈', async () => {

@@ -1,27 +1,27 @@
-/** A01 对话流程隔离测试支架（模拟 React 运行时驱动真实 Hook 与 AgentStore 生产路径，非原生运行）。 */
+/** A01 对话流程隔离测试支架（模拟 React 运行时驱动真实 Hook 与 ChatSessionStore 生产路径，非原生运行）。 */
 
 import type { ApiClient, RunInput } from '../../src/api/contracts';
 import type { AgUiEvent, ConversationSnapshot } from '../../src/api/types';
-import type { AgentStatusResponse, RunStatus } from '../../src/runtime/types';
+import type { SessionStatusResponse, RunStatus } from '../../src/runtime/types';
 
 export type MockApiHandlers = {
-  getConversation?: (agentId: string, signal?: AbortSignal) => Promise<ConversationSnapshot>;
-  runAgent?: (
+  getConversation?: (sessionId: string, signal?: AbortSignal) => Promise<ConversationSnapshot>;
+  runSession?: (
     input: RunInput,
     onEvent: (event: AgUiEvent) => void,
     signal?: AbortSignal,
   ) => Promise<void>;
-  stopRun?: (agentId: string, runId: string) => Promise<boolean>;
-  getAgentStatus?: (agentId: string, runId: string) => Promise<AgentStatusResponse>;
+  stopRun?: (sessionId: string, runId: string) => Promise<boolean>;
+  getSessionStatus?: (sessionId: string, runId: string) => Promise<SessionStatusResponse>;
 };
 
 /** 构造最小可用的运行状态响应；测试只消费 status 字段。 */
-export function agentStatusOf(agentId: string, runId: string, status: RunStatus): AgentStatusResponse {
+export function sessionStatusOf(sessionId: string, runId: string, status: RunStatus): SessionStatusResponse {
   return {
     instanceId: 'mock-instance',
     status: {
       activityId: null,
-      agentId,
+      sessionId,
       runId,
       revision: 1,
       source: 'chat',
@@ -42,19 +42,19 @@ export function agentStatusOf(agentId: string, runId: string, status: RunStatus)
 
 export function createMockApi(handlers: MockApiHandlers = {}) {
   return {
-    getConversation: handlers.getConversation ?? (async () => ({ sessionId: 'mock-session', messages: [], revision: 'rev-0' })),
-    runAgent: handlers.runAgent ?? (async () => {}),
+    getConversation: handlers.getConversation ?? (async (sessionId: string) => ({ sessionId, piSessionId: 'mock-session', messages: [], revision: 'rev-0' })),
+    runSession: handlers.runSession ?? (async () => {}),
     stopRun: handlers.stopRun ?? (async () => true),
     getServerTimeZone: async () => 'Asia/Shanghai',
-    createSession: async () => ({ token: 'mock-token', mode: 'token' }),
-    listAgents: async () => [],
-    resetAgent: async (agentId) => ({ ok: true, agentId, sessionId: 'mock-session', removed: { jobs: 0, monitors: 0 }, cancelledApprovals: 0 }),
+    createConnectionSession: async () => ({ token: 'mock-token', mode: 'token' }),
+    listSessions: async () => [],
+    resetSession: async (sessionId) => ({ session: { id: sessionId, title: '会话', createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z', isMain: sessionId === 'main' }, removed: { jobs: 0, monitors: 0 }, cancelledApprovals: 0 }),
     getSnapshot: async () => ({ identity: { name: '', tone: '' } }),
-    getAgentInstructions: async (agentId) => ({ instructions: '' }),
-    saveAgentInstructions: async (agentId, instructions) => ({ instructions }),
-    getAgentSkills: async (agentId) => ({ skills: [], diagnostics: [] }),
-    saveAgentSkills: async (agentId, overrides) => ({ skills: [], diagnostics: [] }),
-    deleteAgent: async () => ({ ok: true, removed: { jobs: 0, monitors: 0 } }),
+    getSessionInstructions: async (sessionId) => ({ instructions: '' }),
+    saveSessionInstructions: async (sessionId, instructions) => ({ instructions }),
+    getSessionSkills: async (sessionId) => ({ skills: [], diagnostics: [] }),
+    saveSessionSkills: async (sessionId, overrides) => ({ skills: [], diagnostics: [] }),
+    deleteSession: async () => ({ ok: true, removed: { sessions: 1 } }),
     listJobs: async () => [],
     getJob: async () => ({} as any),
     controlJob: async () => ({} as any),
@@ -74,7 +74,7 @@ export function createMockApi(handlers: MockApiHandlers = {}) {
     saveIdentity: async () => ({} as any),
     getProfile: async () => ({ user: '', soul: '' }),
     saveProfile: async () => ({ user: '', soul: '' }),
-    getAgentStatus: handlers.getAgentStatus ?? (async () => { throw Object.assign(new Error('运行不存在'), { status: 404 }); }),
+    getSessionStatus: handlers.getSessionStatus ?? (async () => { throw Object.assign(new Error('运行不存在'), { status: 404 }); }),
     subscribeRuntime: async () => {},
     listApprovals: async () => ({ approvals: [], pending: [], history: [], hasMore: false, nextCursor: null }),
     getPendingApprovals: async () => [],

@@ -82,7 +82,6 @@ export function parseInformationItem(value: unknown): InformationItem {
   if (!isRecord(value)) return invalid();
   return {
     id: text(value.id, { min: 1, max: 128 }),
-    agentId: text(value.agentId, { min: 1, max: 128 }),
     source: text(value.source, { min: 1, max: 128 }),
     externalId: text(value.externalId, { min: 1, max: 256 }),
     title: value.title !== undefined ? text(value.title) : undefined,
@@ -108,11 +107,11 @@ export function parseInformationItemsPage(value: unknown): InformationItemsPage 
 }
 
 export interface InformationClient {
-  getInformationSettings(agentId: string, signal?: AbortSignal): Promise<InformationSettings>;
-  saveInformationSettings(agentId: string, settings: InformationSettings, signal?: AbortSignal): Promise<InformationSettings>;
-  getInformationPreferences(agentId: string, signal?: AbortSignal): Promise<InformationPreferences>;
-  saveInformationPreferences(agentId: string, preferences: { notes: string }, signal?: AbortSignal): Promise<InformationPreferences>;
-  ingestInformationItems(agentId: string, items: InformationInputItem[], signal?: AbortSignal): Promise<InformationItem[]>;
-  listInformationItems(agentId: string, query?: InformationItemsQuery, signal?: AbortSignal): Promise<InformationItemsPage>;
-  triggerInformationRun(agentId: string, signal?: AbortSignal): Promise<void>;
+  getSmsSettings(signal?: AbortSignal): Promise<InformationSettings>;
+  saveSmsSettings(settings: InformationSettings, signal?: AbortSignal): Promise<InformationSettings>;
+  getSmsPreferences(signal?: AbortSignal): Promise<InformationPreferences>;
+  saveSmsPreferences(preferences: { notes: string }, signal?: AbortSignal): Promise<InformationPreferences>;
+  ingestSmsItems(items: InformationInputItem[], signal?: AbortSignal): Promise<InformationItem[]>;
+  listSmsItems(query?: InformationItemsQuery, signal?: AbortSignal): Promise<InformationItemsPage>;
+  triggerSmsRun(signal?: AbortSignal): Promise<void>;
 }

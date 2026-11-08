@@ -1,46 +1,46 @@
+import type { NotificationReference } from '../notifications/contracts';
 /**
- * 每个已访问智能体保留自己的会话 Hook 与 SSE 所有者。仅在智能体删除、重置 epoch
- * 或当前连接整体销毁时卸载，切换页面和智能体只控制可见性。
+ * 每个已访问会话保留自己的会话 Hook 与 SSE 所有者。仅在会话删除、重置 epoch
+ * 或当前连接整体销毁时卸载，切换页面和会话只控制可见性。
  */
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { useAgentRuntime } from '../runtime/RuntimeProvider';
-import { useAgentState } from '../agents/AgentProvider';
-import type { NotificationReference } from '../group/contracts';
+import { useSessionRuntime } from '../runtime/RuntimeProvider';
+import { useSessionState } from '../sessions/SessionProvider';
 import { ConversationView } from './ConversationView';
 import { conversationRefreshKey, reconcileConversationOwners } from './conversation-host-state';
 
-function AgentConversation({ agentId, visible, refreshVersion, onSettled, onBindingMismatch, openConnection, onOpenApprovals, onContinueNotification }: {
-  agentId: string; visible: boolean; refreshVersion: number;
-  onSettled: (agentId: string) => void; onBindingMismatch: () => void; openConnection: () => void;
+function SessionConversation({ sessionId, visible, refreshVersion, onSettled, onBindingMismatch, openConnection, onOpenApprovals, onContinueNotification }: {
+  sessionId: string; visible: boolean; refreshVersion: number;
+  onSettled: (sessionId: string) => void; onBindingMismatch: () => void; openConnection: () => void;
   onOpenApprovals?: () => void; onContinueNotification?: (reference: NotificationReference) => void;
 }) {
-  const session = useAgentState(agentId);
-  const runtime = useAgentRuntime(agentId);
-  const refreshKey = conversationRefreshKey(refreshVersion, runtime, session.sessionId);
+  const session = useSessionState(sessionId);
+  const runtime = useSessionRuntime(sessionId);
+  const refreshKey = conversationRefreshKey(refreshVersion, runtime);
   useEffect(() => {
-    if (runtime.synchronized && runtime.conversationInvalidationSessionId && session.sessionId &&
-      runtime.conversationInvalidationSessionId !== session.sessionId) onBindingMismatch();
-  }, [runtime.synchronized, runtime.conversationInvalidationSessionId, session.sessionId, onBindingMismatch]);
-  const settled = useCallback(() => onSettled(agentId), [onSettled, agentId]);
+    if (runtime.synchronized && runtime.conversationInvalidationPiSessionId && session.piSessionId &&
+      runtime.conversationInvalidationPiSessionId !== session.piSessionId) onBindingMismatch();
+  }, [runtime.synchronized, runtime.conversationInvalidationPiSessionId, session.piSessionId, onBindingMismatch]);
+  const settled = useCallback(() => onSettled(sessionId), [onSettled, sessionId]);
   return <View style={[styles.owner, !visible && styles.hidden]} accessibilityElementsHidden={!visible}
     importantForAccessibility={visible ? 'auto' : 'no-hide-descendants'} pointerEvents={visible ? 'auto' : 'none'}>
-    <ConversationView key={`${agentId}:${session.epoch}`} agentId={agentId} visible={visible} refreshKey={refreshKey}
+    <ConversationView key={`${sessionId}:${session.epoch}`} sessionId={sessionId} visible={visible} refreshKey={refreshKey}
       onSettled={settled} openConnection={openConnection} onOpenApprovals={onOpenApprovals} onContinueNotification={onContinueNotification} />
   </View>;
 }
 
-export function ConversationHost({ currentAgentId, agentIds, chatVisible, otherPage, refreshVersions, onSettled, onBindingMismatch, openConnection, onOpenApprovals, onContinueNotification }: {
-  currentAgentId: string; agentIds: string[]; chatVisible: boolean; otherPage: ReactNode;
-  refreshVersions: Record<string, number>; onSettled: (agentId: string) => void; onBindingMismatch: () => void; openConnection: () => void;
+export function ConversationHost({ currentSessionId, sessionIds, chatVisible, otherPage, refreshVersions, onSettled, onBindingMismatch, openConnection, onOpenApprovals, onContinueNotification }: {
+  currentSessionId: string; sessionIds: string[]; chatVisible: boolean; otherPage: ReactNode;
+  refreshVersions: Record<string, number>; onSettled: (sessionId: string) => void; onBindingMismatch: () => void; openConnection: () => void;
   onOpenApprovals?: () => void; onContinueNotification?: (reference: NotificationReference) => void;
 }) {
-  const [visited, setVisited] = useState<string[]>([currentAgentId]);
-  // 同一 render 就挂载新智能体，不让发送入口等待 effect；列表移除后释放对应所有者。
-  const owners = reconcileConversationOwners(visited, currentAgentId, agentIds);
+  const [visited, setVisited] = useState<string[]>([currentSessionId]);
+  // 同一 render 就挂载新会话，不让发送入口等待 effect；列表移除后释放对应所有者。
+  const owners = reconcileConversationOwners(visited, currentSessionId, sessionIds);
   if (owners !== visited) setVisited(owners);
   return <View style={styles.host}>
-    {owners.map((id) => <AgentConversation key={id} agentId={id} visible={chatVisible && id === currentAgentId}
+    {owners.map((id) => <SessionConversation key={id} sessionId={id} visible={chatVisible && id === currentSessionId}
       refreshVersion={refreshVersions[id] ?? 0} onSettled={onSettled} onBindingMismatch={onBindingMismatch} openConnection={openConnection} onOpenApprovals={onOpenApprovals} onContinueNotification={onContinueNotification} />)}
     {!chatVisible && <View style={styles.owner}>{otherPage}</View>}
   </View>;

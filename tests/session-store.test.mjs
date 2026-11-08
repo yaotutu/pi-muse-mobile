@@ -4,9 +4,9 @@ import './register-source.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-const { AgentStore } = await import('../src/agents/agent-store.ts');
+const { ChatSessionStore } = await import('../src/sessions/chat-session-store.ts');
 const { ApiError } = await import('../src/api/errors.ts');
-const { MAIN_AGENT } = await import('../src/agents/agent-state.ts');
+const { MAIN_SESSION_ID } = await import('../src/sessions/types.ts');
 
 // --- stub ApiClient：handler 列表 + 控制式 resolve/reject + signal 监听 ---
 
@@ -20,41 +20,41 @@ function defer() {
   return { promise, resolve, reject };
 }
 
-test('删除 500 保留草稿并恢复当前运行代次，不伪成功或自动重试', async () => {
+test('删除 500 保留草稿并锁住发送，不伪成功或自动重试', async () => {
   const stub = makeStub();
-  const store = new AgentStore(stub.api);
+  const store = new ChatSessionStore(stub.api);
   store.setDraft('a', '消息草稿');
   store.setInstructions('a', '规则草稿');
   const epoch = store.get('a').epoch;
-  stub.enqueue('deleteAgent', rejectWith(new ApiError(500, '删除部分失败')));
-  await assert.rejects(store.deleteAgent('a'), (error) => error.status === 500);
-  assert.equal(store.canWrite('a'), true);
-  assert.equal(store.isCurrent('a', epoch), true);
+  stub.enqueue('deleteSession', rejectWith(new ApiError(500, '删除部分失败')));
+  await assert.rejects(store.deleteSession('a'), (error) => error.status === 500);
+  assert.equal(store.canWrite('a'), false);
+  assert.equal(store.isCurrent('a', epoch), false);
   assert.equal(store.get('a').deleted, false);
   assert.equal(store.get('a').draft, '消息草稿');
   assert.equal(store.get('a').instructions.draft, '规则草稿');
-  assert.equal(stub.callCount('deleteAgent'), 1);
+  assert.equal(stub.callCount('deleteSession'), 1);
 });
 
 test('技能保存 500 保留全部修改并释放写锁', async () => {
   const stub = makeStub();
-  const store = new AgentStore(stub.api);
-  stub.enqueue('getAgentSkills', resolveWith({ skills: [makeSkill('web', true, true), makeSkill('write', true, true)] }));
+  const store = new ChatSessionStore(stub.api);
+  stub.enqueue('getSessionSkills', resolveWith({ skills: [makeSkill('web', true, true), makeSkill('write', true, true)] }));
   await store.loadSkills('a');
   store.setSkill('a', 'web', false);
   store.setSkill('a', 'write', false);
-  stub.enqueue('saveAgentSkills', rejectWith(new ApiError(500, '保存失败')));
+  stub.enqueue('saveSessionSkills', rejectWith(new ApiError(500, '保存失败')));
   assert.equal(await store.saveSkills('a'), false);
   assert.deepEqual(store.get('a').skills.draft, { web: false, write: false });
   assert.equal(store.hasSettingsWrite('a'), false);
   assert.equal(store.get('a').skills.error, '保存失败');
-  assert.equal(stub.callCount('saveAgentSkills'), 1);
+  assert.equal(stub.callCount('saveSessionSkills'), 1);
 });
 
 test('连接暂停后禁止设置读写与删除，消息草稿仍可保留', async () => {
   let calls = 0;
   const api = new Proxy({}, { get: () => async () => { calls++; throw new Error('不应发出请求'); } });
-  const store = new AgentStore(api);
+  const store = new ChatSessionStore(api);
   store.get('a').instructions.loaded = true;
   store.get('a').skills.loaded = true;
   store.setEnabled(false);
@@ -63,19 +63,19 @@ test('连接暂停后禁止设置读写与删除，消息草稿仍可保留', as
   await store.loadSettings('a');
   assert.equal(await store.saveInstructions('a'), false);
   assert.equal(await store.saveSkills('a'), false);
-  assert.equal(await store.deleteAgent('a'), undefined);
+  assert.equal(await store.deleteSession('a'), undefined);
   assert.equal(calls, 0);
   assert.equal(store.get('a').draft, '离线草稿');
   assert.equal(store.get('a').instructions.draft, '离线规则草稿');
 });
 
 const METHODS = [
-  'getAgentInstructions',
-  'saveAgentInstructions',
-  'getAgentSkills',
-  'saveAgentSkills',
-  'deleteAgent',
-  'resetAgent',
+  'getSessionInstructions',
+  'saveSessionInstructions',
+  'getSessionSkills',
+  'saveSessionSkills',
+  'deleteSession',
+  'resetSession',
 ];
 
 function makeStub() {
@@ -151,7 +151,7 @@ const rejectWith = (error) => (ctx) => ctx.reject(error);
 
 test('不同会话的 settings 草稿与消息草稿彼此隔离', async () => {
   const stub = makeStub();
-  const store = new AgentStore(stub.api);
+  const store = new ChatSessionStore(stub.api);
   store.setDraft('a', 'A 草稿消息');
   store.setDraft('b', 'B 草稿消息');
   assert.equal(store.get('a').draft, 'A 草稿消息');
@@ -167,10 +167,10 @@ test('不同会话的 settings 草稿与消息草稿彼此隔离', async () => {
   assert.equal(store.get('a').instructions.draft, 'A rules');
   assert.equal(store.get('b').instructions.draft, 'B rules');
   // 一个会话在保存中，另一个仍可继续修改自己的草稿。
-  stub.enqueue('getAgentInstructions', resolveWith({ instructions: '' }));
+  stub.enqueue('getSessionInstructions', resolveWith({ instructions: '' }));
   await store.loadInstructions('a');
   // 让 a 进入 saving：直接通过 stub 模拟一次成功保存。
-  stub.enqueue('saveAgentInstructions', resolveWith({ instructions: 'A rules' }));
+  stub.enqueue('saveSessionInstructions', resolveWith({ instructions: 'A rules' }));
   const saveA = store.saveInstructions('a');
   store.setInstructions('b', 'B rules 改');
   // a 的草稿被允许修改（因为是另一会话）；b 的草稿也已更新。
@@ -185,16 +185,16 @@ test('不同会话的 settings 草稿与消息草稿彼此隔离', async () => {
 
 test('A 的延迟读返回时切到 B，不能把 A 的内容应用到 B', async () => {
   const stub = makeStub();
-  const store = new AgentStore(stub.api);
+  const store = new ChatSessionStore(stub.api);
 
   // A 第一条 read：延迟但故意忽略 signal，等 store 切到 B 后才 resolve。
   let resolveA;
   const gateA = new Promise((res) => { resolveA = res; });
-  stub.enqueue('getAgentInstructions', () => gateA);
+  stub.enqueue('getSessionInstructions', () => gateA);
   const loadA = store.loadInstructions('a');
 
   // 第二步：切到 B，读自己的内容。
-  stub.enqueue('getAgentInstructions', resolveWith({ instructions: 'B rules' }));
+  stub.enqueue('getSessionInstructions', resolveWith({ instructions: 'B rules' }));
   await store.loadInstructions('b');
   assert.equal(store.get('b').instructions.draft, 'B rules');
   assert.equal(store.get('b').instructions.saved, 'B rules');
@@ -213,10 +213,10 @@ test('A 的延迟读返回时切到 B，不能把 A 的内容应用到 B', async
 
 test('loadSkills 回读时若草稿已偏离 saved，则保留草稿字段（去掉已移除项）', async () => {
   const stub = makeStub();
-  const store = new AgentStore(stub.api);
+  const store = new ChatSessionStore(stub.api);
 
   // 第一次拉取目录：A、B 都在。
-  stub.enqueue('getAgentSkills', resolveWith({
+  stub.enqueue('getSessionSkills', resolveWith({
     skills: [makeSkill('a', true), makeSkill('b', false)],
   }));
   await store.loadSkills('a');
@@ -230,7 +230,7 @@ test('loadSkills 回读时若草稿已偏离 saved，则保留草稿字段（去
   assert.equal(store.hasDirtySettings('a'), true);
 
   // 服务端目录变化：b 不再注册，新增 c。
-  stub.enqueue('getAgentSkills', resolveWith({
+  stub.enqueue('getSessionSkills', resolveWith({
     skills: [makeSkill('a', true, true), makeSkill('c', false, false)],
   }));
   await store.loadSkills('a');
@@ -246,16 +246,16 @@ test('loadSkills 回读时若草稿已偏离 saved，则保留草稿字段（去
 
 test('saveInstructions 回填服务端值；超长时不发起请求', async () => {
   const stub = makeStub();
-  const store = new AgentStore(stub.api);
+  const store = new ChatSessionStore(stub.api);
 
   // 先 load，让 target.loaded=true。
-  stub.enqueue('getAgentInstructions', resolveWith({ instructions: 'orig' }));
+  stub.enqueue('getSessionInstructions', resolveWith({ instructions: 'orig' }));
   await store.loadInstructions('a');
   // store 直发 draft，不在本层 trim；调用方有责任交给服务端前自己 trim。
   store.setInstructions('a', '   新规则 ');
 
   let sentInstructions;
-  stub.enqueue('saveAgentInstructions', ({ args, resolve }) => {
+  stub.enqueue('saveSessionInstructions', ({ args, resolve }) => {
     sentInstructions = args[0];
     // 服务端代表 trim 两侧空白。
     resolve({ instructions: '新规则' });
@@ -268,14 +268,14 @@ test('saveInstructions 回填服务端值；超长时不发起请求', async () 
   assert.equal(store.get('a').instructions.saved, '新规则');
   assert.equal(store.get('a').instructions.draft, '新规则');
 
-  // 超长：本地拦截，不调用 saveAgentInstructions。
+  // 超长：本地拦截，不调用 saveSessionInstructions。
   const longText = 'x'.repeat(20_001);
   store.setInstructions('a', longText);
-  const before = stub.callCount('saveAgentInstructions');
+  const before = stub.callCount('saveSessionInstructions');
   const ok2 = await store.saveInstructions('a');
-  const after = stub.callCount('saveAgentInstructions');
+  const after = stub.callCount('saveSessionInstructions');
   assert.equal(ok2, false);
-  assert.equal(after, before, '超长不能调用 api.saveAgentInstructions');
+  assert.equal(after, before, '超长不能调用 api.saveSessionInstructions');
   assert.ok(store.get('a').instructions.error?.includes('20,000') || store.get('a').instructions.error?.includes('20000'), 'err 应包含数字限制');
 });
 
@@ -283,16 +283,16 @@ test('saveInstructions 回填服务端值；超长时不发起请求', async () 
 
 test('saveSkills 普通保存提交整个目录；defaults=true 提交空覆盖表', async () => {
   const stub = makeStub();
-  const store = new AgentStore(stub.api);
+  const store = new ChatSessionStore(stub.api);
 
-  stub.enqueue('getAgentSkills', resolveWith({
+  stub.enqueue('getSessionSkills', resolveWith({
     skills: [makeSkill('a', false), makeSkill('b', true)],
   }));
   await store.loadSkills('a');
   store.setSkill('a', 'a', true);
 
   let sentOverrides;
-  stub.enqueue('saveAgentSkills', ({ args, resolve }) => {
+  stub.enqueue('saveSessionSkills', ({ args, resolve }) => {
     sentOverrides = args[0];
     resolve({
       skills: [makeSkill('a', true, false), makeSkill('b', true, true)],
@@ -303,9 +303,9 @@ test('saveSkills 普通保存提交整个目录；defaults=true 提交空覆盖�
   assert.deepEqual(sentOverrides, { a: true, b: true }, '普通保存覆盖整个目录，每个开关显式表达');
 
   // restore：发送空覆盖表。
-  const before = stub.callCount('saveAgentSkills');
+  const before = stub.callCount('saveSessionSkills');
   let restoreOverrides;
-  stub.enqueue('saveAgentSkills', ({ args, resolve }) => {
+  stub.enqueue('saveSessionSkills', ({ args, resolve }) => {
     restoreOverrides = args[0];
     resolve({
       skills: [makeSkill('a', false, false), makeSkill('b', true, true)],
@@ -314,16 +314,16 @@ test('saveSkills 普通保存提交整个目录；defaults=true 提交空覆盖�
   const okRestore = await store.saveSkills('a', true);
   assert.equal(okRestore, true);
   assert.deepEqual(restoreOverrides, {}, 'defaults=true 应发送 overrides: {}');
-  assert.equal(stub.callCount('saveAgentSkills'), before + 1);
+  assert.equal(stub.callCount('saveSessionSkills'), before + 1);
 });
 
 // --- 6. 400 保留现存草稿且刷新移除未知名，不无限重试 ---
 
 test('saveSkills 收到 400 时本地草稿保留、自动刷新目录移除未知名、且不无限重试', async () => {
   const stub = makeStub();
-  const store = new AgentStore(stub.api);
+  const store = new ChatSessionStore(stub.api);
 
-  stub.enqueue('getAgentSkills', resolveWith({
+  stub.enqueue('getSessionSkills', resolveWith({
     skills: [makeSkill('a', true), makeSkill('b', false)],
   }));
   await store.loadSkills('a');
@@ -331,23 +331,23 @@ test('saveSkills 收到 400 时本地草稿保留、自动刷新目录移除未�
   store.setSkill('a', 'a', false);
   assert.deepEqual(store.get('a').skills.draft, { a: false, b: false });
 
-  stub.enqueue('saveAgentSkills', rejectWith(new ApiError(400, '技能不可写')));
+  stub.enqueue('saveSessionSkills', rejectWith(new ApiError(400, '技能不可写')));
   // 紧随其后，被 400 触发的内部 loadSkills。
-  stub.enqueue('getAgentSkills', resolveWith({
+  stub.enqueue('getSessionSkills', resolveWith({
     skills: [makeSkill('a', true), makeSkill('c', false)],
   }));
 
-  const callsBefore = stub.callCount('saveAgentSkills');
-  const loadsBefore = stub.callCount('getAgentSkills');
+  const callsBefore = stub.callCount('saveSessionSkills');
+  const loadsBefore = stub.callCount('getSessionSkills');
   const ok = await store.saveSkills('a');
-  const callsAfter = stub.callCount('saveAgentSkills');
-  const loadsAfter = stub.callCount('getAgentSkills');
+  const callsAfter = stub.callCount('saveSessionSkills');
+  const loadsAfter = stub.callCount('getSessionSkills');
   assert.equal(ok, false);
   assert.equal(callsAfter, callsBefore + 1, '只发生一次 400，不再重试');
   assert.equal(loadsAfter, loadsBefore + 1, '刷新一次以移除未知名');
   // 等待内部 finally 中可能串起的 loadSkills 完成（refreshCatalog）。
   await new Promise(setImmediate);
-  assert.equal(stub.callCount('getAgentSkills'), loadsBefore + 1, '不无限重试，只一次刷新');
+  assert.equal(stub.callCount('getSessionSkills'), loadsBefore + 1, '不无限重试，只一次刷新');
   // draft 中 a=false 仍保留；b 被从目录中移除。
   assert.deepEqual(store.get('a').skills.draft, { a: false, c: false });
   // error 内容是原始 400 文本。
@@ -356,26 +356,26 @@ test('saveSkills 收到 400 时本地草稿保留、自动刷新目录移除未�
 
 // --- 7. delete 同步锁：saving 中禁保存/重复 delete；清除草稿缓存 ---
 
-test('deleteAgent 在 hasSettingsWrite 时返回 undefined；inFlight 后第二次直接拒绝', async () => {
+test('deleteSession 在 hasSettingsWrite 时返回 undefined；inFlight 后第二次直接拒绝', async () => {
   const stub = makeStub();
-  const store = new AgentStore(stub.api);
+  const store = new ChatSessionStore(stub.api);
 
-  stub.enqueue('getAgentInstructions', resolveWith({ instructions: '' }));
+  stub.enqueue('getSessionInstructions', resolveWith({ instructions: '' }));
   await store.loadInstructions('a');
 
   // 把 a 推进 saving 中：用一个永不 resolve 的 save 来保持锁。
   let resolveSave;
   const gate = new Promise((res) => { resolveSave = res; });
-  stub.enqueue('saveAgentInstructions', () => gate);
+  stub.enqueue('saveSessionInstructions', () => gate);
   const savePromise = store.saveInstructions('a');
   // 微任务推进后再断言状态。
   await new Promise(setImmediate);
   assert.equal(store.hasSettingsWrite('a'), true);
 
-  // deleteAgent 在 saving 时拒绝。
-  const result = await store.deleteAgent('a');
+  // deleteSession 在 saving 时拒绝。
+  const result = await store.deleteSession('a');
   assert.equal(result, undefined, 'saving 中 delete 直接 undefined');
-  assert.equal(stub.callCount('deleteAgent'), 0, '不应发 delete 请求');
+  assert.equal(stub.callCount('deleteSession'), 0, '不应发 delete 请求');
 
   // 释放 save 让其完成。
   resolveSave({ instructions: 'noop' });
@@ -384,16 +384,16 @@ test('deleteAgent 在 hasSettingsWrite 时返回 undefined；inFlight 后第二�
   // 现在发起真正的 delete。
   let resolveDelete;
   const gateDel = new Promise((res) => { resolveDelete = res; });
-  stub.enqueue('deleteAgent', ({ resolve }) => resolve({ ok: true, removed: { jobs: 0, monitors: 0 } }));
-  const firstDelete = store.deleteAgent('a');
+  stub.enqueue('deleteSession', ({ resolve }) => resolve({ ok: true, removed: { sessions: 0 } }));
+  const firstDelete = store.deleteSession('a');
 
   // 等待 deleting=true 后，第二次 delete 进入应观察到 deleting=true 路径。
   await new Promise(setImmediate);
-  const secondDelete = await store.deleteAgent('a');
+  const secondDelete = await store.deleteSession('a');
   assert.equal(secondDelete, undefined, 'deleting 中重复请求返回 undefined');
   // 并没有发第二条 delete 请求——canWrite 在 deleting 时也 false。
   await firstDelete;
-  assert.equal(stub.callCount('deleteAgent'), 1);
+  assert.equal(stub.callCount('deleteSession'), 1);
 
   // delete 完成后旧 entry 在 canWrite 视图上是 deleted，新 get 给出 deleted 状态，setDraft/setInstructions 都会被 canWrite 拦截。
   assert.equal(store.canWrite('a'), false);
@@ -402,41 +402,41 @@ test('deleteAgent 在 hasSettingsWrite 时返回 undefined；inFlight 后第二�
   assert.equal(store.get('a').deleted, true);
 });
 
-test('MAIN_AGENT (local-main) 删除时直接抛 409；保留可写', async () => {
+test('MAIN_SESSION_ID (main) 删除时直接抛 409；保留可写', async () => {
   const stub = makeStub();
-  const store = new AgentStore(stub.api);
-  await assert.rejects(store.deleteAgent(MAIN_AGENT), (error) => {
+  const store = new ChatSessionStore(stub.api);
+  await assert.rejects(store.deleteSession(MAIN_SESSION_ID), (error) => {
     assert.ok(error instanceof ApiError);
     assert.equal(error.status, 409);
     return true;
   });
-  assert.equal(stub.callCount('deleteAgent'), 0);
+  assert.equal(stub.callCount('deleteSession'), 0);
   // 主会话只被拒绝删除，但仍可写入/修改。
-  assert.equal(store.canWrite(MAIN_AGENT), true);
+  assert.equal(store.canWrite(MAIN_SESSION_ID), true);
 });
 
 // --- 8. 404 视为已不存在清理 ---
 
-test('deleteAgent 收到 404 时也清空 entry', async () => {
+test('deleteSession 收到 404 时也清空 entry', async () => {
   const stub = makeStub();
-  const store = new AgentStore(stub.api);
+  const store = new ChatSessionStore(stub.api);
   // 触发 entry 出现。
   store.setDraft('a', 'placeholder');
-  stub.enqueue('deleteAgent', rejectWith(new ApiError(404, '会话不存在')));
-  const result = await store.deleteAgent('a');
-  assert.deepEqual(result, { ok: true, removed: { jobs: 0, monitors: 0 } });
+  stub.enqueue('deleteSession', rejectWith(new ApiError(404, '会话不存在')));
+  const result = await store.deleteSession('a');
+  assert.deepEqual(result, { ok: true, removed: { sessions: 0 } });
   assert.equal(store.canWrite('a'), false);
 });
 
 test('删除中的 409 保留草稿和代次，不把冲突当作删除成功或自动重试', async () => {
   const stub = makeStub();
-  const store = new AgentStore(stub.api);
+  const store = new ChatSessionStore(stub.api);
   store.setDraft('a', '待发送消息');
   store.setInstructions('a', '未保存规则');
   const epoch = store.get('a').epoch;
-  stub.enqueue('deleteAgent', rejectWith(new ApiError(409, '会话正在删除', 'AGENT_DELETING')));
-  await assert.rejects(store.deleteAgent('a'), (error) => error.status === 409 && error.code === 'AGENT_DELETING');
-  assert.equal(stub.callCount('deleteAgent'), 1);
+  stub.enqueue('deleteSession', rejectWith(new ApiError(409, '会话正在删除', 'AGENT_DELETING')));
+  await assert.rejects(store.deleteSession('a'), (error) => error.status === 409 && error.code === 'AGENT_DELETING');
+  assert.equal(stub.callCount('deleteSession'), 1);
   assert.equal(store.get('a').deleting, false);
   assert.equal(store.get('a').deleted, false);
   assert.equal(store.isCurrent('a', epoch), true);
@@ -447,9 +447,9 @@ test('删除中的 409 保留草稿和代次，不把冲突当作删除成功或
 for (const kind of ['instructions', 'skills']) {
   test(`${kind} 保存遇到删除中的 409 保留草稿，不刷新目录或自动重试`, async () => {
     const stub = makeStub();
-    const store = new AgentStore(stub.api);
-    const load = kind === 'instructions' ? 'getAgentInstructions' : 'getAgentSkills';
-    const save = kind === 'instructions' ? 'saveAgentInstructions' : 'saveAgentSkills';
+    const store = new ChatSessionStore(stub.api);
+    const load = kind === 'instructions' ? 'getSessionInstructions' : 'getSessionSkills';
+    const save = kind === 'instructions' ? 'saveSessionInstructions' : 'saveSessionSkills';
     stub.enqueue(load, resolveWith(kind === 'instructions'
       ? { instructions: '原规则' }
       : { skills: [makeSkill('web', true, true)] }));
@@ -480,11 +480,11 @@ for (const kind of ['instructions', 'skills']) {
 
 test('saveInstructions 500 时草稿保留、saving=false、返回 false', async () => {
   const stub = makeStub();
-  const store = new AgentStore(stub.api);
-  stub.enqueue('getAgentInstructions', resolveWith({ instructions: 'orig' }));
+  const store = new ChatSessionStore(stub.api);
+  stub.enqueue('getSessionInstructions', resolveWith({ instructions: 'orig' }));
   await store.loadInstructions('a');
   store.setInstructions('a', '新指令');
-  stub.enqueue('saveAgentInstructions', rejectWith(new ApiError(500, '服务器开小差')));
+  stub.enqueue('saveSessionInstructions', rejectWith(new ApiError(500, '服务器开小差')));
   const ok = await store.saveInstructions('a');
   assert.equal(ok, false, '不能伪成功');
   assert.equal(store.get('a').instructions.saving, false, '保存结束应清 saving 锁');
@@ -493,7 +493,7 @@ test('saveInstructions 500 时草稿保留、saving=false、返回 false', async
   assert.equal(store.get('a').instructions.error, '服务器开小差');
 
   // 同会话再次提交仍可走：saving 锁已释放。
-  stub.enqueue('saveAgentInstructions', resolveWith({ instructions: '新指令' }));
+  stub.enqueue('saveSessionInstructions', resolveWith({ instructions: '新指令' }));
   const ok2 = await store.saveInstructions('a');
   assert.equal(ok2, true);
   assert.equal(store.get('a').instructions.saved, '新指令');
@@ -501,14 +501,14 @@ test('saveInstructions 500 时草稿保留、saving=false、返回 false', async
 
 // --- 10. delete 与晚到 GET（忽略 signal 的 promise）不得复活 ---
 
-test('deleteAgent 期间 read 已经中途发出、忽略 signal 仍 resolve 时，不能复活 entry', async () => {
+test('deleteSession 期间 read 已经中途发出、忽略 signal 仍 resolve 时，不能复活 entry', async () => {
   const stub = makeStub();
-  const store = new AgentStore(stub.api);
+  const store = new ChatSessionStore(stub.api);
 
-  // 第一条 getAgentInstructions：模拟忽略 signal 的服务端（不监听 abort，且仍 resolve）。
+  // 第一条 getSessionInstructions：模拟忽略 signal 的服务端（不监听 abort，且仍 resolve）。
   let resolveLate;
   const gate = new Promise((res) => { resolveLate = res; });
-  stub.enqueue('getAgentInstructions', ({ resolve }) => {
+  stub.enqueue('getSessionInstructions', ({ resolve }) => {
     // 不读 signal，直接 resolve。
     resolve(gate.then(() => ({ instructions: '路上迟到的旧读' })));
   });
@@ -516,12 +516,12 @@ test('deleteAgent 期间 read 已经中途发出、忽略 signal 仍 resolve 时
   await new Promise(setImmediate);
 
   // 启动 delete：delete 把 in-flight reads abort+移除。
-  stub.enqueue('deleteAgent', ({ resolve }) => {
+  stub.enqueue('deleteSession', ({ resolve }) => {
     // 等到 GET 完全 resolve 后再继续，避免读到 epoch 旧状态。
-    setTimeout(() => resolve({ ok: true, removed: { jobs: 0, monitors: 0 } }), 0);
+    setTimeout(() => resolve({ ok: true, removed: { sessions: 0 } }), 0);
   });
-  const result = await store.deleteAgent('a');
-  assert.deepEqual(result, { ok: true, removed: { jobs: 0, monitors: 0 } });
+  const result = await store.deleteSession('a');
+  assert.deepEqual(result, { ok: true, removed: { sessions: 0 } });
   assert.equal(store.canWrite('a'), false);
 
   // 晚到的 GET 终于返回。
@@ -538,11 +538,11 @@ test('deleteAgent 期间 read 已经中途发出、忽略 signal 仍 resolve 时
 
 // --- 11. saving 未完成禁止 delete ---
 
-test('saveSkills 进行中触发 deleteAgent 应直接 undefined', async () => {
+test('saveSkills 进行中触发 deleteSession 应直接 undefined', async () => {
   const stub = makeStub();
-  const store = new AgentStore(stub.api);
+  const store = new ChatSessionStore(stub.api);
 
-  stub.enqueue('getAgentSkills', resolveWith({
+  stub.enqueue('getSessionSkills', resolveWith({
     skills: [makeSkill('a', true)],
   }));
   await store.loadSkills('a');
@@ -550,33 +550,33 @@ test('saveSkills 进行中触发 deleteAgent 应直接 undefined', async () => {
 
   let resolveSave;
   const gate = new Promise((res) => { resolveSave = res; });
-  stub.enqueue('saveAgentSkills', () => gate);
+  stub.enqueue('saveSessionSkills', () => gate);
   const savePromise = store.saveSkills('a');
   await new Promise(setImmediate);
   assert.equal(store.hasSettingsWrite('a'), true);
 
-  const result = await store.deleteAgent('a');
+  const result = await store.deleteSession('a');
   assert.equal(result, undefined, 'saving 中 delete 拒绝');
-  assert.equal(stub.callCount('deleteAgent'), 0);
+  assert.equal(stub.callCount('deleteSession'), 0);
 
   // 释放 save。
   resolveSave({ skills: [makeSkill('a', false)] });
   await savePromise;
   // 再发起 delete 应成功（不残留 settings write 锁）。
-  stub.enqueue('deleteAgent', ({ resolve }) => resolve({ ok: true, removed: { jobs: 0, monitors: 0 } }));
-  const ok2 = await store.deleteAgent('a');
-  assert.deepEqual(ok2, { ok: true, removed: { jobs: 0, monitors: 0 } });
+  stub.enqueue('deleteSession', ({ resolve }) => resolve({ ok: true, removed: { sessions: 0 } }));
+  const ok2 = await store.deleteSession('a');
+  assert.deepEqual(ok2, { ok: true, removed: { sessions: 0 } });
 });
 
 // --- 12. dispose 取消所有进行中的 GET ---
 
 test('dispose 取消正在 loading 的 read；dispose 后 AbortController 应被 abort', async () => {
   const stub = makeStub();
-  const store = new AgentStore(stub.api);
+  const store = new ChatSessionStore(stub.api);
 
   let observedAbort = false;
   // 真实路径的服务端应响应 abort 抛 AbortError；这里从 ctx.reject 直接拒绝。
-  stub.enqueue('getAgentInstructions', ({ signal, reject }) => {
+  stub.enqueue('getSessionInstructions', ({ signal, reject }) => {
     signal?.addEventListener('abort', () => {
       observedAbort = true;
       const e = new Error('Aborted');
@@ -600,7 +600,7 @@ test('dispose 取消正在 loading 的 read；dispose 后 AbortController 应被
 
 test('discardFailedSubmission 仅释放精确匹配的 failed 暂存并保留当前输入框', async () => {
   const stub = makeStub();
-  const store = new AgentStore(stub.api);
+  const store = new ChatSessionStore(stub.api);
   const attachment = {
     id: 'current-attachment',
     name: 'current.txt',
@@ -635,7 +635,7 @@ test('discardFailedSubmission 仅释放精确匹配的 failed 暂存并保留当
 
 test('discardFailedSubmission 拒绝 sending 与 unconfirmed 暂存', async () => {
   const stub = makeStub();
-  const store = new AgentStore(stub.api);
+  const store = new ChatSessionStore(stub.api);
   for (const [id, status] of [['sending-agent', 'sending'], ['unconfirmed-agent', 'unconfirmed']]) {
     const epoch = store.get(id).epoch;
     store.setPendingSubmission(id, epoch, {
@@ -652,9 +652,9 @@ test('discardFailedSubmission 拒绝 sending 与 unconfirmed 暂存', async () =
 
 test('discardFailedSubmission 在真实删除、重置不确定与销毁生命周期中均拒绝', async () => {
   const stub = makeStub();
-  const store = new AgentStore(stub.api);
+  const store = new ChatSessionStore(stub.api);
   const deleting = makeStub();
-  const deletingStore = new AgentStore(deleting.api);
+  const deletingStore = new ChatSessionStore(deleting.api);
   const deletingEpoch = deletingStore.get('deleting-agent').epoch;
   deletingStore.setPendingSubmission('deleting-agent', deletingEpoch, {
     messageId: 'deleting-message',
@@ -664,18 +664,18 @@ test('discardFailedSubmission 在真实删除、重置不确定与销毁生命�
     status: 'failed',
   });
   let finishDelete;
-  deleting.enqueue('deleteAgent', () => new Promise((resolve) => { finishDelete = resolve; }));
-  const deletePromise = deletingStore.deleteAgent('deleting-agent');
+  deleting.enqueue('deleteSession', () => new Promise((resolve) => { finishDelete = resolve; }));
+  const deletePromise = deletingStore.deleteSession('deleting-agent');
   await new Promise(setImmediate);
   assert.equal(deletingStore.get('deleting-agent').deleting, true);
   assert.equal(deletingStore.discardFailedSubmission('deleting-agent', deletingEpoch, 'deleting-message'), false);
-  finishDelete({ ok: true, removed: { jobs: 0, monitors: 0 } });
+  finishDelete({ ok: true, removed: { sessions: 0 } });
   await deletePromise;
   assert.equal(deletingStore.canWrite('deleting-agent'), false);
   assert.equal(deletingStore.discardFailedSubmission('deleting-agent', deletingEpoch, 'deleting-message'), false);
 
-  stub.enqueue('resetAgent', rejectWith(new ApiError(0, 'network unavailable')));
-  await assert.rejects(store.resetAgent('reset-agent'));
+  stub.enqueue('resetSession', rejectWith(new ApiError(0, 'network unavailable')));
+  await assert.rejects(store.resetSession('reset-agent'));
   assert.equal(store.get('reset-agent').resetUncertain, true);
   assert.equal(store.canWrite('reset-agent'), false);
   assert.equal(store.discardFailedSubmission('reset-agent', store.get('reset-agent').epoch, 'reset-message'), false);

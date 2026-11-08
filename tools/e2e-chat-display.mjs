@@ -1,5 +1,5 @@
 /**
- * 聊天展示纯逻辑的真实回归：专用智能体、真实外部模型、currentTime、
+ * 聊天展示纯逻辑的真实回归：专用会话、真实外部模型、currentTime、
  * SSE 聚合与权威历史全部走生产 HttpApiClient；不拦截响应、不使用替身。
  */
 import assert from 'node:assert/strict';
@@ -13,12 +13,12 @@ import { safeMessageUrl } from '../src/chat/message-links.ts';
 
 assert.equal(process.env.E2E_ALLOW_LIVE, '1', 'Explicit E2E_ALLOW_LIVE=1 required for real model and live data');
 assert.ok(process.env.E2E_API_BASE_URL, 'Explicit confirmed real E2E_API_BASE_URL required');
-const keepAgent = process.env.E2E_KEEP_AGENT === '1';
+const keepSession = process.env.E2E_KEEP_AGENT === '1';
 const base = process.env.E2E_API_BASE_URL.replace(/\/$/, '');
 const output = mkdtempSync(join(tmpdir(), 'pimuse-chat-display-e2e-run.'));
 const stamp = Date.now().toString(36);
 const marker = `CHAT_DISPLAY_E2E_${stamp}`;
-const agentId = `chat-display-e2e-${stamp}`;
+let sessionId;
 const runId = `chat-display-run-${stamp}`;
 const messageId = `${runId}-message`;
 const linkUrl = `https://example.com/?${marker}`;
@@ -28,7 +28,7 @@ let cleanupRequired = false;
 let initialVersion;
 let failure;
 let history;
-let baselineAgents;
+let baselineSessions;
 const checks = [];
 const api = new HttpApiClient(base, () => token, () => { throw new Error('Real authentication rejected'); });
 
@@ -42,9 +42,9 @@ const phase = (name, extra = {}) => write('context.json', {
   phase: name,
   base,
   marker,
-  agentId,
+  sessionId,
   runId,
-  keepAgent,
+  keepSession,
   ...extra,
 });
 
@@ -62,9 +62,9 @@ async function deployment(label) {
   for (const [path, methods] of Object.entries({
     '/api/conversation': ['get'],
     '/api/conversation/run': ['post'],
-    '/api/agents': ['get'],
-    '/api/agents/{agentId}': ['delete'],
-    '/api/agents/{agentId}/instructions': ['get', 'put'],
+    '/api/sessions': ['get'],
+    '/api/sessions/{sessionId}': ['delete'],
+    '/api/sessions/{sessionId}/instructions': ['get', 'put'],
   })) {
     for (const method of methods) assert.ok(schema.paths[path]?.[method], `${method} ${path}`);
   }
@@ -95,7 +95,7 @@ function assertMarkdown(content) {
 }
 
 async function runModel() {
-  const before = await api.getConversation(agentId);
+  const before = await api.getConversation(sessionId);
   assert.equal(before.revision, 'empty');
   const eventTypes = [];
   const tools = [];
@@ -103,8 +103,8 @@ async function runModel() {
   const argsById = new Map();
   let streamedMarkdown = '';
   let runError;
-  await api.runAgent({
-    agentId,
+  await api.runSession({
+    sessionId,
     runId,
     expectedRevision: before.revision,
     message: {
@@ -142,7 +142,7 @@ async function runModel() {
   assert.equal(liveDisplay.title, '当前时间');
   assert.equal(liveDisplay.status, 'finished');
 
-  history = await api.getConversation(agentId);
+  history = await api.getConversation(sessionId);
   const userIndex = history.messages.findIndex((message) => message.id === messageId);
   assert.ok(userIndex >= 0, 'Persisted history must contain the exact user request');
   const assistant = history.messages.slice(userIndex + 1).find((message) => message.role === 'assistant' && message.content);
@@ -178,15 +178,16 @@ try {
   initialVersion = await deployment('start');
   pass('current docs/OpenAPI/health identity agrees', { serviceVersion: initialVersion });
 
-  const auth = await api.createSession(process.env.E2E_ACCESS_KEY);
+  const auth = await api.createConnectionSession(process.env.E2E_ACCESS_KEY);
   assert.equal(auth.mode, 'live', 'Real model backend is required');
   token = auth.token;
 
-  baselineAgents = (await api.listAgents()).map((agent) => agent.id);
-  assert.ok(!baselineAgents.includes(agentId), 'Dedicated chat-display agent must start absent');
+  baselineSessions = (await api.listSessions()).map((session) => session.id);
+  assert.ok(!baselineSessions.includes(sessionId), 'Dedicated chat-display session must start absent');
   cleanupRequired = true;
-  await api.saveAgentInstructions(
-    agentId,
+  sessionId = (await api.createSession(marker)).id;
+  await api.saveSessionInstructions(
+    sessionId,
     'Dedicated mobile chat display acceptance. Follow the explicit user request. Only use currentTime when requested; never write files or create other resources.',
   );
   phase('model-run');
@@ -201,23 +202,23 @@ try {
 } finally {
   try {
     if (cleanupRequired) {
-      if (keepAgent) {
-        write('keep-agent.json', { agentId, marker, runId });
-        pass('dedicated agent retained for native acceptance', { agentId });
+      if (keepSession) {
+        write('keep-session.json', { sessionId, marker, runId });
+        pass('dedicated session retained for native acceptance', { sessionId });
       } else if (token) {
-        await api.deleteAgent(agentId).catch((error) => {
+        await api.deleteSession(sessionId).catch((error) => {
           if (error?.status !== 404) throw error;
         });
-        const remaining = (await api.listAgents()).map((agent) => agent.id);
-        assert.ok(!remaining.includes(agentId), 'Cleanup must remove only the dedicated chat-display agent');
-        const missingBaseline = baselineAgents?.filter((id) => !remaining.includes(id)) ?? [];
-        assert.deepEqual(missingBaseline, [], 'Cleanup must not remove any pre-existing agent');
+        const remaining = (await api.listSessions()).map((session) => session.id);
+        assert.ok(!remaining.includes(sessionId), 'Cleanup must remove only the dedicated chat-display session');
+        const missingBaseline = baselineSessions?.filter((id) => !remaining.includes(id)) ?? [];
+        assert.deepEqual(missingBaseline, [], 'Cleanup must not remove any pre-existing session');
         write('cleanup.json', {
-          removedAgentId: agentId,
-          baselineCount: baselineAgents?.length ?? 0,
+          removedSessionId: sessionId,
+          baselineCount: baselineSessions?.length ?? 0,
           baselineUntouched: true,
         });
-        pass('cleanup removes the dedicated agent through the API');
+        pass('cleanup removes the dedicated session through the API');
       } else {
         throw new Error('Cleanup is required but no authenticated session is available');
       }

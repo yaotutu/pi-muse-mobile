@@ -4,7 +4,7 @@
  * 规范：
  * - 顶部使用"今天"时间线分组，贴合 iOS / OpenMuse 呼吸感
  * - 去除割裂冗余的操作与说明按钮，历史与审批由同层 Tab 直接承载
- * - 运行中的工具与子代理以精简内嵌条目呈现，待审批轻量提示直达
+ * - 运行中的工具与子任务以精简内嵌条目呈现，待审批轻量提示直达
  */
 
 import { useEffect, useMemo } from "react";
@@ -12,23 +12,23 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-nati
 import { Check, ChevronRight, CirclePause, Radio, ShieldAlert, Workflow, Wrench, X } from "lucide-react-native";
 import { workspaceTheme, spacing } from "../ui/tokens";
 import { useTheme } from "../theme/ThemeProvider";
-import { useAgentRuntime } from "../runtime/RuntimeProvider";
-import type { AgentStatus } from "../runtime/types";
+import { useSessionRuntime } from "../runtime/RuntimeProvider";
+import type { SessionStatus } from "../runtime/types";
 import { useServiceConnection } from "../connection/ConnectionProvider";
 import { ActionButton } from "../ui/ActionButton";
 
 export function CurrentExecution({
-  agentId,
+  sessionId,
   onSettled,
   onApprovals,
   onHistory,
 }: {
-  agentId: string;
+  sessionId: string;
   onSettled?: () => void;
   onApprovals?: () => void;
   onHistory?: (activityId?: string) => void;
 }) {
-  const runtime = useAgentRuntime(agentId);
+  const runtime = useSessionRuntime(sessionId);
   const connection = useServiceConnection();
   const { colors } = useTheme();
 
@@ -88,7 +88,7 @@ export function CurrentExecution({
           </View>
           <View style={styles.body}>
             <Text style={styles.title}>当前没有进行中的执行</Text>
-            <Text style={styles.subtitle}>新运行开始后，此处显示执行、工具与子代理进展。</Text>
+            <Text style={styles.subtitle}>新运行开始后，此处显示执行、工具与子任务进展。</Text>
           </View>
         </View>
       )}
@@ -128,7 +128,7 @@ export function CurrentExecution({
                       <Wrench size={14} color={colors.faint} />
                       <Text style={styles.subText}>{tool.label}</Text>
                       <Text style={styles.subCaption}>
-                        {tool.subagentId ? "子代理" : "主会话"} · {tool.status === "waiting_approval" ? "待审批" : "执行中"}
+                        {tool.subagentId ? "子任务" : "主会话"} · {tool.status === "waiting_approval" ? "待审批" : "执行中"}
                       </Text>
                     </View>
                   ))}
@@ -180,6 +180,6 @@ export function CurrentExecution({
   );
 }
 
-function subagentStatus(status: AgentStatus["subagents"][number]["status"]) {
+function subagentStatus(status: SessionStatus["subagents"][number]["status"]) {
   return { queued: "等待执行名额", running: "执行中", succeeded: "已完成", failed: "执行失败", cancelled: "已停止" }[status];
 }

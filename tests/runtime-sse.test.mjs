@@ -17,14 +17,14 @@ const parseChunks = (chunks, limits) => {
 };
 
 test('标准 event/data 帧按到达顺序解析，未闭合尾部留给下一段', () => {
-  const ready = { instanceId: 'i1', serverTime: 't', agentPresences: [], agentStatuses: [] };
-  const status = { instanceId: 'i1', agentId: 'a', runId: 'b', revision: 2, source: 'chat', jobId: null, title: 't', status: 'running', phase: 'waiting_model', label: 'l', tools: [], subagents: [], pendingApprovalIds: [], startedAt: '2026-10-19T00:00:00.000Z', updatedAt: '2026-10-19T00:00:00.000Z', endedAt: null };
-  const tail = 'event: agent_status_updated\ndata: {"instance';
-  const out = new RuntimeSseParser().push(frame('ready', ready) + frame('agent_status_updated', status) + tail);
+  const ready = { instanceId: 'i1', serverTime: 't', sessionPresences: [], sessionStatuses: [] };
+  const status = { instanceId: 'i1', sessionId: 'a', runId: 'b', revision: 2, source: 'chat', jobId: null, title: 't', status: 'running', phase: 'waiting_model', label: 'l', tools: [], subagents: [], pendingApprovalIds: [], startedAt: '2026-10-19T00:00:00.000Z', updatedAt: '2026-10-19T00:00:00.000Z', endedAt: null };
+  const tail = 'event: session_status_updated\ndata: {"instance';
+  const out = new RuntimeSseParser().push(frame('ready', ready) + frame('session_status_updated', status) + tail);
   assert.equal(out.length, 2);
   assert.equal(out[0].event, 'ready');
   assert.equal(JSON.parse(out[0].data).instanceId, 'i1');
-  assert.equal(out[1].event, 'agent_status_updated');
+  assert.equal(out[1].event, 'session_status_updated');
   // 残尾交给下一次 push。
   const rest = new RuntimeSseParser().push(frame('ready', ready) + tail);
   assert.equal(rest.length, 1);
@@ -32,28 +32,28 @@ test('标准 event/data 帧按到达顺序解析，未闭合尾部留给下一�
   // 把残尾补完，再 push 完整剩余部分。
   const parser = new RuntimeSseParser();
   parser.push(frame('ready', ready) + tail);
-  const finished = parser.push('Id":"i1","agentId":"a","runId":"b","revision":2}\n\n');
+  const finished = parser.push('Id":"i1","sessionId":"a","runId":"b","revision":2}\n\n');
   assert.equal(finished.length, 1);
-  assert.equal(finished[0].event, 'agent_status_updated');
+  assert.equal(finished[0].event, 'session_status_updated');
 });
 
 test('CRLF 与 LF 帧尾都能正确闭合', () => {
-  const ready = { instanceId: 'i1', serverTime: 't', agentPresences: [], agentStatuses: [] };
+  const ready = { instanceId: 'i1', serverTime: 't', sessionPresences: [], sessionStatuses: [] };
   const crlf = frame('ready', ready, '\r\n');
   assert.deepEqual(new RuntimeSseParser().push(crlf), [{ event: 'ready', data: JSON.stringify(ready) }]);
 });
 
 test('每个 chunk 切分位置都不能丢失或重复事件', () => {
-  const ready = { instanceId: 'i1', serverTime: 't', agentPresences: [], agentStatuses: [] };
-  const status = { instanceId: 'i1', agentId: 'a', runId: 'b', revision: 2, source: 'chat', jobId: null, title: 't', status: 'running', phase: 'waiting_model', label: 'l', tools: [], subagents: [], pendingApprovalIds: [], startedAt: '2026-10-19T00:00:00.000Z', updatedAt: '2026-10-19T00:00:00.000Z', endedAt: null };
-  const stream = frame('ready', ready, '\r\n') + frame('agent_status_updated', status) + frame('ready', ready);
+  const ready = { instanceId: 'i1', serverTime: 't', sessionPresences: [], sessionStatuses: [] };
+  const status = { instanceId: 'i1', sessionId: 'a', runId: 'b', revision: 2, source: 'chat', jobId: null, title: 't', status: 'running', phase: 'waiting_model', label: 'l', tools: [], subagents: [], pendingApprovalIds: [], startedAt: '2026-10-19T00:00:00.000Z', updatedAt: '2026-10-19T00:00:00.000Z', endedAt: null };
+  const stream = frame('ready', ready, '\r\n') + frame('session_status_updated', status) + frame('ready', ready);
   for (let split = 0; split <= stream.length; split += 1) {
     assert.equal(parseChunks([stream.slice(0, split), stream.slice(split)]).length, 3, `split=${split}`);
   }
 });
 
 test('UTF-8 多字节字符跨 chunk 仍能完整闭合', () => {
-  const ready = { instanceId: 'i1', serverTime: '中文时间', agentPresences: [], agentStatuses: [] };
+  const ready = { instanceId: 'i1', serverTime: '中文时间', sessionPresences: [], sessionStatuses: [] };
   const stream = frame('ready', ready);
   // 把 UTF-8 字节流按字节切分，模拟网络层零散到达；TextDecoder 在第二次 decode 时落盘残留字节。
   const bytes = new TextEncoder().encode(stream);
@@ -79,7 +79,7 @@ test('id/retry 元数据不影响解析结果', () => {
 });
 
 test('多 data 行按 SSE 规范用 \\n 拼接为单个 JSON 文档', () => {
-  const stream = 'event: ready\ndata: {"instanceId":"i1",\ndata: "serverTime":"t","agentStatuses":[]}\n\n';
+  const stream = 'event: ready\ndata: {"instanceId":"i1",\ndata: "serverTime":"t","sessionStatuses":[]}\n\n';
   const out = new RuntimeSseParser().push(stream);
   assert.equal(out.length, 1);
   assert.equal(out[0].event, 'ready');
@@ -112,7 +112,7 @@ test('ready 帧超过 12MiB 上限抛 RuntimeSseParseError(oversize)', () => {
 test('非 ready 帧超过 8MiB 上限抛 RuntimeSseParseError(oversize)', () => {
   const parser = new RuntimeSseParser({ readyBytes: 12 * 1024 * 1024, otherBytes: 8 * 1024 * 1024 });
   const bigData = 'x'.repeat(8 * 1024 * 1024 + 1);
-  assert.throws(() => parser.push(`event: agent_status_updated\ndata: ${bigData}\n\n`), (e) => {
+  assert.throws(() => parser.push(`event: session_status_updated\ndata: ${bigData}\n\n`), (e) => {
     assert.ok(e instanceof RuntimeSseParseError);
     assert.equal(e.kind, 'oversize');
     return true;
@@ -122,7 +122,7 @@ test('非 ready 帧超过 8MiB 上限抛 RuntimeSseParseError(oversize)', () => 
 test('未闭合帧累计超过 otherBytes 也抛 oversize，避免半截帧积压', () => {
   const parser = new RuntimeSseParser({ readyBytes: 12 * 1024 * 1024, otherBytes: 1024 });
   // 一个永远不闭合的帧；分两段推送，每段都不到 otherBytes，但总长超过。
-  const head = 'event: agent_status_updated\ndata: ' + 'a'.repeat(700);
+  const head = 'event: session_status_updated\ndata: ' + 'a'.repeat(700);
   const tail = 'b'.repeat(700);
   parser.push(head);
   assert.throws(() => parser.push(tail), (e) => {
@@ -134,13 +134,13 @@ test('未闭合帧累计超过 otherBytes 也抛 oversize，避免半截帧积�
 
 test('end() 丢弃未闭合尾部，不合成事件', () => {
   const parser = new RuntimeSseParser();
-  parser.push(frame('ready', { instanceId: 'i1', serverTime: 't', agentPresences: [], agentStatuses: [] }));
-  parser.push('event: agent_status_updated\ndata: {"v":1');
+  parser.push(frame('ready', { instanceId: 'i1', serverTime: 't', sessionPresences: [], sessionStatuses: [] }));
+  parser.push('event: session_status_updated\ndata: {"v":1');
   assert.deepEqual(parser.end(), []);
 });
 
-test('decodeRuntimeFrame：ready/agent_status_updated 解码为 RuntimeEvent，未知事件返回 null', () => {
-  const readyFrame = { event: 'ready', data: JSON.stringify({ instanceId: 'i1', serverTime: 't', agentPresences: [], agentStatuses: [] }) };
+test('decodeRuntimeFrame：ready/session_status_updated 解码为 RuntimeEvent，未知事件返回 null', () => {
+  const readyFrame = { event: 'ready', data: JSON.stringify({ instanceId: 'i1', serverTime: 't', sessionPresences: [], sessionStatuses: [] }) };
   const out = decodeRuntimeFrame(readyFrame);
   assert.equal(out.event, 'ready');
   assert.equal(out.data.instanceId, 'i1');
@@ -151,14 +151,14 @@ test('decodeRuntimeFrame：ready/agent_status_updated 解码为 RuntimeEvent，�
 });
 
 test('decodeRuntimeFrame：conversation_updated 是受支持的身份失效事件', () => {
-  const payload = { instanceId: 'i1', agentId: 'agent-a', sessionId: 'session-a' };
+  const payload = { instanceId: 'i1', sessionId: '22222222-2222-4222-8222-222222222222', piSessionId: 'session-a' };
   const out = decodeRuntimeFrame({ event: 'conversation_updated', data: JSON.stringify(payload) });
   assert.deepEqual(out, { event: 'conversation_updated', data: payload });
 });
 
 test('decodeRuntimeFrame：坏 JSON 必须报错并重新同步，不能静默漏状态', () => {
   assert.throws(() => decodeRuntimeFrame({ event: 'ready', data: 'not-json' }), (error) => error.kind === 'invalid_json');
-  assert.throws(() => decodeRuntimeFrame({ event: 'agent_status_updated', data: '{]' }), (error) => error.kind === 'invalid_json');
+  assert.throws(() => decodeRuntimeFrame({ event: 'session_status_updated', data: '{]' }), (error) => error.kind === 'invalid_json');
 });
 
 test('decodeRuntimeFrame：data 不是对象时拒绝', () => {
@@ -186,8 +186,8 @@ test('解析器不预先替换换行符，CRLF/LF/CR 都能在帧内任意位置
 
 test('一帧内多个相同字段保留最后一个（event: 行为与规范一致）', () => {
   // SSE 规范要求：相同字段重复出现按"最后一个"处理；这里 event 重写也能解析。
-  const stream = 'event: ready\nevent: agent_status_updated\ndata: {"v":1}\n\n';
+  const stream = 'event: ready\nevent: session_status_updated\ndata: {"v":1}\n\n';
   const out = new RuntimeSseParser().push(stream);
   assert.equal(out.length, 1);
-  assert.equal(out[0].event, 'agent_status_updated');
+  assert.equal(out[0].event, 'session_status_updated');
 });

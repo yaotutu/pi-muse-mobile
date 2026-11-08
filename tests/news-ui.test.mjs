@@ -129,7 +129,7 @@ test('未明写入回读和显式解锁仍可见，没有评论UI或客户端评
 test('RSS 固定顶栏按入口返回，默认先展示已有来源，添加和精选按需展开', () => {
   const page = read('workspace/NewsPage.tsx');
   const sources = page.split('function Sources(')[1].split('export function NewsPage(')[0];
-  assert.match(sources, /<AgentHeader title="RSS 来源" backLabel=\{backToSettings \? '返回新闻设置' : '返回新闻列表'\} onBack=\{onBack\} \/>\s*<ScrollView/);
+  assert.match(sources, /<PageHeader title="RSS 来源" backLabel=\{backToSettings \? '返回新闻设置' : '返回新闻列表'\} onBack=\{onBack\} \/>\s*<ScrollView/);
   assert.doesNotMatch(sources, /styles\.sourceHeading|styles\.sourceTitle|news-sources-back/);
   assert.match(sources, /useState\(!!snapshot\.sourceDraft\.url \|\| !!snapshot\.sourceDraft\.title\)/);
   assert.match(sources, /const adding = showAddSource \|\| snapshot\.sourceWriting \|\| snapshot\.sourceUncertain/);
@@ -154,17 +154,4 @@ test('新闻来源支持推荐中文精选 RSS 源并可一键填入', () => {
   assert.match(page, /news-preset-select-/);
   assert.match(page, /store\.setSourceDraft\(\{ url: preset\.url, title: preset\.title \}\)/);
   assert.match(page, /已添加/);
-});
-
-test('新闻阅读归属新闻成员，不再有底栏，会话活动保留', () => {
-  const workspace = read('workspace/WorkspaceScreen.tsx');
-  const session = read('workspace/SessionPanel.tsx');
-  assert.doesNotMatch(read('workspace/AgentPage.tsx'), /agent-main-view/);
-  assert.match(read('workspace/primary-nav.ts'), /新闻/);
-  assert.match(workspace, /<PrimaryTabBar/);
-  assert.doesNotMatch(workspace, /workspace-read-news/);
-  assert.doesNotMatch(workspace, /const NAV:|<Navigation/);
-  assert.doesNotMatch(workspace, /\{ id: 'activity', label: '任务'/);
-  assert.match(workspace, /<NewsPage\b/);
-  assert.match(session, /tab === 'history'.*ActivityPanel/);
 });

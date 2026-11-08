@@ -41,7 +41,7 @@ export function ProfilePanel() {
     <View style={styles.topRow}>
       <ActionButton label="刷新助手与用户资料" text="刷新" onPress={() => void store.refresh()} disabled={snapshot.loading || !!snapshot.writing} icon={RefreshCw} />
     </View>
-    <Text style={styles.intro}>全部智能体共用，保存后从下一轮对话生效。草稿仅保留在当前连接内；助手设置和人设资料分别提交。</Text>
+    <Text style={styles.intro}>全部会话共用，保存后从下一轮对话生效。草稿仅保留在当前连接内；助手设置和人设资料分别提交。</Text>
 
     {snapshot.loading && <View style={styles.statusRow}><ActivityIndicator accessibilityLabel="正在读取助手与用户资料" color={colors.muted} /><Text style={styles.caption}>正在读取服务端资料…</Text></View>}
     {!!snapshot.error && <FeedbackNotice text={snapshot.error} tone="danger" />}

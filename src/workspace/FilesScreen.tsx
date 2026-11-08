@@ -14,7 +14,7 @@ import { FormInput } from '../ui/FormInput';
 import { IconControl } from '../ui/IconControl';
 import { AnchoredFeedbackMenu, FeedbackMenuRow, FeedbackMenuRows } from '../ui/AnchoredFeedbackMenu';
 import type { MenuRect } from '../ui/menu-position';
-import { AgentHeader } from './AgentHeader';
+import { PageHeader } from './PageHeader';
 
 const { layout: l, radius: r, typography: t } = workspaceTheme;
 const IMAGE_MIME = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
@@ -45,7 +45,7 @@ function downloadMessage(result: NativeDownloadResult, originalName: string): st
  * 文件子页消费连接内 FilesStore；目录、详情、编辑和确认分屏展示。
  * 页面离开只取消读取，草稿仍在连接内；图片仅允许受支持的本地 data URI。
  */
-export function FilesScreen({ currentAgentId, agentName, onBack }: { currentAgentId: string; agentName: string; onBack: () => void }) {
+export function FilesScreen({ onBack }: { onBack: () => void }) {
   const { store, snapshot } = useFiles();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -62,37 +62,33 @@ export function FilesScreen({ currentAgentId, agentName, onBack }: { currentAgen
   useEffect(() => { store.open(); return () => store.close(); }, [store]);
 
   const locked = snapshot.writing !== false || snapshot.uncertain || !!snapshot.editor || !!snapshot.savePreview || !!snapshot.deleteTarget;
-  // Provider 负责草稿解除后的智能体同步；这里只展示 store 实际归属，阻止错位期的新操作。
-  const scopeLabel = snapshot.scope === 'shared' ? '共享文件 · 全部智能体' : `私有文件 · ${snapshot.selectedAgentId ?? '未选择智能体'}`;
-  const wrongAgent = snapshot.scope === 'agent' && snapshot.selectedAgentId !== currentAgentId;
-  const canNavigate = !locked && !wrongAgent;
-  // 切到另一智能体后，旧草稿仍归旧范围；允许用户在明确显示归属的预览中完成原操作。
-  // 无草稿的短暂错位期则禁止创建新操作，等待 selectAgent 同步。
-  const canWrite = store.canWrite() && (!wrongAgent || locked);
+  const scopeLabel = '工作区文件 · 所有会话共用';
+  const canNavigate = !locked;
+  const canWrite = store.canWrite();
   const detail = !snapshot.detailStale && snapshot.detail?.path === snapshot.selectedPath ? snapshot.detail : undefined;
   // 设备目录选择器会使应用退后台；详情可暂时 stale，回到前台也会换成新读取对象。
   // 下载反馈只按用户当前选择的范围与路径归属，不借详情对象或当前服务端版本判断。
   const selectedKey = snapshot.selectedPath
-    ? `${snapshot.scope}:${snapshot.selectedAgentId ?? ''}:${snapshot.selectedPath}` : undefined;
+    ? snapshot.selectedPath : undefined;
   const detailKey = detail ? selectedKey : undefined;
   const shownDownload = download && download.key === selectedKey ? download.message : undefined;
   const busyDownload = !!detailKey && downloading === detailKey;
-  const menuOwner = `${currentAgentId}:${selectedKey ?? ''}:${viewKey}`;
+  const menuOwner = `${selectedKey ?? ''}:${viewKey}`;
   const [infoState, setInfoState] = useState<{ store: typeof store; owner: string; info?: { key: string; anchor: MenuRect } }>({ store, owner: menuOwner });
   if (infoState.store !== store || infoState.owner !== menuOwner) setInfoState({ store, owner: menuOwner });
   const info = infoState.info;
   const fileOpen = !!snapshot.selectedPath && snapshot.writing === false && !snapshot.uncertain && !snapshot.savePreview && !snapshot.deleteTarget && snapshot.editor?.mode !== 'create';
   const title = snapshot.uncertain ? '核对文件操作' : snapshot.savePreview ? '确认保存' : snapshot.editor?.mode === 'create' ? '新建文件' : snapshot.deleteTarget ? '确认删除' : snapshot.selectedPath?.split('/').pop() ?? '文件';
   const parent = snapshot.selectedPath?.split('/').slice(0, -1).join('/') || snapshot.directoryPath;
-  const caption = parent === '.' ? agentName : `${agentName} · ${parent}`;
+  const caption = parent === '.' ? '工作区' : `工作区 · ${parent}`;
   const closeInfo = () => { measureSequence.current += 1; setInfoState({ store, owner: menuOwner }); };
-  // 切文件、切智能体或进入编辑/确认后关闭菜单，并废弃异步测量，不能带回旧文件操作。
+  // 切文件、切会话或进入编辑/确认后关闭菜单，并废弃异步测量，不能带回旧文件操作。
   useLayoutEffect(() => {
     measureSequence.current += 1;
     return () => { measureSequence.current += 1; };
-  }, [store, selectedKey, viewKey, currentAgentId]);
+  }, [store, selectedKey, viewKey]);
   const openInfo = () => {
-    if (!detailKey || !fileOpen || wrongAgent) return;
+    if (!detailKey || !fileOpen) return;
     Keyboard.dismiss();
     const sequence = ++measureSequence.current;
     infoButton.current?.measureInWindow((x, y, width, height) => {
@@ -102,7 +98,7 @@ export function FilesScreen({ currentAgentId, agentName, onBack }: { currentAgen
   };
   const verification = snapshot.verificationDetail;
   const verificationKey = snapshot.uncertainOperation
-    ? `verification:${snapshot.uncertainOperation.scope}:${snapshot.uncertainOperation.agentId ?? ''}:${snapshot.uncertainOperation.path}` : undefined;
+    ? `verification:${snapshot.uncertainOperation.path}` : undefined;
 
   const saveToDevice = async (file: WorkspaceFileDetail, key: string, stillRelevant: () => boolean) => {
     if (downloading === key) return;
@@ -110,7 +106,7 @@ export function FilesScreen({ currentAgentId, agentName, onBack }: { currentAgen
     setDownload(undefined);
     try {
       const result = await saveWorkspaceFileToDevice(file);
-      // 系统目录选择器可能在切文件或切智能体后才返回；旧结果不能写进新详情。
+      // 系统目录选择器可能在切文件或切会话后才返回；旧结果不能写进新详情。
       if (stillRelevant()) setDownload({ key, message: downloadMessage(result, file.name) });
     } catch (error) {
       if (stillRelevant()) setDownload({ key, message: error instanceof Error ? error.message : '保存到设备失败' });
@@ -120,21 +116,20 @@ export function FilesScreen({ currentAgentId, agentName, onBack }: { currentAgen
   };
 
   return <View style={styles.screen}>
-    <AgentHeader title={title} caption={caption} onBack={onBack} action={fileOpen && <View ref={infoButton} collapsable={false}>
-      <IconControl icon={Info} label="查看文件详情与操作" onPress={openInfo} disabled={!detail || wrongAgent} testID="file-information" />
+    <PageHeader title={title} caption={caption} onBack={onBack} action={fileOpen && <View ref={infoButton} collapsable={false}>
+      <IconControl icon={Info} label="查看文件详情与操作" onPress={openInfo} disabled={!detail} testID="file-information" />
     </View>} />
     <ScrollView ref={scroll} key={viewKey} style={styles.screen} contentContainerStyle={styles.root}
     keyboardShouldPersistTaps="handled" testID="workspace-files-screen"
     onContentSizeChange={() => { if (viewKey.startsWith('directory:')) scroll.current?.scrollTo({ y: offsets.current[viewKey] ?? 0, animated: false }); }}
     onScroll={(event) => { if (viewKey.startsWith('directory:')) offsets.current[viewKey] = event.nativeEvent.contentOffset.y; }} scrollEventThrottle={100}>
-    {wrongAgent && <Text accessibilityRole="alert" style={styles.warning}>当前全局智能体是 {currentAgentId}；文件操作仍属于 {snapshot.selectedAgentId ?? '未选择智能体'}。请先保存、取消或完成未明操作核对，文件范围才会切换。</Text>}
     {!!snapshot.error && <Text selectable accessibilityRole="alert" style={styles.error}>{snapshot.error}</Text>}
     {!!snapshot.notice && <Text accessibilityLiveRegion="polite" style={styles.success}>{snapshot.notice}</Text>}
     {snapshot.stale && snapshot.loaded && <Text style={styles.warning}>目录内容可能已变化；请手动刷新后核对。旧列表仍按上次读取结果显示。</Text>}
 
     {snapshot.uncertain && <Card style={styles.warningCard} tone="warning">
       <Text style={styles.cardTitle}>上次文件操作结果未明</Text>
-      <Text selectable style={styles.body}>归属：{snapshot.uncertainOperation?.scope === 'shared' ? '共享文件 · 全部智能体' : `私有文件 · ${snapshot.uncertainOperation?.agentId ?? snapshot.selectedAgentId ?? '未知智能体'}`}</Text>
+      <Text selectable style={styles.body}>归属：{scopeLabel}</Text>
       <Text selectable style={styles.path}>路径：{snapshot.uncertainOperation?.path ?? '未记录'}</Text>
       <Text style={styles.body}>不会自动重发。请完整回读并逐字核对，再明确解除锁定；解除后再次提交会发起新请求。</Text>
       <View style={styles.actions}><ActionButton label="完整回读未明文件操作" text="回读核对" onPress={() => void store.verifyUncertainOperation()} disabled={snapshot.writing !== false} /></View>
@@ -148,7 +143,7 @@ export function FilesScreen({ currentAgentId, agentName, onBack }: { currentAgen
                 onPress={() => void saveToDevice(verification, verificationKey, () => {
                   const current = store.getSnapshot();
                   return current.uncertain && current.uncertainOperation !== undefined &&
-                    `verification:${current.uncertainOperation.scope}:${current.uncertainOperation.agentId ?? ''}:${current.uncertainOperation.path}` === verificationKey;
+                    `verification:${current.uncertainOperation.path}` === verificationKey;
                 })} />
               {download?.key === verificationKey && <Text selectable accessibilityLiveRegion="polite" style={styles.body}>{download.message}</Text>}
             </>}
@@ -161,7 +156,7 @@ export function FilesScreen({ currentAgentId, agentName, onBack }: { currentAgen
 
     {snapshot.savePreview ? <Card style={styles.card}>
       <Text accessibilityRole="header" style={styles.cardTitle}>确认保存 · {snapshot.savePreview.mode === 'create' ? '新建文本' : '修改文本'}</Text>
-      <Text selectable style={styles.body}>范围：{snapshot.savePreview.scope === 'shared' ? '共享文件 · 全部智能体' : `私有文件 · ${snapshot.savePreview.agentId}`}</Text>
+      <Text selectable style={styles.body}>范围：{scopeLabel}</Text>
       <Text selectable style={styles.path}>路径：{snapshot.savePreview.path}</Text>
       <Text style={styles.caption}>以下是完整原文与完整待保存内容，请滚动到末尾核对。新建文件的原文为空。</Text>
       <TextBlock label="保存前 · 全文" value={snapshot.savePreview.before} styles={styles} />
@@ -238,13 +233,13 @@ export function FilesScreen({ currentAgentId, agentName, onBack }: { currentAgen
       <ActionButton label="预览工作区文件保存前后全文" text={snapshot.writing ? '正在保存…' : '预览保存'} onPress={() => { Keyboard.dismiss(); store.requestSave(); }} disabled={!canWrite || utf8ByteLength(sourceDraft.content) > MAX_WORKSPACE_TEXT_BYTES} tone="primary" />
       <ActionButton label="取消编辑并丢弃文件草稿" text="放弃修改" onPress={() => { Keyboard.dismiss(); store.cancelEditor(); }} disabled={snapshot.writing !== false} />
     </View>}
-    {info && info.key === detailKey && detail && fileOpen && !wrongAgent && <Modal transparent animationType="none" statusBarTranslucent navigationBarTranslucent onRequestClose={closeInfo}>
+    {info && info.key === detailKey && detail && fileOpen && <Modal transparent animationType="none" statusBarTranslucent navigationBarTranslucent onRequestClose={closeInfo}>
       <ThemeStatusBar />
       <AnchoredFeedbackMenu anchor={info.anchor} align="right" width={l.fileInformationWidth} dismissLabel="关闭文件详情" onDismiss={closeInfo} testID="file-information-menu">
         <ScrollView style={styles.menuScroll} keyboardShouldPersistTaps="handled"><FeedbackMenuRows>
           <View style={styles.information}>
             <Text accessibilityRole="header" style={styles.cardTitle}>文件详情</Text>
-            <Text selectable style={styles.body}>{agentName}</Text>
+            <Text selectable style={styles.body}>{'工作区'}</Text>
             <Text selectable style={styles.path}>{detail.path}</Text>
             <Text selectable style={styles.caption}>大小：{formatSize(detail.size)}</Text>
             <Text selectable style={styles.caption}>修改时间：{formatTime(detail.updatedAt)}</Text>
@@ -257,7 +252,7 @@ export function FilesScreen({ currentAgentId, agentName, onBack }: { currentAgen
               void saveToDevice(detail, detailKey, () => {
                 const current = store.getSnapshot();
                 return current.selectedPath !== undefined &&
-                  `${current.scope}:${current.selectedAgentId ?? ''}:${current.selectedPath}` === detailKey;
+                  current.selectedPath === detailKey;
               });
             }} disabled={busyDownload} />
             <FeedbackMenuRow icon={Trash2} label={`准备删除工作区文件 ${detail.path}`} text="删除文件…" onPress={() => { closeInfo(); store.requestDelete(detail.path); }} disabled={!canWrite || !!sourceDraft || !snapshot.entries.some((entry) => entry.kind === 'file' && entry.path === detail.path)} />

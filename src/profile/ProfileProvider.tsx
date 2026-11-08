@@ -6,7 +6,7 @@ import { ProfileStore, type ProfileSnapshot } from './profile-store';
 
 const Context = createContext<{ store: ProfileStore; snapshot: ProfileSnapshot } | null>(null);
 
-/** 全局资料不随 agent 隔离；连接域内按 active/open/前台读取，不建立轮询。 */
+/** 全局资料不随会话隔离；连接域内按 active/open/前台读取，不建立轮询。 */
 export function ProfileProvider({ children }: { children: ReactNode }) {
   const api = useApi();
   const connection = useServiceConnection();

@@ -8,9 +8,9 @@ const Context = createContext<{ store: FilesStore; snapshot: FilesSnapshot } | n
 
 /**
  * FilesProvider 只承载当前连接与前台生命周期；文件面板后续必须调用 open()/close()。
- * currentAgentId 是全局当前智能体，不由文件域自行创建或猜测。
+ * 所有会话共用同一工作区；聊天切换不影响文件草稿。
  */
-export function FilesProvider({ currentAgentId, children }: { currentAgentId: string; children: ReactNode }) {
+export function FilesProvider({ children }: { children: ReactNode }) {
   const api = useApi();
   const connection = useServiceConnection();
   const [foreground, setForeground] = useState(AppState.currentState === 'active');
@@ -28,10 +28,6 @@ export function FilesProvider({ currentAgentId, children }: { currentAgentId: st
     return () => store.setActive(false);
   }, [store, enabled]);
 
-  useEffect(() => {
-    // 草稿/未明操作阻塞时由 Store 记住最新智能体；不复制草稿，也不抢夺用户显式 shared 选择。
-    store.selectAgent(currentAgentId);
-  }, [store, currentAgentId]);
 
   useEffect(() => () => store.dispose(), [store]);
 

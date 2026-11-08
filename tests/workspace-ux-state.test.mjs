@@ -1,38 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { AgentLabels } from '../src/workspace/agent-labels.ts';
-
-const entry = (id, updatedAt) => ({ id, sessionId: null, updatedAt });
-
-test('智能体编号按首次读到的时间分配，刷新与重排不改当前连接标签', () => {
-  let labels = new AgentLabels();
-  labels = labels.sync([
-    entry('side-new', '2026-10-30T09:00:00Z'),
-    entry('side-old', '2026-10-29T09:00:00Z'),
-    entry('local-main', '2026-10-30T10:00:00Z'),
-  ]);
-  assert.equal(labels.title('local-main'), 'Muse');
-  assert.equal(labels.title('side-old'), '成员 1');
-  assert.equal(labels.title('side-new'), '成员 2');
-  const same = labels.sync([
-    entry('side-new', '2026-11-01T09:00:00Z'),
-    entry('side-old', '2026-11-02T09:00:00Z'),
-    entry('local-main', '2026-11-02T10:00:00Z'),
-  ]);
-  assert.equal(same, labels);
-  assert.equal(same.title('side-old'), '成员 1');
-  assert.equal(same.title('side-new'), '成员 2');
-});
-
-test('新智能体获得新编号，删除不影响已有标签，坏时间不伪造日期', () => {
-  let labels = new AgentLabels().sync([entry('local-main', '2026-10-30T00:00:00Z'), entry('side-a', '2026-10-30T01:00:00Z')]);
-  labels = labels.sync([entry('local-main', '2026-10-30T00:00:00Z'), entry('side-a', '2026-10-30T01:00:00Z'), entry('side-b', '2026-10-30T02:00:00Z')]);
-  assert.equal(labels.title('side-b'), '成员 2');
-  labels = labels.sync([entry('local-main', '2026-10-30T00:00:00Z'), entry('side-b', '2026-10-30T02:00:00Z')]);
-  assert.equal(labels.title('side-b'), '成员 2');
-});
-
-const { ScrollAnchorFrame, ScrollFollow } = await import('../src/workspace/scroll-follow.ts');
+import { ScrollAnchorFrame, ScrollFollow } from '../src/workspace/scroll-follow.ts';
 
 test('布局纠偏只排一帧，迟到帧不抢手动阅读，发送清除旧拖动', () => {
   const follow = new ScrollFollow();
@@ -85,7 +53,7 @@ test('布局纠偏只排一帧，迟到帧不抢手动阅读，发送清除旧�
   visible = false;
   frame.schedule();
   fire();
-  assert.equal(anchors, 2, '隐藏智能体不执行排队锚定');
+  assert.equal(anchors, 2, '隐藏会话不执行排队锚定');
   visible = true;
   mounted = false;
   frame.schedule();
@@ -127,7 +95,7 @@ test('键盘收起的视口与内容布局事件保持最新锚定，只有用�
   assert.deepEqual(follow.onScroll(false), { anchor: true, showLatest: false }, '手动返回最新后的迟到布局偏移也应纠正');
 });
 
-test('手动上滚保持旧消息阅读，重新进入智能体只在原本跟随时锚定', () => {
+test('手动上滚保持旧消息阅读，重新进入会话只在原本跟随时锚定', () => {
   const follow = new ScrollFollow();
   follow.beginSend();
   follow.onContentSizeChange();
@@ -136,40 +104,7 @@ test('手动上滚保持旧消息阅读，重新进入智能体只在原本跟�
   assert.deepEqual(follow.onScroll(false), { anchor: false, showLatest: true });
   follow.onDragEnd(false);
   assert.equal(follow.shouldAnchor(), false);
-  assert.equal(follow.onContentSizeChange(), false, '隐藏智能体的后续流内容不抢走手动位置');
+  assert.equal(follow.onContentSizeChange(), false, '隐藏会话的后续流内容不抢走手动位置');
   follow.returnLatest();
   assert.equal(follow.shouldAnchor(), true);
-});
-
-const { workspaceBackAction } = await import('../src/workspace/workspace-back.ts');
-
-test('浏览器覆盖时 Back 先收键盘再关闭 viewer，不触发底层会话或设置', () => {
-  const state = { keyboardVisible: true, browserOpen: true, sessionMounted: true, drawerOpen: true,
-    page: 'settings', settingsSubpage: 'profile', goalCreating: true };
-  assert.equal(workspaceBackAction(state), 'keyboard');
-  assert.equal(workspaceBackAction({ ...state, keyboardVisible: false }), 'browser');
-  assert.equal(workspaceBackAction({ ...state, keyboardVisible: false, browserOpen: false }), 'session');
-});
-
-test('Android Back 优先关闭键盘、会话面板，然后返回设置子页', () => {
-  const state = { keyboardVisible: true, sessionMounted: true, page: 'settings', settingsSubpage: 'profile', goalCreating: false };
-  assert.equal(workspaceBackAction(state), 'keyboard');
-  assert.equal(workspaceBackAction({ ...state, keyboardVisible: false }), 'session');
-  assert.equal(workspaceBackAction({ ...state, keyboardVisible: false, sessionMounted: false }), 'settings');
-  assert.equal(workspaceBackAction({ ...state, keyboardVisible: false, sessionMounted: false, settingsSubpage: null }), 'none');
-});
-
-test('目标创建态 Back 先由创建流程消费，不落到系统退出', () => {
-  const state = { keyboardVisible: false, sessionMounted: false, page: 'goals', settingsSubpage: null, goalCreating: true };
-  assert.equal(workspaceBackAction(state), 'goal');
-  assert.equal(workspaceBackAction({ ...state, goalCreating: false }), 'none');
-});
-
-test('新闻 Back 先关闭键盘和阅读子页，根页退出', () => {
-  const state = { keyboardVisible: true, sessionMounted: false, page: 'news',
-    newsArticleOpen: true, newsManaging: true, settingsSubpage: null, goalCreating: false };
-  assert.equal(workspaceBackAction(state), 'keyboard');
-  assert.equal(workspaceBackAction({ ...state, keyboardVisible: false }), 'news-article');
-  assert.equal(workspaceBackAction({ ...state, keyboardVisible: false, newsArticleOpen: false }), 'news-sources');
-  assert.equal(workspaceBackAction({ ...state, keyboardVisible: false, newsArticleOpen: false, newsManaging: false }), 'none');
 });

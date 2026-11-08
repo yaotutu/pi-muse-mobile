@@ -23,7 +23,7 @@ export function MemoryPanel() {
     <View style={styles.topRow}>
       <ActionButton label="刷新记忆" text="刷新" onPress={() => void store.refresh()} disabled={snapshot.loading || snapshot.writing} icon={RefreshCw} />
     </View>
-    <Text style={styles.intro}>所有智能体共用，按需检索使用。</Text>
+    <Text style={styles.intro}>所有会话共用，按需检索使用。</Text>
     <View style={styles.search}><Search size={workspaceTheme.layout.iconSize} color={colors.faint} />
       <FormInput variant="search" accessibilityLabel="记忆搜索关键词" value={query} onChangeText={setQuery} placeholder="搜索记忆关键词" placeholderTextColor={colors.faint}
         editable={!snapshot.writing} maxLength={MEMORY_QUERY_LIMIT + 1} returnKeyType="search" onSubmitEditing={submitSearch} style={styles.searchInput} />
@@ -55,7 +55,7 @@ export function MemoryPanel() {
     </Card>}
     {snapshot.deleteTarget && <Card style={styles.card} tone="danger" testID="memory-delete-confirmation">
       <Text style={styles.title}>确认删除这条全局记忆？</Text><Text selectable style={styles.body}>{snapshot.deleteTarget.text}</Text>
-      <Text style={styles.caption}>删除会影响全部智能体，无法撤销；不会删除聊天历史。</Text>
+      <Text style={styles.caption}>删除会影响全部会话，无法撤销；不会删除聊天历史。</Text>
       <View style={styles.formActions}><ActionButton label="确认删除记忆" onPress={() => void store.confirmDelete()} disabled={locked} tone="danger" wide /><ActionButton label="取消删除记忆" onPress={store.cancelDelete} disabled={snapshot.writing} wide /></View>
     </Card>}
     {snapshot.loaded && !snapshot.loading && !snapshot.error && !snapshot.memories.length && <View style={styles.empty}>

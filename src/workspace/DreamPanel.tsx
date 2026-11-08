@@ -1,238 +1,49 @@
-import { FeedbackNotice } from '../ui/Feedback';
-import { Card } from '../ui/Surfaces';
-import { ChevronDown, ChevronUp, RefreshCw } from 'lucide-react-native';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Keyboard, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Text, View } from 'react-native';
 import { useDream } from '../dream/DreamProvider';
-import { DREAM_PROMPT_LIMIT, MAIN_DREAM_AGENT, type DreamPending, type DreamTarget } from '../dream/types';
+import { DREAM_PROMPT_LIMIT, type DreamTarget } from '../dream/types';
+import { useSessionDirectoryStore } from '../sessions/SessionProvider';
 import { useTheme } from '../theme/ThemeProvider';
-import { spacing, workspaceTheme, type WorkspaceColors } from '../ui/tokens';
 import { ActionButton } from '../ui/ActionButton';
 import { ChoiceChip } from '../ui/ChoiceChip';
 import { FormInput } from '../ui/FormInput';
+import { spacing } from '../ui/tokens';
 
-const targets: DreamTarget[] = ['user', 'soul', 'instructions', 'memory'];
-const reasonText = {
-  ambiguous: '归属不明确',
-  global_from_session: '来自单一会话，但建议写入全局资料',
-  no_purpose: '智能体尚未设置用途',
-} as const;
-const statusText = { running: '整理中', completed: '已完成', failed: '失败', partial: '部分完成' } as const;
-const { layout: l, radius: r, typography: t } = workspaceTheme;
-
-function targetText(target: DreamTarget, agentId: string) {
-  return { user: 'USER · 全局用户资料', soul: 'SOUL · 全局人设', instructions: `${agentId} · 智能体规则`, memory: 'MEMORY · 全局长期记忆' }[target];
-}
-
-function targetShortText(target: DreamTarget) {
-  return { user: 'USER', soul: 'SOUL', instructions: '规则', memory: '记忆' }[target];
-}
-
-function when(value?: string) {
-  if (!value) return '暂无记录';
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
-}
-
-/**
- * Dream 页面只投影连接内 store 的服务端事实。切智能体确认、待决项归属选择是临时 UI 意图；
- * 整理执行、草稿、写入回读和 AppState 由 DreamProvider 负责，页面不另建请求或重试循环。
- */
-export function DreamPanel({ currentAgentId }: { currentAgentId: string }) {
-  const { store, snapshot } = useDream();
-  const { colors } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
-  const initialChosen = useRef(false);
-  const [nextAgentId, setNextAgentId] = useState<string>();
+const targets: readonly [DreamTarget, string][] = [['user', '用户资料'], ['soul', '助手人设'], ['instructions', '来源会话指令'], ['memory', '长期记忆']];
+/** 全局整理页面不切换会话、不建立额外上下文；待决项完整正文与实际目标先确认再提交。 */
+export function DreamPanel() {
+  const { store, snapshot } = useDream(); const directory = useSessionDirectoryStore(); const { colors } = useTheme();
+  const [chosen, setChosen] = useState<Record<string, DreamTarget>>({}); const [confirm, setConfirm] = useState<{ id: string; action: 'apply' | 'dismiss' }>();
   const [showDefault, setShowDefault] = useState(false);
-  // 折叠仅影响呈现，草稿与保存资格继续由连接内 Store 管理。
-  const [showGlobalSettings, setShowGlobalSettings] = useState(false);
-  const [showAgentSettings, setShowAgentSettings] = useState(false);
-  const [chosenTargets, setChosenTargets] = useState<Record<string, DreamTarget>>({});
-  const [decision, setDecision] = useState<{ id: string; action: 'apply' | 'dismiss' }>();
-
   useEffect(() => { store.open(); return () => store.close(); }, [store]);
-  useEffect(() => {
-    // 首次选择只依据本次成功回读的概览；重开页面时不能从过期缓存切走已有草稿。
-    if (initialChosen.current || !snapshot.loaded || snapshot.loading || snapshot.stale || !snapshot.overview) return;
-    if (snapshot.agentDirty) { initialChosen.current = true; return; }
-    const known = snapshot.overview.agents;
-    const wanted = known.find((agent) => agent.agentId === currentAgentId)?.agentId
-      ?? known.find((agent) => agent.agentId === snapshot.selectedAgentId)?.agentId
-      ?? known[0]?.agentId;
-    if (wanted && store.selectAgent(wanted)) initialChosen.current = true;
-  }, [currentAgentId, snapshot.loaded, snapshot.loading, snapshot.stale, snapshot.overview, snapshot.selectedAgentId, snapshot.agentDirty, store]);
-
-  const canWrite = store.canWrite();
-  const canRun = store.canRun();
-  const current = snapshot.selectedAgent;
-  const requestAgent = (agentId: string) => {
-    if (agentId === snapshot.selectedAgentId || snapshot.writing) return;
-    Keyboard.dismiss();
-    if (snapshot.agentDirty) { setNextAgentId(agentId); return; }
-    store.selectAgent(agentId);
-    setDecision(undefined);
-  };
-  const confirmAgent = () => {
-    if (nextAgentId && store.selectAgent(nextAgentId)) { setNextAgentId(undefined); setDecision(undefined); }
-  };
-  const resolve = (item: DreamPending) => {
-    if (!decision || decision.id !== item.id) return;
-    Keyboard.dismiss();
-    const target = chosenTargets[item.id] ?? item.suggestedTarget;
-    void store.resolvePending(item.id, decision.action, decision.action === 'apply' ? target : undefined);
-    setDecision(undefined);
-  };
-
-  return <View style={styles.root} testID="dream-panel">
-    {!snapshot.overview && <View style={styles.topRow}>
-      <ActionButton label="刷新Dream概览" text="刷新" onPress={() => void store.refresh()} disabled={snapshot.loading || !!snapshot.writing} icon={RefreshCw} />
-    </View>}
-    {snapshot.loading && <ActivityIndicator accessibilityLabel="正在读取Dream概览" color={colors.muted} />}
-    {!!snapshot.error && <FeedbackNotice text={snapshot.error} tone="danger" />}
-    {!!snapshot.notice && <FeedbackNotice text={snapshot.notice} tone="success" />}
-    {snapshot.stale && snapshot.loaded && <Text style={styles.warning}>以下是上次读取的内容，当前状态待刷新核对；暂不能保存、整理或处理建议。请求中断不代表远端 Dream 已停止。</Text>}
-    {!snapshot.loaded && !snapshot.loading && <Text style={styles.warning}>Dream 概览尚未读取成功。请刷新后查看真实状态与待决建议。</Text>}
-
-    {!!snapshot.overview && <>
-      <Card style={styles.card}>
-        <View style={styles.sectionRow}><Text accessibilityRole="header" style={styles.title}>选择整理智能体</Text>
-          <ActionButton label="刷新Dream概览" text="刷新" onPress={() => void store.refresh()} disabled={snapshot.loading || !!snapshot.writing} icon={RefreshCw} /></View>
-        <Text style={styles.caption}>每 {snapshot.overview.intervalHours} 小时检查已开启的智能体</Text>
-        {(snapshot.writing === 'run' || snapshot.overview.running) && <Text style={styles.warning}>{snapshot.writing === 'run' ? '正在等待整理结果；离开页面不会停止远端执行。' : '上次读取时有 Dream 正在运行，可能属于其他智能体。'}</Text>}
-        <View style={styles.agentChoices}>{snapshot.overview.agents.map((agent) => <ChoiceChip key={agent.agentId}
-          label={`选择Dream智能体 ${agent.agentId === MAIN_DREAM_AGENT ? '主智能体' : agent.agentId}`}
-          text={agent.agentId === MAIN_DREAM_AGENT ? '主智能体 · local-main' : agent.agentId}
-          selected={agent.agentId === snapshot.selectedAgentId} disabled={!!snapshot.writing}
-          onPress={() => requestAgent(agent.agentId)} />)}</View>
-        {!!nextAgentId && <View style={styles.confirmBox}>
-          <Text style={styles.warning}>切换到 {nextAgentId === MAIN_DREAM_AGENT ? '主智能体' : nextAgentId} 会丢弃当前智能体未保存的周期与补充提示词草稿。全局草稿不会丢失。</Text>
-          <View style={styles.formActions}><ActionButton label="确认放弃当前智能体草稿并切换" text="放弃智能体草稿并切换" onPress={confirmAgent} disabled={!!snapshot.writing} tone="primary" wide /><ActionButton label="取消切换Dream智能体" text="继续编辑" onPress={() => setNextAgentId(undefined)} wide /></View>
-        </View>}
-      </Card>
-
-      {current ? <>
-        <Card style={styles.card}>
-          <View style={styles.sectionRow}><Text accessibilityRole="header" style={styles.title}>最近整理</Text>
-            {current.lastRun && <Text style={current.lastRun.status === 'completed' ? styles.success : current.lastRun.status === 'running' ? styles.warning : styles.error}>{statusText[current.lastRun.status]}</Text>}</View>
-          {current.lastRun ? <>
-            <Text style={styles.caption}>处理 {current.lastRun.processed} 条消息 · {when(current.lastRun.at)}</Text>
-            <Text style={styles.body}>实际变更：{current.lastRun.changed.length ? current.lastRun.changed.map((target) => targetText(target, current.agentId)).join('、') : '无'}</Text>
-            {!!current.lastRun.error && <Text selectable style={styles.error}>服务端错误：{current.lastRun.error}</Text>}
-          </> : <Text style={styles.caption}>服务端没有返回本智能体的整理记录。</Text>}
-          <ActionButton label="立即整理当前Dream智能体" text={snapshot.writing === 'run' ? '正在等待真实整理结果…' : '立即整理当前智能体'} onPress={() => { Keyboard.dismiss(); void store.runNow(); }} disabled={!canRun} tone="primary" />
-          {!canRun && (snapshot.globalDirty || snapshot.agentDirty) && <Text style={styles.warning}>请先分别保存或取消全局、智能体的未保存修改，再立即整理。草稿不会用于本次模型执行。</Text>}
-          {snapshot.writing === 'run' && <Text style={styles.warning}>请求正在等待真实模型完成。离开页面、退后台或请求超时，都不代表远端整理已停止；回来请先刷新核对，不要直接重跑。</Text>}
-          <Text style={styles.caption}>以最近整理状态和实际变更为准；整理不支持停止。</Text>
-        </Card>
-
-        <Card style={styles.card}>
-          <Text accessibilityRole="header" style={styles.title}>待决建议 · {snapshot.stale ? '待核对' : current.pending.length}</Text>
-          {!!current.pending.length && <Text style={styles.caption}>应用前请确认完整正文与目标；USER、SOUL 和 MEMORY 会影响所有智能体。</Text>}
-          {!current.pending.length && <Text style={styles.caption}>{snapshot.stale ? '当前待决建议数量未核对，请刷新。' : '当前智能体没有待决建议。'}</Text>}
-          {current.pending.map((item) => {
-            const chosen = chosenTargets[item.id] ?? item.suggestedTarget;
-            const confirming = decision?.id === item.id ? decision.action : undefined;
-            return <View key={item.id} style={styles.pending}>
-              <Text style={styles.fieldLabel}>建议正文 · 完整内容</Text>
-              <Text selectable style={styles.fullText}>{item.text}</Text>
-              <Text style={styles.caption}>原因：{reasonText[item.reason]} · 提出时间：{when(item.createdAt)}</Text>
-              <Text style={styles.caption}>建议归属：{targetText(item.suggestedTarget, current.agentId)}</Text>
-              <Text style={styles.fieldLabel}>实际应用到</Text>
-              <View style={styles.targetChoices}>{targets.map((target) => <ChoiceChip key={target}
-                label={`选择建议归属 ${targetText(target, current.agentId)}`} text={targetShortText(target)}
-                selected={chosen === target} disabled={!canWrite}
-                onPress={() => { setChosenTargets((previous) => ({ ...previous, [item.id]: target })); setDecision(undefined); }} />)}</View>
-              <Text selectable style={styles.targetDescription}>当前目标：{targetText(chosen, current.agentId)}</Text>
-              {(chosen === 'user' || chosen === 'soul' || chosen === 'memory') && <Text style={styles.warning}>此目标为全局内容，应用后影响全部智能体。</Text>}
-              <View style={styles.actions}><ActionButton label={`准备应用Dream建议 ${item.id}`} text="应用到所选目标" onPress={() => setDecision({ id: item.id, action: 'apply' })} disabled={!canWrite} tone="primary" />
-                <ActionButton label={`准备忽略Dream建议 ${item.id}`} text="忽略建议" onPress={() => setDecision({ id: item.id, action: 'dismiss' })} disabled={!canWrite} /></View>
-              {!!confirming && <View style={styles.confirmBox}>
-                <Text style={styles.body}>{confirming === 'apply' ? `确认把以上完整正文应用到 ${targetText(chosen, current.agentId)}？` : '确认忽略以上完整建议？'}</Text>
-                {confirming === 'apply' && (chosen === 'user' || chosen === 'soul' || chosen === 'memory') && <Text style={styles.warning}>此目标为全局内容，应用后影响全部智能体。</Text>}
-                <View style={styles.formActions}><ActionButton label={confirming === 'apply' ? `确认应用Dream建议 ${item.id}` : `确认忽略Dream建议 ${item.id}`} text={confirming === 'apply' ? '确认应用' : '确认忽略'} onPress={() => resolve(item)} disabled={!canWrite} tone="primary" wide />
-                  <ActionButton label="取消处理Dream建议" text="取消" onPress={() => setDecision(undefined)} wide /></View>
-              </View>}
-            </View>;
-          })}
-        </Card>
-        <Card style={styles.card}>
-          <View style={styles.sectionRow}><Text accessibilityRole="header" style={styles.title}>当前智能体设置</Text>
-            <ActionButton label={showAgentSettings ? '收起当前智能体Dream设置' : '展开当前智能体Dream设置'} text={showAgentSettings ? '收起' : '配置'} expanded={showAgentSettings}
-              icon={showAgentSettings ? ChevronUp : ChevronDown} onPress={() => { Keyboard.dismiss(); setShowAgentSettings(!showAgentSettings); }} /></View>
-          <Text style={styles.caption}>{snapshot.agentDirty ? '有未保存修改' : current.enabled ? '已参加定期整理' : '未参加定期整理'} · {snapshot.agentDraft.inheritGlobalPrompt ? '继承全局提示词' : '独立提示词'}</Text>
-          {showAgentSettings && <>
-            <Text selectable style={styles.agentName}>{current.agentId === MAIN_DREAM_AGENT ? '主智能体 · local-main' : current.agentId}</Text>
-            <Text style={styles.caption}>{current.agentId === MAIN_DREAM_AGENT ? '主智能体默认开启周期整理。' : '非主智能体默认关闭周期整理。'}读取当前值不会自动保存。</Text>
-            <Choice label="切换当前智能体周期整理" title="参加定期整理" detail="关闭后仍可使用手动立即整理。" selected={snapshot.agentDraft.enabled} onPress={() => store.setAgentDraft({ enabled: !snapshot.agentDraft.enabled })} disabled={!snapshot.loaded || !!snapshot.writing} />
-            <Choice label="切换当前智能体继承全局提示词" title="继承全局提示词" detail="关闭后使用本智能体补充提示词；原草稿会保留。" selected={snapshot.agentDraft.inheritGlobalPrompt} onPress={() => store.setAgentDraft({ inheritGlobalPrompt: !snapshot.agentDraft.inheritGlobalPrompt })} disabled={!snapshot.loaded || !!snapshot.writing} />
-            <Text style={styles.fieldLabel}>本智能体用途 · 只读</Text>
-            <Text selectable style={styles.fullText}>{current.purpose || '尚未设置用途'}</Text>
-            <Text style={styles.fieldLabel}>本智能体补充提示词</Text>
-            <FormInput accessibilityLabel="编辑当前智能体Dream补充提示词" multiline textAlignVertical="top" value={snapshot.agentDraft.prompt} onChangeText={(prompt) => store.setAgentDraft({ prompt })}
-              editable={snapshot.loaded && !snapshot.writing} maxLength={DREAM_PROMPT_LIMIT} placeholder="仅作为当前智能体的补充说明" placeholderTextColor={colors.faint} style={styles.input} />
-            <Text style={styles.count}>{snapshot.agentDraft.prompt.length} / {DREAM_PROMPT_LIMIT} 字符</Text>
-            <View style={styles.formActions}><ActionButton label="保存当前智能体Dream设置" text={snapshot.writing === 'agent' ? '正在保存…' : '保存智能体设置'} onPress={() => { Keyboard.dismiss(); void store.saveAgentSettings(); }} disabled={!canWrite || !snapshot.agentDirty} tone="primary" wide />
-              <ActionButton label="取消当前智能体Dream设置修改" text="取消修改" onPress={store.discardAgent} disabled={!canWrite || !snapshot.agentDirty} wide /></View>
-          </>}
-        </Card>
-
-      </> : <Text style={styles.warning}>当前选择的智能体不在服务端概览中。请选择上方已有智能体，或刷新核对。</Text>}
-      <Card style={styles.card}>
-        <View style={styles.sectionRow}><Text accessibilityRole="header" style={styles.title}>全局整理提示词</Text>
-          <ActionButton label={showGlobalSettings ? '收起全局Dream配置' : '展开全局Dream配置'} text={showGlobalSettings ? '收起' : '配置'} expanded={showGlobalSettings}
-            icon={showGlobalSettings ? ChevronUp : ChevronDown} onPress={() => { Keyboard.dismiss(); setShowGlobalSettings(!showGlobalSettings); }} /></View>
-        <Text style={styles.caption}>{snapshot.globalDirty ? '有未保存修改' : snapshot.overview.globalPrompt ? '使用自定义提示词' : '使用内置默认提示词'}</Text>
-        {showGlobalSettings && <>
-          <Text style={styles.caption}>适用于全部智能体；留空并保存后使用内置默认提示词。</Text>
-          <FormInput accessibilityLabel="编辑全局Dream提示词" multiline textAlignVertical="top" value={snapshot.globalDraft} onChangeText={store.setGlobalPrompt}
-            editable={snapshot.loaded && !snapshot.writing} maxLength={DREAM_PROMPT_LIMIT} placeholder="留空则使用内置默认提示词" placeholderTextColor={colors.faint} style={styles.input} />
-          <Text style={styles.count}>{snapshot.globalDraft.length} / {DREAM_PROMPT_LIMIT} 字符</Text>
-          <View style={styles.formActions}>
-            <ActionButton label="保存全局Dream提示词" text={snapshot.writing === 'global' ? '正在保存…' : '保存全局提示词'} tone="primary" wide onPress={() => { Keyboard.dismiss(); void store.saveGlobalPrompt(); }} disabled={!canWrite || !snapshot.globalDirty} />
-            <ActionButton label="取消全局Dream提示词修改" text="取消修改" wide onPress={store.discardGlobal} disabled={!canWrite || !snapshot.globalDirty} />
-          </View>
-          <ActionButton label="清空全局Dream提示词草稿" text="清空草稿" onPress={() => store.setGlobalPrompt('')} disabled={!snapshot.loaded || !!snapshot.writing || !snapshot.globalDraft} />
-          <Text style={styles.caption}>清空仅修改草稿；保存失败会保留草稿，请刷新核对后再决定是否保存。</Text>
-          <ActionButton label={showDefault ? '收起内置默认Dream提示词' : '展开内置默认Dream提示词'} text={showDefault ? '收起内置默认提示词' : '查看内置默认提示词'} onPress={() => setShowDefault(!showDefault)} icon={showDefault ? ChevronUp : ChevronDown} />
-          {showDefault && <Text selectable style={styles.fullText}>{snapshot.overview.defaultPrompt}</Text>}
-        </>}
-      </Card>
-
+  const overview = snapshot.overview;
+  return <View style={{ gap: spacing[12] }} testID="dream-panel">
+    <ActionButton label="刷新 Dream 概览" onPress={() => void store.refresh()} disabled={snapshot.loading || snapshot.writing} />
+    {snapshot.error && <Text accessibilityRole="alert" style={{ color: colors.danger }}>{snapshot.error}</Text>}
+    {snapshot.stale && <Text style={{ color: colors.warning }}>状态待核对，读取失败保留上次内容；请求中断不表示远端停止。</Text>}
+    {snapshot.uncertain && <ActionButton label="已回读核对 Dream 结果，解除锁定" disabled={!snapshot.reviewed} onPress={store.acknowledgeReviewed} />}
+    {overview && <>
+      <Text style={{ color: colors.ink }}>实例全局整理 · 每 {overview.intervalHours} 小时检查 · {overview.running ? '整理中' : '未运行'}</Text>
+      <ChoiceChip label="启用定期记忆整理" selected={snapshot.enabled} onPress={() => store.setDraft({ enabled: !snapshot.enabled })} disabled={snapshot.writing} />
+      <FormInput accessibilityLabel="全局 Dream 提示词" value={snapshot.prompt} multiline maxLength={DREAM_PROMPT_LIMIT} editable={!snapshot.writing} onChangeText={(prompt) => store.setDraft({ prompt })} />
+      <ActionButton label="保存 Dream 设置" disabled={!store.canWrite() || !snapshot.dirty} onPress={() => void store.save()} />
+      <ActionButton label="放弃 Dream 设置草稿" disabled={snapshot.writing} onPress={store.discard} />
+      <ActionButton label="查看内置默认提示词" onPress={() => setShowDefault(!showDefault)} />{showDefault && <Text selectable style={{ color: colors.muted }}>{overview.defaultPrompt}</Text>}
+      <ActionButton label="立即整理" disabled={!store.canRun()} onPress={() => void store.runNow()} />
+      {overview.lastRun && <Text selectable style={{ color: colors.muted }}>最近整理：{overview.lastRun.status} · {overview.lastRun.processed} 条消息 · {overview.lastRun.error ?? ''}</Text>}
+      {overview.pending.map((item) => {
+        const target = chosen[item.id] ?? item.suggestedTarget;
+        const sourceMissing = !!item.sourceSessionId && !directory.records.some((session) => session.id === item.sourceSessionId);
+        return <View key={item.id} style={{ gap: spacing[8], paddingVertical: spacing[12] }}>
+          <Text selectable style={{ color: colors.ink }}>{item.text}</Text><Text style={{ color: colors.muted }}>来源会话：{item.sourceSessionId ?? '未提供'} · {item.reason}</Text>
+          {sourceMissing && <Text style={{ color: colors.warning }}>来源会话已不存在，不会重建；不能应用到已删除会话的指令。</Text>}
+          {targets.map(([value, label]) => <ChoiceChip key={value} label={label} selected={target === value} disabled={!store.canWrite() || (sourceMissing && value === 'instructions')} onPress={() => { setChosen({ ...chosen, [item.id]: value }); setConfirm(undefined); }} />)}
+          <ActionButton label="应用建议" disabled={!store.canWrite() || (sourceMissing && target === 'instructions')} onPress={() => setConfirm({ id: item.id, action: 'apply' })} />
+          <ActionButton label="忽略建议" disabled={!store.canWrite()} onPress={() => setConfirm({ id: item.id, action: 'dismiss' })} />
+          {confirm?.id === item.id && <><Text style={{ color: colors.warning }}>确认{confirm.action === 'apply' ? `将完整正文写入${targets.find(([value]) => value === target)?.[1]}？全局资料影响所有会话。` : '忽略此建议？'}</Text>
+            <ActionButton label="确认处理建议" disabled={!store.canWrite() || (confirm.action === 'apply' && sourceMissing && target === 'instructions')} onPress={() => { void store.resolvePending(item.id, confirm.action, target); setConfirm(undefined); }} /><ActionButton label="取消处理建议" onPress={() => setConfirm(undefined)} /></>}
+        </View>;
+      })}
     </>}
   </View>;
 }
-
-function Choice({ label, title, detail, selected, onPress, disabled }: { label: string; title: string; detail: string; selected: boolean; onPress: () => void; disabled: boolean }) {
-  const { colors } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
-  return <Pressable accessibilityRole="switch" accessibilityLabel={label} accessibilityState={{ checked: selected, disabled }} disabled={disabled} onPress={onPress}
-    style={({ pressed }) => [styles.switchRow, disabled && styles.disabled, pressed && styles.pressed]}>
-    <View style={styles.flexText}><Text style={styles.body}>{title}</Text><Text style={styles.caption}>{detail}</Text></View>
-    <View style={[styles.switchTrack, selected && styles.switchTrackOn]}><View style={[styles.switchThumb, selected && styles.switchThumbOn]} /></View>
-  </Pressable>;
-}
-
-const createStyles = (c: WorkspaceColors) => StyleSheet.create({
-  root: { gap: spacing[16], paddingBottom: spacing[24], minWidth: 0 },
-  sectionRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: spacing[8] },
-  topRow: { flexDirection: 'row', justifyContent: 'flex-end', flexWrap: 'wrap', gap: spacing[8] },
-  card: { padding: spacing[16], gap: spacing[8], minWidth: 0, borderRadius: r.card, backgroundColor: c.surface },
-  title: { ...t.itemTitle, color: c.ink }, body: { ...t.detail, color: c.ink }, caption: { ...t.caption, color: c.faint },
-  fieldLabel: { ...t.status, color: c.ink }, agentName: { ...t.itemTitle, color: c.ink },
-  warning: { ...t.detail, color: c.warning }, error: { ...t.detail, color: c.danger }, success: { ...t.detail, color: c.success },
-  input: { height: l.profileTextHeight },
-  count: { ...t.caption, color: c.faint, alignSelf: 'flex-end' }, fullText: { ...t.detail, color: c.ink, backgroundColor: c.canvas, borderRadius: r.field, padding: spacing[16], minWidth: 0 },
-  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing[8] }, formActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing[8], marginTop: spacing[8] },
-
-  agentChoices: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing[8] },
-  targetChoices: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing[8] },
-
-  targetDescription: { ...t.status, color: c.muted },
-  switchRow: { flexDirection: 'row', alignItems: 'center', gap: spacing[12], minHeight: l.controlSize }, flexText: { flex: 1, minWidth: 0, gap: spacing[2] },
-  switchTrack: { width: l.switchWidth, height: l.switchHeight, borderRadius: r.round, justifyContent: 'center', padding: spacing[3], backgroundColor: c.control },
-  switchTrackOn: { backgroundColor: c.blue }, switchThumb: { width: l.switchThumb, height: l.switchThumb, borderRadius: r.round, backgroundColor: c.canvas }, switchThumbOn: { alignSelf: 'flex-end' },
-  pending: { gap: spacing[10], paddingTop: spacing[16], borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.line },
-  confirmBox: { gap: spacing[12], padding: spacing[14], borderRadius: r.field, backgroundColor: c.warningSoft },
-  disabled: { opacity: workspaceTheme.interaction.disabledOpacity }, pressed: { opacity: workspaceTheme.interaction.pressedOpacity },
-});

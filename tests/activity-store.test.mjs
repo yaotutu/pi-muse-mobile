@@ -7,7 +7,7 @@ import { activityFixture, activityPage, detailFixture } from './helpers/activity
 
 const tick = () => new Promise(setImmediate);
 const wait = () => new Promise((r) => setTimeout(r, 10));
-const ready = (activities = []) => ({ event: 'ready', data: { instanceId: 'i', serverTime: '2026-10-20T00:00:00Z', agentPresences: [], agentStatuses: [], pendingApprovals: [], activities } });
+const ready = (activities = []) => ({ event: 'ready', data: { instanceId: 'i', serverTime: '2026-10-20T00:00:00Z', sessionPresences: [], sessionStatuses: [], pendingApprovals: [], activities } });
 const update = (activity) => ({ event: 'activity_updated', data: { ...activity, instanceId: 'i' } });
 function fixture() {
   const lists = []; const details = [];
@@ -20,38 +20,38 @@ function fixture() {
 }
 test('不可见不读接口，打开/前台恢复读真实第一页；关闭和销毁取消消费', async () => {
   const { store, lists } = fixture(); store.setActive(true); store.receive(ready()); await wait(); assert.equal(lists.length, 0);
-  store.open({ agentId: 'agent-a' }); assert.equal(lists.length, 1); lists[0].resolve(activityPage()); await tick();
+  store.open({ sessionId: '22222222-2222-4222-8222-222222222222' }); assert.equal(lists.length, 1); lists[0].resolve(activityPage()); await tick();
   assert.equal(store.getSnapshot().loaded, true); store.setActive(false); assert.equal(store.getSnapshot().stale, true);
   store.setActive(true); assert.equal(lists.length, 2); store.close(); assert.equal(lists[1].signal.aborted, true);
   lists[1].resolve(activityPage([])); await tick(); assert.equal(store.getSnapshot().activities.length, 1); store.dispose();
 });
 
 test('conversation_updated 不触发活动列表或详情补读', async () => {
-  const { store, lists } = fixture(); store.setActive(true); store.open({ agentId: 'agent-a' });
+  const { store, lists } = fixture(); store.setActive(true); store.open({ sessionId: '22222222-2222-4222-8222-222222222222' });
   lists[0].resolve(activityPage()); await tick();
-  store.receive({ event: 'conversation_updated', data: { instanceId: 'i', agentId: 'agent-a', sessionId: 'session-a' } });
+  store.receive({ event: 'conversation_updated', data: { instanceId: 'i', sessionId: '22222222-2222-4222-8222-222222222222', piSessionId: 'session-a' } });
   await wait();
   assert.equal(lists.length, 1); store.dispose();
 });
 
 test('运行与审批通知仍驱动活动补读', async () => {
-  const { store, lists } = fixture(); store.setActive(true); store.open({ agentId: 'agent-a' });
+  const { store, lists } = fixture(); store.setActive(true); store.open({ sessionId: '22222222-2222-4222-8222-222222222222' });
   lists[0].resolve(activityPage()); await tick();
-  store.receive({ event: 'agent_status_updated', data: { instanceId: 'i', agentId: 'agent-a' } });
+  store.receive({ event: 'session_status_updated', data: { instanceId: 'i', sessionId: '22222222-2222-4222-8222-222222222222' } });
   await wait();
-  assert.equal(lists.length, 2, 'agent_status_updated 应保留原有活动失效');
+  assert.equal(lists.length, 2, 'session_status_updated 应保留原有活动失效');
   lists[1].resolve(activityPage());
-  store.receive({ event: 'approval_updated', data: { instanceId: 'i', agentId: 'agent-a' } });
+  store.receive({ event: 'approval_updated', data: { instanceId: 'i', sessionId: '22222222-2222-4222-8222-222222222222' } });
   await wait();
   assert.equal(lists.length, 3, 'approval_updated 应保留原有活动失效');
   store.dispose();
  });
 test('切会话/状态丢弃旧游标、详情和迟到读取，不能串服或串范围', async () => {
-  const { store, lists, details } = fixture(); store.setActive(true); store.open({ agentId: 'agent-a' });
-  store.select('activity-a'); store.setFilter({ agentId: 'agent-b', status: 'completed' });
+  const { store, lists, details } = fixture(); store.setActive(true); store.open({ sessionId: '22222222-2222-4222-8222-222222222222' });
+  store.select('activity-a'); store.setFilter({ sessionId: '33333333-3333-4333-8333-333333333333', status: 'completed' });
   assert.equal(lists[0].signal.aborted, true); assert.equal(details[0].signal.aborted, true); assert.equal(lists[1].query.cursor, undefined);
   lists[0].resolve(activityPage()); details[0].resolve(detailFixture());
-  lists[1].resolve(activityPage([activityFixture({ id: 'b', agentId: 'agent-b', status: 'completed' })])); await tick();
+  lists[1].resolve(activityPage([activityFixture({ id: 'b', sessionId: '33333333-3333-4333-8333-333333333333', status: 'completed' })])); await tick();
   assert.deepEqual(store.getSnapshot().activities.map((a) => a.id), ['b']); assert.equal(store.getSnapshot().detail, undefined); store.dispose();
 });
 test('不冻结分页原样回传游标并去重，刷新替换第一页；旧追加页不倒灌', async () => {
@@ -63,9 +63,9 @@ test('不冻结分页原样回传游标并去重，刷新替换第一页；旧�
   assert.deepEqual(store.getSnapshot().activities, []); store.dispose();
 });
 test('失败保留最后观测和重试入口，不把错误伪装空列表；范围错位及不前进游标失败', async () => {
-  const { store, lists } = fixture(); store.setActive(true); store.open({ agentId: 'agent-a' }); lists[0].resolve(activityPage()); await tick();
+  const { store, lists } = fixture(); store.setActive(true); store.open({ sessionId: '22222222-2222-4222-8222-222222222222' }); lists[0].resolve(activityPage()); await tick();
   store.refresh(); lists[1].reject(new ApiError(500, '不可用')); await tick(); assert.equal(store.getSnapshot().activities.length, 1); assert.match(store.getSnapshot().error, /不可用/); assert.equal(store.getSnapshot().stale, true);
-  store.refresh(); lists[2].resolve(activityPage([activityFixture({ agentId: 'other' })])); await tick(); assert.match(store.getSnapshot().error, /范围/);
+  store.refresh(); lists[2].resolve(activityPage([activityFixture({ sessionId: 'other' })])); await tick(); assert.match(store.getSnapshot().error, /范围/);
   store.refresh(); lists[3].resolve(activityPage([activityFixture()], 'cursor')); await tick(); store.loadMore(); lists[4].resolve(activityPage([activityFixture()], 'cursor')); await tick(); assert.match(store.getSnapshot().error, /游标/); store.dispose();
 });
 test('详情选择隔离，404 清除旧正文；网络失败保留但标旧，不合成完成状态', async () => {
@@ -80,16 +80,16 @@ test('同一通知流驱动失效；通知风暴合并、在途事件补读一�
   const { store, client, lists, details } = fixture(); let connections = 0; let emit;
   client.subscribeRuntime = (receive) => { connections++; emit = receive; return new Promise(() => {}); };
   const runtime = new RuntimeStore(client, { onEvent: store.receive, onConnection: store.setConnection });
-  store.setActive(true); runtime.setActive(true); store.open({ agentId: 'agent-a' }); store.select('activity-a');
+  store.setActive(true); runtime.setActive(true); store.open({ sessionId: '22222222-2222-4222-8222-222222222222' }); store.select('activity-a');
   lists[0].resolve(activityPage()); details[0].resolve(detailFixture()); await tick(); emit(ready());
-  for (let i = 0; i < 20; i++) store.invalidate('agent-a'); await wait(); assert.equal(lists.length, 2); assert.equal(details.length, 2); assert.equal(connections, 1);
-  store.invalidate('agent-a'); await wait(); assert.equal(lists.length, 2); lists[1].resolve(activityPage()); details[1].resolve(detailFixture()); await wait(); assert.equal(lists.length, 3); assert.equal(details.length, 3);
+  for (let i = 0; i < 20; i++) store.invalidate('22222222-2222-4222-8222-222222222222'); await wait(); assert.equal(lists.length, 2); assert.equal(details.length, 2); assert.equal(connections, 1);
+  store.invalidate('22222222-2222-4222-8222-222222222222'); await wait(); assert.equal(lists.length, 2); lists[1].resolve(activityPage()); details[1].resolve(detailFixture()); await wait(); assert.equal(lists.length, 3); assert.equal(details.length, 3);
   lists[2].resolve(activityPage()); details[2].resolve(detailFixture()); await wait(); await wait(); assert.equal(lists.length, 3);
   store.invalidate('unrelated'); await wait(); assert.equal(lists.length, 3); runtime.dispose(); store.dispose();
 });
 test('删除只移除所属数据，后台迟到详情不能复活；连接域独立', async () => {
-  const { store, lists, details } = fixture(); store.setActive(true); store.open({ agentId: 'agent-a' }); lists[0].resolve(activityPage()); await tick(); store.select('activity-a');
-  store.forgetAgent('agent-a'); details[0].resolve(detailFixture()); await tick(); assert.equal(store.getSnapshot().detail, undefined); assert.deepEqual(store.getSnapshot().activities, []);
+  const { store, lists, details } = fixture(); store.setActive(true); store.open({ sessionId: '22222222-2222-4222-8222-222222222222' }); lists[0].resolve(activityPage()); await tick(); store.select('activity-a');
+  store.forgetSession('22222222-2222-4222-8222-222222222222'); details[0].resolve(detailFixture()); await tick(); assert.equal(store.getSnapshot().detail, undefined); assert.deepEqual(store.getSnapshot().activities, []);
   const other = fixture(); assert.equal(other.store.getSnapshot().loaded, false); store.dispose(); other.store.dispose();
 });
 test('ready 整体替换当前集合而不抹掉分页历史，终态推送移出当前集合', async () => {
@@ -117,7 +117,7 @@ test('推送直接替换列表和详情概览，不按时间或虚构 revision �
   store.receive(update(activityFixture({ progress: '后收到的权威概览', updatedAt: '2026-10-18T00:00:00.000Z' })));
   assert.equal(store.getSnapshot().detail.activity.progress, '后收到的权威概览'); store.dispose();
 });
-test('状态切换立即移出旧筛选范围，新增成员不伪造分页顺序而补读', async () => {
+test('状态切换立即移出旧筛选范围，新增会话不伪造分页顺序而补读', async () => {
   const { store, lists } = fixture(); store.setActive(true); store.open({ status: 'awaiting_continuation' });
   lists[0].resolve(activityPage()); await tick();
   store.receive(update(activityFixture({ status: 'completed', result: '交付' })));

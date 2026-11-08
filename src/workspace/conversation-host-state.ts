@@ -1,19 +1,16 @@
-/** 智能体切换只增加所有者；仅真实删除智能体才从挂载集合移除。 */
-export function reconcileConversationOwners(visited: string[], currentAgentId: string, agentIds: string[]) {
-  const available = new Set(agentIds);
-  available.add(currentAgentId);
-  const owners = [...new Set([...visited, currentAgentId])].filter((id) => available.has(id));
+/** 会话切换只增加所有者；仅真实删除会话才从挂载集合移除。 */
+export function reconcileConversationOwners(visited: string[], currentSessionId: string, sessionIds: string[]) {
+  const available = new Set(sessionIds);
+  const owners = [...new Set([...visited, currentSessionId])].filter((id) => available.has(id));
   return owners.length === visited.length && owners.every((id, index) => id === visited[index]) ? visited : owners;
 }
 
-/** 各智能体的失效版本只和自己的 session 绑定，不受当前选中智能体影响。 */
+/** 各会话的失效版本只和自己的 session 绑定，不受当前选中会话影响。 */
 export function conversationRefreshKey(refreshVersion: number, runtime: {
   synchronized: boolean; conversationSyncVersion: number; conversationInvalidationVersion: number;
-  conversationInvalidationSessionId: string | null | undefined;
-}, sessionId: string | null) {
-  const matches = !runtime.conversationInvalidationSessionId || !sessionId ||
-    sessionId === runtime.conversationInvalidationSessionId;
+  conversationInvalidationPiSessionId: string | null | undefined;
+}) {
   return runtime.synchronized
-    ? `${refreshVersion}:${runtime.conversationSyncVersion}:${matches ? runtime.conversationInvalidationVersion : 0}`
+    ? `${refreshVersion}:${runtime.conversationSyncVersion}:${runtime.conversationInvalidationVersion}`
     : `${refreshVersion}:0:0`;
 }

@@ -114,8 +114,8 @@ function parseFrame(frame: string): ParsedRuntimeFrame | null {
 export function decodeRuntimeFrame(frame: ParsedRuntimeFrame): RuntimeEvent | null {
   if (![
     'ready',
-    'agent_status_updated',
-    'agent_presence_updated',
+    'session_status_updated',
+    'session_presence_updated',
     'approval_pending',
     'approval_updated',
     'activity_updated',

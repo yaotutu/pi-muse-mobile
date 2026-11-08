@@ -23,7 +23,7 @@ export type ApprovalSnapshot = {
   error?: string;
 };
 const initialHistory = (): ApprovalHistory => ({ filter: {}, ids: [], loaded: false, loading: false, hasMore: false, nextCursor: null, dirty: false });
-const filterKey = (filter: ApprovalFilter) => JSON.stringify([filter.agentId, filter.status, filter.activityId]);
+const filterKey = (filter: ApprovalFilter) => JSON.stringify([filter.sessionId, filter.status, filter.activityId]);
 const without = (items: readonly string[], id: string) => items.filter((item) => item !== id);
 export const hasApprovalPreview = (record: ApprovalRecord | undefined): record is ApprovalView => !!record && 'preview' in record;
 
@@ -73,8 +73,8 @@ export class ApprovalStore {
   receive = (event: RuntimeEvent) => {
     if (
       !this.active
-      || event.event === 'agent_status_updated'
-      || event.event === 'agent_presence_updated'
+      || event.event === 'session_status_updated'
+      || event.event === 'session_presence_updated'
       || event.event === 'activity_updated'
       || event.event === 'conversation_updated'
     ) return;

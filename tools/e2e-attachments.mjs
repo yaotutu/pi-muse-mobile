@@ -1,5 +1,5 @@
 /**
- * 附件真实链路 E2E：真实 HTTP/SSE + 真实外部模型 + 专属智能体数据清理。
+ * 附件真实链路 E2E：真实 HTTP/SSE + 真实外部模型 + 专属会话数据清理。
  *
  * 安全边界：
  * - 不 mock、不拦截响应、不使用本地假模型；
@@ -14,7 +14,7 @@ import { basename, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { HttpApiClient } from '../src/api/http-client.ts';
 import { ApiError } from '../src/api/errors.ts';
-import { AgentStore } from '../src/agents/agent-store.ts';
+import { ChatSessionStore } from '../src/sessions/chat-session-store.ts';
 import { projectHistory } from '../src/chat/chat-state.ts';
 import {
   MAX_TOTAL_ATTACHMENT_BYTES,
@@ -29,8 +29,8 @@ assert.ok(process.env.E2E_API_BASE_URL, 'E2E_API_BASE_URL is required');
 const base = process.env.E2E_API_BASE_URL.replace(/\/$/, '');
 const output = mkdtempSync(join(tmpdir(), 'pimuse-attachments-e2e.'));
 const stamp = Date.now().toString(36);
-const agentA = `attachments-e2e-a-${stamp}`;
-const agentB = `attachments-e2e-b-${stamp}`;
+let sessionA;
+let sessionB;
 const textMarker = `ATTACHMENT_E2E_${stamp}`;
 
 const resolveInputPath = (value, fallback) => {
@@ -56,7 +56,7 @@ let token;
 let cleanupRequired = false;
 let failure;
 let serviceVersion;
-let baselineAgents;
+let baselineSessions;
 const checks = [];
 const api = new HttpApiClient(base, () => token, () => {
   throw new Error('Real authentication rejected');
@@ -104,7 +104,7 @@ const mixedTextDraft = makeTextAttachment(
 const mixedPrompt = [
   'Use the attached image and attached text attachment.',
   'Report the exact 8-digit code visible in the image, then the exact marker from the text attachment.',
-  'Put both values on one line separated by one agent. Do not use tools.',
+  'Put both values on one line separated by one session. Do not use tools.',
 ].join(' ');
 assert.equal(mixedPrompt.includes(expected.code), false, 'Expected image code must not appear in user text');
 assert.equal(mixedPrompt.includes(textMarker), false, 'Text marker must not appear in user text');
@@ -125,9 +125,9 @@ async function deployment(label) {
   for (const [path, methods] of Object.entries({
     '/api/conversation': ['get'],
     '/api/conversation/run': ['post'],
-    '/api/agents': ['get'],
-    '/api/agents/{agentId}': ['delete'],
-    '/api/agents/{agentId}/instructions': ['get', 'put'],
+    '/api/sessions': ['get'],
+    '/api/sessions/{sessionId}': ['delete'],
+    '/api/sessions/{sessionId}/instructions': ['get', 'put'],
   })) {
     for (const method of methods) assert.ok(spec.paths[path]?.[method], `${method} ${path} must exist`);
   }
@@ -137,7 +137,7 @@ async function deployment(label) {
 
 async function runReal(input) {
   const events = [];
-  await api.runAgent(input, (event) => events.push(event), AbortSignal.timeout(240_000));
+  await api.runSession(input, (event) => events.push(event), AbortSignal.timeout(240_000));
   const runError = events.find((event) => event.type === 'RUN_ERROR');
   assert.equal(runError, undefined, runError ? `${runError.code}: ${runError.message}` : undefined);
   assert.ok(events.some((event) => event.type === 'RUN_STARTED'));
@@ -153,8 +153,8 @@ const assistantTextOf = (events) => events
 async function rejectBeforeRun(attachments, pattern) {
   const runId = `attachments-boundary-${stamp}-${checks.length}`;
   try {
-    await api.runAgent({
-      agentId: agentA,
+    await api.runSession({
+      sessionId: sessionA,
       runId,
       expectedRevision: 'empty',
       message: { id: `${runId}-message`, content: 'boundary', attachments },
@@ -170,7 +170,7 @@ async function rejectBeforeRun(attachments, pattern) {
 
 async function assertConflict(input, code) {
   try {
-    await api.runAgent(input, () => {}, AbortSignal.timeout(15_000));
+    await api.runSession(input, () => {}, AbortSignal.timeout(15_000));
   } catch (error) {
     assert.ok(error instanceof ApiError);
     assert.equal(error.status, 409);
@@ -182,23 +182,25 @@ async function assertConflict(input, code) {
 
 try {
   serviceVersion = await deployment('start');
-  const auth = await api.createSession(process.env.E2E_ACCESS_KEY);
+  const auth = await api.createConnectionSession(process.env.E2E_ACCESS_KEY);
   assert.equal(auth.mode, 'live');
   token = auth.token;
   pass('real deployment and live authentication', { serviceVersion });
 
-  baselineAgents = (await api.listAgents()).map((agent) => agent.id);
-  assert.equal(baselineAgents.includes(agentA), false);
-  assert.equal(baselineAgents.includes(agentB), false);
-  await api.saveAgentInstructions(
-    agentA,
-    'Dedicated attachment E2E agent A. Answer directly from attachments. Never use tools, write files, or create memories, reminders, goals, monitors, or subagents.',
+  baselineSessions = (await api.listSessions()).map((session) => session.id);
+  assert.equal(baselineSessions.includes(sessionA), false);
+  assert.equal(baselineSessions.includes(sessionB), false);
+  sessionA = (await api.createSession(`${marker}-a`)).id;
+  sessionB = (await api.createSession(`${marker}-b`)).id;
+  await api.saveSessionInstructions(
+    sessionA,
+    'Dedicated attachment E2E session A. Answer directly from attachments. Never use tools, write files, or create memories, reminders, goals, monitors, or subagents.',
   );
   cleanupRequired = true;
-  pass('dedicated agent A created');
+  pass('dedicated session A created');
 
-  const initialA = await api.getConversation(agentA);
-  assert.deepEqual(initialA, { revision: 'empty', messages: [] });
+  const initialA = await api.getConversation(sessionA);
+  assert.equal(initialA.sessionId, sessionA); assert.deepEqual(initialA.messages, []);
 
   // 这些失败都应由 HttpApiClient 在真实网络前拒绝；不把坏载荷交给服务端或模型。
   const pngBase64 = visionBytes.toString('base64');
@@ -215,13 +217,13 @@ try {
   })), /最多/);
   await rejectBeforeRun([{ id: 'text-total-1', name: 'large.txt', mimeType: 'text/plain', dataBase64: largeText.toString('base64') }], /文本附件合计/);
   await rejectBeforeRun([{ id: 'total-1', name: 'oversize.png', mimeType: 'image/png', dataBase64: oversizedImage.toString('base64') }], /附件总大小|图片/);
-  assert.deepEqual(await api.getConversation(agentA), initialA);
+  assert.deepEqual(await api.getConversation(sessionA), initialA);
   pass('invalid Base64, MIME, bytes, UTF-8, zero, count and size limits reject before run');
 
   const mixedRunId = `attachments-mixed-run-${stamp}`;
   const mixedMessageId = `${mixedRunId}-message`;
   const mixedEvents = await runReal({
-    agentId: agentA,
+    sessionId: sessionA,
     runId: mixedRunId,
     expectedRevision: initialA.revision,
     message: {
@@ -236,7 +238,7 @@ try {
   assert.equal(mixedEvents.some((event) => event.type === 'MESSAGES_SNAPSHOT'), false, 'Normal run must not be asserted as replay snapshot');
   pass('real model reads mixed image and UTF-8 text attachments');
 
-  const historyA = await api.getConversation(agentA);
+  const historyA = await api.getConversation(sessionA);
   const mixedUser = historyA.messages.find((message) => message.id === mixedMessageId);
   assert.ok(mixedUser);
   assert.equal(mixedUser.role, 'user');
@@ -257,12 +259,12 @@ try {
   assert.equal('dataBase64' in (historyText ?? {}), false, 'History must not return text attachment content');
   const projected = projectHistory(historyA.messages).find((view) => view.id === mixedMessageId);
   assert.equal(projected?.attachments?.length, 2);
-  write('agent-a-history-summary.json', historySummary(historyA));
+  write('session-a-history-summary.json', historySummary(historyA));
   pass('GET history preserves metadata, image ownership, and hides text content');
 
-  const beforeReplay = await api.getConversation(agentA);
+  const beforeReplay = await api.getConversation(sessionA);
   const replayEvents = await runReal({
-    agentId: agentA,
+    sessionId: sessionA,
     runId: mixedRunId,
     expectedRevision: beforeReplay.revision,
     message: {
@@ -278,35 +280,35 @@ try {
   assert.equal(snapshotUser.attachments?.length, 2);
   assert.equal(snapshotUser.attachments?.[0].image?.dataBase64 === imageDraft.dataBase64, true);
   assert.equal(replayEvents.some((event) => event.type === 'TEXT_MESSAGE_CONTENT'), false, 'Legal replay must not call the model again');
-  const afterReplay = await api.getConversation(agentA);
+  const afterReplay = await api.getConversation(sessionA);
   assert.equal(afterReplay.revision, beforeReplay.revision);
   assert.equal(afterReplay.messages.length, beforeReplay.messages.length);
   pass('legal completed replay returns snapshot without a second model call');
 
   const changedText = makeTextAttachment('text-probe-1', 'changed.txt', 'changed attachment identity');
   await assertConflict({
-    agentId: agentA,
+    sessionId: sessionA,
     runId: mixedRunId,
     expectedRevision: afterReplay.revision,
     message: { id: mixedMessageId, content: mixedPrompt, attachments: [imageDraft, changedText] },
   }, 'RUN_ID_CONFLICT');
   await assertConflict({
-    agentId: agentA,
+    sessionId: sessionA,
     runId: `attachments-message-conflict-${stamp}`,
     expectedRevision: afterReplay.revision,
     message: { id: mixedMessageId, content: mixedPrompt, attachments: [imageDraft, changedText] },
   }, 'MESSAGE_ID_CONFLICT');
-  const afterConflicts = await api.getConversation(agentA);
+  const afterConflicts = await api.getConversation(sessionA);
   assert.equal(afterConflicts.revision, afterReplay.revision);
   assert.deepEqual(historySummary(afterConflicts), historySummary(afterReplay));
   pass('run and message identity conflicts reject changed attachment payloads');
 
-  await api.saveAgentInstructions(
-    agentB,
-    'Dedicated attachment E2E agent B. Follow the sole text attachment instruction. Never use tools, write files, or create memories, reminders, goals, monitors, or subagents.',
+  await api.saveSessionInstructions(
+    sessionB,
+    'Dedicated attachment E2E session B. Follow the sole text attachment instruction. Never use tools, write files, or create memories, reminders, goals, monitors, or subagents.',
   );
-  const initialB = await api.getConversation(agentB);
-  assert.deepEqual(initialB, { revision: 'empty', messages: [] });
+  const initialB = await api.getConversation(sessionB);
+  assert.equal(initialB.sessionId, sessionB); assert.deepEqual(initialB.messages, []);
   const pureRunId = `attachments-pure-run-${stamp}`;
   const pureMessageId = `${pureRunId}-message`;
   const pureTextDraft = makeTextAttachment(
@@ -315,34 +317,34 @@ try {
     `The text marker is ${textMarker}. Reply with exactly this marker and nothing else.`,
   );
   const pureEvents = await runReal({
-    agentId: agentB,
+    sessionId: sessionB,
     runId: pureRunId,
     expectedRevision: initialB.revision,
     message: { id: pureMessageId, content: '', attachments: [pureTextDraft] },
   });
   const pureReply = assistantTextOf(pureEvents);
   assert.ok(pureReply.includes(textMarker), 'Pure attachment run must read the marker from UTF-8 bytes');
-  const historyB = await api.getConversation(agentB);
+  const historyB = await api.getConversation(sessionB);
   const pureUser = historyB.messages.find((message) => message.id === pureMessageId);
   assert.ok(pureUser);
   assert.equal(pureUser.content, '', 'Pure attachment message content must remain empty');
   assert.equal(pureUser.attachments?.length, 1);
   assert.equal(pureUser.attachments?.[0].kind, 'text');
   assert.equal('image' in (pureUser.attachments?.[0] ?? {}), false);
-  assert.equal(historyB.messages.some((message) => message.content?.includes(expected.code)), false, 'Agent B must not inherit agent A image data');
-  const isolatedA = await api.getConversation(agentA);
+  assert.equal(historyB.messages.some((message) => message.content?.includes(expected.code)), false, 'Session B must not inherit session A image data');
+  const isolatedA = await api.getConversation(sessionA);
   assert.equal(isolatedA.revision, afterReplay.revision);
   assert.deepEqual(historySummary(isolatedA), historySummary(afterReplay));
-  write('agent-b-history-summary.json', historySummary(historyB));
-  pass('pure attachment run and per-agent isolation');
+  write('session-b-history-summary.json', historySummary(historyB));
+  pass('pure attachment run and per-session isolation');
 
-  const store = new AgentStore(api);
-  const storeEpoch = store.get(agentA).epoch;
+  const store = new ChatSessionStore(api);
+  const storeEpoch = store.get(sessionA).epoch;
   store.setEnabled(false);
-  assert.equal(store.appendDraftAttachments(agentA, storeEpoch, [imageDraft, mixedTextDraft]).ok, true);
-  assert.deepEqual(store.get(agentA).draftAttachments.map(({ id }) => id), [imageDraft.id, mixedTextDraft.id]);
+  assert.equal(store.appendDraftAttachments(sessionA, storeEpoch, [imageDraft, mixedTextDraft]).ok, true);
+  assert.deepEqual(store.get(sessionA).draftAttachments.map(({ id }) => id), [imageDraft.id, mixedTextDraft.id]);
   store.setEnabled(true);
-  store.setPendingSubmission(agentA, storeEpoch, {
+  store.setPendingSubmission(sessionA, storeEpoch, {
     messageId: `${mixedMessageId}-restore`,
     runId: `${mixedRunId}-restore`,
     text: mixedPrompt,
@@ -351,16 +353,16 @@ try {
     error: 'controlled failure',
     attachments: [imageDraft, mixedTextDraft],
   });
-  assert.equal(store.restorePendingSubmissionToDraft(agentA), false, 'Existing drafts must not be overwritten by restore');
-  assert.equal(store.clearDraftAttachments(agentA, storeEpoch), true);
-  assert.equal(store.restorePendingSubmissionToDraft(agentA), true);
-  const restored = store.get(agentA).draftAttachments;
+  assert.equal(store.restorePendingSubmissionToDraft(sessionA), false, 'Existing drafts must not be overwritten by restore');
+  assert.equal(store.clearDraftAttachments(sessionA, storeEpoch), true);
+  assert.equal(store.restorePendingSubmissionToDraft(sessionA), true);
+  const restored = store.get(sessionA).draftAttachments;
   assert.equal(restored[0].dataBase64 === imageDraft.dataBase64, true);
   assert.equal(restored[1].dataBase64 === mixedTextDraft.dataBase64, true);
   assert.equal(restored[0].image?.dataBase64 === imageDraft.image?.dataBase64, true);
-  assert.equal(store.get(agentA).pendingSubmission, null);
+  assert.equal(store.get(sessionA).pendingSubmission, null);
   store.dispose();
-  pass('AgentStore preserves complete original payload through failed restore');
+  pass('ChatSessionStore preserves complete original payload through failed restore');
 
   assert.deepEqual((await deployment('end')), serviceVersion);
 } catch (error) {
@@ -369,18 +371,18 @@ try {
 } finally {
   try {
     if (cleanupRequired) {
-      for (const agentId of [agentA, agentB]) {
+      for (const sessionId of [sessionA, sessionB]) {
         try {
-          await api.deleteAgent(agentId);
+          await api.deleteSession(sessionId);
         } catch (error) {
           if (!(error instanceof ApiError) || error.status !== 404) throw error;
         }
       }
-      const remaining = (await api.listAgents()).map((agent) => agent.id);
-      assert.equal(remaining.includes(agentA), false);
-      assert.equal(remaining.includes(agentB), false);
-      assert.ok(baselineAgents.every((id) => remaining.includes(id)), 'Baseline agents must remain');
-      pass('dedicated agents cleaned up and baseline preserved');
+      const remaining = (await api.listSessions()).map((session) => session.id);
+      assert.equal(remaining.includes(sessionA), false);
+      assert.equal(remaining.includes(sessionB), false);
+      assert.ok(baselineSessions.every((id) => remaining.includes(id)), 'Baseline sessions must remain');
+      pass('dedicated sessions cleaned up and baseline preserved');
     }
   } catch (error) {
     failure ??= error;
@@ -392,7 +394,7 @@ try {
     passed: !failure,
     base,
     serviceVersion,
-    agents: [agentA, agentB],
+    sessions: [sessionA, sessionB],
     checks,
     probe: {
       bytes: visionBytes.length,

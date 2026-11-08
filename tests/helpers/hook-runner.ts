@@ -4,12 +4,12 @@
  * 边界声明：这是模拟 React 的 Hook 契约测试，不是真实 React 渲染，也不是原生运行验收。
  * 与模拟实现的差异：
  * - 正确恢复 React 全局 dispatcher（不残留、不污染同进程其他 React 使用）；
- * - 订阅 AgentStore 变更并触发重渲染（贴近真实 useSyncExternalStore 行为）；
+ * - 订阅 ChatSessionStore 变更并触发重渲染（贴近真实 useSyncExternalStore 行为）；
  * - 卸载后丢弃一切排队的渲染周期，不再执行 Hook。
  */
 
 import React from 'react';
-import { AgentStore } from '../../src/agents/agent-store';
+import { ChatSessionStore } from '../../src/sessions/chat-session-store';
 import type { ApiClient } from '../../src/api/contracts';
 import { useConversation } from '../../src/chat/useConversation';
 
@@ -20,9 +20,9 @@ type HookHandle<T> = {
 };
 
 export async function renderConversationHook(
-  agentId: string,
+  sessionId: string,
   api: ApiClient,
-  store: AgentStore,
+  store: ChatSessionStore,
   refreshKey = 0,
 ): Promise<HookHandle<ReturnType<typeof useConversation>>> {
   let stateIndex = 0;
@@ -107,10 +107,10 @@ export async function renderConversationHook(
       }
       return prev.callback as T;
     },
-    // 测试进程内上下文按调用栈区分：AgentProvider 系列返回 store，连接返回在线快照，其余为 ApiClient。
+    // 测试进程内上下文按调用栈区分：SessionProvider 系列返回 store，连接返回在线快照，其余为 ApiClient。
     useContext: (context: unknown) => {
       const stack = new Error().stack ?? '';
-      if (stack.includes('useAgentStore') || stack.includes('useAgentState')) return store;
+      if (stack.includes('useChatSessionStore') || stack.includes('useSessionState')) return store;
       if (stack.includes('useServiceConnection')) {
         return { enabled: true, snapshot: { status: 'online', refreshVersion: 0 }, retry: () => {} };
       }
@@ -137,7 +137,7 @@ export async function renderConversationHook(
         callbackIndex = 0;
         if (internals) internals.H = dispatcher;
         try {
-        result.current = useConversation(agentId, refreshKey);
+        result.current = useConversation(sessionId, refreshKey);
         } finally {
           // 关键不变式：渲染结束立即恢复原 dispatcher，绝不在全局残留测试 dispatcher。
           if (internals) internals.H = prevH;

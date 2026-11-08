@@ -91,8 +91,8 @@ test('message markdown uses native nodes, safe links, literal HTML, and copyable
 test('ConversationView 助手消息使用 visibleText 投影消除思考空气泡与复制泄露，用户文本保持原样', () => {
   const source = read('../src/workspace/ConversationView.tsx');
   assert.match(source, /const visibleText = message\.role === 'user' \? message\.text : getChatVisibleText\(message\.text\);/);
-  assert.match(source, /const hasText = layout === 'group' \? !*visibleText\.trim\(\) : \(message\.role === 'user' \? !*visibleText : !*visibleText\.trim\(\)\);/);
+  assert.match(source, /const hasText = message\.role === 'user' \? !*visibleText : !*visibleText\.trim\(\);/);
   assert.match(source, /<MessageContent text=\{visibleText\}/);
   assert.match(source, /messageText=\{visibleText\}/);
-  assert.match(source, />\{mention\}\{mention && ' '\}\{message\.text\}<\/Text>/);
+  assert.match(source, />\{message\.text\}<\/Text>/);
 });

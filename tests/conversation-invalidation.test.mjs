@@ -4,7 +4,7 @@ import './helpers/register-conversation-tests.mjs';
 import { readFileSync } from 'node:fs';
 import { conversationRefreshKey, reconcileConversationOwners } from '../src/workspace/conversation-host-state.ts';
 
-const { AgentStore } = await import('../src/agents/agent-store.ts');
+const { ChatSessionStore } = await import('../src/sessions/chat-session-store.ts');
 const { createMockApi } = await import('./helpers/conversation-test-harness.ts');
 const { renderConversationHook } = await import('./helpers/hook-runner.ts');
 
@@ -18,7 +18,7 @@ const waitFor = async (predicate) => {
 };
 
 test('conversation_updated 触发的权威历史刷新保留草稿，流式运行结束后不漏刷新', async () => {
-  const store = new AgentStore();
+  const store = new ChatSessionStore();
   const reads = [];
   const run = (() => {
     let resolveRun;
@@ -26,7 +26,7 @@ test('conversation_updated 触发的权威历史刷新保留草稿，流式运�
     return { promise, resolve: resolveRun };
   })();
   const snapshot = (id) => ({
-    sessionId: 'session-a',
+    sessionId: '22222222-2222-4222-8222-222222222222', piSessionId: 'session-a',
     revision: `rev-${id}`,
     messages: [{
       id, role: 'assistant', content: id, metadata: {
@@ -39,14 +39,14 @@ test('conversation_updated 触发的权威历史刷新保留草稿，流式运�
       reads.push(reads.length);
       return snapshot(reads.length === 1 ? 'old-message' : 'notification-message');
     },
-    runAgent: () => run.promise,
+    runSession: () => run.promise,
   });
-  const hook = await renderConversationHook('agent-a', api, store);
+  const hook = await renderConversationHook('22222222-2222-4222-8222-222222222222', api, store);
   await waitFor(() => hook.result.current.views.some((message) => message.id === 'old-message'));
 
   const sending = hook.result.current.send('streaming');
   await waitFor(() => hook.result.current.running);
-  store.setDraft('agent-a', 'draft-after-notification');
+  store.setDraft('22222222-2222-4222-8222-222222222222', 'draft-after-notification');
   await hook.rerender(1);
   assert.equal(reads.length, 1);
 
@@ -54,52 +54,52 @@ test('conversation_updated 触发的权威历史刷新保留草稿，流式运�
   await sending;
   await waitFor(() => hook.result.current.views.some((message) => message.id === 'notification-message'));
   assert.equal(hook.result.current.running, false);
-  assert.equal(store.get('agent-a').draft, 'draft-after-notification');
+  assert.equal(store.get('22222222-2222-4222-8222-222222222222').draft, 'draft-after-notification');
   hook.unmount();
 });
 
-test('智能体切换后的历史读取只归属新智能体，不回写旧智能体消息', async () => {
-  const store = new AgentStore();
+test('会话切换后的历史读取只归属新会话，不回写旧会话消息', async () => {
+  const store = new ChatSessionStore();
   const reads = [];
-  const snapshot = (agentId) => ({
-    sessionId: `session-${agentId}`,
-    revision: `rev-${agentId}`,
+  const snapshot = (sessionId) => ({
+    sessionId, piSessionId: `session-${sessionId}`,
+    revision: `rev-${sessionId}`,
     messages: [{
-      id: `message-${agentId}`, role: 'assistant', content: agentId, metadata: {
+      id: `message-${sessionId}`, role: 'assistant', content: sessionId, metadata: {
         createdAt: '2026-10-29T00:00:00.000Z', source: 'chat', runId: 'run-a', jobId: null, notificationId: null, feedbackAvailable: false,
       }, feedback: { reaction: null, comments: [] },
     }],
   });
   const api = createMockApi({
-    getConversation: async (agentId) => {
-      reads.push(agentId);
-      return snapshot(agentId);
+    getConversation: async (sessionId) => {
+      reads.push(sessionId);
+      return snapshot(sessionId);
     },
   });
-  const oldAgent = await renderConversationHook('agent-a', api, store);
-  await waitFor(() => oldAgent.result.current.views.some((message) => message.id === 'message-agent-a'));
-  oldAgent.unmount();
+  const oldSession = await renderConversationHook('22222222-2222-4222-8222-222222222222', api, store);
+  await waitFor(() => oldSession.result.current.views.some((message) => message.id === 'message-22222222-2222-4222-8222-222222222222'));
+  oldSession.unmount();
 
-  const nextAgent = await renderConversationHook('agent-b', api, store);
-  await waitFor(() => nextAgent.result.current.views.some((message) => message.id === 'message-agent-b'));
-  assert.deepEqual(reads, ['agent-a', 'agent-b']);
-  assert.equal(nextAgent.result.current.sessionId, 'session-agent-b');
-  nextAgent.unmount();
+  const nextSession = await renderConversationHook('33333333-3333-4333-8333-333333333333', api, store);
+  await waitFor(() => nextSession.result.current.views.some((message) => message.id === 'message-33333333-3333-4333-8333-333333333333'));
+  assert.deepEqual(reads, ['22222222-2222-4222-8222-222222222222', '33333333-3333-4333-8333-333333333333']);
+  assert.equal(nextSession.result.current.piSessionId, 'session-33333333-3333-4333-8333-333333333333');
+  nextSession.unmount();
 });
 
-test('已访问智能体切换后保留原 SSE 所有者；删除智能体才释放所有者', () => {
-  const first = reconcileConversationOwners(['local-main'], 'side-a', ['local-main', 'side-a']);
-  const second = reconcileConversationOwners(first, 'local-main', ['local-main', 'side-a']);
-  assert.deepEqual(second, ['local-main', 'side-a']);
-  assert.equal(reconcileConversationOwners(second, 'local-main', ['local-main', 'side-a']), second);
-  assert.deepEqual(reconcileConversationOwners(second, 'local-main', ['local-main']), ['local-main']);
+test('已访问会话切换后保留原 SSE 所有者；删除会话才释放所有者', () => {
+  const first = reconcileConversationOwners(['main'], 'side-a', ['main', 'side-a']);
+  const second = reconcileConversationOwners(first, 'main', ['main', 'side-a']);
+  assert.deepEqual(second, ['main', 'side-a']);
+  assert.equal(reconcileConversationOwners(second, 'main', ['main', 'side-a']), second);
+  assert.deepEqual(reconcileConversationOwners(second, 'main', ['main']), ['main']);
 });
 
-test('每智能体失效只接受自己的 session，未同步时不会消费旧失效版本', () => {
-  const runtime = { synchronized: true, conversationSyncVersion: 4, conversationInvalidationVersion: 8, conversationInvalidationSessionId: 'session-a' };
+test('每会话失效只接受自己的 session，未同步时不会消费旧失效版本', () => {
+  const runtime = { synchronized: true, conversationSyncVersion: 4, conversationInvalidationVersion: 8, conversationInvalidationPiSessionId: 'session-a' };
   assert.equal(conversationRefreshKey(2, runtime, 'session-a'), '2:4:8');
-  assert.equal(conversationRefreshKey(2, runtime, 'session-b'), '2:4:0');
+  assert.equal(conversationRefreshKey(2, runtime, 'session-b'), '2:4:8');
   assert.equal(conversationRefreshKey(2, { ...runtime, synchronized: false }, 'session-a'), '2:0:0');
   const host = readFileSync('src/workspace/ConversationHost.tsx', 'utf8');
-  assert.match(host, /runtime\.conversationInvalidationSessionId !== session\.sessionId\) onBindingMismatch\(\)/);
+  assert.match(host, /runtime\.conversationInvalidationPiSessionId !== session\.piSessionId\) onBindingMismatch\(\)/);
 });

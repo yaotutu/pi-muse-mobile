@@ -5,7 +5,7 @@ import { ApprovalConflictError } from '../src/approvals/contracts.ts';
 import { ApiError } from '../src/api/errors.ts';
 import { approvalFixture, settledApproval, approvalSummary, approvalResolution } from './helpers/approval-fixtures.ts';
 
-const ready = (pendingApprovals = [], instanceId = 'instance-a') => ({ event: 'ready', data: { instanceId, serverTime: '2026-10-20T00:00:00.000Z', agentPresences: [], agentStatuses: [], pendingApprovals, activities: [] } });
+const ready = (pendingApprovals = [], instanceId = 'instance-a') => ({ event: 'ready', data: { instanceId, serverTime: '2026-10-20T00:00:00.000Z', sessionPresences: [], sessionStatuses: [], pendingApprovals, activities: [] } });
 const update = (approval = settledApproval()) => ({ event: 'approval_updated', data: { ...approvalResolution(approval), instanceId: 'instance-a' } });
 const pending = (approval = approvalFixture()) => ({ event: 'approval_pending', data: { ...approval, instanceId: 'instance-a' } });
 const deferred = () => { let resolve, reject; const promise = new Promise((ok, fail) => { resolve = ok; reject = fail; }); return { promise, resolve, reject }; };
@@ -24,13 +24,13 @@ function setup(overrides = {}) {
 }
 test('共享活动推送不会被误合并成审批轻量回执', () => {
   const { store } = setup(); store.receive(ready([approvalFixture()])); const before = store.getSnapshot();
-  store.receive({ event: 'activity_updated', data: { id: 'approval-a', agentId: 'agent-a', instanceId: 'instance-a', status: 'completed' } });
+  store.receive({ event: 'activity_updated', data: { id: 'approval-a', sessionId: '22222222-2222-4222-8222-222222222222', instanceId: 'instance-a', status: 'completed' } });
   assert.equal(store.getSnapshot(), before); store.dispose();
 });
 
 test('会话历史失效事件不会被默认分支误当成审批', () => {
   const { store } = setup(); store.receive(ready([approvalFixture()])); const before = store.getSnapshot();
-  store.receive({ event: 'conversation_updated', data: { instanceId: 'instance-a', agentId: 'agent-a', sessionId: 'session-a' } });
+  store.receive({ event: 'conversation_updated', data: { instanceId: 'instance-a', sessionId: '22222222-2222-4222-8222-222222222222', piSessionId: 'session-a' } });
   assert.equal(store.getSnapshot(), before); store.dispose();
 });
 test('ready 整体替换 pending，断线期间消失项补读权威终态而不猜测', async () => {
@@ -123,14 +123,14 @@ test('历史分页原样使用 nextCursor，去重且保持服务端页序', asy
     return query.cursor ? { approvals: [approvalSummary(settledApproval({ id: 'b' })), approvalSummary(settledApproval({ id: 'c' }))], hasMore: false, nextCursor: null }
       : { approvals: [approvalSummary(settledApproval({ id: 'a' })), approvalSummary(settledApproval({ id: 'b' }))], hasMore: true, nextCursor: 'opaque=+/cursor' };
   } });
-  store.receive(ready()); await store.loadHistory({ agentId: 'agent-a', status: 'approved' }); await store.loadHistory({ agentId: 'agent-a', status: 'approved' }, true);
+  store.receive(ready()); await store.loadHistory({ sessionId: '22222222-2222-4222-8222-222222222222', status: 'approved' }); await store.loadHistory({ sessionId: '22222222-2222-4222-8222-222222222222', status: 'approved' }, true);
   assert.equal(queries[1].cursor, 'opaque=+/cursor'); assert.deepEqual(store.getSnapshot().history.ids, ['a', 'b', 'c']);
 });
 test('改变历史过滤会重置游标并忽略旧响应，不把其他会话混入当前范围', async () => {
   const old = deferred(); const queries = [];
-  const { store } = setup({ listApprovals: async (query) => { queries.push(query); return query.agentId === 'a' ? old.promise : { approvals: [approvalSummary(settledApproval({ id: 'b-item', agentId: 'b' }))], hasMore: false, nextCursor: null }; } });
-  const first = store.loadHistory({ agentId: 'a' }); await store.loadHistory({ agentId: 'b' });
-  old.resolve({ approvals: [approvalSummary(settledApproval({ id: 'a-item', agentId: 'a' }))], hasMore: false, nextCursor: null }); await first;
+  const { store } = setup({ listApprovals: async (query) => { queries.push(query); return query.sessionId === 'a' ? old.promise : { approvals: [approvalSummary(settledApproval({ id: 'b-item', sessionId: 'b' }))], hasMore: false, nextCursor: null }; } });
+  const first = store.loadHistory({ sessionId: 'a' }); await store.loadHistory({ sessionId: 'b' });
+  old.resolve({ approvals: [approvalSummary(settledApproval({ id: 'a-item', sessionId: 'a' }))], hasMore: false, nextCursor: null }); await first;
   assert.deepEqual(store.getSnapshot().history.ids, ['b-item']); assert.equal(queries[1].cursor, undefined);
 });
 test('历史失败保留同范围已读结果，状态变化只提示刷新，不重置分页或盲轮询', async () => {

@@ -74,7 +74,7 @@ const sameFilter = (state: NewsSnapshot, view: NewsView, savedOnly: boolean) =>
   state.view === view && state.savedOnly === savedOnly;
 
 /**
- * 当前连接内的新闻页状态。新闻不绑定聊天智能体，也不读取聊天 reset/选中智能体。
+ * 当前连接内的新闻页状态。新闻不绑定聊天会话，也不读取聊天 reset/选中会话。
  * 页面关闭或应用后台只停止读取与轮询；列表、详情、源和草稿留在当前连接，直到上层 dispose。
  */
 export class NewsStore {

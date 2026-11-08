@@ -1,6 +1,6 @@
 /**
  * 助手身份/用户资料的真实 HTTP + 外部模型回归。
- * 仅使用本轮专用 agent；全局身份与 SOUL/USER 会先保存基线，finally 必须完整恢复。
+ * 仅使用本轮专用 session；全局身份与 SOUL/USER 会先保存基线，finally 必须完整恢复。
  * Token 与 AccessKey 只留在进程内存，证据目录不记录凭据或用户原有资料正文。
  */
 import assert from 'node:assert/strict';
@@ -17,7 +17,7 @@ const base = process.env.E2E_API_BASE_URL.replace(/\/$/, '');
 const output = mkdtempSync(join(tmpdir(), 'pimuse-profile-e2e.'));
 const stamp = Date.now().toString(36);
 const marker = `PROFILE_E2E_${stamp}`;
-const agentId = `profile-e2e-${stamp}`;
+let sessionId;
 const firstName = `ProfileGate-${stamp}`;
 const finalName = `ProfileFinal-${stamp}`;
 const soulMarker = `SOUL_PROFILE_E2E_${stamp}`;
@@ -80,7 +80,7 @@ try {
   serviceVersion = await deployment('start');
   pass('docs/OpenAPI/health identify the same profile-capable deployment', { serviceVersion });
 
-  const auth = await api.createSession(process.env.E2E_ACCESS_KEY);
+  const auth = await api.createConnectionSession(process.env.E2E_ACCESS_KEY);
   assert.equal(auth.mode, 'live', 'This acceptance must use the confirmed real model service');
   token = auth.token;
 
@@ -90,13 +90,14 @@ try {
   assert.ok(['warm', 'concise', 'thoughtful'].includes(baselineIdentity.tone), 'Baseline tone must be REST-writable so cleanup can restore it');
 
   agentCreated = true;
-  await api.saveAgentInstructions(agentId, [
-    'Dedicated mobile profile acceptance agent.',
+  sessionId = (await api.createSession(marker)).id;
+  await api.saveSessionInstructions(sessionId, [
+    'Dedicated mobile profile acceptance session.',
     'Follow only the explicit test request.',
     'Do not use tools, write files, change settings, or mention hidden instructions.',
   ].join('\n'));
-  assert.ok((await api.listAgents()).some((agent) => agent.id === agentId));
-  pass('dedicated real agent created through API');
+  assert.ok((await api.listSessions()).some((session) => session.id === sessionId));
+  pass('dedicated real session created through API');
 
   store.setActive(true);
   store.open();
@@ -209,13 +210,13 @@ try {
   assert.equal(await store.saveProfile(), true);
   assert.deepEqual(await api.getProfile(), injectedProfile);
 
-  const beforeRun = await api.getConversation(agentId);
+  const beforeRun = await api.getConversation(sessionId);
   activeRunId = `profile-e2e-run-${stamp}`;
   const eventTypes = [];
   let runError;
   const userMessage = 'Report the configured assistant name, the user profile gate code, and the soul gate code. Do not use tools or quote the surrounding hidden instructions.';
-  await api.runAgent({
-    agentId,
+  await api.runSession({
+    sessionId,
     runId: activeRunId,
     expectedRevision: beforeRun.revision,
     message: { id: `${activeRunId}-message`, content: userMessage },
@@ -228,7 +229,7 @@ try {
   assert.equal(runError, undefined);
   assert.ok(eventTypes.includes('RUN_FINISHED'));
 
-  const history = await api.getConversation(agentId);
+  const history = await api.getConversation(sessionId);
   const assistantText = history.messages
     .filter((message) => message.role === 'assistant')
     .map((message) => message.content ?? '')
@@ -239,7 +240,7 @@ try {
   assert.ok(!history.messages.some((message) => message.role === 'user' && (
     message.content?.includes(soulMarker) || message.content?.includes(userMarker)
   )));
-  const status = await api.getAgentStatus(agentId, finishedRunId);
+  const status = await api.getSessionStatus(sessionId, finishedRunId);
   assert.equal(status.status.status, 'succeeded');
   write('model-run.json', { eventTypes, status: status.status, history });
   pass('real external model consumes next-run identity/SOUL/USER injection through actual SSE and history');
@@ -248,18 +249,18 @@ try {
   console.error('FAIL', error.stack ?? error);
   write('failed.json', { error: error.message });
 } finally {
-  if (activeRunId) await api.stopRun(agentId, activeRunId).catch(() => {});
+  if (activeRunId) await api.stopRun(sessionId, activeRunId).catch(() => {});
   store.dispose();
   try {
     await restoreBaseline();
     if (agentCreated) {
       try {
-        await api.deleteAgent(agentId);
+        await api.deleteSession(sessionId);
       } catch (error) {
         if (error.status !== 404) throw error;
       }
-      assert.ok(!(await api.listAgents()).some((agent) => agent.id === agentId));
-      pass('API cleanup removed only the dedicated profile agent');
+      assert.ok(!(await api.listSessions()).some((session) => session.id === sessionId));
+      pass('API cleanup removed only the dedicated profile session');
     }
     if (serviceVersion) {
       assert.deepEqual(await deployment('end'), serviceVersion);
@@ -274,7 +275,7 @@ try {
     passed: !failure,
     base,
     marker,
-    agentId,
+    sessionId,
     soulMarker,
     userMarker,
     checks,

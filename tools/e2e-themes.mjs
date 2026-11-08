@@ -1,4 +1,4 @@
-/** 真实 HTTP/SSE 与 Android 界面的主题验收；只在专用智能体消费一次实际聊天，结束经 API 清理。 */
+/** 真实 HTTP/SSE 与 Android 界面的主题验收；只在专用会话消费一次实际聊天，结束经 API 清理。 */
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -12,7 +12,7 @@ assert.ok(process.env.E2E_API_BASE_URL, 'Explicit confirmed real service URL req
 const base = process.env.E2E_API_BASE_URL.replace(/\/$/, '');
 const output = mkdtempSync(join(tmpdir(), 'pimuse-themes-e2e-run.'));
 const stamp = Date.now().toString(36);
-const agentId = `themes-e2e-${stamp}`;
+let sessionId;
 const response = `THEME_${stamp}`;
 const draft = `THEME_DRAFT_${stamp}`;
 // 用户消息不含拼接后的完整标记，原生断言不能误把用户气泡当成助手回复。
@@ -48,7 +48,7 @@ async function deployment(suffix) {
   }));
   assert.ok(html.includes('/openapi.json')); assert.equal(health.ok, true);
   assert.deepEqual(schema['x-service-version'], health.serviceVersion);
-  for (const path of ['/api/agents', '/api/conversation', '/api/conversation/run', '/api/events']) assert.ok(schema.paths[path], path);
+  for (const path of ['/api/sessions', '/api/conversation', '/api/conversation/run', '/api/events']) assert.ok(schema.paths[path], path);
   write(`deployment-${suffix}.json`, { serviceVersion: health.serviceVersion, contractVersion: schema.info.version });
   return health.serviceVersion;
 }
@@ -60,27 +60,28 @@ try {
   assert.match(await metro.text(), /packager-status:running/);
   pass('Android and final-source Metro preflight');
   initialVersion = await deployment('start'); pass('docs, OpenAPI and real deployment identity match');
-  const auth = await api.createSession(process.env.E2E_ACCESS_KEY); assert.equal(auth.mode, 'live'); token = auth.token;
-  baseline = (await api.listAgents()).map((agent) => agent.id);
-  await api.saveAgentInstructions(agentId, 'Dedicated mobile theme acceptance. Reply only with the requested literal string. Never use tools or change files, memories, activities, goals, schedules, monitors or other agents.');
+  const auth = await api.createConnectionSession(process.env.E2E_ACCESS_KEY); assert.equal(auth.mode, 'live'); token = auth.token;
+  baseline = (await api.listSessions()).map((session) => session.id);
+  sessionId = (await api.createSession(marker)).id;
+  await api.saveSessionInstructions(sessionId, 'Dedicated mobile theme acceptance. Reply only with the requested literal string. Never use tools or change files, memories, activities, goals, schedules, monitors or other sessions.');
   created = true;
-  assert.deepEqual((await api.getConversation(agentId)).messages, []);
-  assert.deepEqual((await api.listActivities({ agentId })).activities, []);
+  assert.deepEqual((await api.getConversation(sessionId)).messages, []);
+  assert.deepEqual((await api.listActivities({ sessionId })).activities, []);
   stream = api.subscribeRuntime((event) => {
     if (event.event === 'ready') {
       ready = true;
-      for (const status of event.data.agentStatuses) if (status.agentId === agentId) statuses.set(status.runId, status);
+      for (const status of event.data.sessionStatuses) if (status.sessionId === sessionId) statuses.set(status.runId, status);
     }
-    if (event.event === 'agent_status_updated' && event.data.agentId === agentId) statuses.set(event.data.runId, event.data);
+    if (event.event === 'session_status_updated' && event.data.sessionId === sessionId) statuses.set(event.data.runId, event.data);
   }, streamController.signal).catch((error) => { if (!streamController.signal.aborted) failure ??= error; });
   await until(() => ready || failure, 'actual SSE ready', 20_000); if (failure) throw failure;
-  pass('dedicated empty agent and actual runtime SSE');
-  write('context.json', { base, agentId, draft, prompt, response });
+  pass('dedicated empty session and actual runtime SSE');
+  write('context.json', { base, sessionId, draft, prompt, response });
   driver = spawn('python3', [new URL('./e2e-themes-native.py', import.meta.url).pathname, output], { stdio: 'inherit', env: process.env });
   driver.on('exit', (code) => { driverExit = code ?? 1; });
   driver.on('error', () => { driverExit = 1; });
   await until(() => existsSync(join(output, 'native-chat')), 'native theme selection and real streamed reply', 900_000);
-  const history = await api.getConversation(agentId);
+  const history = await api.getConversation(sessionId);
   assert.equal(history.messages.filter((message) => message.role === 'user').length, 1);
   assert.ok(history.messages.some((message) => message.role === 'user' && message.content === prompt));
   assert.ok(history.messages.some((message) => message.role === 'assistant' && message.content?.trim() === response));
@@ -95,20 +96,20 @@ try {
 } finally {
   if (driver && driverExit === undefined) { driver.kill('SIGTERM'); await sleep(500); }
   try {
-    for (const status of statuses.values()) if (status.status === 'running') await api.stopRun(agentId, status.runId);
+    for (const status of statuses.values()) if (status.status === 'running') await api.stopRun(sessionId, status.runId);
     if (created) {
-      assert.equal((await api.deleteAgent(agentId)).ok, true);
-      const remaining = (await api.listAgents()).map((agent) => agent.id);
-      assert.ok(!remaining.includes(agentId));
-      assert.ok(baseline.every((id) => remaining.includes(id)), 'preexisting agents remain');
-      pass('API cleanup removes only dedicated test agent; existing agents retained');
+      assert.equal((await api.deleteSession(sessionId)).ok, true);
+      const remaining = (await api.listSessions()).map((session) => session.id);
+      assert.ok(!remaining.includes(sessionId));
+      assert.ok(baseline.every((id) => remaining.includes(id)), 'preexisting sessions remain');
+      pass('API cleanup removes only dedicated test session; existing sessions retained');
     }
     if (initialVersion) { assert.deepEqual(await deployment('end'), initialVersion); pass('deployment unchanged throughout final acceptance'); }
     const sourceEnd = sourceHashes(); write('source-end.json', sourceEnd);
     assert.deepEqual(sourceEnd, sourceStart); pass('all product source hashes unchanged during real acceptance');
   } catch (error) { failure ??= error; console.error('FAIL cleanup/audit', error.message); }
   streamController.abort(); await stream; token = undefined;
-  write('results.json', { passed: !failure, base, agentId, checks, error: failure?.message, completedAt: new Date().toISOString(), unverified: ['iOS, physical device and standalone APK', 'real storage failures (covered by local fault tests)', 'theme switch during an in-flight chat was not asserted'] });
+  write('results.json', { passed: !failure, base, sessionId, checks, error: failure?.message, completedAt: new Date().toISOString(), unverified: ['iOS, physical device and standalone APK', 'real storage failures (covered by local fault tests)', 'theme switch during an in-flight chat was not asserted'] });
   console.log('Evidence:', output);
 }
 if (failure) process.exitCode = 1;

@@ -30,14 +30,15 @@ node --import ./tests/register-source.mjs --test --test-name-pattern="新闻源 
 
 ## 架构与状态所有权
 
-客户端不执行模型、不保存服务端业务事实的第二份权威副本。模型、Agent、文件和调度均归后端，当前服务端契约是接入依据。
+客户端不执行模型、不保存服务端业务事实的第二份权威副本。模型、会话、文件和调度均归后端，当前服务端契约是接入依据。
 
 - **根与连接**：`src/app/AppRoot.tsx` 组装安全区、主题、错误边界和独立更新。`WorkspaceScreen.tsx` 内的 ConnectedWorkspace 按 `workspaceKey` 创建 ApiProvider/业务 Provider；换服务器销毁整个连接子树。不要按主题或当前页面重建它。
-- **导航与聊天持有者**：页面由工作区状态切换，没有 Expo Router/react-navigation。一级只有「消息 / 新闻 / 设置」三项，仅根页显示 PrimaryTabBar 底栏，键盘可见或处于二级时隐藏；冷启动进入「消息」。顶部「消息」+「成员」按钮，头像单击进入二级独立私聊，不进设置、不长按。`ConversationHost` 保留访问过的私聊所有者，隐藏不卸载运行中的 SSE。设置检查对象与正在聊天的 Agent 分离。
+- **导航与聊天持有者**：本地状态导航，无 Expo Router/react-navigation。一级仅「消息 / 新闻 / 设置」，冷启动进入消息会话列表；二级聊天、文章、设置子页和键盘显示时隐藏底栏。main 是永久默认会话，其余专题可创建、改名、重置与删除。聊天页点击现有 PNG 形象打开 SessionSwitcherSheet；ConversationHost 隐藏不卸载已访问会话的 SSE，只在删除、重置 epoch 或换服时释放。
 - **协议层**：`src/api/` 提供 HTTP 与严格响应解析；`src/chat/` 聚合聊天 AG-UI SSE。`RuntimeProvider` 是连接内唯一通知流订阅者，领域 Store 消费通知失效并回读 REST，不各开第二条 SSE 或全局轮询。
 - **Store 生命周期**：领域 Store 负责读取、写入、草稿、未明结果和迟到响应保护，组件订阅并展示。close/隐藏通常只停止读取，dispose 才释放连接状态；不要用页面局部 state 重复持有业务草稿。
-- **群与来源讨论**：`src/group/` 持有独立群/通知讨论输入与流，不复用普通私聊上下文。显式 @、薄路由建议和待确认原文有各自发送资格；客户端接管提交后清空当前输入，完成不能清掉后来输入的新草稿。
-- **新闻与短信**：`src/news/` 持有连接级阅读状态，`src/features/` 提供偏好和讨论承接，`src/information/` 的 SmsProvider 在连接层挂载。页面或 Agent 切换不重置这些所有者；专用 facade 不携带当前聊天 agentId。
+- **会话所有权**：`src/sessions/session-store.ts` 持有权威目录与创建/改名状态，`chat-session-store.ts` 持有每会话草稿、附件、未确认提交、指令/技能与维护锁；公开 sessionId 与重置后变化的 piSessionId 严格区分。
+- **新闻与短信**：`src/news/` 持有全局来源、偏好与阅读状态。讨论文章先选择会话，再追加可编辑的外部引用到用户输入框，不自动运行；`src/information/` 的 SmsProvider 在连接层挂载，短信设置在设置页。通知元数据由 `src/notifications/` 持有，通知续聊精确回原会话，已删会话回消息列表并提示，绝不复活。
+- **文件与记忆整理**：所有会话共用扁平工作区，文件 API 只传 path。Dream 是实例全局配置与状态，不按会话切换；待决项保留来源会话引用，不能重建已删会话。
 - **外观与原生能力**：`src/theme/` 维护三主题与 tokens，`src/ui/` 是共享原生控件；业务页面消费语义颜色。浏览器使用原生 WebView 连接后端同一个 Chrome。Expo CNG 管理原生工程，`android/`、`ios/` 是生成目录，不手工维护。
 - **恢复语义**：GET 失败保留旧值，写入结果未明保留草稿、先回读核对，不自动重发。前后台、重连、reset/delete 与换服需要不同生命周期，不能用一次“重新挂载”替代。
 

@@ -7,7 +7,7 @@ import { useTheme } from '../theme/ThemeProvider';
 import { sizing, spacing, workspaceTheme, type WorkspaceColors } from '../ui/tokens';
 import { ToolResultCard } from './ToolResultCard';
 
-/** 只收起同一条回复的执行细节，不合并成员或改动审批、运行与消息生命周期。 */
+/** 只收起同一条回复的执行细节，不合并会话或改动审批、运行与消息生命周期。 */
 export function ToolCallSummary({ tools }: { tools: ToolCallView[] }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);

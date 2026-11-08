@@ -1,11 +1,4 @@
-export type WorkspaceFileScope = 'agent' | 'shared';
-
-export type WorkspaceFileSelector = {
-  scope: WorkspaceFileScope;
-  agentId: string | null;
-};
-
-export type WorkspaceFileTarget = WorkspaceFileSelector & { path: string };
+export type WorkspaceFileTarget = { path: string };
 
 export type WorkspaceListEntry = {
   name: string;
@@ -15,7 +8,7 @@ export type WorkspaceListEntry = {
   updatedAt: string;
 };
 
-export type WorkspaceListResult = WorkspaceFileSelector & {
+export type WorkspaceListResult = {
   path: string;
   entries: readonly WorkspaceListEntry[];
 };
@@ -48,10 +41,10 @@ export type WorkspaceDeleteResult = WorkspaceFileTarget & { ok: true };
  * 写入没有幂等键，调用方必须先完成完整预览与人工确认，失败结果未明时不得重发。
  */
 export interface FilesClient {
-  listWorkspaceFiles(selector: WorkspaceFileSelector & { path?: string }, signal?: AbortSignal): Promise<WorkspaceListResult>;
-  readWorkspaceFile(target: WorkspaceFileTarget, signal?: AbortSignal): Promise<WorkspaceFileDetail & WorkspaceFileSelector>;
-  createWorkspaceTextFile(target: WorkspaceFileTarget, content: string, signal?: AbortSignal): Promise<WorkspaceTextDetail & WorkspaceFileSelector>;
-  updateWorkspaceTextFile(target: WorkspaceFileTarget, content: string, signal?: AbortSignal): Promise<WorkspaceTextDetail & WorkspaceFileSelector>;
+  listWorkspaceFiles(selector: { path?: string }, signal?: AbortSignal): Promise<WorkspaceListResult>;
+  readWorkspaceFile(target: WorkspaceFileTarget, signal?: AbortSignal): Promise<WorkspaceFileDetail>;
+  createWorkspaceTextFile(target: WorkspaceFileTarget, content: string, signal?: AbortSignal): Promise<WorkspaceTextDetail>;
+  updateWorkspaceTextFile(target: WorkspaceFileTarget, content: string, signal?: AbortSignal): Promise<WorkspaceTextDetail>;
   deleteWorkspaceFile(target: WorkspaceFileTarget, signal?: AbortSignal): Promise<WorkspaceDeleteResult>;
 }
 
@@ -66,8 +59,6 @@ export type FilesEditor = {
 
 export type FilesSavePreview = {
   mode: 'create' | 'update';
-  scope: WorkspaceFileScope;
-  agentId: string | null;
   path: string;
   before: string;
   after: string;
@@ -75,16 +66,11 @@ export type FilesSavePreview = {
 
 export type FilesUncertainOperation = {
   kind: FilesWriteKind;
-  scope: WorkspaceFileScope;
-  agentId: string | null;
   path: string;
   content?: string;
 };
 
 export type FilesSnapshot = {
-  scope: WorkspaceFileScope;
-  selectedAgentId?: string;
-  pendingAgentId?: string;
   directoryPath: string;
   entries: readonly WorkspaceListEntry[];
   loaded: boolean;

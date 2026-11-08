@@ -14,7 +14,7 @@ export type PrimaryTabBarProps = {
 };
 
 const TAB_ICONS: Record<PrimaryTabId, LucideIcon> = {
-  group: MessageSquare,
+  messages: MessageSquare,
   news: Newspaper,
   settings: Settings,
 };

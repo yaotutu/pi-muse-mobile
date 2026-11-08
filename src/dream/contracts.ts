@@ -1,3 +1,4 @@
+import { isSessionId } from '../sessions/types';
 import { ApiError } from '../api/errors';
 import {
   type DreamOverview,
@@ -5,7 +6,6 @@ import {
   type DreamPendingReason,
   type DreamRun,
   type DreamRunStatus,
-  type DreamAgent,
   type DreamTarget,
 } from './types';
 
@@ -46,6 +46,7 @@ function pending(value: unknown): DreamPending {
     suggestedTarget: target(item.suggestedTarget),
     reason: pendingReason(item.reason),
     createdAt: date(item.createdAt),
+    ...(item.sourceSessionId === undefined ? {} : { sourceSessionId: typeof item.sourceSessionId === 'string' && isSessionId(item.sourceSessionId) ? item.sourceSessionId : invalid() }),
   };
 }
 
@@ -63,38 +64,16 @@ function run(value: unknown): DreamRun {
   };
 }
 
-/** 智能体响应必须与请求归属一致；只消费 agents 契约，不读取 agents 兼容别名。 */
-export function parseDreamAgent(value: unknown, expectedAgentId?: string): DreamAgent {
-  const item = object(value);
-  const agentId = text(item.agentId, true);
-  if (expectedAgentId !== undefined && agentId !== expectedAgentId) return invalid();
-  if (!Array.isArray(item.pending)) return invalid();
-  const prompt = text(item.prompt);
-  return {
-    agentId,
-    enabled: boolean(item.enabled),
-    inheritGlobalPrompt: boolean(item.inheritGlobalPrompt),
-    ...(item.cursor === undefined ? {} : { cursor: text(item.cursor, true) }),
-    ...(item.lastRun === undefined ? {} : { lastRun: run(item.lastRun) }),
-    pending: item.pending.map(pending),
-    prompt,
-    purpose: text(item.purpose),
-  };
-}
-
+/** 全局唯一整理状态；不接受旧的按会话配置列表。 */
 export function parseDreamOverview(value: unknown): DreamOverview {
   const item = object(value);
-  if (!Array.isArray(item.agents)) return invalid();
-  const globalPrompt = text(item.globalPrompt);
+  if (Object.keys(item).some((key) => !['enabled', 'cursors', 'lastRun', 'pending', 'globalPrompt', 'defaultPrompt', 'intervalHours', 'running'].includes(key))) return invalid();
+  if (!Array.isArray(item.pending)) return invalid();
+  const cursors = object(item.cursors);
+  if (Object.entries(cursors).some(([id, cursor]) => !isSessionId(id) || typeof cursor !== 'string' || !cursor)) return invalid();
   const intervalHours = item.intervalHours;
   if (typeof intervalHours !== 'number' || !Number.isSafeInteger(intervalHours) || intervalHours <= 0) return invalid();
-  const agents = item.agents.map((entry) => parseDreamAgent(entry));
-  if (new Set(agents.map((agent) => agent.agentId)).size !== agents.length) return invalid();
-  return {
-    globalPrompt,
-    defaultPrompt: text(item.defaultPrompt),
-    intervalHours,
-    running: boolean(item.running),
-    agents,
-  };
+  return { enabled: boolean(item.enabled), cursors: cursors as Record<string, string>,
+    ...(item.lastRun === undefined ? {} : { lastRun: run(item.lastRun) }), pending: item.pending.map(pending),
+    globalPrompt: text(item.globalPrompt), defaultPrompt: text(item.defaultPrompt), intervalHours, running: boolean(item.running) };
 }

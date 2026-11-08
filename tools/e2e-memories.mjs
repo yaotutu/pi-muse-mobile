@@ -57,7 +57,7 @@ try {
   assert.equal(execFileSync(adb, [...target, 'get-state'], { encoding: 'utf8' }).trim(), 'device');
   assert.match(await (await fetch('http://127.0.0.1:8082/status', { signal: AbortSignal.timeout(5000) })).text(), /packager-status:running/);
   initialVersion = await deployment('start'); pass('docs/OpenAPI/health match before writes', { serviceVersion: initialVersion });
-  const auth = await api.createSession(process.env.E2E_ACCESS_KEY); assert.equal(auth.mode, 'live'); token = auth.token;
+  const auth = await api.createConnectionSession(process.env.E2E_ACCESS_KEY); assert.equal(auth.mode, 'live'); token = auth.token;
   baseline = (await api.listMemories()).memories;
   assert.ok(baseline.length < 500, 'Memory capacity full; do not remove existing data to make room');
   assert.ok(!baseline.some((memory) => memory.text.includes(marker)));

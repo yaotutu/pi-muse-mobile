@@ -34,15 +34,15 @@ function fixture(record) {
   const createClient = (url, getToken, onUnauthorized, options) => {
     const client = {
       url, getToken, onUnauthorized, options, paused: false, retired: false,
-      createSession: async (key) => {
+      createConnectionSession: async (key) => {
         calls.push({ type: 'session', url, key });
         if (control.session) return control.session(client, key);
         return { token: url === B ? 'token-b' : 'token-a', mode: 'live' };
       },
-      listAgents: async () => {
+      listSessions: async () => {
         calls.push({ type: 'agents', url, token: getToken() });
         if (control.agents) return control.agents(client);
-        return [{ id: 'local-main', updatedAt: '2026-10-17T00:00:00Z' }];
+        return [{ id: 'main', updatedAt: '2026-10-17T00:00:00Z' }];
       },
       cancelPending: () => { events.push(['cancel', url]); },
       suspend: () => { client.paused = true; events.push(['suspend', url]); },
@@ -84,7 +84,7 @@ test('直接保存先认证核对，成功后只落盘地址与Token', async () 
   assert.equal(JSON.stringify(f.record()).includes('private-input-key'), false);
 });
 
-test('同址空Key保存沿用当前Token，但必须实际listAgents核对', async () => {
+test('同址空Key保存沿用当前Token，但必须实际listSessions核对', async () => {
   const f = fixture({ serverUrl: A, token: 'token-a' }); await f.boot();
   f.manager.setActive(false);
   await f.manager.saveConnection('https://A.example:443/', '');
