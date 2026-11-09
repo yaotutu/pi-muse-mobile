@@ -3,11 +3,10 @@
  * 所有页面与根级更新弹层共用同一个主题；状态色仅强调调用方给出的事实。
  */
 import { type LucideIcon } from 'lucide-react-native';
-import { useEffect, useMemo, useState } from 'react';
-import { Animated, Image, StyleSheet, Text, View } from 'react-native';
+import { useMemo } from 'react';
+import { Image, StyleSheet, Text, View } from 'react-native';
 import { spacing, workspaceTheme, type WorkspaceColors } from '../ui/tokens';
 import { useTheme } from '../theme/ThemeProvider';
-import { useReducedMotion } from '../ui/use-reduced-motion';
 export { useReducedMotion } from '../ui/use-reduced-motion';
 export { IconControl } from '../ui/IconControl';
 
@@ -54,23 +53,6 @@ export function EmptyState({ icon: Icon, title, description, compact }: { icon: 
   </View>;
 }
 
-/** 只有真实流仍在运行时才挂载；减少动态效果时保持静态，不用动画冒充进度。 */
-export function TypingIndicator() {
-  const reduced = useReducedMotion(); const styles = useStyles();
-  const [progress] = useState(() => new Animated.Value(0));
-  useEffect(() => {
-    if (reduced) { progress.setValue(0); return; }
-    const animation = Animated.loop(Animated.sequence([
-      Animated.timing(progress, { toValue: 1, duration: workspaceTheme.motion.pulseDuration, useNativeDriver: true }),
-      Animated.timing(progress, { toValue: 0, duration: workspaceTheme.motion.pulseDuration, useNativeDriver: true }),
-    ]));
-    animation.start(); return () => animation.stop();
-  }, [progress, reduced]);
-  return <View accessible accessibilityLabel="正在生成回复" style={styles.typing}>
-    {[0, 1, 2].map((index) => <Animated.View key={index} style={[styles.typingDot, { opacity: progress.interpolate({ inputRange: [0, 1], outputRange: index === 1 ? [1, workspaceTheme.interaction.disabledOpacity] : [workspaceTheme.interaction.disabledOpacity, 1] }) }]} />)}
-  </View>;
-}
-
 const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   status: { alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: spacing[6], paddingHorizontal: spacing[10], paddingVertical: spacing[4], borderRadius: r.round, maxWidth: l.statusMaxWidth },
   dot: { width: l.stateDotSize - spacing[2], height: l.stateDotSize - spacing[2], borderRadius: r.round },
@@ -80,6 +62,4 @@ const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   emptyCompact: { minHeight: 0, paddingVertical: spacing[24] },
   emptyIcon: { width: l.emptyIcon, height: l.emptyIcon, backgroundColor: c.surface, borderRadius: r.round, alignItems: 'center', justifyContent: 'center', marginBottom: spacing[4] },
   emptyTitle: { ...t.itemTitle, color: c.ink, textAlign: 'center' }, emptyDescription: { ...t.caption, color: c.faint, textAlign: 'center', maxWidth: l.drawerMaxWidth },
-  typing: { width: l.typingWidth, height: l.typingHeight, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing[7], backgroundColor: c.surface, borderRadius: r.round, alignSelf: 'flex-start' },
-  typingDot: { width: l.typingDotSize, height: l.typingDotSize, backgroundColor: c.muted, borderRadius: r.round },
 });

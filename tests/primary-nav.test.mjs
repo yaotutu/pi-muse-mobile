@@ -69,10 +69,12 @@ test('移除列表/新建/切换/改名/删除入口，Pi Muse 形象居中承�
   assert.match(screen, /chats\.resetSession\(id, clearSchedules\)/);
   assert.match(screen, /approvals\.store\.refreshPending\(\)/);
 });
-test('形象状态优先显示未决审批，其次运行/同步状态，空闲回落为就绪', () => {
+test('形象使用单一进度投影，只统计主聊天审批并保留同步状态', () => {
   const source = screen.slice(screen.indexOf('const mainStatusLabel'), screen.indexOf('const rootSettings'));
-  assert.match(source, /approvals\.snapshot\.pendingIds\.length > 0/);
-  assert.match(source, /等待你的审批/);
+  assert.match(source, /mainProgressLabel\(\{/);
+  assert.match(source, /synchronized: mainRuntime\.synchronized/);
+  assert.match(source, /sessionId === 'main'.*status === 'pending'/);
+  assert.match(source, /pending: currentState\.pendingSubmission\?\.status/);
   assert.match(source, /mainRuntime\.label/);
   assert.match(screen, /useSessionRuntime\('main'\)/);
 });

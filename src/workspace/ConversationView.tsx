@@ -5,7 +5,7 @@ import type { NotificationReference } from '../notifications/contracts';
  * 边界：单实例绑定单个会话的聊天代次（父级以 sessionId + epoch 隔离生命周期）；
  * assistant Markdown 与工具专用展示由独立组件负责，不猜测审批决定。
  */
-import { ArrowDown, ArrowUp, ShieldAlert, Square } from 'lucide-react-native';
+import { AlertCircle, ArrowDown, ArrowUp, Check, CircleHelp, ShieldAlert, Square } from 'lucide-react-native';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type LayoutRectangle, type ScrollViewInstance, type TextStyle, type ViewInstance } from 'react-native';
 import { useApi } from '../api/ApiProvider';
@@ -19,7 +19,7 @@ import { useSessionRuntime } from '../runtime/RuntimeProvider';
 import { useSessionState, useChatSessionStore } from '../sessions/SessionProvider';
 import { sizing, spacing, workspaceTheme, type WorkspaceColors } from '../ui/tokens';
 import { useTheme } from '../theme/ThemeProvider';
-import { TypingIndicator } from './primitives';
+import { messageDelivery, type MessageDelivery } from '../chat/message-delivery';
 import { MessageContent } from './MessageContent';
 import { getChatVisibleText } from '../chat/chat-visible-text';
 import { ToolResultCard } from './ToolResultCard';
@@ -290,7 +290,7 @@ export function ConversationView({
           {conversation.views.map((message) => (
             <View key={message.id}><Message
               message={message}
-              pendingStatus={pending && pending.messageId === message.id ? pending.status : undefined}
+              delivery={messageDelivery(message.role, conversation.persistedMessageIds.has(message.id), pending && pending.messageId === message.id ? pending.status : undefined)}
               feedbackScope={message.feedbackAvailable === true && conversation.piSessionId &&
                 conversation.persistedMessageIds.has(message.id) && message.feedback
                 ? { sessionId, piSessionId: conversation.piSessionId, initialFeedback: message.feedback }
@@ -329,7 +329,6 @@ export function ConversationView({
               </Text>
             </View>
           )}
-          {conversation.running && <TypingIndicator />}
           {!!stopError && <Text accessibilityRole="alert" style={styles.error}>{stopError}</Text>}
           {!!conversation.error && <Text accessibilityRole="alert" style={styles.error}>{conversation.error}</Text>}
           {session.resetUncertain && <>
@@ -462,12 +461,13 @@ export function ConversationView({
   );
 }
 
-export function Message({ message, pendingStatus, feedbackScope }: {
+export function Message({ message, delivery, feedbackScope }: {
   message: MessageView;
-  pendingStatus?: 'sending' | 'failed' | 'unconfirmed';
+  delivery?: MessageDelivery;
   feedbackScope?: { sessionId: string; piSessionId: string; initialFeedback: NonNullable<MessageView['feedback']> };
 }) {
   const styles = useStyles();
+  const { colors } = useTheme();
   const visibleText = message.role === 'user' ? message.text : getChatVisibleText(message.text);
   const hasText = message.role === 'user' ? !!visibleText : !!visibleText.trim();
   const bubbleRef = useRef<ViewInstance>(null);
@@ -496,18 +496,23 @@ export function Message({ message, pendingStatus, feedbackScope }: {
         accessibilityActions={feedbackScope ? [{ name: 'openMessageActions', label: '打开消息操作' }] : undefined}
         onAccessibilityAction={feedbackScope ? (event) => { if (event.nativeEvent.actionName === 'openMessageActions') openFeedback(); } : undefined}
         style={[styles.messageText, styles.userMessageText]}>{message.text}</Text>
-      : <MessageContent text={visibleText} onMessageLongPress={feedbackScope ? openFeedback : undefined} />)}
+      : <MessageContent text={visibleText} streaming={message.streaming === true} onMessageLongPress={feedbackScope ? openFeedback : undefined} />)}
     {message.role === 'user' && !!message.attachments?.length && <MessageAttachments items={message.attachments} />}
-    {pendingStatus === 'sending' && <Text style={styles.messageSubtext}>发送中…</Text>}
-    {pendingStatus === 'failed' && <Text style={styles.messageSubtext}>未发送</Text>}
-    {pendingStatus === 'unconfirmed' && <Text style={styles.messageSubtext}>待确认</Text>}
+    {message.role === 'user' && <View style={styles.deliveryIndicator}
+      accessible={!!delivery && delivery !== 'pending'} accessibilityRole="image"
+      accessibilityLabel={delivery === 'saved' ? '消息已保存' : delivery === 'failed' ? '消息未发送' : delivery === 'unconfirmed' ? '消息保存结果未确认' : undefined}
+      testID={`message-delivery-${message.id}`}>
+      {delivery === 'saved' ? <Check size={sizing[14]} color={colors.onAccent} strokeWidth={2} />
+        : delivery === 'failed' ? <AlertCircle size={sizing[14]} color={colors.onAccent} strokeWidth={2} />
+          : delivery === 'unconfirmed' ? <CircleHelp size={sizing[14]} color={colors.onAccent} strokeWidth={2} /> : null}
+    </View>}
   </>;
   const bubbleStyle = [
     styles.message,
     message.role === 'user' ? styles.userMessage : styles.assistantMessage,
     message.role === 'user' && !!message.attachments?.length && styles.userMessageWithAttachments,
-    pendingStatus === 'failed' && styles.userMessageFailed,
-    pendingStatus === 'unconfirmed' && styles.userMessageUnconfirmed,
+    delivery === 'failed' && styles.userMessageFailed,
+    delivery === 'unconfirmed' && styles.userMessageUnconfirmed,
   ];
   return (
     <View style={styles.messageBlock}>
@@ -569,6 +574,8 @@ const createStyles = (c: WorkspaceColors) =>
       backgroundColor: c.blue,
       alignSelf: 'flex-end',
       maxWidth: l.userMessageWidth,
+      // 从首次显示就为微型送达标记留位；勾出现时不增加行高或挤压已显示文字。
+      paddingRight: l.chatMessagePadding + spacing[20],
     },
     // 附件列表使用百分比宽度；明确气泡宽度，避免 Android 在内容固有尺寸计算时把附件信息压到零宽。
     userMessageWithAttachments: { width: l.userMessageWidth },
@@ -659,7 +666,7 @@ const createStyles = (c: WorkspaceColors) =>
 
     userMessageFailed: { backgroundColor: c.danger },
     userMessageUnconfirmed: { opacity: 0.75 },
-    messageSubtext: { ...t.caption, color: c.onAccent, marginTop: spacing[4], alignSelf: 'flex-end' },
+    deliveryIndicator: { position: 'absolute', right: spacing[8], bottom: spacing[8], width: sizing[16], height: sizing[16], alignItems: 'center', justifyContent: 'center' },
     featureSourceLabel: { ...t.caption, color: c.muted, marginBottom: spacing[4] },
     pendingBanner: {
       padding: spacing[12],

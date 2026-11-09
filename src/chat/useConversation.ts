@@ -289,6 +289,26 @@ export function useConversation(sessionId: string, refreshKey: string | number =
 
     let runErrorOccurred = false;
     let runErrorMessage: string | undefined;
+    const receiptController = new AbortController();
+    const receiptPiSessionId = sessions.get(sessionId).piSessionId;
+    let receiptOpen = true;
+    let receiptRequested = false;
+    const closeReceipt = () => { receiptOpen = false; receiptController.abort(); };
+    controller.signal.addEventListener('abort', closeReceipt, { once: true });
+    // 首次回复/工具进展时只读核对一次送达事实，不拿 RUN_STARTED 冒充落盘确认。
+    // 这次读取只补充用户消息的保存标记，不能替换流式视图、推进 revision 或释放安全暂存。
+    const confirmUserReceipt = () => {
+      if (receiptRequested || !receiptOpen || !current() || !receiptPiSessionId) return;
+      receiptRequested = true;
+      void api.getConversation(sessionId, receiptController.signal).then((history) => {
+        if (!receiptOpen || controller.signal.aborted || !current() || sessions.get(sessionId).piSessionId !== receiptPiSessionId ||
+          history.sessionId !== sessionId || history.piSessionId !== receiptPiSessionId ||
+          !history.messages.some((message) => message.role === 'user' && message.id === submission.messageId)) return;
+        setAuthorityState((previous) => receiptOpen && current() && sessions.get(sessionId).piSessionId === receiptPiSessionId && previous.api === api && previous.sessionId === sessionId && previous.epoch === epoch && previous.piSessionId === receiptPiSessionId
+          ? { ...previous, persistedMessageIds: new Set([...previous.persistedMessageIds, submission.messageId]) }
+          : previous);
+      }).catch(() => { /* 保存标记宁缺毋滥；仍由本轮终态对账决定失败/未明，不自动重试。 */ });
+    };
 
     try {
       await api.runSession(
@@ -305,6 +325,8 @@ export function useConversation(sessionId: string, refreshKey: string | number =
         (event) => {
           if (!current() || controller.signal.aborted) return;
           aggregator.push(event);
+          if (event.type === 'TEXT_MESSAGE_START' || event.type === 'TEXT_MESSAGE_CONTENT' || event.type === 'TOOL_CALL_START') confirmUserReceipt();
+          if (event.type === 'RUN_FINISHED' || event.type === 'RUN_ERROR') closeReceipt();
           if (event.type === 'MESSAGES_SNAPSHOT' && event.messages) {
             const snapshotIds = new Set(event.messages.map((message) => message.id));
             setAuthorityState((previous) => ({
@@ -333,6 +355,7 @@ export function useConversation(sessionId: string, refreshKey: string | number =
         },
         controller.signal,
       );
+      closeReceipt();
 
       if (!current()) {
         // 组件已卸载但代次仍有效：只能保守标记待确认，交给重新挂载后的历史同步对账。
@@ -393,6 +416,7 @@ export function useConversation(sessionId: string, refreshKey: string | number =
         }
       }
     } catch (e) {
+      closeReceipt();
       aggregator.settle();
       if (current()) setViews([...aggregator.messages]);
 
@@ -471,6 +495,8 @@ export function useConversation(sessionId: string, refreshKey: string | number =
         }
       }
     } finally {
+      closeReceipt();
+      controller.signal.removeEventListener('abort', closeReceipt);
       const stale = !sessions.isCurrent(sessionId, epoch);
       if (stale && aliveRef.current) setHistoryFailed(true);
       abortRef.current = null;

@@ -17,6 +17,7 @@ import { useNews } from '../news/useNews';
 import { NewsPreferencesStore } from '../news/news-preferences-store';
 import { NewsPreferencesCard } from '../news/NewsPreferencesCard';
 import { appendNewsQuote, newsDiscussionQuote } from '../news/discussion';
+import { mainProgressLabel } from '../chat/message-delivery';
 import { createBrowserStore } from '../browser/browser-store';
 import { BrowserPanel } from '../browser/BrowserPanel';
 import { useApprovals } from '../approvals/ApprovalProvider';
@@ -137,10 +138,15 @@ function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) 
     try { await chats.verifyReset('main'); } catch (error) { setNotice(error instanceof Error ? error.message : '重置结果核对失败'); }
   };
   let settingsContent: ReactNode;
-  // 形象状态优先级：未决审批 > 执行中/同步异常 > 就绪；审批必须最先被用户看见。
-  const mainStatusLabel = approvals.snapshot.pendingIds.length > 0
-    ? `等待你的审批（${approvals.snapshot.pendingIds.length} 项）`
-    : mainRuntime.label;
+  // 过程只集中到形象；仅统计当前主聊天的审批，断线不把缓存当成新事实。
+  const mainStatusLabel = mainProgressLabel({
+    synchronized: mainRuntime.synchronized,
+    running: mainRuntime.running,
+    label: mainRuntime.label,
+    pendingApprovals: approvals.snapshot.pendingIds.filter((id) => approvals.snapshot.records[id]?.sessionId === 'main' && approvals.snapshot.records[id]?.status === 'pending').length,
+    pending: currentState.pendingSubmission?.status,
+    runObserved: mainRuntime.runs.some((run) => run.runId === currentState.pendingSubmission?.runId),
+  });
   if (settingsPage === 'appearance') settingsContent = <ThemePicker />;
   else if (settingsPage === 'news-preferences') settingsContent = <NewsPreferencesCard store={newsPreferences} />;
   else if (settingsPage === 'profile') settingsContent = <ProfilePanel />;

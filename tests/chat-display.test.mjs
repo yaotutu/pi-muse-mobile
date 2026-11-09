@@ -84,7 +84,7 @@ test('message markdown uses native nodes, safe links, literal HTML, and copyable
   assert.match(source, /case 'html': return <Text key=\{key\}>\{value\}<\/Text>/);
   assert.match(source, /Clipboard\.setStringAsync\(code\)/);
   assert.match(source, /accessibilityLabel="复制代码"/);
-  assert.match(source, /<Text selectable style=\{styles\.codeText\}>\{code\}<\/Text>/);
+  assert.match(source, /<Text textBreakStrategy="simple" selectable style=\{styles\.codeText\}>\{code\}<\/Text>/);
   assert.doesNotMatch(source, /dangerouslySetInnerHTML|<WebView\b|from ['"]react-native-webview['"]|<Image\b|FastImage|marked\.parse\(/);
 });
 
