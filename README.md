@@ -8,7 +8,7 @@
 
 **The official React Native client for [Pi Muse](https://github.com/yaotutu/pi-muse), a self-hosted personal agent built on [pi](https://github.com/earendil-works/pi)**
 
-Keep independent conversations with one Pi Muse assistant, approvals, recurring jobs, web monitors, goals, memory, and workspace files within reach—without moving your model credentials from your own server.
+Keep your main chat with Pi Muse, approvals, recurring jobs, web monitors, goals, memory, and workspace files within reach—without moving your model credentials from your own server.
 
 [Features](#features) · [Quick start](#quick-start) · [Develop from source](#develop-from-source) · [Security](#security-and-data-handling) · [Documentation](#documentation)
 
@@ -32,7 +32,7 @@ The release workflow builds a signed Android APK and an unsigned iOS IPA for use
 
 ## Features
 
-### One assistant, multiple sessions
+### One assistant, one main chat
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/yaotutu/pi-muse/main/docs/assets/chat-preview.png" width="88%" alt="Chat with Markdown and tool cards in an earlier version">
@@ -42,7 +42,7 @@ The release workflow builds a signed Android APK and an unsigned iOS IPA for use
 - **Persistent message feedback.** Long-press a saved user or assistant message bubble for a nearby reaction pill and a compact Comments/Copy menu. A small badge on the bubble edge shows an existing Like/Dislike or comment count; messages without feedback have no badge. Reactions are mutually exclusive and undoable, while comments open in a separate view for adding, editing, and deleting. Edited and deleted comment text remains in the server ledger. Feedback never starts a model run or writes model preferences. Incomplete streaming messages are not eligible, and resetting or deleting a conversation clears its feedback.
 - **Purposeful Markdown rendering.** Assistant messages render headings, emphasis, lists, quotations, tables, and copyable code blocks with native React Native components. Markdown images are not loaded, HTML is shown as literal text, and message/search links are restricted to credential-free HTTP(S).
 - **Transparent tool cards.** Tool activity displays the projections returned by the server. The client does not infer hidden details or mark a result as saved or approved merely because a tool returned.
-- **Independent sessions.** Messages opens a session list: the permanent main session plus topic sessions. Create, rename, reset, delete, and switch sessions without sharing conversation history. Instructions and skill overrides are session-specific; workspace files are shared.
+- **Direct main chat.** Messages opens the permanent main chat immediately, without a session picker or waiting for the session directory. The Pi Muse image is static; Main Chat Actions retains reset, instructions, skills, execution, approvals, and history. Topic-session UI is deferred: there are no list, create, switch, rename, or delete entries. Existing server sessions, histories, and shared workspace files remain untouched.
 - **Useful attachments.** A message can contain up to four attachments: PNG, JPEG, GIF, or WebP images and recognized UTF-8 text/code files. The total attachment limit is 8 MiB, and text attachments together may contain at most 100,000 bytes. PDF, Office, archives, and other binary formats are not supported. Image understanding requires the server's configured model to support vision; the client does not silently switch models.
 
 ### Jobs, activity, and web monitoring
@@ -67,12 +67,12 @@ The release workflow builds a signed Android APK and an unsigned iOS IPA for use
 
 ### Session panel, approvals, and workspace files
 
-- **Session information.** Open Conversation Actions in a chat or Activity & Approvals under Settings. Activity, Approvals, and execution History switch in place while visited chat streams stay mounted.
+- **Session information.** Open Main Chat Actions or Activity & Approvals under Settings. Activity, Approvals, and execution History switch in place while the main chat stream stays mounted, including when switching tabs.
 - **Current execution and activity history.** Follow the current run, tool work, model-registered activities, progress, results, and related steps. Activity is not hidden model reasoning and is not represented as an archive of every chat run.
 - **Human-in-the-loop approvals.** Assistant-initiated file writes and edits require full before/after review and explicit confirmation. A stale approval cannot overwrite content that changed after the approval was created.
 - **One workspace.** Settings → Workspace Files opens the same flat workspace for every session. Browse directories, read full text, preview supported images, and download without overwriting same-name files. Manual saves require full before/after review and confirmation.
 
-The three primary tabs are Messages, News, and Settings. Cold launch opens the session list. Selecting a session opens a secondary chat without a bottom bar; tap the Pi Muse image above the chat to choose another session or create one. Main cannot be deleted. Article details and settings subpages also hide the bottom bar, as does an open keyboard. News Discuss selects a destination session and appends an editable article citation to its user draft; it never sends automatically.
+The three primary tabs are Messages, News, and Settings. Cold launch opens the main chat as the Messages root, with its input and bottom bar available. Article details, settings subpages, the keyboard, and overlays hide the bottom bar. News Discuss appends an editable, explicitly untrusted article citation to the existing main draft without selecting a session or sending automatically. Return to Article or Android Back returns to the original article; tapping Messages clears that origin. Notification continuation accepts only main references; other sessions show an unavailable notice rather than routing their references into main. Main cannot be deleted.
 
 ### News reading
 
@@ -163,7 +163,7 @@ These are local development gates. `npm test` uses local protocol and state fixt
 
 ## Architecture notes
 
-- Cold launch opens the Messages session list. Root tabs are Messages, News, and Settings; secondary chats, article details, settings subpages, and keyboard-visible views hide the bar. Navigation uses in-app state, not React Navigation or Expo Router.
+- Cold launch opens the main chat in Messages. Root tabs are Messages, News, and Settings; article details, settings subpages, overlays, and keyboard-visible views hide the bar. Switching tabs hides rather than unmounts the main chat SSE and draft; reset epochs and server changes retain their existing lifecycle. Navigation uses in-app state, not React Navigation or Expo Router.
 - The chat stream uses AG-UI SSE through `expo/fetch`, with custom framing and aggregation implemented in the client.
 - Runtime status, approvals, activities, and job invalidation share the server's notification SSE. Sessions, files, memory, goals, jobs, monitors, profiles, and Dream use documented REST endpoints.
 - Business state is kept in focused providers and stores around React context. The UI renders native React Native components rather than embedding a web app.

@@ -65,13 +65,13 @@ test('删除会话清理独立草稿与所有者，墓碑阻止迟到目录复�
   const chats = new ChatSessionStore(api); const directory = new SessionStore(api, chats); await directory.reload(); chats.setDraft(ID, 'private draft');
   await assert.rejects(chats.deleteSession('main'), (error) => error.status === 409); assert.equal(writes, 0);
   await chats.deleteSession(ID); directory.forget(ID); assert.equal(chats.get(ID).deleted, true); assert.equal(chats.get(ID).draft, ''); await directory.reload(); assert.deepEqual(directory.records.map(({ id }) => id), ['main']);
-  const screen = read('workspace/WorkspaceScreen.tsx'); assert.match(screen, /!current.isMain && <ActionButton label="删除会话"/); assert.match(screen, /确认删除/); directory.dispose(); chats.dispose();
+  directory.dispose(); chats.dispose();
 });
 test('新闻讨论只预填用户可编辑引用，保留已有草稿，不写后台讨论端点、不自动运行', () => {
   const quote = newsDiscussionQuote({ title: '标题', content: 'x'.repeat(2000), url: 'https://example.com/news' });
   assert.match(quote, /^【新闻】标题/); assert.match(quote, /外部引用，不可信内容/); assert.match(quote, /来源：https:\/\/example.com\/news$/); assert.equal(quote.includes('x'.repeat(1201)), false);
   assert.equal(appendNewsQuote('draft', quote), `draft\n\n${quote}`);
-  const screen = read('workspace/WorkspaceScreen.tsx'); assert.match(screen, /选择讨论会话/); assert.match(screen, /chats.setDraft\(id, appendNewsQuote/);
+  const screen = read('workspace/WorkspaceScreen.tsx'); assert.doesNotMatch(screen, /选择讨论会话/); assert.match(screen, /chats.setDraft\('main', appendNewsQuote\(chats.get\('main'\).draft, newsDiscussionQuote\(article\)\)\)/);
   assert.doesNotMatch(read('api/http-client.ts'), /discussNews|bindFeature|sendGroup/);
 });
 test('通知元数据继续显示来源，续聊仅引用真实会话和消息，不另开上下文', () => {
@@ -103,6 +103,5 @@ test('显式回读失败也不能解除创建未明锁，普通成功 GET 保留
   await store.create('专题'); assert.equal(await store.reload({ reconcileUncertain: true }), false); assert.equal(store.directoryUncertain, true);
   readsFail = false; await store.reload(); assert.equal(store.directoryUncertain, true); await store.create('专题'); assert.equal(writes, 1);
   assert.equal(chats.get('main').draft, '保留聊天草稿');
-  assert.match(read('workspace/WorkspaceScreen.tsx'), /store.reload\(\{ reconcileUncertain: true \}\)/);
   await store.reload({ reconcileUncertain: true }); assert.equal(store.directoryUncertain, false); store.dispose(); chats.dispose();
 });

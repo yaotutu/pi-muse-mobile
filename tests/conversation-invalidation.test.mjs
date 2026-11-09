@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import './helpers/register-conversation-tests.mjs';
 import { readFileSync } from 'node:fs';
-import { conversationRefreshKey, reconcileConversationOwners } from '../src/workspace/conversation-host-state.ts';
+import { conversationRefreshKey } from '../src/workspace/conversation-host-state.ts';
 
 const { ChatSessionStore } = await import('../src/sessions/chat-session-store.ts');
 const { createMockApi } = await import('./helpers/conversation-test-harness.ts');
@@ -16,6 +16,20 @@ const waitFor = async (predicate) => {
   }
   assert.fail('condition did not settle');
 };
+
+test('main 冷启动历史失败明确报错并锁发送，不能因目录空或失败伪装空历史', async () => {
+  let sends = 0;
+  const api = createMockApi({ getConversation: async () => { throw new Error('主聊天历史读取失败'); }, runSession: async () => { sends++; } });
+  api.listSessions = async () => { throw new Error('目录不可用'); };
+  const store = new ChatSessionStore(api); store.setDraft('main', '冷启动草稿');
+  const hook = await renderConversationHook('main', api, store);
+  try {
+    await waitFor(() => !hook.result.current.loading && hook.result.current.historyFailed);
+    assert.match(hook.result.current.error, /主聊天历史读取失败/);
+    await hook.result.current.send('不得发送'); assert.equal(sends, 0);
+    assert.equal(store.get('main').draft, '冷启动草稿');
+  } finally { hook.unmount(); store.dispose(); }
+});
 
 test('conversation_updated 触发的权威历史刷新保留草稿，流式运行结束后不漏刷新', async () => {
   const store = new ChatSessionStore();
@@ -87,12 +101,15 @@ test('会话切换后的历史读取只归属新会话，不回写旧会话消�
   nextSession.unmount();
 });
 
-test('已访问会话切换后保留原 SSE 所有者；删除会话才释放所有者', () => {
-  const first = reconcileConversationOwners(['main'], 'side-a', ['main', 'side-a']);
-  const second = reconcileConversationOwners(first, 'main', ['main', 'side-a']);
-  assert.deepEqual(second, ['main', 'side-a']);
-  assert.equal(reconcileConversationOwners(second, 'main', ['main', 'side-a']), second);
-  assert.deepEqual(reconcileConversationOwners(second, 'main', ['main']), ['main']);
+test('main 始终持有 SSE 所有者；切 Tab 仅改变可见性，epoch 与连接保持原生命周期', () => {
+  const host = readFileSync('src/workspace/ConversationHost.tsx', 'utf8');
+  assert.match(host, /return <View style=\{styles.host\}>\s*<SessionConversation sessionId="main" visible=\{chatVisible\}/);
+  assert.match(host, /!visible && styles\.hidden/);
+  assert.match(host, /<ConversationView key=\{`\$\{sessionId\}:\$\{session\.epoch\}`\}/);
+  assert.doesNotMatch(host, /chatVisible && <SessionConversation|sessionIds|setVisited/);
+  const workspace = readFileSync('src/workspace/WorkspaceScreen.tsx', 'utf8');
+  assert.match(workspace, /display: page === 'news' \? 'none' : 'flex'[^\n]*><ConversationHost/);
+  assert.match(workspace, /<ApiProvider client=\{connection\.client\} key=\{connection\.snapshot\.workspaceKey\}/);
 });
 
 test('每会话失效只接受自己的 session，未同步时不会消费旧失效版本', () => {
