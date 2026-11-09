@@ -1,12 +1,10 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Alert, AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
+import { Alert, AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { MoreHorizontal } from 'lucide-react-native';
-import { IconControl } from '../ui/IconControl';
 import { ApiProvider, useApi } from '../api/ApiProvider';
 import { ConnectionProvider, useServiceConnection } from '../connection/ConnectionProvider';
 import { useConnection } from '../connection/useConnection';
-import { RuntimeProvider, useRuntimeStore } from '../runtime/RuntimeProvider';
+import { RuntimeProvider, useRuntimeStore, useSessionRuntime } from '../runtime/RuntimeProvider';
 import { SessionProvider, useSessionState, useChatSessionStore } from '../sessions/SessionProvider';
 import { useSessions } from '../sessions/useSessions';
 import { SmsProvider } from '../information/SmsProvider';
@@ -83,7 +81,7 @@ function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) 
   const [news] = useState(() => createNewsStore(api)); const newsState = useNews(news).snapshot; const [newsPreferences] = useState(() => new NewsPreferencesStore(api));
   const [browser] = useState(() => createBrowserStore(api, connection?.snapshot.serverUrl ?? '')); const [browserOpen, setBrowserOpen] = useState(false);
   const [page, setPage] = useState<PrimaryTabId>('messages'); const [chatReturn, setChatReturn] = useState<ChatReturn>('messages');
-  const currentState = useSessionState('main'); const [settingsPage, setSettingsPage] = useState<SettingsPage | null>(null);
+  const currentState = useSessionState('main'); const mainRuntime = useSessionRuntime('main'); const [settingsPage, setSettingsPage] = useState<SettingsPage | null>(null);
   const [newsManaging, setNewsManaging] = useState(false); const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [notice, setNotice] = useState<string>();
   const [resetTarget, setResetTarget] = useState<string>(); const [resetError, setResetError] = useState<string>();
@@ -125,6 +123,10 @@ function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) 
     try { await chats.verifyReset('main'); } catch (error) { setNotice(error instanceof Error ? error.message : '重置结果核对失败'); }
   };
   let settingsContent: ReactNode;
+  // 形象状态优先级：未决审批 > 执行中/同步异常 > 就绪；审批必须最先被用户看见。
+  const mainStatusLabel = approvals.snapshot.pendingIds.length > 0
+    ? `等待你的审批（${approvals.snapshot.pendingIds.length} 项）`
+    : mainRuntime.label;
   if (settingsPage === 'news-preferences') settingsContent = <NewsPreferencesCard store={newsPreferences} />;
   else if (settingsPage === 'profile') settingsContent = <ProfilePanel />;
   else if (settingsPage === 'memory') settingsContent = <MemoryPanel />;
@@ -145,10 +147,13 @@ function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) 
   return <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} testID="workspace-screen"><ThemeStatusBar />
     <View style={{ flex: 1 }} pointerEvents={browserOpen ? 'none' : 'auto'} accessibilityElementsHidden={browserOpen} importantForAccessibility={browserOpen ? 'no-hide-descendants' : 'auto'}><KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled={Platform.OS !== 'web'}>
       {page === 'messages' && <>
-        <View style={{ flexDirection: 'row', alignItems: 'center', padding: spacing[12], gap: spacing[12] }}>
-          <MuseAvatar size={48} /><Text accessibilityRole="header" numberOfLines={1} style={{ flex: 1, color: colors.ink, ...workspaceTheme.typography.section }}>Pi Muse</Text>
-          <IconControl icon={MoreHorizontal} label="主聊天操作" onPress={() => { Keyboard.dismiss(); setSessionTab('activity'); setPanelOpen(true); }} />
-        </View>
+        {/* 形象居中展示当前主聊天状态；操作入口收到形象点击里，不再放标题或独立菜单按钮。 */}
+        <Pressable accessibilityRole="button" accessibilityLabel={`Pi Muse 形象，${mainStatusLabel}，打开主聊天操作`} accessibilityState={{ busy: mainRuntime.running }} testID="workspace-avatar-status"
+          onPress={() => { Keyboard.dismiss(); setSessionTab('activity'); setPanelOpen(true); }}
+          style={{ alignItems: 'center', paddingVertical: spacing[12], gap: spacing[4] }}>
+          <MuseAvatar size={64} />
+          <Text numberOfLines={1} style={{ color: colors.muted, ...workspaceTheme.typography.caption }}>{mainStatusLabel}</Text>
+        </Pressable>
         {chatReturn === 'news' && <ActionButton label="返回文章" onPress={returnToArticle} />}
       </>}
       <View style={{ flex: 1, display: page === 'news' ? 'none' : 'flex' }}><ConversationHost chatVisible={page === 'messages'} otherPage={otherPage} refreshVersions={refreshVersions}

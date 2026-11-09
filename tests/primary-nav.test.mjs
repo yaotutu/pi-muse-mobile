@@ -54,16 +54,27 @@ test('主聊天根页有底栏，键盘、设置子页与所有覆盖层隐藏�
   assert.match(screen, /sessionMounted: panelOpen \|\| browserOpen \|\| !!resetTarget/);
   assert.match(screen, /!keyboardVisible && root && <PrimaryTabBar/);
 });
-test('移除列表/新建/切换/改名/删除入口，Pi Muse 形象仅静态展示', () => {
+test('移除列表/新建/切换/改名/删除入口，Pi Muse 形象居中承担状态与操作入口', () => {
   for (const file of ['SessionListScreen.tsx', 'SessionSwitcherSheet.tsx']) assert.equal(existsSync(new URL('../src/workspace/' + file, import.meta.url)), false);
   assert.doesNotMatch(screen, /SessionList|SessionSwitcher|setSwitcher|新建会话|创建会话|重命名会话|删除会话|切换会话|返回消息|deleteSession|store\.(create|rename)/);
-  assert.match(screen, /<MuseAvatar size=\{48\} \/><Text accessibilityRole="header"[^\n]*>Pi Muse<\/Text>/);
-  assert.match(screen, /<IconControl icon=\{MoreHorizontal\} label="主聊天操作"/);
-  assert.doesNotMatch(screen, /<Pressable/);
+  // 头部：无标题、无三点菜单；形象居中，显示实时状态，点击打开主聊天操作。
+  assert.doesNotMatch(screen, /MoreHorizontal|IconControl|accessibilityRole="header"[^\n]*>Pi Muse</);
+  assert.match(screen, /testID="workspace-avatar-status"/);
+  assert.match(screen, /<MuseAvatar size=\{64\} \/>/);
+  assert.match(screen, /style=\{\{ alignItems: 'center', paddingVertical: spacing\[12\], gap: spacing\[4\] \}\}/);
+  assert.match(screen, /mainStatusLabel/);
+  assert.match(screen, /setSessionTab\('activity'\); setPanelOpen\(true\)/);
   for (const entry of ['重置会话', '编辑此会话指令', '管理此会话技能']) assert.ok(screen.includes(entry));
   assert.match(screen, /<SessionPanel sessionId="main"/);
   assert.match(screen, /chats\.resetSession\(id, clearSchedules\)/);
   assert.match(screen, /approvals\.store\.refreshPending\(\)/);
+});
+test('形象状态优先显示未决审批，其次运行/同步状态，空闲回落为就绪', () => {
+  const source = screen.slice(screen.indexOf('const mainStatusLabel'), screen.indexOf('const rootSettings'));
+  assert.match(source, /approvals\.snapshot\.pendingIds\.length > 0/);
+  assert.match(source, /等待你的审批/);
+  assert.match(source, /mainRuntime\.label/);
+  assert.match(screen, /useSessionRuntime\('main'\)/);
 });
 test('新闻直接追加不可信引用到 main 原稿，不发送、不改变附件或 pending，返回原文章', () => {
   const chats = new ChatSessionStore({});
