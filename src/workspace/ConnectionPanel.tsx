@@ -20,7 +20,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemeStatusBar } from '../theme/ThemeStatusBar';
 import { ActionButton } from '../ui/ActionButton';
 import { FormInput } from '../ui/FormInput';
@@ -74,6 +74,7 @@ export interface ConnectionPanelProps {
 
 export function ConnectionPanel({ manager, snapshot, onClose }: ConnectionPanelProps) {
   const styles = useConnectionStyles();
+  const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const reducedMotion = useReducedMotion();
 
@@ -275,6 +276,7 @@ export function ConnectionPanel({ manager, snapshot, onClose }: ConnectionPanelP
 
           <KeyboardAvoidingView
             style={styles.bodyWrap}
+            keyboardVerticalOffset={insets.top}
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             enabled={Platform.OS !== 'web'}
           >

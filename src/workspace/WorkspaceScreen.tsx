@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Alert, AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ApiProvider, useApi } from '../api/ApiProvider';
 import { ConnectionProvider, useServiceConnection } from '../connection/ConnectionProvider';
 import { useConnection } from '../connection/useConnection';
@@ -44,12 +44,11 @@ import { DreamPanel } from './DreamPanel';
 import { GoalsPanel } from './GoalsPanel';
 import { FilesScreen } from './FilesScreen';
 import { SchedulePanel } from './SchedulePanel';
+import { SettingsHome, SETTINGS_PAGE_TITLES, type SettingsPage } from './SettingsHome';
 import { MuseAvatar } from './primitives';
 import { filesBackAction } from './settings-navigation';
 import { isRootWorkspacePage, notificationContinuationNotice, chatReturnForEntry, type ChatReturn, type PrimaryTabId } from './primary-nav';
 
-type SettingsPage = 'profile' | 'memory' | 'dream' | 'goals' | 'jobs' | 'monitors' | 'files' | 'sms' | 'rules' | 'skills' | 'activity' | 'news-sources' | 'news-preferences';
-const SETTINGS: readonly [SettingsPage, string][] = [['profile', '身份与人设'], ['memory', '长期记忆'], ['dream', 'Dream 记忆整理'], ['goals', '目标'], ['jobs', '定时任务'], ['monitors', '网页监控'], ['files', '工作区文件'], ['sms', '短信设置'], ['rules', '会话指令'], ['skills', '会话技能'], ['activity', '动态与审批'], ['news-sources', '新闻来源'], ['news-preferences', '新闻偏好']];
 
 /** 换服务器才销毁连接子树；切换主题、页面与会话不停止隐藏中的聊天流。 */
 export function WorkspaceScreen() {
@@ -66,16 +65,31 @@ export function WorkspaceScreen() {
   </ConnectionProvider>;
 }
 function DisconnectedWorkspace({ openConnection }: { openConnection: () => void }) {
-  const [tab, setTab] = useState<PrimaryTabId>('messages'); const { colors } = useTheme(); const update = useAppUpdate();
+  const [tab, setTab] = useState<PrimaryTabId>('messages'); const [appearanceOpen, setAppearanceOpen] = useState(false);
+  const { colors } = useTheme(); const update = useAppUpdate();
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (tab !== 'settings' || !appearanceOpen) return false;
+      setAppearanceOpen(false); return true;
+    });
+    return () => sub.remove();
+  }, [tab, appearanceOpen]);
   return <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }}><ThemeStatusBar />
-    <View style={{ flex: 1, padding: spacing[24], justifyContent: 'center', gap: spacing[16] }}><MuseAvatar size={88} />
-      <Text style={{ ...workspaceTheme.typography.section, color: colors.ink }}>{tab === 'settings' ? '设置' : tab === 'news' ? '新闻' : '消息'}</Text>
-      <Text style={{ color: colors.muted }}>连接自己的 Pi Muse 服务器后读取会话与新闻。</Text><ActionButton label="服务器连接" onPress={openConnection} />
-      {tab === 'settings' && <><ThemePicker />{update && <ActionButton label="应用更新" onPress={update.open} />}</>}
-    </View><PrimaryTabBar currentTab={tab} onSelectTab={setTab} /></SafeAreaView>;
+    {tab === 'settings' ? appearanceOpen ? <>
+      <PageHeader title="外观主题" backLabel="返回设置" onBack={() => setAppearanceOpen(false)} />
+      <ScrollView contentContainerStyle={{ padding: spacing[20] }}><ThemePicker /></ScrollView>
+    </> : <SettingsHome notice="尚未连接服务器，助手与资料设置需先连接；外观和应用更新可独立使用。"
+      onOpen={(target) => { if (target === 'appearance') setAppearanceOpen(true); else openConnection(); }}
+      onConnection={openConnection} onBrowser={openConnection} onUpdate={update?.open} /> :
+      <View style={{ flex: 1, padding: spacing[24], justifyContent: 'center', alignItems: 'center', gap: spacing[16] }}><MuseAvatar size={88} />
+        <Text style={{ ...workspaceTheme.typography.section, color: colors.ink }}>{tab === 'news' ? '新闻' : '消息'}</Text>
+        <Text style={{ color: colors.muted, textAlign: 'center' }}>连接自己的 Pi Muse 服务器后开始聊天或阅读新闻。</Text><ActionButton label="服务器连接" onPress={openConnection} />
+      </View>}
+    {!(tab === 'settings' && appearanceOpen) && <PrimaryTabBar currentTab={tab} onSelectTab={(next) => { setAppearanceOpen(false); setTab(next); }} />}
+  </SafeAreaView>;
 }
 function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) {
-  const api = useApi(); const connection = useServiceConnection(); const directory = useSessions(); const store = directory.store; const chats = useChatSessionStore();
+  const api = useApi(); const insets = useSafeAreaInsets(); const connection = useServiceConnection(); const directory = useSessions(); const store = directory.store; const chats = useChatSessionStore();
   const { colors } = useTheme(); const update = useAppUpdate(); const runtime = useRuntimeStore(); const approvals = useApprovals();
   const { store: files } = useFiles(); const { store: jobs } = useJobs(); const { store: monitors } = useMonitors(); const { store: goals } = useGoals();
   const [news] = useState(() => createNewsStore(api)); const newsState = useNews(news).snapshot; const [newsPreferences] = useState(() => new NewsPreferencesStore(api));
@@ -127,7 +141,8 @@ function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) 
   const mainStatusLabel = approvals.snapshot.pendingIds.length > 0
     ? `等待你的审批（${approvals.snapshot.pendingIds.length} 项）`
     : mainRuntime.label;
-  if (settingsPage === 'news-preferences') settingsContent = <NewsPreferencesCard store={newsPreferences} />;
+  if (settingsPage === 'appearance') settingsContent = <ThemePicker />;
+  else if (settingsPage === 'news-preferences') settingsContent = <NewsPreferencesCard store={newsPreferences} />;
   else if (settingsPage === 'profile') settingsContent = <ProfilePanel />;
   else if (settingsPage === 'memory') settingsContent = <MemoryPanel />;
   else if (settingsPage === 'dream') settingsContent = <DreamPanel />;
@@ -136,16 +151,15 @@ function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) 
   else if (settingsPage === 'jobs' || settingsPage === 'monitors') settingsContent = <SchedulePanel kind={settingsPage} />;
   else if (settingsPage === 'rules' || settingsPage === 'skills') settingsContent = <><Text style={{ color: colors.muted }}>主聊天</Text><SessionSettings sessionId="main" section={settingsPage} onSaved={() => refresh('main')} /></>;
   else if (settingsPage === 'activity') settingsContent = <SessionPanel sessionId="main" tab={sessionTab} onTab={setSessionTab} />;
-  const rootSettings = <ScrollView contentContainerStyle={{ padding: spacing[20], gap: spacing[12] }}>
-    <ActionButton label="服务器连接" onPress={openConnection} />{SETTINGS.map(([id, title]) => <ActionButton key={id} label={title} onPress={() => setSettingsPage(id)} />)}
-    <ActionButton label="浏览器" testID="viewer-open" onPress={() => { Keyboard.dismiss(); browser.open(); setBrowserOpen(true); }} />{update && <ActionButton label="应用更新" onPress={update.open} />}<ThemePicker />
-  </ScrollView>;
+  const rootSettings = <SettingsHome onOpen={setSettingsPage} onConnection={openConnection}
+    onBrowser={() => { Keyboard.dismiss(); browser.open(); setBrowserOpen(true); }} onUpdate={update?.open} />;
   const otherPage = page === 'settings' ? settingsPage === 'files' ? <FilesScreen onBack={backSettings} /> : settingsPage === 'news-sources' ? <NewsSourcesPage store={news} onBack={backSettings} />
-      : settingsPage ? <><PageHeader title={SETTINGS.find(([id]) => id === settingsPage)?.[1] ?? '设置'} backLabel="返回设置" onBack={backSettings} />
-        {settingsPage === 'goals' || settingsPage === 'activity' ? settingsContent : <ScrollView contentContainerStyle={{ padding: spacing[20], gap: spacing[12] }}>{settingsContent}</ScrollView>}</> : rootSettings : null;
+      : settingsPage ? <><PageHeader title={SETTINGS_PAGE_TITLES[settingsPage]} backLabel="返回设置" onBack={backSettings} />
+        {settingsPage === 'goals' || settingsPage === 'activity' ? settingsContent : <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: spacing[20], gap: spacing[12] }}>{settingsContent}</ScrollView>}</> : rootSettings : null;
   const root = isRootWorkspacePage({ page, settingsSubpage: settingsPage, newsDetailOpen: !!newsState.selectedArticleId, newsManaging, sessionMounted: panelOpen || browserOpen || !!resetTarget });
   return <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} testID="workspace-screen"><ThemeStatusBar />
-    <View style={{ flex: 1 }} pointerEvents={browserOpen ? 'none' : 'auto'} accessibilityElementsHidden={browserOpen} importantForAccessibility={browserOpen ? 'no-hide-descendants' : 'auto'}><KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled={Platform.OS !== 'web'}>
+    {/* 键盘 screenY 是窗口坐标，避让布局在 SafeAreaView 内；补上顶部安全区才能对齐，不能在 composer 再减一次键盘高度。 */}
+    <View style={{ flex: 1 }} pointerEvents={browserOpen ? 'none' : 'auto'} accessibilityElementsHidden={browserOpen} importantForAccessibility={browserOpen ? 'no-hide-descendants' : 'auto'}><KeyboardAvoidingView style={{ flex: 1 }} keyboardVerticalOffset={insets.top} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled={Platform.OS !== 'web'}>
       {page === 'messages' && <>
         {/* 形象居中展示当前主聊天状态；操作入口收到形象点击里，不再放标题或独立菜单按钮。 */}
         <Pressable accessibilityRole="button" accessibilityLabel={`Pi Muse 形象，${mainStatusLabel}，打开主聊天操作`} accessibilityState={{ busy: mainRuntime.running }} testID="workspace-avatar-status"
