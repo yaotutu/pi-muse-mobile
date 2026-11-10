@@ -131,7 +131,7 @@ test('聊天形象悬浮在完整聊天之上，不占标题栏或补等高留�
   assert.match(read('src/workspace/SessionPanel.tsx'), /<ScrollView\s+key={tab}/);
 });
 
-test('悬浮岛三主题不透明、局部命中、完整状态朗读；新闻返回独立48dp命中且按内容排布', async () => {
+test('悬浮形象无底座直接浮在聊天上，局部命中、完整状态朗读；新闻返回独立48dp命中且按内容排布', async () => {
   const { availableThemes } = await import('../src/theme/registry.ts');
   const tokens = await import('../src/ui/tokens.ts');
   const source = read('src/workspace/FloatingCompanion.tsx');
@@ -158,32 +158,25 @@ test('悬浮岛三主题不透明、局部命中、完整状态朗读；新闻�
     assert.equal(overlay.left, overlay.right); assert.equal(overlay.alignItems, 'center');
     assert.ok(overlay.gap > 0); assert.ok(overlay.zIndex > 0);
     assert.equal(overlay.height, undefined); assert.equal(overlay.backgroundColor, undefined);
-    const [island, back] = tree.props.children;
-    const face = flattenStyle(island.props.style({ pressed: false }));
-    assert.equal(face.backgroundColor, colors.surface); assert.equal(face.borderColor, colors.line);
-    assert.equal(face.shadowColor, colors.ink); assert.ok(face.shadowOpacity > 0); assert.ok(face.elevation > 0);
-    assert.ok(face.borderWidth > 0); assert.ok(face.borderRadius > 0); assert.ok(face.minHeight >= 48);
-    assert.equal(face.maxWidth, '100%'); assert.equal(face.opacity, undefined);
-    assert.equal(flattenStyle(island.props.style({ pressed: true })).backgroundColor, colors.selected);
-    assert.equal(island.props.accessibilityRole, 'button');
-    assert.ok(island.props.accessibilityLabel.includes(statusLabel));
-    assert.ok(island.props.accessibilityLabel.includes('打开主聊天操作'));
-    island.props.onPress();
-    const decorative = island.props.children;
-    assert.equal(decorative.props.pointerEvents, 'none'); assert.equal(decorative.props.accessibilityElementsHidden, true);
-    assert.equal(decorative.props.importantForAccessibility, 'no-hide-descendants');
-    const [avatar, status] = decorative.props.children;
+    const [avatarButton, back] = tree.props.children;
+    // 形象本体透明悬浮：无底色、无边框、无阴影，也不绘制可见状态文字。
+    const face = flattenStyle(avatarButton.props.style);
+    assert.equal(face.backgroundColor, undefined); assert.equal(face.borderWidth, undefined);
+    assert.equal(face.shadowColor, undefined); assert.equal(face.elevation, undefined);
+    assert.ok(face.minHeight >= 48); assert.equal(face.opacity, undefined);
+    assert.equal(avatarButton.props.accessibilityRole, 'button');
+    assert.ok(avatarButton.props.accessibilityLabel.includes(statusLabel));
+    assert.ok(avatarButton.props.accessibilityLabel.includes('打开主聊天操作'));
+    avatarButton.props.onPress();
+    const avatar = avatarButton.props.children;
     assert.equal(avatar.props.state, 'working'); assert.equal(avatar.props.images, images); assert.equal(avatar.props.offline, true);
     assert.ok(avatar.props.size >= 64 && avatar.props.size <= 72); assert.equal(avatar.props.onPress, undefined);
-    assert.equal(status.props.children, statusLabel); assert.equal(status.props.numberOfLines, 1);
-    assert.equal(status.props.ellipsizeMode, 'tail'); assert.notEqual(status.props.allowFontScaling, false);
-    assert.equal(flattenStyle(status.props.style).color, colors.muted);
     if (withReturn) {
       assert.equal(back.type, 'Pressable'); assert.equal(back.props.accessibilityRole, 'button');
       assert.equal(back.props.accessibilityLabel, '返回文章');
       const returnStyle = flattenStyle(back.props.style({ pressed: false }));
       assert.ok(returnStyle.minHeight >= 48); assert.equal(returnStyle.backgroundColor, colors.surface);
-      assert.equal(returnStyle.position, undefined, '返回入口在悬浮容器内顺排，不覆盖岛面');
+      assert.equal(returnStyle.position, undefined, '返回入口在悬浮容器内顺排，不覆盖形象');
       assert.equal(returnStyle.height, undefined, '大字体可自然增高'); assert.equal(returnStyle.maxWidth, '100%');
       back.props.onPress();
     } else assert.equal(back, undefined);
