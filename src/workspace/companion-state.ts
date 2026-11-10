@@ -2,19 +2,8 @@
  * 助手形象状态机：把运行通知流的真实事实映射为八种形象状态。
  * 纯函数、无 React 依赖；图片与动画由 MuseCompanion 渲染，标签文案仍由 mainProgressLabel 单独维护。
  */
-export type CompanionState =
-  | 'idle'
-  | 'thinking'
-  | 'responding'
-  | 'working'
-  | 'waiting-approval'
-  | 'success'
-  | 'error'
-  | 'stopped';
-
-export const COMPANION_STATES: readonly CompanionState[] = [
-  'idle', 'thinking', 'responding', 'working', 'waiting-approval', 'success', 'error', 'stopped',
-];
+import type { CompanionState } from '../api/companion-contracts';
+export { COMPANION_STATES, type CompanionState } from '../api/companion-contracts';
 
 /** 运行阶段来自 /api/events 的 session_status_updated；与 runtime/types.ts 的 RunPhase 保持一致。 */
 export type CompanionRunPhase =

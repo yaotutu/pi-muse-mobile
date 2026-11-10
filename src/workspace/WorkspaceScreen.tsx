@@ -46,6 +46,8 @@ import { GoalsPanel } from './GoalsPanel';
 import { FilesScreen } from './FilesScreen';
 import { SchedulePanel } from './SchedulePanel';
 import { SettingsHome, SETTINGS_PAGE_TITLES, type SettingsPage } from './SettingsHome';
+import { CompanionProvider, useCompanion } from '../companion/CompanionProvider';
+import { CompanionPicker } from './CompanionPicker';
 import { MuseCompanion } from './MuseCompanion';
 import { COMPANION_OUTCOME_MS, companionState } from './companion-state';
 import { filesBackAction } from './settings-navigation';
@@ -60,37 +62,43 @@ export function WorkspaceScreen() {
     retry: () => { void connection.manager.retry(); }, changeServer: openConnection,
   }), [connection.snapshot, connection.enabled, connection.manager, openConnection]);
   return <ConnectionProvider value={value}>
-    {connection.client && connection.snapshot.workspaceReady
-      ? <ApiProvider client={connection.client} key={connection.snapshot.workspaceKey}><DreamProvider><ProfileProvider><SessionProvider><RuntimeProvider><SmsProvider><FilesProvider><ConnectedWorkspace openConnection={openConnection} /></FilesProvider></SmsProvider></RuntimeProvider></SessionProvider></ProfileProvider></DreamProvider></ApiProvider>
-      : <DisconnectedWorkspace openConnection={openConnection} />}
+    <CompanionProvider key={connection.snapshot.workspaceKey} serverScope={connection.snapshot.serverUrl}
+      client={connection.client} connected={connection.snapshot.status === 'online'} connectionResolved={connection.snapshot.status !== 'loading'}>
+      {connection.client && connection.snapshot.workspaceReady
+        ? <ApiProvider client={connection.client} key={connection.snapshot.workspaceKey}><DreamProvider><ProfileProvider><SessionProvider><RuntimeProvider><SmsProvider><FilesProvider><ConnectedWorkspace openConnection={openConnection} /></FilesProvider></SmsProvider></RuntimeProvider></SessionProvider></ProfileProvider></DreamProvider></ApiProvider>
+        : <DisconnectedWorkspace openConnection={openConnection} />}
+    </CompanionProvider>
     {connectionOpen && <ConnectionPanel manager={connection.manager} snapshot={connection.snapshot} onClose={() => setConnectionOpen(false)} />}
   </ConnectionProvider>;
 }
 function DisconnectedWorkspace({ openConnection }: { openConnection: () => void }) {
-  const [tab, setTab] = useState<PrimaryTabId>('messages'); const [appearanceOpen, setAppearanceOpen] = useState(false);
+  const [tab, setTab] = useState<PrimaryTabId>('messages'); const [localPage, setLocalPage] = useState<'appearance' | 'companion' | null>(null);
+  const { activePack, notice: companionNotice } = useCompanion();
   const { colors } = useTheme(); const update = useAppUpdate();
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (tab !== 'settings' || !appearanceOpen) return false;
-      setAppearanceOpen(false); return true;
+      if (tab !== 'settings' || !localPage) return false;
+      setLocalPage(null); return true;
     });
     return () => sub.remove();
-  }, [tab, appearanceOpen]);
+  }, [tab, localPage]);
   return <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }}><ThemeStatusBar />
-    {tab === 'settings' ? appearanceOpen ? <>
-      <PageHeader title="外观主题" backLabel="返回设置" onBack={() => setAppearanceOpen(false)} />
-      <ScrollView contentContainerStyle={{ padding: spacing[20] }}><ThemePicker /></ScrollView>
-    </> : <SettingsHome notice="尚未连接服务器，助手与资料设置需先连接；外观和应用更新可独立使用。"
-      onOpen={(target) => { if (target === 'appearance') setAppearanceOpen(true); else openConnection(); }}
+    {tab === 'settings' ? localPage ? <>
+      <PageHeader title={SETTINGS_PAGE_TITLES[localPage]} backLabel="返回设置" onBack={() => setLocalPage(null)} />
+      <ScrollView contentContainerStyle={{ padding: spacing[20] }}>{localPage === 'companion' ? <CompanionPicker /> : <ThemePicker />}</ScrollView>
+    </> : <SettingsHome notice="尚未连接服务器，助手与资料设置需先连接；外观、内置助手形象和应用更新可独立使用。"
+      onOpen={(target) => { if (target === 'appearance' || target === 'companion') setLocalPage(target); else openConnection(); }}
       onConnection={openConnection} onBrowser={openConnection} onUpdate={update?.open} /> :
-      <View style={{ flex: 1, padding: spacing[24], justifyContent: 'center', alignItems: 'center', gap: spacing[16] }}><MuseCompanion state="idle" size={96} offline />
+      <View style={{ flex: 1, padding: spacing[24], justifyContent: 'center', alignItems: 'center', gap: spacing[16] }}><MuseCompanion images={activePack.images} state="idle" size={96} offline />
         <Text style={{ ...workspaceTheme.typography.section, color: colors.ink }}>{tab === 'news' ? '新闻' : '消息'}</Text>
         <Text style={{ color: colors.muted, textAlign: 'center' }}>连接自己的 Pi Muse 服务器后开始聊天或阅读新闻。</Text><ActionButton label="服务器连接" onPress={openConnection} />
       </View>}
-    {!(tab === 'settings' && appearanceOpen) && <PrimaryTabBar currentTab={tab} onSelectTab={(next) => { setAppearanceOpen(false); setTab(next); }} />}
+    {companionNotice && tab !== 'settings' && <Text accessibilityLiveRegion="polite" style={{ padding: spacing[12], color: colors.warning }}>{companionNotice}</Text>}
+    {!(tab === 'settings' && localPage) && <PrimaryTabBar currentTab={tab} onSelectTab={(next) => { setLocalPage(null); setTab(next); }} />}
   </SafeAreaView>;
 }
 function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) {
+  const { activePack, notice: companionNotice } = useCompanion();
   const api = useApi(); const insets = useSafeAreaInsets(); const connection = useServiceConnection(); const directory = useSessions(); const store = directory.store; const chats = useChatSessionStore();
   const { colors } = useTheme(); const update = useAppUpdate(); const runtime = useRuntimeStore(); const approvals = useApprovals();
   const { store: files } = useFiles(); const { store: jobs } = useJobs(); const { store: monitors } = useMonitors(); const { store: goals } = useGoals();
@@ -177,6 +185,7 @@ function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) 
     lastOutcome: !mainRuntime.running && recentOutcome ? recentOutcome : undefined,
   });
   if (settingsPage === 'appearance') settingsContent = <ThemePicker />;
+  else if (settingsPage === 'companion') settingsContent = <CompanionPicker />;
   else if (settingsPage === 'news-preferences') settingsContent = <NewsPreferencesCard store={newsPreferences} />;
   else if (settingsPage === 'profile') settingsContent = <ProfilePanel />;
   else if (settingsPage === 'memory') settingsContent = <MemoryPanel />;
@@ -196,9 +205,9 @@ function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) 
     {/* 键盘 screenY 是窗口坐标，避让布局在 SafeAreaView 内；补上顶部安全区才能对齐，不能在 composer 再减一次键盘高度。 */}
     <View style={{ flex: 1 }} pointerEvents={browserOpen ? 'none' : 'auto'} accessibilityElementsHidden={browserOpen} importantForAccessibility={browserOpen ? 'no-hide-descendants' : 'auto'}><KeyboardAvoidingView style={{ flex: 1 }} keyboardVerticalOffset={insets.top} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled={Platform.OS !== 'web'}>
       {page === 'messages' && <>
-        {/* 形象居中：状态机驱动企鹅姿态与动效，操作入口收在形象点击里。 */}
+        {/* 形象居中：状态机驱动当前形象姿态与动效，操作入口收在形象点击里。 */}
         <View style={{ alignItems: 'center', paddingVertical: spacing[12], gap: spacing[4] }}>
-          <MuseCompanion state={companion} size={72} offline={!mainRuntime.synchronized}
+          <MuseCompanion state={companion} size={72} offline={!mainRuntime.synchronized} images={activePack.images}
             onPress={() => { Keyboard.dismiss(); setSessionTab('activity'); setPanelOpen(true); }} testID="workspace-avatar-status" />
           <Text numberOfLines={1} style={{ color: colors.muted, ...workspaceTheme.typography.caption }}>{mainStatusLabel}</Text>
         </View>
@@ -220,6 +229,7 @@ function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) 
         }} />
       </View>
       {notice && <View style={{ padding: spacing[12] }}><Text accessibilityRole="alert" style={{ color: colors.warning }}>{notice}</Text><ActionButton label="关闭提示" onPress={() => setNotice(undefined)} /></View>}
+      {companionNotice && page !== 'settings' && <Text accessibilityLiveRegion="polite" style={{ padding: spacing[12], color: colors.warning }}>{companionNotice}</Text>}
       {!keyboardVisible && root && <PrimaryTabBar currentTab={page} onSelectTab={(tab) => { Keyboard.dismiss(); setChatReturn('messages'); setSettingsPage(null); setPage(tab); }} />}
     </KeyboardAvoidingView></View>
     {panelOpen && <Sheet title="主聊天操作" onClose={() => setPanelOpen(false)}>

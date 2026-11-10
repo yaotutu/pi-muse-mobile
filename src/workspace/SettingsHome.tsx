@@ -1,10 +1,10 @@
-import { BookOpen, Brain, ChevronRight, Clock, FileText, Globe, MessageSquare, Moon, Newspaper, Palette, Radio, Server, ShieldCheck, SlidersHorizontal, Sparkles, Target, UserRound, Download, type LucideIcon } from 'lucide-react-native';
+import { BookOpen, Brain, ChevronRight, Clock, FileText, Globe, MessageSquare, Moon, Newspaper, Palette, Radio, Server, Smile, ShieldCheck, SlidersHorizontal, Sparkles, Target, UserRound, Download, type LucideIcon } from 'lucide-react-native';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../theme/ThemeProvider';
 import { spacing, themeTokens } from '../theme/tokens';
 import { Card } from '../ui/Surfaces';
 
-export type SettingsPage = 'profile' | 'memory' | 'dream' | 'goals' | 'jobs' | 'monitors' | 'files' | 'sms' | 'rules' | 'skills' | 'activity' | 'news-sources' | 'news-preferences' | 'appearance';
+export type SettingsPage = 'profile' | 'memory' | 'dream' | 'goals' | 'jobs' | 'monitors' | 'files' | 'sms' | 'rules' | 'skills' | 'activity' | 'news-sources' | 'news-preferences' | 'appearance' | 'companion';
 
 export const SETTINGS_PAGE_TITLES: Record<SettingsPage, string> = {
   profile: '身份与人设',
@@ -21,6 +21,7 @@ export const SETTINGS_PAGE_TITLES: Record<SettingsPage, string> = {
   'news-sources': '新闻来源',
   'news-preferences': '新闻偏好',
   appearance: '外观主题',
+  companion: '助手形象',
 };
 
 type PageEntry = { page: SettingsPage; icon: LucideIcon; description?: string };
@@ -74,6 +75,8 @@ export function SettingsHome({ onOpen, onConnection, onBrowser, onUpdate, notice
         <SettingsRow icon={Globe} label="浏览器" testID="viewer-open" onPress={onBrowser} />
         <SettingsRow icon={Palette} label={SETTINGS_PAGE_TITLES.appearance} description="选择本机显示主题"
           testID="settings-open-appearance" divider onPress={() => onOpen('appearance')} />
+        <SettingsRow icon={Smile} label={SETTINGS_PAGE_TITLES.companion} description="选择本机助手形象包"
+          testID="settings-open-companion" divider onPress={() => onOpen('companion')} />
         <SettingsRow icon={Server} label="服务器连接" testID="settings-connection" divider onPress={onConnection} />
         {onUpdate && <SettingsRow icon={Download} label="应用更新" testID="settings-update" divider onPress={onUpdate} />}
       </Card>

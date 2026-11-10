@@ -51,6 +51,7 @@ import {
 import { attachmentUploadOf, validateOutgoingMessage } from '../attachments/validation';
 import { ApiError, isRequestCancelled, requestCancelled, responseError } from './errors';
 import { parseSseFrames } from './sse';
+import { assertCompanionPng, isCompanionPackId, isCompanionState, MAX_COMPANION_ASSET_BYTES, parseCompanion, parseCompanions, type CompanionState } from './companion-contracts';
 import { parseSession, parseResetSession, parseSessions } from './session-contracts';
 import { parseGoal, parseGoals, parseMilestoneToggle, parseGoalRemoval } from './goal-contracts';
 import { parseDeleteMonitorResult, parseMonitor, parseMonitors } from './monitor-contracts';
@@ -289,6 +290,50 @@ export class HttpApiClient implements ApiClient {
 
   async getServerTimeZone(signal?: AbortSignal): Promise<string> {
     return parseServerTimeZone(await this.request('/api/health', { anonymous: true, signal }));
+  }
+
+  async listCompanions(signal?: AbortSignal) {
+    return parseCompanions(await this.request('/api/companions', { signal }));
+  }
+  async getCompanion(packId: string, signal?: AbortSignal) {
+    if (!isCompanionPackId(packId)) throw new ApiError(400, '助手形象 ID 不正确');
+    return parseCompanion(await this.request(`/api/companions/${encodeURIComponent(packId)}`, { signal }), packId);
+  }
+  async fetchCompanionAsset(packId: string, state: CompanionState, signal?: AbortSignal): Promise<Uint8Array> {
+    if (!isCompanionPackId(packId) || !isCompanionState(state)) throw new ApiError(400, '助手形象参数不正确');
+    if (this.retired || this.paused) throw requestCancelled();
+    const token = this.getToken(); const control = this.control(this.options.timeoutMs ?? 15_000, signal);
+    try {
+      control.assertActive();
+      // 资源同样通过鉴权请求下载，URL 与本地图片 URI 都不携带凭据。
+      const response = await expoFetch(`${this.baseUrl}/api/companions/${encodeURIComponent(packId)}/assets/${state}`, {
+        headers: token ? { authorization: `Bearer ${token}` } : {}, signal: control.controller.signal, redirect: 'error',
+      });
+      control.assertActive();
+      if (response.status === 401) {
+        if (!this.retired && control.generation === this.generation) this.onUnauthorized(token);
+        throw new ApiError(401, '当前凭证未被服务器接受，请重新认证');
+      }
+      if (!response.ok) throw responseError(response.status, undefined);
+      if (Number(response.headers.get('content-length')) > MAX_COMPANION_ASSET_BYTES) throw new ApiError(502, '助手形象图片超过大小限制');
+      const reader = response.body?.getReader();
+      if (!reader) throw new ApiError(502, '助手形象图片响应为空');
+      const chunks: Uint8Array[] = []; let size = 0;
+      try {
+        while (true) {
+          const chunk = await reader.read(); control.assertActive();
+          if (chunk.done) break;
+          size += chunk.value.byteLength;
+          if (size > MAX_COMPANION_ASSET_BYTES) throw new ApiError(502, '助手形象图片超过大小限制');
+          chunks.push(chunk.value);
+        }
+      } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
+      const bytes = new Uint8Array(size); let offset = 0;
+      for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+      assertCompanionPng(bytes); control.assertActive();
+      this.notify(control, { kind: 'online', token }); return bytes;
+    } catch (error) { throw this.failure(error, control, token); }
+    finally { control.finish(); }
   }
 
   async listSessions(signal?: AbortSignal): Promise<SessionRecord[]> {

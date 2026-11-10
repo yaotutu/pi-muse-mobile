@@ -35,11 +35,11 @@ test('设置首页使用分组组件，主题选择只在外观二级页展开',
   assert.doesNotMatch(workspace, /SETTINGS\.map|rootSettings = <ScrollView/);
 });
 
-test('未连接时也使用同一设置布局，外观可独立打开，其余资料先引导连接', () => {
+test('未连接时共用设置布局，外观与形象可独立打开，其余资料先引导连接', () => {
   const offline = workspace.slice(workspace.indexOf('function DisconnectedWorkspace'), workspace.indexOf('function ConnectedWorkspace'));
   assert.match(offline, /<SettingsHome notice="尚未连接服务器/);
-  assert.match(offline, /if \(target === 'appearance'\) setAppearanceOpen\(true\); else openConnection\(\)/);
+  assert.match(offline, /if \(target === 'appearance' \|\| target === 'companion'\) setLocalPage\(target\); else openConnection\(\)/);
   assert.match(offline, /onConnection=\{openConnection\} onBrowser=\{openConnection\}/);
-  assert.match(offline, /if \(tab !== 'settings' \|\| !appearanceOpen\) return false/);
-  assert.match(offline, /!\(tab === 'settings' && appearanceOpen\) && <PrimaryTabBar/);
+  assert.match(offline, /if \(tab !== 'settings' \|\| !localPage\) return false/);
+  assert.match(offline, /!\(tab === 'settings' && localPage\) && <PrimaryTabBar/);
 });

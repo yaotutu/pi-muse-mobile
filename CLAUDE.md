@@ -40,6 +40,7 @@ node --import ./tests/register-source.mjs --test --test-name-pattern="新闻源 
 - **新闻与短信**：`src/news/` 持有全局来源、偏好与阅读状态。讨论文章直接向 main 既有草稿追加可编辑的不可信外部引用，不自动发送；消息页可「返回文章」，Android Back 也返回原文章，点击消息 Tab 清理旧来源。`src/information/` 的 SmsProvider 在连接层挂载，短信设置在设置页。通知元数据由 `src/notifications/` 持有，通知续聊只接受 main 引用；非 main 明确提示暂不可用，不改投 main、不复活专题。
 - **文件与记忆整理**：所有会话共用扁平工作区，文件 API 只传 path。Dream 是实例全局配置与状态，不按会话切换；待决项保留来源会话引用，不能重建已删会话。
 - **外观与原生能力**：`src/theme/` 维护三主题与 tokens，`src/ui/` 是共享原生控件；业务页面消费语义颜色。浏览器使用原生 WebView 连接后端同一个 Chrome。Expo CNG 管理原生工程，`android/`、`ios/` 是生成目录，不手工维护。
+- **助手形象包**：`src/companion/` 持有独立设备选择偏好与八状态原子缓存；内置 `builtin:penguin` 使用原版冰蓝企鹅。设置 → 助手形象读取服务端已安装完整包，鉴权下载成功后才替换；同服离线可用本地完整缓存，缺失/删除/不完整时提示回退内置，换服清理缓存与旧选择。形象 Provider 不以选择为 key，不重建 ConversationHost 或 SSE。
 - **恢复语义**：GET 失败保留旧值，写入结果未明保留草稿、先回读核对，不自动重发。前后台、重连、reset/delete 与换服需要不同生命周期，不能用一次“重新挂载”替代。
 
 ## 按任务读取

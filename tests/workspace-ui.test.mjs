@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import test from 'node:test';
+import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 
 const root = new URL('../', import.meta.url);
@@ -57,11 +58,53 @@ test('聊天空态只留短句，状态化形象承接助手状态且不叠加�
   // 八张状态图全部随包提供；未同步降灰，减弱动效保持静态，不用动画冒充进度。
   for (const state of ['idle', 'thinking', 'responding', 'working', 'waiting-approval', 'success', 'error', 'stopped']) {
     assert.ok(existsSync(new URL(`assets/images/avatar/${state}.png`, root)), state);
-    assert.match(companion, new RegExp(`require\\('\\.\\./\\.\\./assets/images/avatar/${state}\\.png'\\)`));
+    assert.match(read('src/companion/builtin-packs.ts'), new RegExp(`require\\('\\.\\./\\.\\./assets/images/avatar/${state}\\.png'\\)`));
   }
   assert.match(companion, /useReducedMotion\(\)/);
   assert.match(companion, /cancelAnimation\(scale\)/);
   assert.match(companion, /offline && \{ opacity: 0\.5 \}/);
+});
+
+test('形象选择器三主题共享语义色、48dp 预览与可伸展单选行，离线和失败诊断可见', async () => {
+  const { availableThemes } = await import('../src/theme/registry.ts');
+  const tokens = await import('../src/theme/tokens.ts');
+  const source = read('src/workspace/CompanionPicker.tsx');
+  const pack = { key: 'builtin:penguin', name: '冰蓝企鹅', description: '默认内置助手形象', images: { idle: 1 } };
+  const nodes = (tree) => tree == null || typeof tree !== 'object' ? [] : Array.isArray(tree) ? tree.flatMap(nodes) : [tree, ...nodes(tree.props.children)];
+  const expand = (tree) => tree == null || typeof tree !== 'object' ? tree : Array.isArray(tree) ? Array.from(tree, expand) :
+    typeof tree.type === 'function' ? expand(tree.type(tree.props)) : { ...tree, props: { ...tree.props, children: expand(tree.props.children) } };
+  const style = (value) => Object.assign({}, ...[value].flat(Infinity).filter(Boolean));
+  for (const { colors } of availableThemes) for (const connected of [true, false]) {
+    const calls = []; const exports = {}; const element = (type, props) => ({ type, props });
+    const modules = {
+      'react/jsx-runtime': { jsx: element, jsxs: element },
+      'react-native': { Image: 'Image', Pressable: 'Pressable', Text: 'Text', View: 'View', StyleSheet: { create: (value) => value } },
+      'lucide-react-native': { Check: 'Check', Circle: 'Circle' },
+      '../companion/builtin-packs': { builtinPacks: [pack] },
+      '../companion/CompanionProvider': { useCompanion: () => ({ connected, selectedKey: 'builtin:penguin', cachedImages: {},
+        serverPacks: [{ id: 'plumber', name: '服务端测试形象', description: '八张状态图' }], diagnostics: [{ id: 'broken', message: '缺少 working' }],
+        error: '下载失败', notice: '已回退内置', select: (key) => calls.push(key), refresh: () => calls.push('refresh') }) },
+      '../theme/ThemeProvider': { useTheme: () => ({ colors }) }, '../theme/tokens': tokens,
+      '../ui/ActionButton': { ActionButton: 'ActionButton' }, '../ui/Surfaces': { Card: 'Card' },
+    };
+    const output = ts.transpileModule(source, { fileName: 'CompanionPicker.tsx', compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022 } }).outputText;
+    runInNewContext(output, { exports, require: (name) => { assert.ok(Object.hasOwn(modules, name), name); return modules[name]; } });
+    const tree = expand(exports.CompanionPicker()); const all = nodes(tree);
+    const radios = all.filter((node) => node.props.accessibilityRole === 'radio'); assert.equal(radios.length, connected ? 2 : 1);
+    for (const row of radios) {
+      assert.ok(style(row.props.style({ pressed: false })).minHeight >= 48);
+      assert.equal(style(row.props.style({ pressed: false })).backgroundColor, colors.surface);
+      assert.equal(style(row.props.style({ pressed: true })).backgroundColor, colors.selected);
+      row.props.onPress();
+    }
+    assert.deepEqual(calls, connected ? ['builtin:penguin', 'server:plumber'] : ['builtin:penguin']);
+    const preview = all.find((node) => node.type === 'Image'); assert.equal(style(preview.props.style).width, 48); assert.equal(style(preview.props.style).height, 48);
+    const text = all.filter((node) => node.type === 'Text'); assert.ok(text.some((node) => node.props.children === '下载失败'));
+    assert.ok(text.some((node) => String(node.props.children).includes('缺少 working')));
+    if (!connected) assert.ok(text.some((node) => String(node.props.children).includes('请先连接服务器')));
+    for (const node of text) { assert.equal(node.props.numberOfLines, undefined); assert.notEqual(node.props.allowFontScaling, false); }
+  }
+  assert.doesNotMatch(source, /#[0-9a-f]{3,8}\b|allowFontScaling=\{false\}|numberOfLines/i);
 });
 
 test('聊天顶部紧凑标题行在正常布局，隐藏会话不重复挂载其他页面', () => {

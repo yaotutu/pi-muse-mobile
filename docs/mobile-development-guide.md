@@ -33,7 +33,11 @@
 
 助手运行进度只集中在消息页形象：形象使用 `mainProgressLabel` 的单一投影（未同步状态 > 未决审批 > 真实运行 > 暂存异常 > 就绪），聊天列表不再渲染独立生成气泡，用户气泡不放逐帧变化的进度文字。送达提示遵循微信式呈现：保存成功与发送中不显示任何标记；失败在气泡左侧显示红色感叹号，未确认显示黄色问号，标记在气泡外侧不占正文空间。首次回复/工具进展时的一次受限历史核对只用于内部保存判定，不渲染成功标记；保存确认与回复成败独立，失败与未明仍走恢复/放弃/重新同步入口，不自动重发，终态后迟到的核对不得污染新代次。
 
-助手形象 `MuseCompanion` 使用 `assets/images/avatar/` 下的八张 512px 透明状态图（idle/thinking/responding/working/waiting-approval/success/error/stopped，3D 助手姿态），状态由 `companion-state.ts` 纯函数从同一运行通知流推导（审批 > 工作 > 回复 > 思考；新近终态短暂驱动成功/失败/停止后清除；未同步降灰不猜测运行）。动画用 Reanimated 有限次状态动效表达并在结束后静止（保持无障碍树稳定）；系统减弱动效时保持静态姿态；未接入动作视频，不得把静态图拼接宣称为视频。形象点击仍打开主聊天操作。
+助手形象 `MuseCompanion` 默认使用 `src/companion/builtin-packs.ts` 中的 `builtin:penguin`（冰蓝企鹅，原版 `assets/images/avatar/` 八张 512px 透明图），也接受完整八状态 `images`。`companion-state.ts` 仍从同一运行通知流推导状态（审批 > 工作 > 回复 > 思考；新近终态短暂驱动成功/失败/停止后清除；未同步降灰不猜测运行）。动画用 Reanimated 有限次状态动效表达并在结束后静止（保持无障碍树稳定）；系统减弱动效时保持静态姿态；未接入动作视频，不得把静态图拼接宣称为视频。形象点击仍打开主聊天操作。
+
+`CompanionProvider` 在连接根按 workspaceKey 挂载，断线/已连接页面共享选择，不以形象 key 重建聊天。`CompanionStore` 持有选择、服务端列表、诊断、下载与回退提示；设置 → 助手形象是应用分组的独立二级页，内置包未连接也可使用。独立设备偏好只保存形象 key，不接触连接凭据。`src/api/companion-contracts.ts` 严格解析完整八状态摘要，HTTP 资源通过 Bearer header 下载，不把 token 放入 URL。
+
+缓存由 `companion-cache.ts` 维护：原生使用 `Directory / File / Paths.cache` 下独立 companions 目录，按服务地址隔离、包 ID 和版本组织；Web 使用内存 Blob URI，并在失败/清理时释放 ObjectURL。全部八张 PNG 校验魔数与 786432 字节上限并写入后，才通过 ready 标记原子发布；新版本后台准备，当前可用图保持显示。选择代次、连接代次与 AbortSignal 拒绝迟到结果。同服离线只继续显示完整本地缓存，缺失则提示回退；服务端删除或诊断为不完整也回退内置。换服由 `clearLocalWorkspaceData()` 清理图像缓存并恢复内置选择，不沿用旧服务器形象。系统缓存可能被清理，不把缓存当成服务端安装事实；暂不提供上传 UI。
 
 流式助手 Markdown 经 `src/chat/streaming-markdown.ts` 的纯展示投影：普通文字立即显示，未闭合行内 code/强调/链接等尾部保守缓冲，fence 关闭前缀不先漏出，被截断段落保留换行占位；同一正文在流式、完成与冷启动历史渲染一致，不缓存已撤销内容，替换/缩短立即按当前事实重置。追加导致的末行自然换行不是回排，不使用固定高度或裁剪。
 

@@ -43,6 +43,27 @@ export const PermissionsAndroid = {
         shortCircuit: true,
       };
     }
+    // 原生文件模块在 Node 下没有实现；按用例注入的夹具转发，用例可在导入前替换。
+    if (specifier === 'expo-file-system') {
+      return {
+        url: `data:text/javascript,${encodeURIComponent(`
+          const fixture = () => globalThis.__companionTestFilesystem;
+          // 代理保留 instanceof 与构造语义：夹具类才是真实实现。
+          const proxyFor = (key) => new Proxy(function () {}, {
+            construct: (_target, args) => new (fixture()[key])(...args),
+            get: (_target, name) => {
+              const owner = fixture()[key]; const value = owner[name];
+              return typeof value === 'function' ? value.bind(owner) : value;
+            },
+            has: (_target, name) => name in fixture()[key],
+          });
+          export const Directory = proxyFor('Directory');
+          export const File = proxyFor('File');
+          export const Paths = new Proxy({}, { get: (_target, key) => fixture().Paths[key] });
+        `)}`,
+        shortCircuit: true,
+      };
+    }
     if (specifier === 'react-native-reanimated') {
       return {
         url: `data:text/javascript,${encodeURIComponent(`

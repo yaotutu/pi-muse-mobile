@@ -6,7 +6,8 @@
  * 无障碍：状态经 accessibilityLabel 传达；系统减弱动效时保持静态姿态，不用动画冒充进度。
  */
 import { useEffect } from 'react';
-import { Image, ImageStyle, Pressable, StyleSheet } from 'react-native';
+import { Image, ImageStyle, Pressable, StyleSheet, type ImageSourcePropType } from 'react-native';
+import { builtinPenguin } from '../companion/builtin-packs';
 import Animated, {
   Easing,
   cancelAnimation,
@@ -18,26 +19,16 @@ import Animated, {
 import { useReducedMotion } from '../ui/use-reduced-motion';
 import { describeCompanionState, type CompanionState } from './companion-state';
 
-const IMAGES: Record<CompanionState, ImageSource> = {
-  idle: require('../../assets/images/avatar/idle.png'),
-  thinking: require('../../assets/images/avatar/thinking.png'),
-  responding: require('../../assets/images/avatar/responding.png'),
-  working: require('../../assets/images/avatar/working.png'),
-  'waiting-approval': require('../../assets/images/avatar/waiting-approval.png'),
-  success: require('../../assets/images/avatar/success.png'),
-  error: require('../../assets/images/avatar/error.png'),
-  stopped: require('../../assets/images/avatar/stopped.png'),
-};
-type ImageSource = number;
-
 export function MuseCompanion({
   state,
+  images = builtinPenguin.images,
   size = 64,
   offline = false,
   onPress,
   testID,
 }: {
   state: CompanionState;
+  images?: Record<CompanionState, ImageSourcePropType>;
   size?: number;
   /** 通知流未同步时整体降饱和度，不猜测运行状态。 */
   offline?: boolean;
@@ -160,7 +151,7 @@ export function MuseCompanion({
     onPress={onPress} disabled={!onPress} testID={testID ?? 'muse-companion'}
     style={companionStyles.press}>
     <Animated.View style={[companionStyles.frame, { width: size, height: size }, animatedStyle]}>
-      <Image source={IMAGES[display]} style={[companionStyles.image, offline && { opacity: 0.5 } as ImageStyle]} />
+      <Image source={images[display]} style={[companionStyles.image, offline && { opacity: 0.5 } as ImageStyle]} />
     </Animated.View>
   </Pressable>;
 }
