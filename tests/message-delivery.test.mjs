@@ -35,13 +35,14 @@ test('暂存接纳、终态对账与异常不混成同一种发送中', () => {
   assert.equal(mainProgressLabel({ ...base, pending: 'unconfirmed' }), '消息保存结果待确认');
 });
 
-test('普通消息无进度行或独立生成气泡，微型标记从首次绘制固定留位', () => {
+test('成功与发送中不显示任何标记；异常标记在气泡左侧且不占气泡内部空间', () => {
   const view = read('workspace/ConversationView.tsx');
-  assert.doesNotMatch(view, /发送中|TypingIndicator|messageSubtext/);
-  assert.match(view, /deliveryIndicator: \{ position: 'absolute'/);
-  assert.match(view, /paddingRight: l\.chatMessagePadding \+ spacing\[20\]/);
-  assert.match(view, /accessible=\{!!delivery && delivery !== 'pending'\}/);
-  assert.match(view, /消息已保存|消息未发送|消息保存结果未确认/);
-  for (const action of ['重新同步会话', '恢复到输入框', '放弃未发送消息']) assert.ok(view.includes(action), action);
+  assert.doesNotMatch(view, /发送中|TypingIndicator|messageSubtext|消息已保存|deliveryIndicator|paddingRight: l\.chatMessagePadding \+ spacing\[20\]/);
+  assert.match(view, /deliveryAlert = message\.role === 'user' && \(delivery === 'failed' \|\| delivery === 'unconfirmed'\)/);
+  assert.match(view, /userMessageRow: \{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: spacing\[8\] \}/);
+  assert.match(view, /deliveryAlert: \{ width: sizing\[24\], height: sizing\[24\]/);
+  assert.match(view, /AlertCircle size=\{sizing\[18\]\} color=\{colors\.danger\}/);
+  assert.match(view, /CircleHelp size=\{sizing\[18\]\} color=\{colors\.warning\}/);
   assert.match(view, /streaming=\{message\.streaming === true\}/);
+  for (const action of ['重新同步会话', '恢复到输入框', '放弃未发送消息']) assert.ok(view.includes(action), action);
 });

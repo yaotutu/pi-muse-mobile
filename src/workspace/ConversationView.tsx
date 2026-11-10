@@ -5,7 +5,7 @@ import type { NotificationReference } from '../notifications/contracts';
  * 边界：单实例绑定单个会话的聊天代次（父级以 sessionId + epoch 隔离生命周期）；
  * assistant Markdown 与工具专用展示由独立组件负责，不猜测审批决定。
  */
-import { AlertCircle, ArrowDown, ArrowUp, Check, CircleHelp, ShieldAlert, Square } from 'lucide-react-native';
+import { AlertCircle, ArrowDown, ArrowUp, CircleHelp, ShieldAlert, Square } from 'lucide-react-native';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type LayoutRectangle, type ScrollViewInstance, type TextStyle, type ViewInstance } from 'react-native';
 import { useApi } from '../api/ApiProvider';
@@ -498,15 +498,11 @@ export function Message({ message, delivery, feedbackScope }: {
         style={[styles.messageText, styles.userMessageText]}>{message.text}</Text>
       : <MessageContent text={visibleText} streaming={message.streaming === true} onMessageLongPress={feedbackScope ? openFeedback : undefined} />)}
     {message.role === 'user' && !!message.attachments?.length && <MessageAttachments items={message.attachments} />}
-    {message.role === 'user' && <View style={styles.deliveryIndicator}
-      accessible={!!delivery && delivery !== 'pending'} accessibilityRole="image"
-      accessibilityLabel={delivery === 'saved' ? '消息已保存' : delivery === 'failed' ? '消息未发送' : delivery === 'unconfirmed' ? '消息保存结果未确认' : undefined}
-      testID={`message-delivery-${message.id}`}>
-      {delivery === 'saved' ? <Check size={sizing[14]} color={colors.onAccent} strokeWidth={2} />
-        : delivery === 'failed' ? <AlertCircle size={sizing[14]} color={colors.onAccent} strokeWidth={2} />
-          : delivery === 'unconfirmed' ? <CircleHelp size={sizing[14]} color={colors.onAccent} strokeWidth={2} /> : null}
-    </View>}
   </>;
+  // 微信式送达提示：成功不显示任何标记；失败在气泡左侧红色感叹号，未确认黄色问号，都不占气泡内部空间。
+  const deliveryAlert = message.role === 'user' && (delivery === 'failed' || delivery === 'unconfirmed')
+    ? { state: delivery as 'failed' | 'unconfirmed' }
+    : undefined;
   const bubbleStyle = [
     styles.message,
     message.role === 'user' ? styles.userMessage : styles.assistantMessage,
@@ -518,12 +514,21 @@ export function Message({ message, delivery, feedbackScope }: {
     <View style={styles.messageBlock}>
       {(hasText || (message.role === 'user' && !!message.attachments?.length)) && (
         <View style={styles.bubbleWrap}>
+        <View style={deliveryAlert ? styles.userMessageRow : undefined}>
+          {deliveryAlert && <View style={styles.deliveryAlert} accessible accessibilityRole="image"
+            accessibilityLabel={deliveryAlert.state === 'failed' ? '消息未发送' : '消息保存结果未确认'}
+            testID={`message-alert-${message.id}`}>
+            {deliveryAlert.state === 'failed'
+              ? <AlertCircle size={sizing[18]} color={colors.danger} strokeWidth={2} />
+              : <CircleHelp size={sizing[18]} color={colors.warning} strokeWidth={2} />}
+          </View>}
         <Pressable ref={bubbleRef} style={bubbleStyle} disabled={!feedbackScope}
           onLayout={(event) => setBubbleLayout(event.nativeEvent.layout)}
           onLongPress={feedbackScope ? openFeedback : undefined} accessible={false} focusable={false}
           testID={feedbackScope ? `message-bubble-${message.id}` : undefined}>
           {bubbleContent}
         </Pressable>
+        </View>
         {feedbackScope && <MessageFeedbackControls
           key={`${feedbackScope.sessionId}:${feedbackScope.piSessionId}:${message.id}`}
           visible={feedbackOpenOwner === feedbackOwner && !!anchor}
@@ -574,8 +579,6 @@ const createStyles = (c: WorkspaceColors) =>
       backgroundColor: c.blue,
       alignSelf: 'flex-end',
       maxWidth: l.userMessageWidth,
-      // 从首次显示就为微型送达标记留位；勾出现时不增加行高或挤压已显示文字。
-      paddingRight: l.chatMessagePadding + spacing[20],
     },
     // 附件列表使用百分比宽度；明确气泡宽度，避免 Android 在内容固有尺寸计算时把附件信息压到零宽。
     userMessageWithAttachments: { width: l.userMessageWidth },
@@ -666,7 +669,8 @@ const createStyles = (c: WorkspaceColors) =>
 
     userMessageFailed: { backgroundColor: c.danger },
     userMessageUnconfirmed: { opacity: 0.75 },
-    deliveryIndicator: { position: 'absolute', right: spacing[8], bottom: spacing[8], width: sizing[16], height: sizing[16], alignItems: 'center', justifyContent: 'center' },
+    userMessageRow: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: spacing[8] },
+    deliveryAlert: { width: sizing[24], height: sizing[24], alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
     featureSourceLabel: { ...t.caption, color: c.muted, marginBottom: spacing[4] },
     pendingBanner: {
       padding: spacing[12],
