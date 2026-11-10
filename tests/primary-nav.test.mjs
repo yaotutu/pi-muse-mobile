@@ -60,7 +60,7 @@ test('移除列表/新建/切换/改名/删除入口，Pi Muse 形象居中承�
   // 头部：无标题、无三点菜单；形象居中，显示实时状态，点击打开主聊天操作。
   assert.doesNotMatch(screen, /MoreHorizontal|IconControl|accessibilityRole="header"[^\n]*>Pi Muse</);
   assert.match(screen, /testID="workspace-avatar-status"/);
-  assert.match(screen, /<MuseAvatar size=\{64\} \/>/);
+  assert.match(screen, /<MuseCompanion state=\{companion\} size=\{64\} offline=\{!mainRuntime\.synchronized\}/);
   assert.match(screen, /style=\{\{ alignItems: 'center', paddingVertical: spacing\[12\], gap: spacing\[4\] \}\}/);
   assert.match(screen, /mainStatusLabel/);
   assert.match(screen, /setSessionTab\('activity'\); setPanelOpen\(true\)/);
@@ -70,7 +70,7 @@ test('移除列表/新建/切换/改名/删除入口，Pi Muse 形象居中承�
   assert.match(screen, /approvals\.store\.refreshPending\(\)/);
 });
 test('形象使用单一进度投影，只统计主聊天审批并保留同步状态', () => {
-  const source = screen.slice(screen.indexOf('const mainStatusLabel'), screen.indexOf('const rootSettings'));
+  const source = screen.slice(screen.indexOf('const mainPendingApprovals'), screen.indexOf('const rootSettings'));
   assert.match(source, /mainProgressLabel\(\{/);
   assert.match(source, /synchronized: mainRuntime\.synchronized/);
   assert.match(source, /sessionId === 'main'.*status === 'pending'/);

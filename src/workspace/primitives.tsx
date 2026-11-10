@@ -1,10 +1,11 @@
 /**
  * 工作区视觉原语：只负责外观与交互反馈，不读业务 store、不发请求。
  * 所有页面与根级更新弹层共用同一个主题；状态色仅强调调用方给出的事实。
+ * 助手形象已迁移到 MuseCompanion（状态化企鹅姿态），此处不再持有头像位图。
  */
 import { type LucideIcon } from 'lucide-react-native';
 import { useMemo } from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { spacing, workspaceTheme, type WorkspaceColors } from '../ui/tokens';
 import { useTheme } from '../theme/ThemeProvider';
 export { useReducedMotion } from '../ui/use-reduced-motion';
@@ -16,13 +17,6 @@ export type StatusTone = 'neutral' | 'success' | 'warning' | 'danger' | 'accent'
 function useStyles() {
   const { colors } = useTheme();
   return useMemo(() => createStyles(colors), [colors]);
-}
-
-/** 头像为打包进应用的原创位图；会话信息区和面板共用同一离线资源。 */
-export function MuseAvatar({ size = l.headerAvatar }: { size?: number }) {
-  return <Image accessible accessibilityRole="image" accessibilityLabel="Pi Muse 头像"
-    source={require('../../assets/images/muse-companion.png')} resizeMode="cover"
-    style={{ width: size, height: size, borderRadius: size / 2 }} />;
 }
 
 export function StatusPill({ label, tone = 'neutral', dot = true, testID }: { label: string; tone?: StatusTone; dot?: boolean; testID?: string }) {

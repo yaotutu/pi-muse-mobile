@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Alert, AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Alert, AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ApiProvider, useApi } from '../api/ApiProvider';
 import { ConnectionProvider, useServiceConnection } from '../connection/ConnectionProvider';
@@ -46,7 +46,8 @@ import { GoalsPanel } from './GoalsPanel';
 import { FilesScreen } from './FilesScreen';
 import { SchedulePanel } from './SchedulePanel';
 import { SettingsHome, SETTINGS_PAGE_TITLES, type SettingsPage } from './SettingsHome';
-import { MuseAvatar } from './primitives';
+import { MuseCompanion } from './MuseCompanion';
+import { COMPANION_OUTCOME_MS, companionState } from './companion-state';
 import { filesBackAction } from './settings-navigation';
 import { isRootWorkspacePage, notificationContinuationNotice, chatReturnForEntry, type ChatReturn, type PrimaryTabId } from './primary-nav';
 
@@ -82,7 +83,7 @@ function DisconnectedWorkspace({ openConnection }: { openConnection: () => void 
     </> : <SettingsHome notice="尚未连接服务器，助手与资料设置需先连接；外观和应用更新可独立使用。"
       onOpen={(target) => { if (target === 'appearance') setAppearanceOpen(true); else openConnection(); }}
       onConnection={openConnection} onBrowser={openConnection} onUpdate={update?.open} /> :
-      <View style={{ flex: 1, padding: spacing[24], justifyContent: 'center', alignItems: 'center', gap: spacing[16] }}><MuseAvatar size={88} />
+      <View style={{ flex: 1, padding: spacing[24], justifyContent: 'center', alignItems: 'center', gap: spacing[16] }}><MuseCompanion state="idle" size={88} offline />
         <Text style={{ ...workspaceTheme.typography.section, color: colors.ink }}>{tab === 'news' ? '新闻' : '消息'}</Text>
         <Text style={{ color: colors.muted, textAlign: 'center' }}>连接自己的 Pi Muse 服务器后开始聊天或阅读新闻。</Text><ActionButton label="服务器连接" onPress={openConnection} />
       </View>}
@@ -96,7 +97,23 @@ function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) 
   const [news] = useState(() => createNewsStore(api)); const newsState = useNews(news).snapshot; const [newsPreferences] = useState(() => new NewsPreferencesStore(api));
   const [browser] = useState(() => createBrowserStore(api, connection?.snapshot.serverUrl ?? '')); const [browserOpen, setBrowserOpen] = useState(false);
   const [page, setPage] = useState<PrimaryTabId>('messages'); const [chatReturn, setChatReturn] = useState<ChatReturn>('messages');
+  // 新近终态：运行从 running 回落时短时驱动成功/失败/停止姿态，随后清除；setState 全部异步调度避免级联渲染。
+  const [recentOutcome, setRecentOutcome] = useState<'succeeded' | 'failed' | 'cancelled'>();
   const currentState = useSessionState('main'); const mainRuntime = useSessionRuntime('main'); const [settingsPage, setSettingsPage] = useState<SettingsPage | null>(null);
+  const wasRunning = useRef(false);
+  useEffect(() => {
+    const falling = wasRunning.current && !mainRuntime.running;
+    wasRunning.current = mainRuntime.running;
+    if (!falling) return;
+    const outcome = mainRuntime.runs.at(-1)?.status;
+    if (outcome !== 'succeeded' && outcome !== 'failed' && outcome !== 'cancelled') return;
+    let clearTimer: ReturnType<typeof setTimeout> | undefined;
+    const setTimer = setTimeout(() => {
+      setRecentOutcome(outcome);
+      clearTimer = setTimeout(() => setRecentOutcome(undefined), COMPANION_OUTCOME_MS);
+    }, 0);
+    return () => { clearTimeout(setTimer); if (clearTimer) clearTimeout(clearTimer); };
+  }, [mainRuntime.running, mainRuntime.runs]);
   const [newsManaging, setNewsManaging] = useState(false); const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [notice, setNotice] = useState<string>();
   const [resetTarget, setResetTarget] = useState<string>(); const [resetError, setResetError] = useState<string>();
@@ -139,13 +156,25 @@ function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) 
   };
   let settingsContent: ReactNode;
   // 过程只集中到形象；仅统计当前主聊天的审批，断线不把缓存当成新事实。
+  const mainPendingApprovals = approvals.snapshot.pendingIds
+    .filter((id) => approvals.snapshot.records[id]?.sessionId === 'main' && approvals.snapshot.records[id]?.status === 'pending').length;
   const mainStatusLabel = mainProgressLabel({
     synchronized: mainRuntime.synchronized,
     running: mainRuntime.running,
     label: mainRuntime.label,
-    pendingApprovals: approvals.snapshot.pendingIds.filter((id) => approvals.snapshot.records[id]?.sessionId === 'main' && approvals.snapshot.records[id]?.status === 'pending').length,
+    pendingApprovals: mainPendingApprovals,
     pending: currentState.pendingSubmission?.status,
     runObserved: mainRuntime.runs.some((run) => run.runId === currentState.pendingSubmission?.runId),
+  });
+  // 形象状态机直接消费同一路运行事实；终态姿态只在新近结束时短暂出现。
+  const activeRun = mainRuntime.runs.find((run) => run.status === 'running');
+  const companion = companionState({
+    synchronized: mainRuntime.synchronized,
+    running: mainRuntime.running,
+    phase: activeRun?.phase ?? null,
+    pendingApprovals: mainPendingApprovals,
+    pendingStatus: currentState.pendingSubmission?.status,
+    lastOutcome: !mainRuntime.running && recentOutcome ? recentOutcome : undefined,
   });
   if (settingsPage === 'appearance') settingsContent = <ThemePicker />;
   else if (settingsPage === 'news-preferences') settingsContent = <NewsPreferencesCard store={newsPreferences} />;
@@ -167,13 +196,12 @@ function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) 
     {/* 键盘 screenY 是窗口坐标，避让布局在 SafeAreaView 内；补上顶部安全区才能对齐，不能在 composer 再减一次键盘高度。 */}
     <View style={{ flex: 1 }} pointerEvents={browserOpen ? 'none' : 'auto'} accessibilityElementsHidden={browserOpen} importantForAccessibility={browserOpen ? 'no-hide-descendants' : 'auto'}><KeyboardAvoidingView style={{ flex: 1 }} keyboardVerticalOffset={insets.top} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled={Platform.OS !== 'web'}>
       {page === 'messages' && <>
-        {/* 形象居中展示当前主聊天状态；操作入口收到形象点击里，不再放标题或独立菜单按钮。 */}
-        <Pressable accessibilityRole="button" accessibilityLabel={`Pi Muse 形象，${mainStatusLabel}，打开主聊天操作`} accessibilityState={{ busy: mainRuntime.running }} testID="workspace-avatar-status"
-          onPress={() => { Keyboard.dismiss(); setSessionTab('activity'); setPanelOpen(true); }}
-          style={{ alignItems: 'center', paddingVertical: spacing[12], gap: spacing[4] }}>
-          <MuseAvatar size={64} />
+        {/* 形象居中：状态机驱动企鹅姿态与动效，操作入口收在形象点击里。 */}
+        <View style={{ alignItems: 'center', paddingVertical: spacing[12], gap: spacing[4] }}>
+          <MuseCompanion state={companion} size={64} offline={!mainRuntime.synchronized}
+            onPress={() => { Keyboard.dismiss(); setSessionTab('activity'); setPanelOpen(true); }} testID="workspace-avatar-status" />
           <Text numberOfLines={1} style={{ color: colors.muted, ...workspaceTheme.typography.caption }}>{mainStatusLabel}</Text>
-        </Pressable>
+        </View>
         {chatReturn === 'news' && <ActionButton label="返回文章" onPress={returnToArticle} />}
       </>}
       <View style={{ flex: 1, display: page === 'news' ? 'none' : 'flex' }}><ConversationHost chatVisible={page === 'messages'} otherPage={otherPage} refreshVersions={refreshVersions}

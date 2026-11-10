@@ -44,17 +44,24 @@ test('主题模块不依赖业务领域，独立偏好存储不接触连接地�
   assert.doesNotMatch(read('src/theme/device-preferences.ts'), /deviceConnectionStore|serverUrl|token|accessKey/);
 });
 
-test('聊天空态只留短句，保留本地头像且不叠加消息区生成气泡', () => {
+test('聊天空态只留短句，状态化企鹅形象承接助手状态且不叠加生成气泡', () => {
   const chat = read('src/workspace/ConversationView.tsx');
   assert.match(chat, /testID="conversation-empty"/);
   assert.match(chat, /有什么想聊的？/);
   assert.doesNotMatch(chat, /A LITTLE AGENT|想法，从这里开始|帮我梳理一个想法|一起拆解一个目标/);
   assert.doesNotMatch(chat, /TypingIndicator|发送中/);
   assert.match(read('src/workspace/WorkspaceScreen.tsx'), /mainProgressLabel\(\{/);
+  const companion = read('src/workspace/MuseCompanion.tsx');
   const primitives = read('src/workspace/primitives.tsx');
-  assert.match(primitives, /require\('\.\.\/\.\.\/assets\/images\/muse-companion\.png'\)/);
-  assert.ok(existsSync(new URL('assets/images/muse-companion.png', root)));
-  assert.doesNotMatch(primitives, /TypingIndicator|https?:\/\//);
+  assert.doesNotMatch(primitives, /MuseAvatar|muse-companion|TypingIndicator|https?:\/\//);
+  // 八张状态图全部随包提供；未同步降灰，减弱动效保持静态，不用动画冒充进度。
+  for (const state of ['idle', 'thinking', 'responding', 'working', 'waiting-approval', 'success', 'error', 'stopped']) {
+    assert.ok(existsSync(new URL(`assets/images/avatar/${state}.png`, root)), state);
+    assert.match(companion, new RegExp(`require\\('\\.\\./\\.\\./assets/images/avatar/${state}\\.png'\\)`));
+  }
+  assert.match(companion, /useReducedMotion\(\)/);
+  assert.match(companion, /cancelAnimation\(scale\)/);
+  assert.match(companion, /offline && \{ opacity: 0\.5 \}/);
 });
 
 test('聊天顶部紧凑标题行在正常布局，隐藏会话不重复挂载其他页面', () => {
