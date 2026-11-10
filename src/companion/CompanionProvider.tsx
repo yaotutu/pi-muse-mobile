@@ -7,8 +7,8 @@ import { deviceCompanionPreferences } from './device-preferences';
 import type { CompanionCache, CompanionKey } from './types';
 
 const cache: CompanionCache = {
-  read: async (...args) => (await getCompanionCache()).read(...args),
-  prepare: async (...args) => (await getCompanionCache()).prepare(...args),
+  read: (...args) => getCompanionCache().read(...args),
+  prepare: (...args) => getCompanionCache().prepare(...args),
 };
 type CompanionValue = CompanionSnapshot & { select: (key: CompanionKey) => Promise<void>; refresh: () => Promise<void> };
 const CompanionContext = createContext<CompanionValue | null>(null);

@@ -1,10 +1,11 @@
 import { Platform } from 'react-native';
 // 与 files/native-download、update/native-updates 一样静态引入：Metro 的动态 import 解析不到带 exports 的包。
 import { Directory, File, Paths } from 'expo-file-system';
+import { requestCancelled } from '../api/errors';
 import { assertCompanionPng, COMPANION_STATES, isCompanionPackId, parseCompanionPack, type CompanionPackSummary, type CompanionState } from '../api/companion-contracts';
 import type { CachedCompanion, CompanionCache, CompanionImages } from './types';
 
-export const companionAbort = () => Object.assign(new Error('形象下载已取消'), { name: 'AbortError' });
+export const companionAbort = () => requestCancelled('形象下载已取消');
 const check = (signal: AbortSignal) => { if (signal.aborted) throw companionAbort(); };
 /** 可注入的最小存储边界：ready 只能在全部状态写好后发布。 */
 export interface CompanionCacheBackend {
@@ -46,22 +47,26 @@ export class AtomicCompanionCache implements CompanionCache {
   async clear() { this.generation++; await this.backend.clear(); }
 }
 
-// 可逆编码隔离不同服务地址；分段避免长地址突破文件系统单段长度，路径不包含凭据。
+// 服务地址可逆编码隔离缓存；分段避免长地址突破文件系统单段长度，路径不包含凭据。
+// version 已在契约入口收紧为 64 位十六进制，可直接作为单层目录名，无需再编码。
 const hex = (value: string) => Array.from(new TextEncoder().encode(value), (byte) => byte.toString(16).padStart(2, '0')).join('');
 const scopeParts = (scope: string) => hex(scope).match(/.{1,120}/g) ?? ['empty'];
-const versionParts = (version: string) => /^[a-zA-Z0-9_-]{1,128}$/.test(version) ? [version] : ['encoded.', ...(hex(version).match(/.{1,120}/g) ?? ['empty'])];
 let temporaryId = 0;
-export async function createNativeCompanionCacheBackend(): Promise<CompanionCacheBackend> {
+export function createNativeCompanionCacheBackend(): CompanionCacheBackend {
   const root = () => new Directory(Paths.cache, 'companions');
   const packDirectory = (scope: string, id: string) => {
     if (!isCompanionPackId(id)) throw new Error('形象 ID 不正确');
     return new Directory(root(), ...scopeParts(scope), 'packs', id);
   };
-  const readVersion = async (directory: InstanceType<typeof Directory>, expectedId: string, expectedVersion?: string) => {
+  // 清单是小文件：先读它排序，再从新到旧验证图片，旧版本未命中才付出整包读取。
+  const readSummary = async (directory: InstanceType<typeof Directory>, expectedId: string): Promise<CompanionPackSummary | undefined> => {
     try {
       const ready = new File(directory, 'ready.json'); if (!ready.exists) return undefined;
-      const summary = parseCompanionPack(JSON.parse(await ready.text()), expectedId);
-      if (expectedVersion !== undefined && summary.version !== expectedVersion) return undefined;
+      return parseCompanionPack(JSON.parse(await ready.text()), expectedId);
+    } catch { return undefined; }
+  };
+  const readImages = async (directory: InstanceType<typeof Directory>, summary: CompanionPackSummary): Promise<CachedCompanion | undefined> => {
+    try {
       const images = {} as CompanionImages;
       for (const state of COMPANION_STATES) {
         const file = new File(directory, `${state}.png`); if (!file.exists || file.size > 786_432) return undefined;
@@ -73,17 +78,21 @@ export async function createNativeCompanionCacheBackend(): Promise<CompanionCach
   return {
     async read(scope, id, version) {
       const parent = packDirectory(scope, id); if (!parent.exists) return undefined;
-      if (version !== undefined) return readVersion(new Directory(parent, ...versionParts(version)), id, version);
-      const candidates: CachedCompanion[] = [];
-      const collect = async (directory: InstanceType<typeof Directory>) => {
-        for (const entry of directory.list()) {
-          if (!(entry instanceof Directory) || entry.name.startsWith('pending.')) continue;
-          const cached = await readVersion(entry, id); if (cached) candidates.push(cached);
-          await collect(entry);
-        }
-      };
-      await collect(parent);
-      return candidates.sort((a, b) => Date.parse(b.summary.updatedAt) - Date.parse(a.summary.updatedAt))[0];
+      if (version !== undefined) {
+        const summary = await readSummary(new Directory(parent, version), id);
+        if (!summary || summary.version !== version) return undefined;
+        return readImages(new Directory(parent, version), summary);
+      }
+      const ordered: { directory: InstanceType<typeof Directory>; summary: CompanionPackSummary }[] = [];
+      for (const entry of parent.list()) {
+        if (!(entry instanceof Directory) || entry.name.startsWith('pending.')) continue;
+        const summary = await readSummary(entry, id); if (summary) ordered.push({ directory: entry, summary });
+      }
+      ordered.sort((a, b) => Date.parse(b.summary.updatedAt) - Date.parse(a.summary.updatedAt));
+      for (const { directory, summary } of ordered) {
+        const cached = await readImages(directory, summary); if (cached) return cached;
+      }
+      return undefined;
     },
     async stage(scope, pack) {
       const parent = packDirectory(scope, pack.id); parent.create({ intermediates: true, idempotent: true });
@@ -95,13 +104,11 @@ export async function createNativeCompanionCacheBackend(): Promise<CompanionCach
           assertActive();
           // write 与 move 都是异步原生调用：不等待会让发布与清理互相踩踏，缓存目录永远不完整。
           await new File(temporary, 'ready.json').write(JSON.stringify(pack));
-          const parts = versionParts(pack.version);
-          const container = new Directory(parent, ...parts.slice(0, -1)); container.create({ intermediates: true, idempotent: true });
-          const destination = new Directory(container, parts[parts.length - 1]);
+          const destination = new Directory(parent, pack.version);
           // 同一版本是不可变内容；恢复损坏缓存时才替换未就绪目录。
-          const existing = destination.exists ? await readVersion(destination, pack.id, pack.version) : undefined;
+          const existing = destination.exists ? await readImages(destination, pack) : undefined;
           assertActive();
-          if (existing) return existing;
+          if (existing) return { summary: pack, images: existing.images };
           if (destination.exists) destination.delete();
           await temporary.move(destination);
           assertActive();
@@ -141,9 +148,9 @@ export function createWebCompanionCacheBackend(): CompanionCacheBackend {
     async clear() { for (const url of urls) URL.revokeObjectURL(url); urls.clear(); ready.clear(); },
   };
 }
-// Web 不加载原生文件模块；清理在同一实例排队，换服不遗留晚到的下载发布。
-let cachePromise: Promise<AtomicCompanionCache> | undefined;
-export function getCompanionCache(): Promise<AtomicCompanionCache> {
-  return cachePromise ??= (Platform.OS === 'web' ? Promise.resolve(createWebCompanionCacheBackend()) : createNativeCompanionCacheBackend()).then((backend) => new AtomicCompanionCache(backend));
+// 工厂同步创建（只装配闭包，无 I/O）；读写保持异步。清理复用同一实例，换服不遗留晚到的下载发布。
+let cache: AtomicCompanionCache | undefined;
+export function getCompanionCache(): AtomicCompanionCache {
+  return cache ??= new AtomicCompanionCache(Platform.OS === 'web' ? createWebCompanionCacheBackend() : createNativeCompanionCacheBackend());
 }
-export async function clearCompanionCache(): Promise<void> { await (await getCompanionCache()).clear(); }
+export async function clearCompanionCache(): Promise<void> { await getCompanionCache().clear(); }

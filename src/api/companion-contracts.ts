@@ -16,13 +16,15 @@ const exact = (item: Record<string, unknown>, keys: string[]) => Object.keys(ite
 export const isCompanionPackId = (value: unknown): value is string => typeof value === 'string' && /^[a-z0-9][a-z0-9_-]{0,63}$/.test(value);
 export const isCompanionState = (value: unknown): value is CompanionState => COMPANION_STATES.includes(value as CompanionState);
 const text = (value: unknown): value is string => typeof value === 'string' && !!value.trim();
+/** 服务端契约把 version 固定为 64 位小写 SHA-256；入口收紧后缓存目录名无需再编码任意字符串。 */
+const digest = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 const timestamp = (value: unknown): value is string => typeof value === 'string' && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)$/.test(value) && Number.isFinite(Date.parse(value)) && new Date(`${value.slice(0, 10)}T00:00:00Z`).toISOString().slice(0, 10) === value.slice(0, 10);
 
 export function parseCompanionPack(value: unknown, expectedId?: string): CompanionPackSummary {
   const item = object(value);
   if (!exact(item, ['id', 'name', 'description', 'states', 'version', 'updatedAt']) ||
     !isCompanionPackId(item.id) || (expectedId !== undefined && item.id !== expectedId) || !text(item.name) || typeof item.description !== 'string' ||
-    !text(item.version) || !timestamp(item.updatedAt) || !Array.isArray(item.states) || item.states.length !== COMPANION_STATES.length ||
+    !digest(item.version) || !timestamp(item.updatedAt) || !Array.isArray(item.states) || item.states.length !== COMPANION_STATES.length ||
     !item.states.every(isCompanionState) || new Set(item.states).size !== COMPANION_STATES.length) return invalid();
   return { id: item.id, name: item.name, description: item.description, states: [...item.states], version: item.version, updatedAt: item.updatedAt };
 }

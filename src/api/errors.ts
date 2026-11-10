@@ -16,8 +16,8 @@ export function responseError(status: number, payload: unknown, fallback = `请�
   return new ApiError(status, message, code, status === 409 ? payload : undefined);
 }
 
-export function requestCancelled() {
-  const error = new Error('请求已取消，未确认的操作请刷新后核对');
+export function requestCancelled(message = '请求已取消，未确认的操作请刷新后核对') {
+  const error = new Error(message);
   error.name = 'AbortError';
   return error;
 }

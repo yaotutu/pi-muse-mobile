@@ -238,6 +238,8 @@ export class HttpApiClient implements ApiClient {
       signal?: AbortSignal;
       /** 仅覆盖单个请求预算；默认仍使用全局 15 秒，不改变其他调用。 */
       timeoutMs?: number;
+      /** 非默认 JSON 响应的解码；在超时/取消控制内执行，长读取须在分块间 assertActive。 */
+      decode?: (response: Response, assertActive: () => void) => Promise<T>;
     },
   ): Promise<T> {
     if ((this.retired || this.paused) && path !== '/api/conversation/stop') throw requestCancelled();
@@ -267,7 +269,7 @@ export class HttpApiClient implements ApiClient {
         try { payload = JSON.parse(text); } catch { /* 非JSON错误正文不替代HTTP状态。 */ }
         throw responseError(response.status, payload);
       }
-      const data = await response.json() as T;
+      const data = init?.decode ? await init.decode(response, () => control.assertActive()) : await response.json() as T;
       control.assertActive();
       if (!init?.anonymous) this.notify(control, { kind: 'online', token });
       return data;
@@ -301,39 +303,29 @@ export class HttpApiClient implements ApiClient {
   }
   async fetchCompanionAsset(packId: string, state: CompanionState, signal?: AbortSignal): Promise<Uint8Array> {
     if (!isCompanionPackId(packId) || !isCompanionState(state)) throw new ApiError(400, '助手形象参数不正确');
-    if (this.retired || this.paused) throw requestCancelled();
-    const token = this.getToken(); const control = this.control(this.options.timeoutMs ?? 15_000, signal);
-    try {
-      control.assertActive();
-      // 资源同样通过鉴权请求下载，URL 与本地图片 URI 都不携带凭据。
-      const response = await expoFetch(`${this.baseUrl}/api/companions/${encodeURIComponent(packId)}/assets/${state}`, {
-        headers: token ? { authorization: `Bearer ${token}` } : {}, signal: control.controller.signal, redirect: 'error',
-      });
-      control.assertActive();
-      if (response.status === 401) {
-        if (!this.retired && control.generation === this.generation) this.onUnauthorized(token);
-        throw new ApiError(401, '当前凭证未被服务器接受，请重新认证');
-      }
-      if (!response.ok) throw responseError(response.status, undefined);
-      if (Number(response.headers.get('content-length')) > MAX_COMPANION_ASSET_BYTES) throw new ApiError(502, '助手形象图片超过大小限制');
-      const reader = response.body?.getReader();
-      if (!reader) throw new ApiError(502, '助手形象图片响应为空');
-      const chunks: Uint8Array[] = []; let size = 0;
-      try {
-        while (true) {
-          const chunk = await reader.read(); control.assertActive();
-          if (chunk.done) break;
-          size += chunk.value.byteLength;
-          if (size > MAX_COMPANION_ASSET_BYTES) throw new ApiError(502, '助手形象图片超过大小限制');
-          chunks.push(chunk.value);
-        }
-      } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
-      const bytes = new Uint8Array(size); let offset = 0;
-      for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
-      assertCompanionPng(bytes); control.assertActive();
-      this.notify(control, { kind: 'online', token }); return bytes;
-    } catch (error) { throw this.failure(error, control, token); }
-    finally { control.finish(); }
+    // 资源同样通过鉴权请求下载，URL 与本地图片 URI 都不携带凭据；只保留字节解码规则。
+    return this.request(`/api/companions/${encodeURIComponent(packId)}/assets/${state}`, {
+      signal,
+      decode: async (response, assertActive) => {
+        if (Number(response.headers.get('content-length')) > MAX_COMPANION_ASSET_BYTES) throw new ApiError(502, '助手形象图片超过大小限制');
+        const reader = response.body?.getReader();
+        if (!reader) throw new ApiError(502, '助手形象图片响应为空');
+        const chunks: Uint8Array[] = []; let size = 0;
+        try {
+          while (true) {
+            const chunk = await reader.read(); assertActive();
+            if (chunk.done) break;
+            size += chunk.value.byteLength;
+            if (size > MAX_COMPANION_ASSET_BYTES) throw new ApiError(502, '助手形象图片超过大小限制');
+            chunks.push(chunk.value);
+          }
+        } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
+        const bytes = new Uint8Array(size); let offset = 0;
+        for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+        assertCompanionPng(bytes);
+        return bytes;
+      },
+    });
   }
 
   async listSessions(signal?: AbortSignal): Promise<SessionRecord[]> {

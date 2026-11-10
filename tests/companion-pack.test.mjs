@@ -9,6 +9,8 @@ import { CompanionStore } from '../src/companion/companion-store.ts';
 
 const png = () => new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 0]);
 const pack = (id = 'plumber', version = 'a'.repeat(64)) => ({ id, name: '测试形象', description: '完整八状态', states: [...COMPANION_STATES], version, updatedAt: '2026-11-10T00:00:00.000Z' });
+// 契约内版本是 64 位小写十六进制；不同字符区分不同版本。
+const versionOf = (char) => char.repeat(64);
 const images = (uri) => Object.fromEntries(COMPANION_STATES.map((state) => [state, { uri: `${uri}/${state}.png` }]));
 const builtin = { key: 'builtin:penguin', name: '冰蓝企鹅', description: '默认内置助手形象', images: images('builtin') };
 const deferred = () => { let resolve; const promise = new Promise((done) => { resolve = done; }); return { promise, resolve }; };
@@ -48,13 +50,15 @@ function setup({ selected = 'builtin:penguin', packs = [pack()], cache, scope = 
   return { store, storage, disk, cache: realCache, api, packs };
 }
 
-test('形象契约只接受完整八状态、唯一 ID、严格包裹和有效 ISO 时间', () => {
+test('形象契约只接受完整八状态、唯一 ID、严格包裹、64 位十六进制版本和有效 ISO 时间', () => {
   assert.deepEqual(parseCompanion({ companion: pack() }, 'plumber'), pack());
-  assert.deepEqual(parseCompanionPack({ ...pack(), version: 'v1' }).version, 'v1');
+  assert.equal(parseCompanionPack({ ...pack(), version: versionOf('9') }).version, versionOf('9'));
   assert.equal(parseCompanions({ companions: [pack()], diagnostics: [{ id: 'bad-folder', message: '缺少 working' }] }).diagnostics.length, 1);
   const invalid = [null, [], {}, { ...pack(), extra: 1 }, { ...pack(), id: '../outside' }, { ...pack(), id: 'bad/id' },
     { ...pack(), states: COMPANION_STATES.slice(1) }, { ...pack(), states: [...COMPANION_STATES, 'unknown'] },
     { ...pack(), states: COMPANION_STATES.map(() => 'idle') }, { ...pack(), version: ' ' }, { ...pack(), name: '' },
+    { ...pack(), version: 'v1' }, { ...pack(), version: versionOf('A') }, { ...pack(), version: 'a'.repeat(63) },
+    { ...pack(), version: '测试/'.repeat(30) },
     { ...pack(), updatedAt: '2026-02-30T00:00:00Z' }, { ...pack(), updatedAt: '2026-11-10' }, { ...pack(), updatedAt: 'bad' }];
   for (const value of invalid) assert.throws(() => parseCompanionPack(value), /形象响应格式/);
   for (const value of [ { companion: pack(), extra: 1 }, { companion: pack('other') } ]) assert.throws(() => parseCompanion(value, 'plumber'));
@@ -108,12 +112,12 @@ test('完整八状态才原子发布，失败/取消清临时文件，保留旧�
   const old = await cache.prepare('one', pack(), async () => png(), controller.signal);
   assert.equal(disk.ready.size, 1); assert.deepEqual(disk.stages[0].states, COMPANION_STATES);
   const gate = deferred(); let count = 0;
-  const task = cache.prepare('one', pack('plumber', 'v2'), async () => { if (++count === 8) await gate.promise; return png(); }, controller.signal);
+  const task = cache.prepare('one', pack('plumber', versionOf('b')), async () => { if (++count === 8) await gate.promise; return png(); }, controller.signal);
   await tick(); assert.equal(disk.ready.size, 1); assert.equal(disk.stages[1].committed, false);
   controller.abort(); gate.resolve(); await assert.rejects(task, { name: 'AbortError' });
   assert.equal(disk.stages[1].discarded, true); assert.equal(disk.ready.size, 1);
   assert.deepEqual(await cache.read('one', 'plumber', new AbortController().signal), old);
-  await assert.rejects(cache.prepare('one', pack('plumber', 'v3'), async () => new Uint8Array([0]), new AbortController().signal));
+  await assert.rejects(cache.prepare('one', pack('plumber', versionOf('c')), async () => new Uint8Array([0]), new AbortController().signal));
   assert.equal(disk.stages[2].discarded, true); assert.equal(disk.ready.size, 1);
 });
 
@@ -153,16 +157,16 @@ test('已连接选中包被删除/不完整时自动回退，diagnostics 不隐�
 test('新版八图下载前保持当前形象，完成后无缝替换；失败保留旧版', async () => {
   const value = setup(); await value.store.load(); await value.store.select('server:plumber');
   const old = value.store.getSnapshot().activePack.images; const gate = deferred();
-  value.packs[0] = pack('plumber', 'v2'); value.api.fetchCompanionAsset = async () => { await gate.promise; return png(); };
+  value.packs[0] = pack('plumber', versionOf('b')); value.api.fetchCompanionAsset = async () => { await gate.promise; return png(); };
   const refreshing = value.store.refresh(); await tick(); assert.equal(value.store.getSnapshot().activePack.images, old);
   gate.resolve(); await refreshing; assert.notEqual(value.store.getSnapshot().activePack.images, old);
   const current = value.store.getSnapshot().activePack.images;
-  value.packs[0] = pack('plumber', 'v3'); value.api.fetchCompanionAsset = async () => { throw new Error('offline'); };
+  value.packs[0] = pack('plumber', versionOf('c')); value.api.fetchCompanionAsset = async () => { throw new Error('offline'); };
   await value.store.refresh(); assert.equal(value.store.getSnapshot().activePack.images, current); assert.match(value.store.getSnapshot().error, /下载失败/); value.store.dispose();
 });
 
 test('下载途中服务端版本变化拒绝激活混合图包', async () => {
-  const value = setup(); await value.store.load(); value.api.getCompanion = async () => pack('plumber', 'changed');
+  const value = setup(); await value.store.load(); value.api.getCompanion = async () => pack('plumber', versionOf('9'));
   await value.store.select('server:plumber'); assert.equal(value.store.getSnapshot().activePack.key, 'builtin:penguin'); assert.equal(value.disk.ready.size, 0); value.store.dispose();
 });
 
@@ -216,22 +220,24 @@ test('原生文件适配器夹具：目录原子移动后保持八图，重启�
   }
   globalThis.__companionTestFilesystem = { Directory, File, Paths: { cache: new Directory('file:///cache') } };
   try {
-    const native = await createNativeCompanionCacheBackend(); const cache = new AtomicCompanionCache(native);
+    const native = createNativeCompanionCacheBackend(); const cache = new AtomicCompanionCache(native);
     const signal = new AbortController().signal; const scope = 'https://one.example/' + 'path'.repeat(50);
-    const cached = await cache.prepare(scope, pack('plumber', 'pending-v1'), async () => png(), signal);
+    const cached = await cache.prepare(scope, pack('plumber', versionOf('d')), async () => png(), signal);
     for (const state of COMPANION_STATES) assert.ok(entries.has(cached.images[state].uri));
     assert.equal([...entries.keys()].some((uri) => uri.includes('/pending.')), false);
-    const restarted = new AtomicCompanionCache(await createNativeCompanionCacheBackend());
-    assert.equal((await restarted.read(scope, 'plumber', signal)).summary.version, 'pending-v1');
-    await restarted.prepare(scope, pack('plumber', 'pending-v1'), async () => assert.fail('完整缓存不重下'), signal);
-    const encoded = { ...pack('plumber', '测试/'.repeat(30)), updatedAt: '2026-11-10T01:00:00.000Z' };
-    const second = await cache.prepare(scope, encoded, async () => png(), signal);
-    assert.equal((await restarted.read(scope, 'plumber', signal)).summary.version, encoded.version);
-    for (const segment of second.images.idle.uri.slice('file:///'.length).split('/')) assert.ok(segment.length <= 128);
+    const restarted = new AtomicCompanionCache(createNativeCompanionCacheBackend());
+    assert.equal((await restarted.read(scope, 'plumber', signal)).summary.version, versionOf('d'));
+    await restarted.prepare(scope, pack('plumber', versionOf('d')), async () => assert.fail('完整缓存不重下'), signal);
+    const newer = { ...pack('plumber', versionOf('e')), updatedAt: '2026-11-10T01:00:00.000Z' };
+    const second = await cache.prepare(scope, newer, async () => png(), signal);
+    assert.equal((await restarted.read(scope, 'plumber', signal)).summary.version, newer.version);
+    // 版本目录是契约内 64 位十六进制的单层名字，不再有多段编码。
+    const relative = second.images.idle.uri.slice(second.images.idle.uri.indexOf('/packs/')).split('/');
+    assert.ok(relative.includes('plumber') && relative.includes(newer.version) && relative.length === 5, relative.join('/'));
     entries.set(second.images.working.uri, new Uint8Array([0]));
-    assert.equal((await restarted.read(scope, 'plumber', signal)).summary.version, 'pending-v1');
+    assert.equal((await restarted.read(scope, 'plumber', signal)).summary.version, versionOf('d'));
     const controller = new AbortController(); let downloaded = 0;
-    await assert.rejects(cache.prepare(scope, pack('plumber', 'cancelled'), async () => { if (++downloaded === 4) controller.abort(); return png(); }, controller.signal));
+    await assert.rejects(cache.prepare(scope, pack('plumber', versionOf('f')), async () => { if (++downloaded === 4) controller.abort(); return png(); }, controller.signal));
     assert.equal([...entries.keys()].some((uri) => uri.includes('/pending.')), false);
     await cache.clear(); assert.equal(entries.has('file:///cache/companions'), false);
   } finally { delete globalThis.__companionTestFilesystem; }
@@ -249,10 +255,10 @@ test('Web 使用 Blob URI 缓存并在清理/失败时释放已提交和临时 U
     assert.equal(cached.images.idle.uri, 'blob:test-0'); assert.equal(created.length, 8);
     assert.equal(await cache.read('web-two', 'plumber', new AbortController().signal), undefined);
     let count = 0;
-    await assert.rejects(cache.prepare('web-one', pack('plumber', 'v2'), async () => ++count === 3 ? new Uint8Array([0]) : png(), new AbortController().signal));
+    await assert.rejects(cache.prepare('web-one', pack('plumber', versionOf('b')), async () => ++count === 3 ? new Uint8Array([0]) : png(), new AbortController().signal));
     assert.deepEqual(revoked, ['blob:test-8', 'blob:test-9']);
     const gate = deferred(); count = 0;
-    const task = cache.prepare('web-one', pack('plumber', 'v3'), async () => { if (++count === 2) await gate.promise; return png(); }, new AbortController().signal);
+    const task = cache.prepare('web-one', pack('plumber', versionOf('c')), async () => { if (++count === 2) await gate.promise; return png(); }, new AbortController().signal);
     await tick(); await clearCompanionCache(); assert.ok(revoked.includes('blob:test-10'));
     gate.resolve(); await assert.rejects(task); assert.equal(new Set(revoked).size, created.length);
     assert.equal(await cache.read('web-one', 'plumber', new AbortController().signal), undefined);
