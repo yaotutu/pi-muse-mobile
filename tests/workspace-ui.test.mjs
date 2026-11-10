@@ -107,11 +107,88 @@ test('形象选择器三主题共享语义色、48dp 预览与可伸展单选行
   assert.doesNotMatch(source, /#[0-9a-f]{3,8}\b|allowFontScaling=\{false\}|numberOfLines/i);
 });
 
-test('聊天顶部紧凑标题行在正常布局，隐藏会话不重复挂载其他页面', () => {
-  assert.match(read('src/workspace/WorkspaceScreen.tsx'), /<PrimaryTabBar/);
+test('聊天形象悬浮在完整聊天之上，不占标题栏或补等高留白，隐藏会话不重复挂载其他页面', () => {
+  const source = read('src/workspace/WorkspaceScreen.tsx');
+  const ast = ts.createSourceFile('WorkspaceScreen.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const elements = [];
+  const visit = (node) => { if (ts.isJsxSelfClosingElement(node)) elements.push(node); ts.forEachChild(node, visit); };
+  visit(ast);
+  const floating = elements.find((node) => node.tagName.getText(ast) === 'FloatingCompanion');
+  const host = elements.find((node) => node.tagName.getText(ast) === 'ConversationHost');
+  assert.ok(floating && host);
+  assert.match(floating.parent.getText(ast), /^page === 'messages' && <FloatingCompanion/);
+  const keyboard = floating.parent.parent.parent;
+  assert.equal(keyboard.openingElement.tagName.getText(ast), 'KeyboardAvoidingView');
+  assert.ok(host.pos < floating.pos, '悬浮岛绘制在聊天之后');
+  assert.equal(keyboard.children.filter(ts.isJsxElement).some((node) => /workspace-avatar-status|<MuseCompanion/.test(node.getText(ast))), false);
+  assert.match(host.parent.openingElement.getText(ast), /style=\{\{ flex: 1, display: page === 'news' \? 'none' : 'flex' \}\}/);
+  assert.doesNotMatch(host.attributes.getText(ast), /\bkey=|padding|margin/);
+  assert.match(floating.getText(ast), /onReturnArticle=\{chatReturn === 'news' \? returnToArticle : undefined\}/);
+  assert.match(floating.getText(ast), /Keyboard\.dismiss\(\); setSessionTab\('activity'\); setPanelOpen\(true\)/);
+  assert.match(source, /<PrimaryTabBar/);
   assert.match(read('src/workspace/ConversationView.tsx'), /paddingTop: spacing\[12\]/);
   assert.match(read('src/workspace/ConversationHost.tsx'), /!chatVisible && <View style={styles.owner}>{otherPage}/);
   assert.match(read('src/workspace/SessionPanel.tsx'), /<ScrollView\s+key={tab}/);
+});
+
+test('悬浮岛三主题不透明、局部命中、完整状态朗读；新闻返回独立48dp命中且按内容排布', async () => {
+  const { availableThemes } = await import('../src/theme/registry.ts');
+  const tokens = await import('../src/ui/tokens.ts');
+  const source = read('src/workspace/FloatingCompanion.tsx');
+  const output = ts.transpileModule(source, { fileName: 'FloatingCompanion.tsx', compilerOptions: {
+    module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022,
+  } }).outputText;
+  const flattenStyle = (value) => Object.assign({}, ...[value].flat(Infinity).filter(Boolean));
+  for (const { colors } of availableThemes) for (const withReturn of [false, true]) {
+    const exports = {}; const calls = []; const images = { working: 1 };
+    const element = (type, props) => ({ type, props });
+    const modules = {
+      'react/jsx-runtime': { jsx: element, jsxs: element },
+      'react-native': { Pressable: 'Pressable', View: 'View', Text: 'Text', StyleSheet: { create: (value) => value } },
+      '../theme/ThemeProvider': { useTheme: () => ({ colors }) }, '../ui/tokens': tokens,
+      './MuseCompanion': { MuseCompanion: 'MuseCompanion' },
+    };
+    runInNewContext(output, { exports, require: (name) => { assert.ok(Object.hasOwn(modules, name), name); return modules[name]; } });
+    const statusLabel = '正在处理一个很长的真实工具状态，等待主聊天文件审批后继续';
+    const tree = exports.FloatingCompanion({ state: 'working', images, offline: true, statusLabel,
+      onPress: () => calls.push('actions'), onReturnArticle: withReturn ? () => calls.push('article') : undefined });
+    const overlay = flattenStyle(tree.props.style);
+    assert.equal(tree.props.pointerEvents, 'box-none');
+    assert.equal(overlay.position, 'absolute'); assert.equal(overlay.top, tokens.spacing[8]);
+    assert.equal(overlay.left, overlay.right); assert.equal(overlay.alignItems, 'center');
+    assert.ok(overlay.gap > 0); assert.ok(overlay.zIndex > 0);
+    assert.equal(overlay.height, undefined); assert.equal(overlay.backgroundColor, undefined);
+    const [island, back] = tree.props.children;
+    const face = flattenStyle(island.props.style({ pressed: false }));
+    assert.equal(face.backgroundColor, colors.surface); assert.equal(face.borderColor, colors.line);
+    assert.equal(face.shadowColor, colors.ink); assert.ok(face.shadowOpacity > 0); assert.ok(face.elevation > 0);
+    assert.ok(face.borderWidth > 0); assert.ok(face.borderRadius > 0); assert.ok(face.minHeight >= 48);
+    assert.equal(face.maxWidth, '100%'); assert.equal(face.opacity, undefined);
+    assert.equal(flattenStyle(island.props.style({ pressed: true })).backgroundColor, colors.selected);
+    assert.equal(island.props.accessibilityRole, 'button');
+    assert.ok(island.props.accessibilityLabel.includes(statusLabel));
+    assert.ok(island.props.accessibilityLabel.includes('打开主聊天操作'));
+    island.props.onPress();
+    const decorative = island.props.children;
+    assert.equal(decorative.props.pointerEvents, 'none'); assert.equal(decorative.props.accessibilityElementsHidden, true);
+    assert.equal(decorative.props.importantForAccessibility, 'no-hide-descendants');
+    const [avatar, status] = decorative.props.children;
+    assert.equal(avatar.props.state, 'working'); assert.equal(avatar.props.images, images); assert.equal(avatar.props.offline, true);
+    assert.ok(avatar.props.size >= 64 && avatar.props.size <= 72); assert.equal(avatar.props.onPress, undefined);
+    assert.equal(status.props.children, statusLabel); assert.equal(status.props.numberOfLines, 1);
+    assert.equal(status.props.ellipsizeMode, 'tail'); assert.notEqual(status.props.allowFontScaling, false);
+    assert.equal(flattenStyle(status.props.style).color, colors.muted);
+    if (withReturn) {
+      assert.equal(back.type, 'Pressable'); assert.equal(back.props.accessibilityRole, 'button');
+      assert.equal(back.props.accessibilityLabel, '返回文章');
+      const returnStyle = flattenStyle(back.props.style({ pressed: false }));
+      assert.ok(returnStyle.minHeight >= 48); assert.equal(returnStyle.backgroundColor, colors.surface);
+      assert.equal(returnStyle.position, undefined, '返回入口在悬浮容器内顺排，不覆盖岛面');
+      assert.equal(returnStyle.height, undefined, '大字体可自然增高'); assert.equal(returnStyle.maxWidth, '100%');
+      back.props.onPress();
+    } else assert.equal(back, undefined);
+    assert.deepEqual(calls, withReturn ? ['actions', 'article'] : ['actions']);
+  }
 });
 
 test('会话动态按 OpenMuse 极简时间线展示真实状态，去除冗余割裂按钮，关键警告与审批入口保持可见', () => {
@@ -159,7 +236,7 @@ test('共享分段仅用一块底板位移，初次和尺寸变化直定位，�
   assert.match(tokens, /segmentDuration: 200/);
 });
 
-test('原生输入时压缩会话信息区且不挂载底栏，键盘事件监听随宿主卸载清理', () => {
+test('原生输入时保持悬浮形象顶部锚点且不挂载底栏，键盘事件监听随宿主卸载清理', () => {
   const source = read('src/workspace/WorkspaceScreen.tsx');
   assert.match(source, /!keyboardVisible[\s\S]*?<PrimaryTabBar/);
   assert.doesNotMatch(source, /<Navigation/);

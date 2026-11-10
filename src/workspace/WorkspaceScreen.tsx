@@ -49,6 +49,7 @@ import { SettingsHome, SETTINGS_PAGE_TITLES, type SettingsPage } from './Setting
 import { CompanionProvider, useCompanion } from '../companion/CompanionProvider';
 import { CompanionPicker } from './CompanionPicker';
 import { MuseCompanion } from './MuseCompanion';
+import { FloatingCompanion } from './FloatingCompanion';
 import { COMPANION_OUTCOME_MS, companionState } from './companion-state';
 import { filesBackAction } from './settings-navigation';
 import { isRootWorkspacePage, notificationContinuationNotice, chatReturnForEntry, type ChatReturn, type PrimaryTabId } from './primary-nav';
@@ -204,15 +205,6 @@ function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) 
   return <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} testID="workspace-screen"><ThemeStatusBar />
     {/* 键盘 screenY 是窗口坐标，避让布局在 SafeAreaView 内；补上顶部安全区才能对齐，不能在 composer 再减一次键盘高度。 */}
     <View style={{ flex: 1 }} pointerEvents={browserOpen ? 'none' : 'auto'} accessibilityElementsHidden={browserOpen} importantForAccessibility={browserOpen ? 'no-hide-descendants' : 'auto'}><KeyboardAvoidingView style={{ flex: 1 }} keyboardVerticalOffset={insets.top} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled={Platform.OS !== 'web'}>
-      {page === 'messages' && <>
-        {/* 形象居中：状态机驱动当前形象姿态与动效，操作入口收在形象点击里。 */}
-        <View style={{ alignItems: 'center', paddingVertical: spacing[12], gap: spacing[4] }}>
-          <MuseCompanion state={companion} size={72} offline={!mainRuntime.synchronized} images={activePack.images}
-            onPress={() => { Keyboard.dismiss(); setSessionTab('activity'); setPanelOpen(true); }} testID="workspace-avatar-status" />
-          <Text numberOfLines={1} style={{ color: colors.muted, ...workspaceTheme.typography.caption }}>{mainStatusLabel}</Text>
-        </View>
-        {chatReturn === 'news' && <ActionButton label="返回文章" onPress={returnToArticle} />}
-      </>}
       <View style={{ flex: 1, display: page === 'news' ? 'none' : 'flex' }}><ConversationHost chatVisible={page === 'messages'} otherPage={otherPage} refreshVersions={refreshVersions}
         onSettled={refresh} onBindingMismatch={store.reload} openConnection={openConnection} onOpenApprovals={() => { setSessionTab('approvals'); setPanelOpen(true); }} onContinueNotification={(reference) => {
           const unavailable = notificationContinuationNotice(reference.sessionId);
@@ -231,6 +223,9 @@ function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) 
       {notice && <View style={{ padding: spacing[12] }}><Text accessibilityRole="alert" style={{ color: colors.warning }}>{notice}</Text><ActionButton label="关闭提示" onPress={() => setNotice(undefined)} /></View>}
       {companionNotice && page !== 'settings' && <Text accessibilityLiveRegion="polite" style={{ padding: spacing[12], color: colors.warning }}>{companionNotice}</Text>}
       {!keyboardVisible && root && <PrimaryTabBar currentTab={page} onSelectTab={(tab) => { Keyboard.dismiss(); setChatReturn('messages'); setSettingsPage(null); setPage(tab); }} />}
+      {page === 'messages' && <FloatingCompanion state={companion} images={activePack.images} offline={!mainRuntime.synchronized}
+        statusLabel={mainStatusLabel} onPress={() => { Keyboard.dismiss(); setSessionTab('activity'); setPanelOpen(true); }}
+        onReturnArticle={chatReturn === 'news' ? returnToArticle : undefined} />}
     </KeyboardAvoidingView></View>
     {panelOpen && <Sheet title="主聊天操作" onClose={() => setPanelOpen(false)}>
       <ActionButton label="重置会话" disabled={currentState.resetting || currentState.resetUncertain} onPress={() => { setResetError(undefined); setPanelOpen(false); setResetTarget('main'); }} />

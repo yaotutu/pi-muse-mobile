@@ -271,7 +271,10 @@ test('换服清缓存并重设独立偏好，渲染切换不改聊天 key、不�
   assert.match(workspace, /CompanionProvider key=\{connection\.snapshot\.workspaceKey\}/);
   assert.equal((workspace.match(/<ConversationHost\b/g) ?? []).length, 1);
   assert.doesNotMatch(workspace, /<ConversationHost[^>]*(?:key=|activePack|selectedKey)/);
-  assert.equal((workspace.match(/<MuseCompanion[^>]*images=\{activePack\.images\}/g) ?? []).length, 2);
+  assert.equal((workspace.match(/<MuseCompanion[^>]*images=\{activePack\.images\}/g) ?? []).length, 1);
+  assert.match(workspace, /<FloatingCompanion state=\{companion\} images=\{activePack\.images\}/);
+  assert.doesNotMatch(workspace, /<FloatingCompanion[^>]*key=/);
+  assert.match(read('src/workspace/FloatingCompanion.tsx'), /<MuseCompanion state=\{state\} size=\{sizing\[64\]\} offline=\{offline\} images=\{images\}/);
   const store = read('src/companion/companion-store.ts'); assert.doesNotMatch(store, /cancelPending|\.retire\(|\.suspend\(|chatSession|resetSession|stopRun/);
   const preferences = read('src/companion/device-preferences.ts'); assert.match(preferences, /pi-muse-mobile-companion-v1/); assert.doesNotMatch(preferences, /serverUrl|accessKey|token|deviceConnection/);
   const cache = read('src/companion/companion-cache.ts'); assert.match(cache, /Platform\.OS === 'web'/); assert.match(cache, /URL\.revokeObjectURL/); assert.match(cache, /new Directory\(Paths\.cache, 'companions'\)/);

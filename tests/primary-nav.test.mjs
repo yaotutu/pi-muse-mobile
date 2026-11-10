@@ -57,12 +57,14 @@ test('主聊天根页有底栏，键盘、设置子页与所有覆盖层隐藏�
 test('移除列表/新建/切换/改名/删除入口，Pi Muse 形象居中承担状态与操作入口', () => {
   for (const file of ['SessionListScreen.tsx', 'SessionSwitcherSheet.tsx']) assert.equal(existsSync(new URL('../src/workspace/' + file, import.meta.url)), false);
   assert.doesNotMatch(screen, /SessionList|SessionSwitcher|setSwitcher|新建会话|创建会话|重命名会话|删除会话|切换会话|返回消息|deleteSession|store\.(create|rename)/);
-  // 头部：无标题、无三点菜单；形象居中，显示实时状态，点击打开主聊天操作。
+  // 局部悬浮岛：无标题、无三点菜单；形象居中，显示实时状态，点击打开主聊天操作。
   assert.doesNotMatch(screen, /MoreHorizontal|IconControl|accessibilityRole="header"[^\n]*>Pi Muse</);
-  assert.match(screen, /testID="workspace-avatar-status"/);
-  assert.match(screen, /<MuseCompanion state=\{companion\} size=\{72\} offline=\{!mainRuntime\.synchronized\}/);
-  assert.match(screen, /style=\{\{ alignItems: 'center', paddingVertical: spacing\[12\], gap: spacing\[4\] \}\}/);
-  assert.match(screen, /mainStatusLabel/);
+  const floating = read('workspace/FloatingCompanion.tsx');
+  assert.match(floating, /testID="workspace-avatar-status"/);
+  assert.match(screen, /page === 'messages' && <FloatingCompanion state=\{companion\} images=\{activePack\.images\} offline=\{!mainRuntime\.synchronized\}/);
+  assert.match(floating, /position: 'absolute'/);
+  assert.match(floating, /alignItems: 'center'/);
+  assert.match(screen, /statusLabel=\{mainStatusLabel\}/);
   assert.match(screen, /setSessionTab\('activity'\); setPanelOpen\(true\)/);
   for (const entry of ['重置会话', '编辑此会话指令', '管理此会话技能']) assert.ok(screen.includes(entry));
   assert.match(screen, /<SessionPanel sessionId="main"/);
@@ -101,7 +103,8 @@ test('新闻直接追加不可信引用到 main 原稿，不发送、不改变�
   assert.match(chats.get('main').draft, /可继续编辑$/);
   nav.returnToArticle();
   assert.equal(nav.state.page, 'news'); assert.equal(newsSnapshot.selectedArticleId, article.id);
-  assert.match(screen, /label="返回文章" onPress=\{returnToArticle\}/);
+  assert.match(screen, /onReturnArticle=\{chatReturn === 'news' \? returnToArticle : undefined\}/);
+  assert.match(read('workspace/FloatingCompanion.tsx'), /accessibilityLabel="返回文章" onPress=\{onReturnArticle\}/);
   // 回调沙箱没有发送/API 函数；若开始自动发送，上面的执行就会失败。
 });
 test('维护或重置未明时新闻引用不丢稿、不悄悄打开聊天', () => {
