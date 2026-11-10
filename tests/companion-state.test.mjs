@@ -51,5 +51,5 @@ test('WorkspaceScreen 用运行事实驱动形象并短暂保留终态', () => {
   assert.match(screen, /pendingStatus: currentState\.pendingSubmission\?\.status/);
   assert.match(screen, /lastOutcome: !mainRuntime\.running && recentOutcome \? recentOutcome : undefined/);
   assert.match(screen, /clearTimer = setTimeout\(\(\) => setRecentOutcome\(undefined\), COMPANION_OUTCOME_MS\)/);
-  assert.match(screen, /<MuseCompanion state=\{companion\} size=\{64\} offline=\{!mainRuntime\.synchronized\}/);
+  assert.match(screen, /<MuseCompanion state=\{companion\} size=\{72\} offline=\{!mainRuntime\.synchronized\}/);
 });

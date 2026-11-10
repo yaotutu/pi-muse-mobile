@@ -1,8 +1,8 @@
 /**
- * 助手虚拟形象：按真实运行状态切换冰蓝企鹅姿态图，并用 Reanimated 播放状态动效。
+ * 助手虚拟形象：按真实运行状态切换 3D 助手姿态图，并用 Reanimated 播放有限次状态动效。
  *
- * 素材为 docs/assets/avatar 的八张 512px 状态图（docs/avatar.md 的 T1 基准）；
- * 视频素材未接入（白底、非循环，未达验收），先用程序动效表达状态。
+ * 素材为八张 512px 透明底状态图（idle/thinking/responding/working/waiting-approval/success/error/stopped）；
+ * 动效仅作状态强化并在有限次数后静止，保持界面可读与无障碍稳定。
  * 无障碍：状态经 accessibilityLabel 传达；系统减弱动效时保持静态姿态，不用动画冒充进度。
  */
 import { useEffect } from 'react';
@@ -50,16 +50,23 @@ export function MuseCompanion({
 
   const scale = useSharedValue(1);
   const translateX = useSharedValue(0);
+  const translateY = useSharedValue(0);
   const rotate = useSharedValue(0);
 
   useEffect(() => {
+    cancelAnimation(scale); cancelAnimation(translateX); cancelAnimation(translateY); cancelAnimation(rotate);
     if (reduced) {
-      cancelAnimation(scale); cancelAnimation(translateX); cancelAnimation(rotate);
       scale.value = withTiming(1, { duration: 160 });
       translateX.value = withTiming(0, { duration: 160 });
+      translateY.value = withTiming(0, { duration: 160 });
       rotate.value = withTiming(0, { duration: 160 });
       return;
     }
+    // 切换状态先平滑复位上一状态的变换，避免 stopped 倾角或偏置残留到下一状态。
+    scale.value = withTiming(1, { duration: 120 });
+    translateX.value = withTiming(0, { duration: 120 });
+    translateY.value = withTiming(0, { duration: 120 });
+    rotate.value = withTiming(0, { duration: 120 });
     const ease = Easing.inOut(Easing.quad);
     // 动效按状态播放有限次数后停在对应姿态：既能表达状态，也保证窗口最终静止，
     // 否则持续动画会让无障碍树永不 idle，原生自动化与辅助功能读取都会失效。
@@ -89,21 +96,34 @@ export function MuseCompanion({
         ));
         break;
       case 'working':
-        translateX.value = cycles(8, () => withSequence(
-          withTiming(-3, { duration: 160, easing: ease }),
-          withTiming(3, { duration: 160, easing: ease }),
+        // 奔跑感：横向微冲 + 轻微上下颠簸，最后回正。
+        translateX.value = cycles(6, () => withSequence(
+          withTiming(-2, { duration: 140, easing: ease }),
+          withTiming(2, { duration: 140, easing: ease }),
         ));
+        translateY.value = withSequence(
+          cycles(6, () => withSequence(
+            withTiming(-3, { duration: 140, easing: Easing.out(Easing.quad) }),
+            withTiming(0, { duration: 140, easing: Easing.in(Easing.quad) }),
+          )),
+          withTiming(0, { duration: 120 }),
+        );
         break;
       case 'waiting-approval':
         scale.value = cycles(5, () => withSequence(
-          withTiming(1.08, { duration: 300, easing: Easing.out(Easing.quad) }),
+          withTiming(1.07, { duration: 300, easing: Easing.out(Easing.quad) }),
           withTiming(1, { duration: 300, easing: Easing.in(Easing.quad) }),
         ));
         break;
       case 'success':
+        // 胜利起跳：向上跃起伴随轻度放大，然后平稳落回原位。
+        translateY.value = withSequence(
+          withTiming(-8, { duration: 200, easing: Easing.out(Easing.quad) }),
+          withTiming(0, { duration: 280, easing: Easing.inOut(Easing.quad) }),
+        );
         scale.value = withSequence(
-          withTiming(1.18, { duration: 220, easing: Easing.out(Easing.quad) }),
-          withTiming(1, { duration: 360, easing: Easing.inOut(Easing.quad) }),
+          withTiming(1.12, { duration: 200, easing: Easing.out(Easing.quad) }),
+          withTiming(1, { duration: 280, easing: Easing.inOut(Easing.quad) }),
         );
         break;
       case 'error':
@@ -115,14 +135,18 @@ export function MuseCompanion({
         );
         break;
       case 'stopped':
-        rotate.value = withTiming(-6, { duration: 420, easing: Easing.out(Easing.quad) });
+        translateY.value = withSequence(
+          withTiming(2, { duration: 220, easing: Easing.out(Easing.quad) }),
+          withTiming(0, { duration: 240, easing: Easing.inOut(Easing.quad) }),
+        );
         break;
     }
-  }, [display, reduced, scale, translateX, rotate]);
+  }, [display, reduced, scale, translateX, translateY, rotate]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [
       { translateX: translateX.value },
+      { translateY: translateY.value },
       { scale: scale.value },
       { rotate: `${rotate.value}deg` },
     ],

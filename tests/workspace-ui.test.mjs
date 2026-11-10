@@ -44,7 +44,7 @@ test('主题模块不依赖业务领域，独立偏好存储不接触连接地�
   assert.doesNotMatch(read('src/theme/device-preferences.ts'), /deviceConnectionStore|serverUrl|token|accessKey/);
 });
 
-test('聊天空态只留短句，状态化企鹅形象承接助手状态且不叠加生成气泡', () => {
+test('聊天空态只留短句，状态化形象承接助手状态且不叠加生成气泡', () => {
   const chat = read('src/workspace/ConversationView.tsx');
   assert.match(chat, /testID="conversation-empty"/);
   assert.match(chat, /有什么想聊的？/);

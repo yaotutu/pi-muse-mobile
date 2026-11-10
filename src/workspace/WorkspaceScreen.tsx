@@ -83,7 +83,7 @@ function DisconnectedWorkspace({ openConnection }: { openConnection: () => void 
     </> : <SettingsHome notice="尚未连接服务器，助手与资料设置需先连接；外观和应用更新可独立使用。"
       onOpen={(target) => { if (target === 'appearance') setAppearanceOpen(true); else openConnection(); }}
       onConnection={openConnection} onBrowser={openConnection} onUpdate={update?.open} /> :
-      <View style={{ flex: 1, padding: spacing[24], justifyContent: 'center', alignItems: 'center', gap: spacing[16] }}><MuseCompanion state="idle" size={88} offline />
+      <View style={{ flex: 1, padding: spacing[24], justifyContent: 'center', alignItems: 'center', gap: spacing[16] }}><MuseCompanion state="idle" size={96} offline />
         <Text style={{ ...workspaceTheme.typography.section, color: colors.ink }}>{tab === 'news' ? '新闻' : '消息'}</Text>
         <Text style={{ color: colors.muted, textAlign: 'center' }}>连接自己的 Pi Muse 服务器后开始聊天或阅读新闻。</Text><ActionButton label="服务器连接" onPress={openConnection} />
       </View>}
@@ -198,7 +198,7 @@ function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) 
       {page === 'messages' && <>
         {/* 形象居中：状态机驱动企鹅姿态与动效，操作入口收在形象点击里。 */}
         <View style={{ alignItems: 'center', paddingVertical: spacing[12], gap: spacing[4] }}>
-          <MuseCompanion state={companion} size={64} offline={!mainRuntime.synchronized}
+          <MuseCompanion state={companion} size={72} offline={!mainRuntime.synchronized}
             onPress={() => { Keyboard.dismiss(); setSessionTab('activity'); setPanelOpen(true); }} testID="workspace-avatar-status" />
           <Text numberOfLines={1} style={{ color: colors.muted, ...workspaceTheme.typography.caption }}>{mainStatusLabel}</Text>
         </View>
