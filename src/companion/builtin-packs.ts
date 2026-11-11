@@ -2,7 +2,7 @@ import type { CompanionPack } from './types';
 
 /** 开源默认包随应用打包；离线和下载失败时始终有完整八状态兜底。 */
 export const builtinPenguin: CompanionPack = {
-  key: 'builtin:penguin', name: '冰蓝企鹅', description: '默认内置助手形象',
+  key: 'builtin:penguin', name: '冰蓝企鹅', description: '与 Pi Muse 品牌一致的默认企鹅',
   images: {
     idle: require('../../assets/images/avatar/idle.png'),
     thinking: require('../../assets/images/avatar/thinking.png'),
