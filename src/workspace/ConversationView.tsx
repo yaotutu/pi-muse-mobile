@@ -26,6 +26,7 @@ import { ToolResultCard } from './ToolResultCard';
 import { ActionButton } from '../ui/ActionButton';
 import { MessageFeedbackControls } from '../feedback/MessageFeedbackControls';
 import { ScrollAnchorFrame, ScrollFollow } from './scroll-follow';
+import { COMPANION_CONTENT_INSET } from './FloatingCompanion';
 
 const { layout: l, radius: r, typography: t } = workspaceTheme;
 
@@ -556,9 +557,10 @@ const createStyles = (c: WorkspaceColors) =>
     hidden: { display: 'none' },
     chatScroll: { flex: 1 },
     messageList: {
-      // 二级聊天标题在正常布局中，正文不为悬浮导航预留空白。
+      // 顶部起排空间只作用于内容头部：短对话从悬浮形象下方开始；内容滚满一屏后
+      // 它随之滚出视口，阅读位置不保留任何可见空白。
       flexGrow: 1,
-      paddingTop: spacing[12],
+      paddingTop: COMPANION_CONTENT_INSET,
       paddingHorizontal: l.sidePadding,
       paddingBottom: spacing[24],
       gap: l.messageGap,

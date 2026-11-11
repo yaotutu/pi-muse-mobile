@@ -11,6 +11,12 @@ const OUTLINE_OFFSETS: readonly (readonly [number, number])[] = [
 ];
 /** 本体与描边副本共用同一尺寸，改一处理即整体生效。 */
 const AVATAR_SIZE = sizing[64];
+/**
+ * 聊天内容顶部起排空间：overlay 顶距 + 形象高 + 呼吸间隙。
+ * 内容不满一屏时第一条消息从形象下方开始；内容滚满一屏后该空间随之滚出视口，
+ * 不为悬浮形象保留任何可见高度。ConversationView 引用同一常量，二者不会漂移。
+ */
+export const COMPANION_CONTENT_INSET = spacing[8] + AVATAR_SIZE + spacing[12];
 
 /** 形象本体直接悬浮在聊天之上：无底座、无边框，只有一圈很淡的轮廓增强分离；外层不拦截列表触控。 */
 export function FloatingCompanion({ state, images, offline, statusLabel, onPress, onReturnArticle }: {

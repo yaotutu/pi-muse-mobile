@@ -128,7 +128,12 @@ test('聊天形象悬浮在完整聊天之上，不占标题栏或补等高留�
   assert.match(floating.getText(ast), /onReturnArticle=\{chatReturn === 'news' \? returnToArticle : undefined\}/);
   assert.match(floating.getText(ast), /Keyboard\.dismiss\(\); setSessionTab\('activity'\); setPanelOpen\(true\)/);
   assert.match(source, /<PrimaryTabBar/);
-  assert.match(read('src/workspace/ConversationView.tsx'), /paddingTop: spacing\[12\]/);
+  // 聊天内容顶部起排空间与悬浮形象共用同一常量：短对话从形象下方开始，
+  // 内容滚满一屏后该空间滚出视口，不为形象保留可见高度。
+  assert.match(read('src/workspace/ConversationView.tsx'), /import \{ COMPANION_CONTENT_INSET \} from '\.\/FloatingCompanion';/);
+  assert.match(read('src/workspace/ConversationView.tsx'), /paddingTop: COMPANION_CONTENT_INSET,/);
+  const companionSource = read('src/workspace/FloatingCompanion.tsx');
+  assert.match(companionSource, /export const COMPANION_CONTENT_INSET = spacing\[8\] \+ AVATAR_SIZE \+ spacing\[12\];/);
   assert.match(read('src/workspace/ConversationHost.tsx'), /!chatVisible && <View style={styles.owner}>{otherPage}/);
   assert.match(read('src/workspace/SessionPanel.tsx'), /<ScrollView\s+key={tab}/);
 });
