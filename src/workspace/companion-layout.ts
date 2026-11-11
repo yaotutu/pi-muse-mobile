@@ -1,11 +1,13 @@
-/** 形象与聊天共用纯几何，聊天不反向依赖悬浮 UI。所有坐标相对安全区顶部。 */
-export const COMPANION_SIZE = 64;
-export const COMPANION_TOP = 8;
-export const COMPANION_STATUS_LINE_HEIGHT = 18;
-export const COMPANION_STATUS_GAP = 4;
-export const COMPANION_STATUS_PADDING = 4;
+import { sizing, spacing, workspaceTheme } from '../ui/tokens';
+
+/** 形象与聊天共用纯几何，聊天不反向依赖悬浮 UI。所有坐标相对安全区顶部，数值派生自主题 token。 */
+export const COMPANION_SIZE = sizing[64];
+export const COMPANION_TOP = spacing[8];
+export const COMPANION_STATUS_LINE_HEIGHT = workspaceTheme.typography.caption.lineHeight;
+export const COMPANION_STATUS_GAP = spacing[4];
+export const COMPANION_STATUS_PADDING = spacing[4];
 export const COMPANION_CONTENT_INSET = COMPANION_TOP + COMPANION_SIZE + COMPANION_STATUS_GAP
-  + COMPANION_STATUS_LINE_HEIGHT + COMPANION_STATUS_PADDING * 2 + 12;
+  + COMPANION_STATUS_LINE_HEIGHT + COMPANION_STATUS_PADDING * 2 + spacing[12];
 export const COMPANION_TRANSITION_MS = 280;
 
 /** 状态只显示一行，但随系统字体增高；起排留白仍在 ScrollView 内容中随内容滚走。 */

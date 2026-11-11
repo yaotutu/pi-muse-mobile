@@ -32,8 +32,7 @@ const { layout: l, radius: r, typography: t } = workspaceTheme;
 
 function useStyles() {
   const { colors } = useTheme();
-  const { fontScale } = useWindowDimensions();
-  return useMemo(() => createStyles(colors, fontScale), [colors, fontScale]);
+  return useMemo(() => createStyles(colors), [colors]);
 }
 
 export type ConversationViewProps = {
@@ -66,6 +65,9 @@ export function ConversationView({
   const runtime = useSessionRuntime(sessionId);
   const connection = useServiceConnection();
   const styles = useStyles();
+  // 字体缩放只影响列表顶部起排空间；订阅留在本组件，不随每条消息扩散。
+  const { fontScale } = useWindowDimensions();
+  const messageListStyle = useMemo(() => [styles.messageList, { paddingTop: companionContentInset(fontScale) }], [styles, fontScale]);
   const { colors } = useTheme();
   const scroll = useRef<ScrollViewInstance>(null);
   const scrollFollow = useRef(new ScrollFollow());
@@ -263,7 +265,7 @@ export function ConversationView({
           ref={scroll}
           style={styles.chatScroll}
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={styles.messageList}
+          contentContainerStyle={messageListStyle}
           showsVerticalScrollIndicator={false}
           onScroll={(event) => {
             if (!visible) return;
@@ -552,16 +554,16 @@ export function Message({ message, delivery, feedbackScope }: {
   );
 }
 
-const createStyles = (c: WorkspaceColors, fontScale: number) =>
+const createStyles = (c: WorkspaceColors) =>
   StyleSheet.create({
     chatBody: { flex: 1, minHeight: 0 },
     hidden: { display: 'none' },
     chatScroll: { flex: 1 },
     messageList: {
-      // 顶部起排空间只作用于内容头部：短对话从悬浮形象下方开始；内容滚满一屏后
-      // 它随之滚出视口，阅读位置不保留任何可见空白。
+      // 顶部起排空间由 ConversationView 按当前字体缩放单独叠加：
+      // 短对话从悬浮形象下方开始；内容滚满一屏后它随之滚出视口，
+      // 阅读位置不保留任何可见空白。基准值见 companion-layout.ts。
       flexGrow: 1,
-      paddingTop: companionContentInset(fontScale),
       paddingHorizontal: l.sidePadding,
       paddingBottom: spacing[24],
       gap: l.messageGap,

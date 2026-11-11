@@ -3,12 +3,10 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import test from 'node:test';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
+import { flattenStyle, sandboxElement, transpileTsx } from './helpers/tsx-sandbox.mjs';
 
 const root = new URL('../', import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), 'utf8');
-// 组件沙箱测试共用：JSX 元素记录器与样式数组展平，避免各测试逐份重抄。
-const sandboxElement = (type, props) => ({ type, props });
-const flattenStyle = (value) => Object.assign({}, ...[value].flat(Infinity).filter(Boolean));
 
 test('唯一主题由根级持有，聊天与独立更新弹层共享而不重建业务 Provider', () => {
   const source = read('src/app/AppRoot.tsx');
@@ -89,7 +87,7 @@ test('形象选择器三主题共享语义色、48dp 预览与可伸展单选行
       '../theme/ThemeProvider': { useTheme: () => ({ colors }) }, '../theme/tokens': tokens,
       '../ui/ActionButton': { ActionButton: 'ActionButton' }, '../ui/Surfaces': { Card: 'Card' },
     };
-    const output = ts.transpileModule(source, { fileName: 'CompanionPicker.tsx', compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022 } }).outputText;
+    const output = transpileTsx('CompanionPicker.tsx', source);
     runInNewContext(output, { exports, require: (name) => { assert.ok(Object.hasOwn(modules, name), name); return modules[name]; } });
     const tree = expand(exports.CompanionPicker()); const all = nodes(tree);
     const radios = all.filter((node) => node.props.accessibilityRole === 'radio'); assert.equal(radios.length, connected ? 2 : 1);
@@ -126,7 +124,11 @@ test('形象展开层与唯一聊天为稳定兄弟，起排几何不反向依�
   assert.doesNotMatch(hosts[0].attributes.getText(ast), /\bkey=|padding|margin/);
   assert.doesNotMatch(source, /<Sheet/);
   assert.match(read('src/workspace/ConversationView.tsx'), /import \{ companionContentInset \} from '\.\/companion-layout';/);
-  assert.match(read('src/workspace/ConversationView.tsx'), /paddingTop: companionContentInset\(fontScale\),/);
+  // 字体缩放订阅只留在 ConversationView，Message 复用的 useStyles 不随消息数量扩散。
+  assert.match(read('src/workspace/ConversationView.tsx'), /paddingTop: companionContentInset\(fontScale\) \}\], \[styles, fontScale\]\)/);
+  const view = read('src/workspace/ConversationView.tsx');
+  assert.match(view, /const createStyles = \(c: WorkspaceColors\) =>/);
+  assert.doesNotMatch(view, /createStyles\(colors, fontScale\)/);
   assert.match(read('src/workspace/ConversationHost.tsx'), /!chatVisible && <View style={styles.owner}>{otherPage}/);
   assert.match(read('src/workspace/SessionPanel.tsx'), /<ScrollView\s+key={tab}/);
 });

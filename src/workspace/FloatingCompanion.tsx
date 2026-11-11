@@ -8,7 +8,7 @@ import { useReducedMotion } from '../ui/use-reduced-motion';
 import { ArrowLeft } from 'lucide-react-native';
 import { IconControl } from '../ui/IconControl';
 import { MuseCompanion } from './MuseCompanion';
-import { COMPANION_SIZE, COMPANION_TOP, COMPANION_STATUS_GAP, COMPANION_STATUS_LINE_HEIGHT, COMPANION_STATUS_PADDING,
+import { COMPANION_SIZE, COMPANION_TOP, COMPANION_STATUS_GAP, COMPANION_STATUS_PADDING,
   COMPANION_TRANSITION_MS, companionContentInset, companionSurfaceGeometry } from './companion-layout';
 
 /** 同一个人物、同一个顶部锚点。仅展开柔和表面和内容，不重挂人物或下层聊天。 */
@@ -37,7 +37,6 @@ export function FloatingCompanion({ state, images, offline, statusLabel, visible
   }, [onCollapsed]);
   useLayoutEffect(() => {
     const version = ++generation.current;
-    cancelAnimation(progress);
     if (reduced || !visible) {
       progress.value = expanded && visible ? 1 : 0;
       if (!expanded) finishCollapse(version);
@@ -100,7 +99,7 @@ const styles = StyleSheet.create({
   entry: { alignItems: 'center', maxWidth: '100%', minWidth: workspaceTheme.layout.controlSize, minHeight: workspaceTheme.layout.controlSize, gap: COMPANION_STATUS_GAP },
   status: { maxWidth: '100%', borderRadius: workspaceTheme.radius.round, borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: spacing[12], paddingVertical: COMPANION_STATUS_PADDING },
-  statusText: { fontSize: 12, lineHeight: COMPANION_STATUS_LINE_HEIGHT, flexShrink: 1 },
+  statusText: { ...workspaceTheme.typography.caption, flexShrink: 1 },
   returnArticle: { position: 'absolute', top: COMPANION_TOP, left: spacing[12], minHeight: workspaceTheme.layout.controlSize },
   content: { position: 'absolute', left: 0, right: 0, bottom: 0 },
   contentContainer: { flexGrow: 1, padding: spacing[16], gap: spacing[12], width: '100%', maxWidth: workspaceTheme.layout.maxWidth, alignSelf: 'center' },

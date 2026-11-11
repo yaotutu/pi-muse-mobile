@@ -8,17 +8,14 @@ import * as tokens from '../src/ui/tokens.ts';
 import { availableThemes } from '../src/theme/registry.ts';
 import { mainProgressLabel } from '../src/chat/message-delivery.ts';
 import { companionState } from '../src/workspace/companion-state.ts';
+import { flattenStyle as style, sandboxElement as jsx, transpileTsx } from './helpers/tsx-sandbox.mjs';
 
-const jsx = (type, props, key) => ({ type, props, key });
 const nodes = (tree) => tree == null || typeof tree !== 'object' ? [] : Array.isArray(tree) ? tree.flatMap(nodes) : [tree, ...nodes(tree.props?.children)];
 const byId = (tree, id) => nodes(tree).find((node) => node.props?.testID === id);
-const style = (value) => Object.assign({}, ...[value].flat(Infinity).filter(Boolean).map((part) => part.__animated ? part.__animated() : part));
 const source = (file) => readFileSync(new URL('../src/workspace/' + file, import.meta.url), 'utf8');
 function load(file, modules, extra = '') {
   const exports = {};
-  const output = ts.transpileModule(source(file) + extra, { fileName: file, compilerOptions: {
-    module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022,
-  } }).outputText;
+  const output = transpileTsx(file, source(file) + extra);
   runInNewContext(output, { exports, require: (name) => {
     assert.ok(Object.hasOwn(modules, name), `missing ${name}`); return modules[name];
   }, setTimeout, clearTimeout });
@@ -269,7 +266,11 @@ test('实际转译Workspace：唯一ConversationHost/稳定Floating无key，审�
   assert.equal(find('FloatingCompanion').props.expanded, false); assert.equal(find('FloatingCompanion').props.presented, true);
   find('FloatingCompanion').props.onCollapsed(); tree = h.render();
   assert.equal(find('FloatingCompanion').props.presented, false);
-  find('FloatingCompanion').props.onToggle(); tree = h.render(); assert.equal(h.back(), true); tree = h.render();
+  find('FloatingCompanion').props.onToggle(); tree = h.render();
+  // 完全收起后重新打开回到动态默认页；关闭中途重开才保留当前 tab（上方已覆盖）。
+  assert.equal(find('FloatingCompanion').props.expanded, true);
+  assert.equal(nodes(find('FloatingCompanion')).find((n) => n.type === 'SessionPanel').props.tab, 'activity');
+  assert.equal(h.back(), true); tree = h.render();
   assert.equal(find('FloatingCompanion').props.expanded, false); find('FloatingCompanion').props.onCollapsed(); tree = h.render();
   for (const page of ['news', 'settings', 'messages']) {
     find('PrimaryTabBar').props.onSelectTab(page); tree = h.render();

@@ -65,7 +65,7 @@ test('移除列表/新建/切换/改名/删除入口，Pi Muse 形象居中承�
   assert.match(screen, /<FloatingCompanion state=\{companion\} images=\{activePack\.images\} offline=\{!mainRuntime\.synchronized\}/);
   assert.match(screen, /visible=\{page === 'messages' && !browserOpen && !resetTarget\}/);
   assert.match(screen, /statusLabel=\{mainStatusLabel\}/);
-  assert.match(screen, /else openCompanion\(panelPresented \? sessionTab : 'activity'\)/);
+  // 打开/关闭与 tab 保留由 companion-presence 的实际回调测试覆盖，不绑定 toggle 的私有写法。
   for (const entry of ['重置会话', '编辑此会话指令', '管理此会话技能']) assert.ok(screen.includes(entry));
   assert.match(screen, /<SessionPanel sessionId="main"/);
   assert.match(screen, /chats\.resetSession\(id, clearSchedules\)/);

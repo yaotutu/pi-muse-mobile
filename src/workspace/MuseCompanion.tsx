@@ -41,7 +41,6 @@ export function MuseCompanion({
   const rotate = useSharedValue(0);
 
   useEffect(() => {
-    cancelAnimation(scale); cancelAnimation(translateX); cancelAnimation(translateY); cancelAnimation(rotate);
     if (reduced) {
       scale.value = 1;
       translateX.value = 0;
