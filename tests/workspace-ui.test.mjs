@@ -144,7 +144,7 @@ test('悬浮形象无底座直接浮在聊天上，局部命中、完整状态�
     const element = (type, props) => ({ type, props });
     const modules = {
       'react/jsx-runtime': { jsx: element, jsxs: element },
-      'react-native': { Pressable: 'Pressable', View: 'View', Text: 'Text', StyleSheet: { create: (value) => value } },
+      'react-native': { Pressable: 'Pressable', View: 'View', Text: 'Text', Image: 'Image', StyleSheet: { create: (value) => value } },
       '../theme/ThemeProvider': { useTheme: () => ({ colors }) }, '../ui/tokens': tokens,
       './MuseCompanion': { MuseCompanion: 'MuseCompanion' },
     };
@@ -168,7 +168,19 @@ test('悬浮形象无底座直接浮在聊天上，局部命中、完整状态�
     assert.ok(avatarButton.props.accessibilityLabel.includes(statusLabel));
     assert.ok(avatarButton.props.accessibilityLabel.includes('打开主聊天操作'));
     avatarButton.props.onPress();
-    const avatar = avatarButton.props.children;
+    // 很淡的轮廓：8 向 tint 副本勾出剪影，透明度足够低，不构成底座或阴影块。
+    const children = avatarButton.props.children.flat(Infinity);
+    const outlines = children.filter((child) => child && child.type === 'Image');
+    assert.equal(outlines.length, 8);
+    for (const copy of outlines) {
+      const style = flattenStyle(copy.props.style);
+      assert.equal(style.tintColor, colors.ink);
+      assert.ok(style.opacity > 0 && style.opacity <= 0.2);
+      assert.equal(style.width, tokens.sizing[64]); assert.equal(style.height, tokens.sizing[64]);
+      assert.ok(Array.isArray(style.transform) && style.transform.length === 2);
+      assert.equal(copy.props.accessible, false);
+    }
+    const avatar = children.find((child) => child && child.type === 'MuseCompanion');
     assert.equal(avatar.props.state, 'working'); assert.equal(avatar.props.images, images); assert.equal(avatar.props.offline, true);
     assert.ok(avatar.props.size >= 64 && avatar.props.size <= 72); assert.equal(avatar.props.onPress, undefined);
     if (withReturn) {
