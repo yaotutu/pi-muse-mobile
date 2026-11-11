@@ -274,7 +274,7 @@ test('换服清缓存并重设独立偏好，渲染切换不改聊天 key、不�
   assert.equal((workspace.match(/<MuseCompanion[^>]*images=\{activePack\.images\}/g) ?? []).length, 1);
   // 接线锚点在 primary-nav；这里只钉形象包独有约束：不重建聊天、图片流经两处形象渲染。
   assert.doesNotMatch(workspace, /<FloatingCompanion[^>]*key=/);
-  assert.match(read('src/workspace/FloatingCompanion.tsx'), /<MuseCompanion state=\{state\} size=\{AVATAR_SIZE\} offline=\{offline\} images=\{images\}/);
+  assert.match(read('src/workspace/FloatingCompanion.tsx'), /<MuseCompanion state=\{state\} size=\{COMPANION_SIZE\} offline=\{offline\} images=\{images\}/);
   const store = read('src/companion/companion-store.ts'); assert.doesNotMatch(store, /cancelPending|\.retire\(|\.suspend\(|chatSession|resetSession|stopRun/);
   const preferences = read('src/companion/device-preferences.ts'); assert.match(preferences, /pi-muse-mobile-companion-v1/); assert.doesNotMatch(preferences, /serverUrl|accessKey|token|deviceConnection/);
   const cache = read('src/companion/companion-cache.ts'); assert.match(cache, /Platform\.OS === 'web'/); assert.match(cache, /URL\.revokeObjectURL/); assert.match(cache, /new Directory\(Paths\.cache, 'companions'\)/);

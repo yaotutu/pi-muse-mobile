@@ -7,7 +7,7 @@ import type { NotificationReference } from '../notifications/contracts';
  */
 import { AlertCircle, ArrowDown, ArrowUp, CircleHelp, ShieldAlert, Square } from 'lucide-react-native';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type LayoutRectangle, type ScrollViewInstance, type TextStyle, type ViewInstance } from 'react-native';
+import { Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View, type LayoutRectangle, type ScrollViewInstance, type TextStyle, type ViewInstance } from 'react-native';
 import { useApi } from '../api/ApiProvider';
 import { pickMessageAttachments } from '../attachments/picker';
 import { AttachmentAction, AttachmentStrip, MessageAttachments } from '../attachments/AttachmentViews';
@@ -26,13 +26,14 @@ import { ToolResultCard } from './ToolResultCard';
 import { ActionButton } from '../ui/ActionButton';
 import { MessageFeedbackControls } from '../feedback/MessageFeedbackControls';
 import { ScrollAnchorFrame, ScrollFollow } from './scroll-follow';
-import { COMPANION_CONTENT_INSET } from './FloatingCompanion';
+import { companionContentInset } from './companion-layout';
 
 const { layout: l, radius: r, typography: t } = workspaceTheme;
 
 function useStyles() {
   const { colors } = useTheme();
-  return useMemo(() => createStyles(colors), [colors]);
+  const { fontScale } = useWindowDimensions();
+  return useMemo(() => createStyles(colors, fontScale), [colors, fontScale]);
 }
 
 export type ConversationViewProps = {
@@ -551,7 +552,7 @@ export function Message({ message, delivery, feedbackScope }: {
   );
 }
 
-const createStyles = (c: WorkspaceColors) =>
+const createStyles = (c: WorkspaceColors, fontScale: number) =>
   StyleSheet.create({
     chatBody: { flex: 1, minHeight: 0 },
     hidden: { display: 'none' },
@@ -560,7 +561,7 @@ const createStyles = (c: WorkspaceColors) =>
       // 顶部起排空间只作用于内容头部：短对话从悬浮形象下方开始；内容滚满一屏后
       // 它随之滚出视口，阅读位置不保留任何可见空白。
       flexGrow: 1,
-      paddingTop: COMPANION_CONTENT_INSET,
+      paddingTop: companionContentInset(fontScale),
       paddingHorizontal: l.sidePadding,
       paddingBottom: spacing[24],
       gap: l.messageGap,

@@ -43,10 +43,10 @@ export function MuseCompanion({
   useEffect(() => {
     cancelAnimation(scale); cancelAnimation(translateX); cancelAnimation(translateY); cancelAnimation(rotate);
     if (reduced) {
-      scale.value = withTiming(1, { duration: 160 });
-      translateX.value = withTiming(0, { duration: 160 });
-      translateY.value = withTiming(0, { duration: 160 });
-      rotate.value = withTiming(0, { duration: 160 });
+      scale.value = 1;
+      translateX.value = 0;
+      translateY.value = 0;
+      rotate.value = 0;
       return;
     }
     // 切换状态先平滑复位上一状态的变换，避免 stopped 倾角或偏置残留到下一状态。
@@ -128,6 +128,7 @@ export function MuseCompanion({
         );
         break;
     }
+    return () => { cancelAnimation(scale); cancelAnimation(translateX); cancelAnimation(translateY); cancelAnimation(rotate); };
   }, [display, reduced, scale, translateX, translateY, rotate]);
 
   const animatedStyle = useAnimatedStyle(() => ({

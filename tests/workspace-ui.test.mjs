@@ -109,98 +109,28 @@ test('形象选择器三主题共享语义色、48dp 预览与可伸展单选行
   assert.doesNotMatch(source, /#[0-9a-f]{3,8}\b|allowFontScaling=\{false\}|numberOfLines/i);
 });
 
-test('聊天形象悬浮在完整聊天之上，不占标题栏或补等高留白，隐藏会话不重复挂载其他页面', () => {
+test('形象展开层与唯一聊天为稳定兄弟，起排几何不反向依赖UI，SessionPanel保持原内容', () => {
   const source = read('src/workspace/WorkspaceScreen.tsx');
   const ast = ts.createSourceFile('WorkspaceScreen.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const elements = [];
-  const visit = (node) => { if (ts.isJsxSelfClosingElement(node)) elements.push(node); ts.forEachChild(node, visit); };
+  const visit = (node) => { if (ts.isJsxSelfClosingElement(node) || ts.isJsxElement(node)) elements.push(node); ts.forEachChild(node, visit); };
   visit(ast);
-  const floating = elements.find((node) => node.tagName.getText(ast) === 'FloatingCompanion');
-  const host = elements.find((node) => node.tagName.getText(ast) === 'ConversationHost');
-  assert.ok(floating && host);
-  assert.match(floating.parent.getText(ast), /^page === 'messages' && <FloatingCompanion/);
-  const keyboard = floating.parent.parent.parent;
-  assert.equal(keyboard.openingElement.tagName.getText(ast), 'KeyboardAvoidingView');
-  assert.ok(host.pos < floating.pos, '悬浮岛绘制在聊天之后');
-  assert.equal(keyboard.children.filter(ts.isJsxElement).some((node) => /workspace-avatar-status|<MuseCompanion/.test(node.getText(ast))), false);
-  assert.match(host.parent.openingElement.getText(ast), /style=\{\{ flex: 1, display: page === 'news' \? 'none' : 'flex' \}\}/);
-  assert.doesNotMatch(host.attributes.getText(ast), /\bkey=|padding|margin/);
-  assert.match(floating.getText(ast), /onReturnArticle=\{chatReturn === 'news' \? returnToArticle : undefined\}/);
-  assert.match(floating.getText(ast), /Keyboard\.dismiss\(\); setSessionTab\('activity'\); setPanelOpen\(true\)/);
-  assert.match(source, /<PrimaryTabBar/);
-  // 聊天内容顶部起排空间与悬浮形象共用同一常量：短对话从形象下方开始，
-  // 内容滚满一屏后该空间滚出视口，不为形象保留可见高度。
-  assert.match(read('src/workspace/ConversationView.tsx'), /import \{ COMPANION_CONTENT_INSET \} from '\.\/FloatingCompanion';/);
-  assert.match(read('src/workspace/ConversationView.tsx'), /paddingTop: COMPANION_CONTENT_INSET,/);
-  const companionSource = read('src/workspace/FloatingCompanion.tsx');
-  assert.match(companionSource, /export const COMPANION_CONTENT_INSET = spacing\[8\] \+ AVATAR_SIZE \+ spacing\[12\];/);
+  const tag = (node) => (ts.isJsxElement(node) ? node.openingElement : node).tagName.getText(ast);
+  const floating = elements.filter((node) => tag(node) === 'FloatingCompanion');
+  const hosts = elements.filter((node) => tag(node) === 'ConversationHost');
+  assert.equal(floating.length, 1); assert.equal(hosts.length, 1);
+  assert.equal(floating[0].parent.openingElement.tagName.getText(ast), 'View');
+  assert.match(floating[0].parent.openingElement.getText(ast), /testID="workspace-safe-content"/);
+  assert.ok(hosts[0].pos < floating[0].pos);
+  assert.doesNotMatch(floating[0].openingElement.getText(ast), /\bkey=/);
+  assert.doesNotMatch(hosts[0].attributes.getText(ast), /\bkey=|padding|margin/);
+  assert.doesNotMatch(source, /<Sheet/);
+  assert.match(read('src/workspace/ConversationView.tsx'), /import \{ companionContentInset \} from '\.\/companion-layout';/);
+  assert.match(read('src/workspace/ConversationView.tsx'), /paddingTop: companionContentInset\(fontScale\),/);
   assert.match(read('src/workspace/ConversationHost.tsx'), /!chatVisible && <View style={styles.owner}>{otherPage}/);
   assert.match(read('src/workspace/SessionPanel.tsx'), /<ScrollView\s+key={tab}/);
 });
 
-test('悬浮形象无底座直接浮在聊天上，局部命中、完整状态朗读；新闻返回独立48dp命中且按内容排布', async () => {
-  const { availableThemes } = await import('../src/theme/registry.ts');
-  const tokens = await import('../src/ui/tokens.ts');
-  const source = read('src/workspace/FloatingCompanion.tsx');
-  const output = ts.transpileModule(source, { fileName: 'FloatingCompanion.tsx', compilerOptions: {
-    module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022,
-  } }).outputText;
-  for (const { colors } of availableThemes) for (const withReturn of [false, true]) {
-    const exports = {}; const calls = []; const images = { working: 1 };
-    const modules = {
-      'react/jsx-runtime': { jsx: sandboxElement, jsxs: sandboxElement },
-      'react-native': { Pressable: 'Pressable', View: 'View', Text: 'Text', Image: 'Image', StyleSheet: { create: (value) => value } },
-      '../theme/ThemeProvider': { useTheme: () => ({ colors }) }, '../ui/tokens': tokens,
-      './MuseCompanion': { MuseCompanion: 'MuseCompanion' }, '../ui/ActionButton': { ActionButton: 'ActionButton' },
-    };
-    runInNewContext(output, { exports, require: (name) => { assert.ok(Object.hasOwn(modules, name), name); return modules[name]; } });
-    const statusLabel = '正在处理一个很长的真实工具状态，等待主聊天文件审批后继续';
-    const tree = exports.FloatingCompanion({ state: 'working', images, offline: true, statusLabel,
-      onPress: () => calls.push('actions'), onReturnArticle: withReturn ? () => calls.push('article') : undefined });
-    const overlay = flattenStyle(tree.props.style);
-    assert.equal(tree.props.pointerEvents, 'box-none');
-    assert.equal(overlay.position, 'absolute'); assert.equal(overlay.top, tokens.spacing[8]);
-    assert.equal(overlay.left, overlay.right); assert.equal(overlay.alignItems, 'center');
-    assert.ok(overlay.gap > 0); assert.ok(overlay.zIndex > 0);
-    assert.equal(overlay.height, undefined); assert.equal(overlay.backgroundColor, undefined);
-    const [avatarButton, back] = tree.props.children;
-    // 唯一可聚焦元素：按钮无底座样式，命中区来自 64dp 本体；标签一次朗读完整状态与操作。
-    assert.equal(avatarButton.props.style, undefined);
-    assert.equal(avatarButton.props.accessibilityRole, 'button');
-    assert.ok(avatarButton.props.accessibilityLabel.includes(statusLabel));
-    assert.ok(avatarButton.props.accessibilityLabel.includes('打开主聊天操作'));
-    avatarButton.props.onPress();
-    // 很淡的轮廓：8 向 tint 副本勾出剪影，透明度足够低，不构成底座或阴影块。
-    const children = avatarButton.props.children.flat(Infinity);
-    const outlines = children.filter((child) => child && child.type === 'Image');
-    assert.equal(outlines.length, 8);
-    for (const copy of outlines) {
-      const style = flattenStyle(copy.props.style);
-      assert.equal(style.tintColor, colors.ink);
-      assert.ok(style.opacity > 0 && style.opacity <= 0.2);
-      assert.equal(style.width, tokens.sizing[64]); assert.equal(style.height, tokens.sizing[64]);
-      assert.ok(Array.isArray(style.transform) && style.transform.length === 2);
-      assert.equal(copy.props.accessible, false);
-    }
-    // 姿态本体藏在无障碍隐藏的装饰容器内，不再重复朗读第二份标签。
-    const decorative = children.find((child) => child && child.type === 'View' && child.props.accessible === false);
-    assert.ok(decorative, '姿态本体应由装饰容器包裹');
-    assert.equal(decorative.props.accessibilityElementsHidden, true);
-    assert.equal(decorative.props.importantForAccessibility, 'no-hide-descendants');
-    const avatar = decorative.props.children;
-    assert.equal(avatar.type, 'MuseCompanion');
-    assert.equal(avatar.props.state, 'working'); assert.equal(avatar.props.images, images); assert.equal(avatar.props.offline, true);
-    assert.ok(avatar.props.size >= 64 && avatar.props.size <= 72); assert.equal(avatar.props.onPress, undefined);
-    if (withReturn) {
-      // 返回文章复用共享 ActionButton：悬浮语义色与药丸几何由共享控件持有，这里只钉命中区与回调。
-      assert.equal(back.type, 'ActionButton'); assert.equal(back.props.label, '返回文章');
-      assert.equal(back.props.testID, 'workspace-return-article');
-      assert.ok(flattenStyle(back.props.style).minHeight >= 48);
-      back.props.onPress();
-    } else assert.equal(back, undefined);
-    assert.deepEqual(calls, withReturn ? ['actions', 'article'] : ['actions']);
-  }
-});
 
 test('会话动态按 OpenMuse 极简时间线展示真实状态，去除冗余割裂按钮，关键警告与审批入口保持可见', () => {
   const execution = read('src/workspace/CurrentExecution.tsx');

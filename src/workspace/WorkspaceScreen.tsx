@@ -29,7 +29,6 @@ import { useTheme } from '../theme/ThemeProvider';
 import { ThemePicker } from '../theme/ThemePicker';
 import { ThemeStatusBar } from '../theme/ThemeStatusBar';
 import { ActionButton } from '../ui/ActionButton';
-import { Sheet } from '../ui/Sheet';
 import { spacing, workspaceTheme } from '../ui/tokens';
 import { ConnectionPanel } from './ConnectionPanel';
 import { ConversationHost } from './ConversationHost';
@@ -126,7 +125,20 @@ function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) 
   const [newsManaging, setNewsManaging] = useState(false); const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [notice, setNotice] = useState<string>();
   const [resetTarget, setResetTarget] = useState<string>(); const [resetError, setResetError] = useState<string>();
-  const [sessionTab, setSessionTab] = useState<SessionTab>('activity'); const [panelOpen, setPanelOpen] = useState(false);
+  const [sessionTab, setSessionTab] = useState<SessionTab>('activity');
+  const [companionPresence, setCompanionPresence] = useState({ expanded: false, presented: false });
+  const panelOpen = companionPresence.expanded; const panelPresented = companionPresence.presented;
+  const setPanelOpen = (expanded: boolean) => setCompanionPresence((old) => ({ ...old, expanded }));
+  const onCompanionCollapsed = useCallback(() => setCompanionPresence((old) =>
+    old.expanded || !old.presented ? old : { expanded: false, presented: false }), []);
+  const openCompanion = (tab: SessionTab) => { Keyboard.dismiss(); setSessionTab(tab); setCompanionPresence({ expanded: true, presented: true }); };
+  const toggleCompanion = () => {
+    Keyboard.dismiss();
+    if (panelOpen) setPanelOpen(false);
+    else openCompanion(panelPresented ? sessionTab : 'activity');
+  };
+  // 离开消息或打开更高优先级操作时立即隐藏展开态，不将它带入设置/重置弹层。
+  const leaveCompanion = () => setCompanionPresence({ expanded: false, presented: false });
   const [refreshVersions, setRefreshVersions] = useState<Record<string, number>>({});
   const refresh = useCallback((id: string) => { void store.reload(); goals.invalidate(); setRefreshVersions((old) => ({ ...old, [id]: (old[id] ?? 0) + 1 })); }, [store, goals]);
   useEffect(() => {
@@ -155,7 +167,7 @@ function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) 
   };
   const back = () => {
     if (keyboardVisible) { Keyboard.dismiss(); return true; } if (browserOpen) { browser.close(); setBrowserOpen(false); return true; }
-    if (panelOpen) { setPanelOpen(false); return true; } if (settingsPage) { backSettings(); return true; }
+    if (panelPresented) { setPanelOpen(false); return true; } if (settingsPage) { backSettings(); return true; }
     if (page === 'news' && newsState.selectedArticleId) { news.closeArticle(); return true; } if (page === 'news' && newsManaging) { setNewsManaging(false); return true; }
     if (page === 'messages' && chatReturn === 'news') { returnToArticle(); return true; } return false;
   };
@@ -174,7 +186,7 @@ function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) 
     pendingApprovals: mainPendingApprovals,
     pending: currentState.pendingSubmission?.status,
     runObserved: mainRuntime.runs.some((run) => run.runId === currentState.pendingSubmission?.runId),
-  });
+  }) || '就绪';
   // 形象状态机直接消费同一路运行事实；终态姿态只在新近结束时短暂出现。
   const activeRun = mainRuntime.runs.find((run) => run.status === 'running');
   const companion = companionState({
@@ -201,12 +213,14 @@ function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) 
   const otherPage = page === 'settings' ? settingsPage === 'files' ? <FilesScreen onBack={backSettings} /> : settingsPage === 'news-sources' ? <NewsSourcesPage store={news} onBack={backSettings} />
       : settingsPage ? <><PageHeader title={SETTINGS_PAGE_TITLES[settingsPage]} backLabel="返回设置" onBack={backSettings} />
         {settingsPage === 'goals' || settingsPage === 'activity' ? settingsContent : <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: spacing[20], gap: spacing[12] }}>{settingsContent}</ScrollView>}</> : rootSettings : null;
-  const root = isRootWorkspacePage({ page, settingsSubpage: settingsPage, newsDetailOpen: !!newsState.selectedArticleId, newsManaging, sessionMounted: panelOpen || browserOpen || !!resetTarget });
+  const root = isRootWorkspacePage({ page, settingsSubpage: settingsPage, newsDetailOpen: !!newsState.selectedArticleId, newsManaging, sessionMounted: panelPresented || browserOpen || !!resetTarget });
   return <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} testID="workspace-screen"><ThemeStatusBar />
+    {/* 普通相对容器位于安全区内容内，避免绝对定位直接相对 SafeAreaView 边界压进状态栏。 */}
+    <View style={{ flex: 1 }} testID="workspace-safe-content">
     {/* 键盘 screenY 是窗口坐标，避让布局在 SafeAreaView 内；补上顶部安全区才能对齐，不能在 composer 再减一次键盘高度。 */}
-    <View style={{ flex: 1 }} pointerEvents={browserOpen ? 'none' : 'auto'} accessibilityElementsHidden={browserOpen} importantForAccessibility={browserOpen ? 'no-hide-descendants' : 'auto'}><KeyboardAvoidingView style={{ flex: 1 }} keyboardVerticalOffset={insets.top} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled={Platform.OS !== 'web'}>
+    <View style={{ flex: 1 }} pointerEvents={browserOpen || panelPresented ? 'none' : 'auto'} accessibilityElementsHidden={browserOpen || panelPresented} importantForAccessibility={browserOpen || panelPresented ? 'no-hide-descendants' : 'auto'}><KeyboardAvoidingView style={{ flex: 1 }} keyboardVerticalOffset={insets.top} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled={Platform.OS !== 'web'}>
       <View style={{ flex: 1, display: page === 'news' ? 'none' : 'flex' }}><ConversationHost chatVisible={page === 'messages'} otherPage={otherPage} refreshVersions={refreshVersions}
-        onSettled={refresh} onBindingMismatch={store.reload} openConnection={openConnection} onOpenApprovals={() => { setSessionTab('approvals'); setPanelOpen(true); }} onContinueNotification={(reference) => {
+        onSettled={refresh} onBindingMismatch={store.reload} openConnection={openConnection} onOpenApprovals={() => openCompanion('approvals')} onContinueNotification={(reference) => {
           const unavailable = notificationContinuationNotice(reference.sessionId);
           if (unavailable) { setNotice(unavailable); return; }
           if (!chats.canWrite('main')) { setNotice('主聊天正在维护或结果待核对，暂不能追加通知引用。'); return; }
@@ -223,16 +237,24 @@ function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) 
       {notice && <View style={{ padding: spacing[12] }}><Text accessibilityRole="alert" style={{ color: colors.warning }}>{notice}</Text><ActionButton label="关闭提示" onPress={() => setNotice(undefined)} /></View>}
       {companionNotice && page !== 'settings' && <Text accessibilityLiveRegion="polite" style={{ padding: spacing[12], color: colors.warning }}>{companionNotice}</Text>}
       {!keyboardVisible && root && <PrimaryTabBar currentTab={page} onSelectTab={(tab) => { Keyboard.dismiss(); setChatReturn('messages'); setSettingsPage(null); setPage(tab); }} />}
-      {page === 'messages' && <FloatingCompanion state={companion} images={activePack.images} offline={!mainRuntime.synchronized}
-        statusLabel={mainStatusLabel} onPress={() => { Keyboard.dismiss(); setSessionTab('activity'); setPanelOpen(true); }}
-        onReturnArticle={chatReturn === 'news' ? returnToArticle : undefined} />}
     </KeyboardAvoidingView></View>
-    {panelOpen && <Sheet title="主聊天操作" onClose={() => setPanelOpen(false)}>
-      <ActionButton label="重置会话" disabled={currentState.resetting || currentState.resetUncertain} onPress={() => { setResetError(undefined); setPanelOpen(false); setResetTarget('main'); }} />
+    <FloatingCompanion state={companion} images={activePack.images} offline={!mainRuntime.synchronized}
+      visible={page === 'messages' && !browserOpen && !resetTarget} expanded={panelOpen} presented={panelPresented}
+      statusLabel={mainStatusLabel} onToggle={toggleCompanion} onCollapsed={onCompanionCollapsed}
+      onReturnArticle={chatReturn === 'news' ? returnToArticle : undefined}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing[12] }}>
+        <Text accessibilityRole="header" style={{ ...workspaceTheme.typography.section, color: colors.ink, flexShrink: 1 }}>Pi Muse</Text>
+        <ActionButton label="收起" accessibilityLabel="收起形象展开态" onPress={() => setPanelOpen(false)} testID="workspace-companion-close" />
+      </View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing[8] }}>
+        <ActionButton label="重置会话" disabled={currentState.resetting || currentState.resetUncertain} onPress={() => { setResetError(undefined); leaveCompanion(); setResetTarget('main'); }} />
+        <ActionButton label="编辑此会话指令" onPress={() => { leaveCompanion(); setPage('settings'); setSettingsPage('rules'); }} />
+        <ActionButton label="管理此会话技能" onPress={() => { leaveCompanion(); setPage('settings'); setSettingsPage('skills'); }} />
+      </View>
       {currentState.resetUncertain && <ActionButton label="回读核对会话操作" onPress={() => void checkReset()} />}{currentState.resetUncertain && currentState.resetReviewed && <ActionButton label="已核对重置结果，恢复此会话" onPress={() => chats.acknowledgeReset('main')} />}
-      <ActionButton label="编辑此会话指令" onPress={() => { setPanelOpen(false); setPage('settings'); setSettingsPage('rules'); }} /><ActionButton label="管理此会话技能" onPress={() => { setPanelOpen(false); setPage('settings'); setSettingsPage('skills'); }} />
-      <View style={{ minHeight: 300 }}><SessionPanel sessionId="main" tab={sessionTab} onTab={setSessionTab} /></View>
-    </Sheet>}
+      <View style={{ flex: 1, minHeight: 300 }}><SessionPanel sessionId="main" tab={sessionTab} onTab={setSessionTab} /></View>
+    </FloatingCompanion>
+    </View>
     {resetTarget && <ResetSessionDialog sessionId={resetTarget} available={!!connection?.enabled} error={resetError} onCancel={() => setResetTarget(undefined)} onConfirm={async (id, clearSchedules) => {
       try { const result = await chats.resetSession(id, clearSchedules); if (!result) return; store.update(result.session); runtime.forgetSession(id); jobs.invalidate(); monitors.invalidate(); await approvals.store.refreshPending(); setResetTarget(undefined); refresh(id); }
       catch (error) { setResetError(error instanceof Error ? error.message : '重置失败'); }

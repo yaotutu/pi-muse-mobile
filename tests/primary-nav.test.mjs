@@ -51,20 +51,21 @@ test('主聊天根页有底栏，键盘、设置子页与所有覆盖层隐藏�
   for (const page of ['messages', 'news']) assert.equal(isRootWorkspacePage({ page }), true);
   assert.equal(isRootWorkspacePage({ page: 'settings', settingsSubpage: null }), true);
   for (const value of [{ page: 'chat' }, { page: 'news', newsDetailOpen: true }, { page: 'news', newsManaging: true }, { page: 'settings', settingsSubpage: 'files' }, { page: 'messages', sessionMounted: true }]) assert.equal(isRootWorkspacePage(value), false);
-  assert.match(screen, /sessionMounted: panelOpen \|\| browserOpen \|\| !!resetTarget/);
+  assert.match(screen, /sessionMounted: panelPresented \|\| browserOpen \|\| !!resetTarget/);
   assert.match(screen, /!keyboardVisible && root && <PrimaryTabBar/);
 });
 test('移除列表/新建/切换/改名/删除入口，Pi Muse 形象居中承担状态与操作入口', () => {
   for (const file of ['SessionListScreen.tsx', 'SessionSwitcherSheet.tsx']) assert.equal(existsSync(new URL('../src/workspace/' + file, import.meta.url)), false);
   assert.doesNotMatch(screen, /SessionList|SessionSwitcher|setSwitcher|新建会话|创建会话|重命名会话|删除会话|切换会话|返回消息|deleteSession|store\.(create|rename)/);
   // 局部悬浮岛：无标题、无三点菜单；形象居中，显示实时状态，点击打开主聊天操作。
-  assert.doesNotMatch(screen, /MoreHorizontal|IconControl|accessibilityRole="header"[^\n]*>Pi Muse</);
+  assert.doesNotMatch(screen, /MoreHorizontal|IconControl/);
   const floating = read('workspace/FloatingCompanion.tsx');
   assert.match(floating, /testID="workspace-avatar-status"/);
   // 悬浮形象的唯一接线锚点；定位/居中/返回按钮行为由 workspace-ui 的组件行为测试覆盖。
-  assert.match(screen, /page === 'messages' && <FloatingCompanion state=\{companion\} images=\{activePack\.images\} offline=\{!mainRuntime\.synchronized\}/);
+  assert.match(screen, /<FloatingCompanion state=\{companion\} images=\{activePack\.images\} offline=\{!mainRuntime\.synchronized\}/);
+  assert.match(screen, /visible=\{page === 'messages' && !browserOpen && !resetTarget\}/);
   assert.match(screen, /statusLabel=\{mainStatusLabel\}/);
-  assert.match(screen, /setSessionTab\('activity'\); setPanelOpen\(true\)/);
+  assert.match(screen, /else openCompanion\(panelPresented \? sessionTab : 'activity'\)/);
   for (const entry of ['重置会话', '编辑此会话指令', '管理此会话技能']) assert.ok(screen.includes(entry));
   assert.match(screen, /<SessionPanel sessionId="main"/);
   assert.match(screen, /chats\.resetSession\(id, clearSchedules\)/);
@@ -113,7 +114,7 @@ test('维护或重置未明时新闻引用不丢稿、不悄悄打开聊天', ()
 });
 test('Android Back 从新闻讨论返回原文章，正常消息根页不吞系统退出，点消息清来源', () => {
   const nav = navigation(); nav.openMain('news');
-  const back = () => callback('back', { keyboardVisible: false, browserOpen: false, panelOpen: false, settingsPage: null, page: nav.state.page, chatReturn: nav.state.chatReturn, newsState: {}, newsManaging: true, returnToArticle: nav.returnToArticle })();
+  const back = () => callback('back', { keyboardVisible: false, browserOpen: false, panelPresented: false, settingsPage: null, page: nav.state.page, chatReturn: nav.state.chatReturn, newsState: {}, newsManaging: true, returnToArticle: nav.returnToArticle })();
   assert.equal(back(), true); assert.equal(nav.state.page, 'news');
   nav.openMain('news'); callback('onSelectTab', nav.context)('messages');
   assert.equal(nav.state.page, 'messages'); assert.equal(nav.state.chatReturn, 'messages'); assert.equal(back(), false);

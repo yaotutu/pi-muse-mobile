@@ -33,7 +33,7 @@ node --import ./tests/register-source.mjs --test --test-name-pattern="新闻源 
 客户端不执行模型、不保存服务端业务事实的第二份权威副本。模型、会话、文件和调度均归后端，当前服务端契约是接入依据。
 
 - **根与连接**：`src/app/AppRoot.tsx` 组装安全区、主题、错误边界和独立更新。`WorkspaceScreen.tsx` 内的 ConnectedWorkspace 按 `workspaceKey` 创建 ApiProvider/业务 Provider；换服务器销毁整个连接子树。不要按主题或当前页面重建它。
-- **导航与聊天持有者**：本地状态导航，无 Expo Router/react-navigation。一级仅「消息 / 新闻 / 设置」，冷启动的消息根页直接进入唯一 main 主聊天，不等待会话目录成功。正常主聊天保留底栏，文章、设置子页、键盘和覆盖层隐藏底栏。顶部 Pi Muse 形象静态展示，操作入口保留重置、指令/技能、当前执行/审批/历史；专题会话 UI 暂缓，无列表、新建、切换、改名或删除入口。ConversationHost 切 Tab 隐藏不卸载 main SSE，重置 epoch 或换服仍按原生命周期释放。
+- **导航与聊天持有者**：本地状态导航，无 Expo Router/react-navigation。一级仅「消息 / 新闻 / 设置」，冷启动的消息根页直接进入唯一 main 主聊天，不等待会话目录成功。正常主聊天保留底栏，文章、设置子页、键盘和覆盖层隐藏底栏。顶部透明人物与真实短状态组成同一入口，围绕持续挂载的同一人物原位展开/收起，保留重置、指令/技能、当前执行/审批/历史；专题会话 UI 暂缓，无列表、新建、切换、改名或删除入口。ConversationHost 切 Tab 隐藏不卸载 main SSE，重置 epoch 或换服仍按原生命周期释放。
 - **协议层**：`src/api/` 提供 HTTP 与严格响应解析；`src/chat/` 聚合聊天 AG-UI SSE。`RuntimeProvider` 是连接内唯一通知流订阅者，领域 Store 消费通知失效并回读 REST，不各开第二条 SSE 或全局轮询。
 - **Store 生命周期**：领域 Store 负责读取、写入、草稿、未明结果和迟到响应保护，组件订阅并展示。close/隐藏通常只停止读取，dispose 才释放连接状态；不要用页面局部 state 重复持有业务草稿。
 - **会话所有权**：`src/sessions/session-store.ts` 持有权威目录与创建/改名状态，`chat-session-store.ts` 持有每会话草稿、附件、未确认提交、指令/技能与维护锁；公开 sessionId 与重置后变化的 piSessionId 严格区分。

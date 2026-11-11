@@ -34,7 +34,7 @@ Pi Muse Mobile is the official Expo / React Native client for a self-hosted, sin
 
 ### A companion that shows what is happening
 
-A transparent character floats over the chat, with a faint silhouette outline instead of a pedestal. Eight poses show idle, thinking, responding, working, awaiting approval, success, error, and stopped states. Light, finite animations reinforce those states; these are pose images, not videos, and reduced-motion settings are respected. Tap the character to open main-chat actions, execution, approvals, and history.
+A transparent character and compact status label float together over chat without a large backing card. Eight poses and the status label show idle, thinking, responding, working, awaiting approval, success, error, and stopped states. Light, finite animations reinforce those states; these are pose images, not videos, and reduced-motion settings are respected. Tap the character or status to expand main-chat actions, execution, approvals, and history around that same character. Closing reverses the transition without recreating the chat.
 
 The built-in penguin is always available as a fallback. In **Settings → Companion**, select a complete custom pack installed on your server. The app downloads all eight state images before switching, and a complete same-server cache remains usable offline. Missing or incomplete packs fall back to the penguin with a notice. Changing servers clears the old pack cache and selection; choosing a character does not create another assistant or restart the chat stream.
 
