@@ -6,6 +6,9 @@ import ts from 'typescript';
 
 const root = new URL('../', import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), 'utf8');
+// 组件沙箱测试共用：JSX 元素记录器与样式数组展平，避免各测试逐份重抄。
+const sandboxElement = (type, props) => ({ type, props });
+const flattenStyle = (value) => Object.assign({}, ...[value].flat(Infinity).filter(Boolean));
 
 test('唯一主题由根级持有，聊天与独立更新弹层共享而不重建业务 Provider', () => {
   const source = read('src/app/AppRoot.tsx');
@@ -73,11 +76,10 @@ test('形象选择器三主题共享语义色、48dp 预览与可伸展单选行
   const nodes = (tree) => tree == null || typeof tree !== 'object' ? [] : Array.isArray(tree) ? tree.flatMap(nodes) : [tree, ...nodes(tree.props.children)];
   const expand = (tree) => tree == null || typeof tree !== 'object' ? tree : Array.isArray(tree) ? Array.from(tree, expand) :
     typeof tree.type === 'function' ? expand(tree.type(tree.props)) : { ...tree, props: { ...tree.props, children: expand(tree.props.children) } };
-  const style = (value) => Object.assign({}, ...[value].flat(Infinity).filter(Boolean));
   for (const { colors } of availableThemes) for (const connected of [true, false]) {
-    const calls = []; const exports = {}; const element = (type, props) => ({ type, props });
+    const calls = []; const exports = {};
     const modules = {
-      'react/jsx-runtime': { jsx: element, jsxs: element },
+      'react/jsx-runtime': { jsx: sandboxElement, jsxs: sandboxElement },
       'react-native': { Image: 'Image', Pressable: 'Pressable', Text: 'Text', View: 'View', StyleSheet: { create: (value) => value } },
       'lucide-react-native': { Check: 'Check', Circle: 'Circle' },
       '../companion/builtin-packs': { builtinPacks: [pack] },
@@ -92,13 +94,13 @@ test('形象选择器三主题共享语义色、48dp 预览与可伸展单选行
     const tree = expand(exports.CompanionPicker()); const all = nodes(tree);
     const radios = all.filter((node) => node.props.accessibilityRole === 'radio'); assert.equal(radios.length, connected ? 2 : 1);
     for (const row of radios) {
-      assert.ok(style(row.props.style({ pressed: false })).minHeight >= 48);
-      assert.equal(style(row.props.style({ pressed: false })).backgroundColor, colors.surface);
-      assert.equal(style(row.props.style({ pressed: true })).backgroundColor, colors.selected);
+      assert.ok(flattenStyle(row.props.style({ pressed: false })).minHeight >= 48);
+      assert.equal(flattenStyle(row.props.style({ pressed: false })).backgroundColor, colors.surface);
+      assert.equal(flattenStyle(row.props.style({ pressed: true })).backgroundColor, colors.selected);
       row.props.onPress();
     }
     assert.deepEqual(calls, connected ? ['builtin:penguin', 'server:plumber'] : ['builtin:penguin']);
-    const preview = all.find((node) => node.type === 'Image'); assert.equal(style(preview.props.style).width, 48); assert.equal(style(preview.props.style).height, 48);
+    const preview = all.find((node) => node.type === 'Image'); assert.equal(flattenStyle(preview.props.style).width, 48); assert.equal(flattenStyle(preview.props.style).height, 48);
     const text = all.filter((node) => node.type === 'Text'); assert.ok(text.some((node) => node.props.children === '下载失败'));
     assert.ok(text.some((node) => String(node.props.children).includes('缺少 working')));
     if (!connected) assert.ok(text.some((node) => String(node.props.children).includes('请先连接服务器')));
@@ -138,15 +140,13 @@ test('悬浮形象无底座直接浮在聊天上，局部命中、完整状态�
   const output = ts.transpileModule(source, { fileName: 'FloatingCompanion.tsx', compilerOptions: {
     module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022,
   } }).outputText;
-  const flattenStyle = (value) => Object.assign({}, ...[value].flat(Infinity).filter(Boolean));
   for (const { colors } of availableThemes) for (const withReturn of [false, true]) {
     const exports = {}; const calls = []; const images = { working: 1 };
-    const element = (type, props) => ({ type, props });
     const modules = {
-      'react/jsx-runtime': { jsx: element, jsxs: element },
+      'react/jsx-runtime': { jsx: sandboxElement, jsxs: sandboxElement },
       'react-native': { Pressable: 'Pressable', View: 'View', Text: 'Text', Image: 'Image', StyleSheet: { create: (value) => value } },
       '../theme/ThemeProvider': { useTheme: () => ({ colors }) }, '../ui/tokens': tokens,
-      './MuseCompanion': { MuseCompanion: 'MuseCompanion' },
+      './MuseCompanion': { MuseCompanion: 'MuseCompanion' }, '../ui/ActionButton': { ActionButton: 'ActionButton' },
     };
     runInNewContext(output, { exports, require: (name) => { assert.ok(Object.hasOwn(modules, name), name); return modules[name]; } });
     const statusLabel = '正在处理一个很长的真实工具状态，等待主聊天文件审批后继续';
@@ -159,11 +159,8 @@ test('悬浮形象无底座直接浮在聊天上，局部命中、完整状态�
     assert.ok(overlay.gap > 0); assert.ok(overlay.zIndex > 0);
     assert.equal(overlay.height, undefined); assert.equal(overlay.backgroundColor, undefined);
     const [avatarButton, back] = tree.props.children;
-    // 形象本体透明悬浮：无底色、无边框、无阴影，也不绘制可见状态文字。
-    const face = flattenStyle(avatarButton.props.style);
-    assert.equal(face.backgroundColor, undefined); assert.equal(face.borderWidth, undefined);
-    assert.equal(face.shadowColor, undefined); assert.equal(face.elevation, undefined);
-    assert.ok(face.minHeight >= 48); assert.equal(face.opacity, undefined);
+    // 唯一可聚焦元素：按钮无底座样式，命中区来自 64dp 本体；标签一次朗读完整状态与操作。
+    assert.equal(avatarButton.props.style, undefined);
     assert.equal(avatarButton.props.accessibilityRole, 'button');
     assert.ok(avatarButton.props.accessibilityLabel.includes(statusLabel));
     assert.ok(avatarButton.props.accessibilityLabel.includes('打开主聊天操作'));
@@ -180,16 +177,20 @@ test('悬浮形象无底座直接浮在聊天上，局部命中、完整状态�
       assert.ok(Array.isArray(style.transform) && style.transform.length === 2);
       assert.equal(copy.props.accessible, false);
     }
-    const avatar = children.find((child) => child && child.type === 'MuseCompanion');
+    // 姿态本体藏在无障碍隐藏的装饰容器内，不再重复朗读第二份标签。
+    const decorative = children.find((child) => child && child.type === 'View' && child.props.accessible === false);
+    assert.ok(decorative, '姿态本体应由装饰容器包裹');
+    assert.equal(decorative.props.accessibilityElementsHidden, true);
+    assert.equal(decorative.props.importantForAccessibility, 'no-hide-descendants');
+    const avatar = decorative.props.children;
+    assert.equal(avatar.type, 'MuseCompanion');
     assert.equal(avatar.props.state, 'working'); assert.equal(avatar.props.images, images); assert.equal(avatar.props.offline, true);
     assert.ok(avatar.props.size >= 64 && avatar.props.size <= 72); assert.equal(avatar.props.onPress, undefined);
     if (withReturn) {
-      assert.equal(back.type, 'Pressable'); assert.equal(back.props.accessibilityRole, 'button');
-      assert.equal(back.props.accessibilityLabel, '返回文章');
-      const returnStyle = flattenStyle(back.props.style({ pressed: false }));
-      assert.ok(returnStyle.minHeight >= 48); assert.equal(returnStyle.backgroundColor, colors.surface);
-      assert.equal(returnStyle.position, undefined, '返回入口在悬浮容器内顺排，不覆盖形象');
-      assert.equal(returnStyle.height, undefined, '大字体可自然增高'); assert.equal(returnStyle.maxWidth, '100%');
+      // 返回文章复用共享 ActionButton：悬浮语义色与药丸几何由共享控件持有，这里只钉命中区与回调。
+      assert.equal(back.type, 'ActionButton'); assert.equal(back.props.label, '返回文章');
+      assert.equal(back.props.testID, 'workspace-return-article');
+      assert.ok(flattenStyle(back.props.style).minHeight >= 48);
       back.props.onPress();
     } else assert.equal(back, undefined);
     assert.deepEqual(calls, withReturn ? ['actions', 'article'] : ['actions']);

@@ -6,7 +6,7 @@
  * 无障碍：状态经 accessibilityLabel 传达；系统减弱动效时保持静态姿态，不用动画冒充进度。
  */
 import { useEffect } from 'react';
-import { Image, ImageStyle, Pressable, StyleSheet, type ImageSourcePropType } from 'react-native';
+import { Image, ImageStyle, StyleSheet, View, type ImageSourcePropType } from 'react-native';
 import { builtinPenguin } from '../companion/builtin-packs';
 import Animated, {
   Easing,
@@ -24,16 +24,12 @@ export function MuseCompanion({
   images = builtinPenguin.images,
   size = 64,
   offline = false,
-  onPress,
-  testID,
 }: {
   state: CompanionState;
   images?: Record<CompanionState, ImageSourcePropType>;
   size?: number;
   /** 通知流未同步时整体降饱和度，不猜测运行状态。 */
   offline?: boolean;
-  onPress?: () => void;
-  testID?: string;
 }) {
   const reduced = useReducedMotion();
   // 终态时长由上层状态机（WorkspaceScreen 的 recentOutcome）控制；本组件只渲染当前状态。
@@ -145,15 +141,12 @@ export function MuseCompanion({
 
   const description = describeCompanionState(display);
   const label = offline ? `${description}（离线）` : description;
-  return <Pressable
-    accessibilityRole={onPress ? 'button' : 'image'}
-    accessibilityLabel={`Pi Muse 形象：${label}${onPress ? '，打开主聊天操作' : ''}`}
-    onPress={onPress} disabled={!onPress} testID={testID ?? 'muse-companion'}
-    style={companionStyles.press}>
+  // 纯姿态展示：交互与完整运行状态标签由悬浮层（FloatingCompanion）唯一持有，嵌入时整体对无障碍隐藏。
+  return <View accessibilityRole="image" accessibilityLabel={`Pi Muse 形象：${label}`} style={companionStyles.press}>
     <Animated.View style={[companionStyles.frame, { width: size, height: size }, animatedStyle]}>
       <Image source={images[display]} style={[companionStyles.image, offline && { opacity: 0.5 } as ImageStyle]} />
     </Animated.View>
-  </Pressable>;
+  </View>;
 }
 
 const companionStyles = StyleSheet.create({
