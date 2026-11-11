@@ -6,144 +6,94 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-**The official React Native client for [Pi Muse](https://github.com/yaotutu/pi-muse), a self-hosted personal agent built on [pi](https://github.com/earendil-works/pi)**
+**Your [Pi Muse](https://github.com/yaotutu/pi-muse) assistant, in a native mobile app**
 
-Keep your main chat with Pi Muse, approvals, recurring jobs, web monitors, goals, memory, and workspace files within reach—without moving your model credentials from your own server.
+Start a conversation, read something worth discussing, and keep plans moving—while model access and your assistant's data stay on your own server.
 
-[Features](#features) · [Quick start](#quick-start) · [Develop from source](#develop-from-source) · [Security](#security-and-data-handling) · [Documentation](#documentation)
+**[Download Android APK](https://github.com/yaotutu/pi-muse-mobile/releases/latest/download/app-release.apk)** · [Release notes](https://github.com/yaotutu/pi-muse-mobile/releases/latest) · [Deploy the server](https://github.com/yaotutu/pi-muse#quick-start)
 
-[![Pi Muse server](https://img.shields.io/badge/Server-pi--muse-2563EB?style=flat-square)](https://github.com/yaotutu/pi-muse)
-[![Android releases](https://img.shields.io/badge/Android-APK-3DDC84?style=flat-square)](https://github.com/yaotutu/pi-muse-mobile/releases/latest)
-[![License](https://img.shields.io/badge/License-MIT-black?style=flat-square)](LICENSE)
+[The experience](#the-experience) · [Install and connect](#install-and-connect) · [Develop from source](#develop-from-source) · [Safety and limits](#safety-and-limits)
 
-<br/>
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/yaotutu/pi-muse/main/docs/assets/showcase.png" width="98%" alt="Pi Muse Mobile product overview">
-</p>
+<img src="https://raw.githubusercontent.com/yaotutu/pi-muse/main/docs/assets/showcase.png" width="98%" alt="Pi Muse Android app: main chat, news, and settings">
 
 </div>
 
----
+Screenshots use demo data; the companion pack shown is a replaceable example. This README describes current source capabilities. Check the selected release's notes and assets rather than assuming the latest published APK includes every feature shown here.
 
-Pi Muse Mobile is a native mobile interface, not a standalone assistant. It connects to a Pi Muse server over the product's public HTTP/SSE API; the server owns assistant execution, model access, sessions, files, schedules, approvals, and other persistent state.
+Individual screens: [Main chat](https://raw.githubusercontent.com/yaotutu/pi-muse/main/docs/assets/screenshots/chat.png) · [News](https://raw.githubusercontent.com/yaotutu/pi-muse/main/docs/assets/screenshots/news.png) · [Settings](https://raw.githubusercontent.com/yaotutu/pi-muse/main/docs/assets/screenshots/settings.png)
 
-The release workflow builds a signed Android APK and an unsigned iOS IPA for users who have their own iOS signing credentials. Check the assets attached to your chosen Release; the IPA is not directly installable. iOS otherwise remains a source-development target, and the Expo web output is a development preview rather than the official Pi Muse web client.
+## The experience
 
-## Features
+Pi Muse Mobile is the official Expo / React Native client for a self-hosted, single-user AI assistant built on [pi](https://github.com/earendil-works/pi). It is a native interface, not an embedded web chat or a standalone model runner. A reachable Pi Muse server is required.
 
-### One assistant, one main chat
+### Three tabs, one place to talk
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/yaotutu/pi-muse/main/docs/assets/chat-preview.png" width="88%" alt="Chat with Markdown and tool cards in an earlier version">
-</p>
+- **Messages** opens the permanent `main` chat directly, with no conversation picker. Stream replies, read native Markdown and copyable code, attach images or text, and leave feedback on saved messages. Switching tabs preserves the main chat and its draft. The server has topic-session foundations, but topic-session UI is not currently exposed in the app.
+- **News** is a global RSS reading and recommendation feed, with article details, Like, Dislike, and Save. **Discuss** adds an editable, explicitly untrusted article citation to the existing main draft; it never sends automatically. Return to the article when you are done.
+- **Settings** keeps controls out of the chat log: assistant identity, instructions and skills, memory and Dream, goals, scheduled tasks, web monitors, workspace files, activity and approvals, connection, appearance, and updates.
 
-- **Streaming chat.** Messages run through the server's AG-UI SSE stream and are consumed natively by the client. The chat stream is separate from the shared notification stream used for runtime status.
-- **Persistent message feedback.** Long-press a saved user or assistant message bubble for a nearby reaction pill and a compact Comments/Copy menu. A small badge on the bubble edge shows an existing Like/Dislike or comment count; messages without feedback have no badge. Reactions are mutually exclusive and undoable, while comments open in a separate view for adding, editing, and deleting. Edited and deleted comment text remains in the server ledger. Feedback never starts a model run or writes model preferences. Incomplete streaming messages are not eligible, and resetting or deleting a conversation clears its feedback.
-- **Purposeful Markdown rendering.** Assistant messages render headings, emphasis, lists, quotations, tables, and copyable code blocks with native React Native components. Markdown images are not loaded, HTML is shown as literal text, and message/search links are restricted to credential-free HTTP(S).
-- **Transparent tool cards.** Tool activity displays the projections returned by the server. The client does not infer hidden details or mark a result as saved or approved merely because a tool returned.
-- **Direct main chat.** Messages opens the permanent main chat immediately, without a session picker or waiting for the session directory. The Pi Muse image is static; Main Chat Actions retains reset, instructions, skills, execution, approvals, and history. Topic-session UI is deferred: there are no list, create, switch, rename, or delete entries. Existing server sessions, histories, and shared workspace files remain untouched.
-- **Useful attachments.** A message can contain up to four attachments: PNG, JPEG, GIF, or WebP images and recognized UTF-8 text/code files. The total attachment limit is 8 MiB, and text attachments together may contain at most 100,000 bytes. PDF, Office, archives, and other binary formats are not supported. Image understanding requires the server's configured model to support vision; the client does not silently switch models.
+### A companion that shows what is happening
 
-### Jobs, activity, and web monitoring
+A transparent character floats over the chat, with a faint silhouette outline instead of a pedestal. Eight poses show idle, thinking, responding, working, awaiting approval, success, error, and stopped states. Light, finite animations reinforce those states; these are pose images, not videos, and reduced-motion settings are respected. Tap the character to open main-chat actions, execution, approvals, and history.
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/yaotutu/pi-muse/main/docs/assets/tasks-preview.png" width="88%" alt="Activity history, scheduled jobs, and web monitors">
-</p>
+The built-in penguin is always available as a fallback. In **Settings → Companion**, select a complete custom pack installed on your server. The app downloads all eight state images before switching, and a complete same-server cache remains usable offline. Missing or incomplete packs fall back to the penguin with a notice. Changing servers clears the old pack cache and selection; choosing a character does not create another assistant or restart the chat stream.
 
-- **Model-registered activity history.** Browse and filter registered activities, inspect status and steps, and refresh manually. Only activities reported by the server are shown; the client does not invent progress data.
-- **Scheduled jobs.** Create one-time or daily jobs through chat, then manage their content, schedule, and lifecycle in the Settings task page. Pause, resume, cancel, retry failed work, and delete with explicit confirmation. Job controls manage schedule state; they are not a precise Stop button for an already-running conversation run.
-- **Web monitors.** Create monitors through chat and use the Settings task page to filter, refresh, pause, resume, stop, or delete them. Pi Muse Mobile shows cumulative checks and the most recent check, notification, or fetch error; the server does not expose a per-check history.
+<img src="https://raw.githubusercontent.com/yaotutu/pi-muse/main/docs/assets/screenshots/companions.png" width="360" alt="Choosing a replaceable assistant companion pack">
 
-### Long-term goals and milestones
+Choose **Classic Blue, Morning Light, or Midnight Black** for the rest of the interface. Theme and companion preferences are local to the device.
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/yaotutu/pi-muse/main/docs/assets/goals-preview.png" width="52%" alt="Long-term goals and milestone tracking">
-</p>
+### Review work, not just replies
 
-- **Turn plans into checkpoints.** Create goals, organize milestones, and track progress such as `1 / 3`.
-- **Maintain progress deliberately.** Change goal status and check milestones yourself; the app does not infer completion from chat text.
-- **Keep the view focused.** Filter by state and sort by creation or update time before confirming irreversible deletions.
+- **File approvals.** Review the full before/after content for each assistant `write` or `edit`, then explicitly approve that exact file version. An expired, cancelled, rejected, or changed-file approval cannot commit. The model has no shell tool; all sessions share one flat workspace.
+- **Tasks and goals.** Create one-time or daily tasks through chat, then manage them in Settings. Public-page monitors have a minimum five-minute interval. Track goals and check off milestones deliberately; the app does not infer completion from chat text.
+- **Memory and working style.** Edit assistant and user profiles, main-chat instructions and skills, and long-term memories. Inspect optional Dream maintenance and explicitly apply or dismiss its suggestions.
+- **The same real browser.** When the server's browser deployment is available, open its graphical Chrome through the app's WebView. The assistant and human viewer share that browser and login state. Chrome/noVNC availability and proxy limits depend on [server configuration](https://github.com/yaotutu/pi-muse/blob/main/docs/manual/en/browser-docker.md).
 
-### Session panel, approvals, and workspace files
+## Install and connect
 
-- **Session information.** Open Main Chat Actions or Activity & Approvals under Settings. Activity, Approvals, and execution History switch in place while the main chat stream stays mounted, including when switching tabs.
-- **Current execution and activity history.** Follow the current run, tool work, model-registered activities, progress, results, and related steps. Activity is not hidden model reasoning and is not represented as an archive of every chat run.
-- **Human-in-the-loop approvals.** Assistant-initiated file writes and edits require full before/after review and explicit confirmation. A stale approval cannot overwrite content that changed after the approval was created.
-- **One workspace.** Settings → Workspace Files opens the same flat workspace for every session. Browse directories, read full text, preview supported images, and download without overwriting same-name files. Manual saves require full before/after review and confirmation.
+### Android
 
-The three primary tabs are Messages, News, and Settings. Cold launch opens the main chat as the Messages root, with its input and bottom bar available. Article details, settings subpages, the keyboard, and overlays hide the bottom bar. News Discuss appends an editable, explicitly untrusted article citation to the existing main draft without selecting a session or sending automatically. Return to Article or Android Back returns to the original article; tapping Messages clears that origin. Notification continuation accepts only main references; other sessions show an unavailable notice rather than routing their references into main. Main cannot be deleted.
+1. [Deploy Pi Muse](https://github.com/yaotutu/pi-muse#quick-start) with a strong server AccessKey and a model endpoint supported by its configured pi provider. The app does not need your model API key.
+2. [Download the latest stable `app-release.apk`](https://github.com/yaotutu/pi-muse-mobile/releases/latest/download/app-release.apk), install it, and open the app. Android may ask you to allow installation from that source.
+3. Open **Server Connection** on the disconnected screen, or **Settings → Server Connection** when connected.
+4. Enter the server's base address reachable from the phone, such as `http://192.168.1.100:12330`, and the configured `server.accessKey`. Do not append `/api` or `/docs`; on a physical phone, `localhost` means the phone itself.
+5. Tap **Save**. The app verifies the address and AccessKey before saving. **Test Connection** is optional and does not save anything.
+6. Open **Messages** and send your first message. The model runs on the server; no client rebuild is needed to connect to your own deployment.
 
-### News reading
+HTTP is supported without a domain, certificate, or reverse proxy, but does not encrypt credentials, tokens, or conversation content. Prefer a trusted network and protect remote access appropriately. See the shared [Getting Started guide](https://github.com/yaotutu/pi-muse/blob/main/docs/manual/en/getting-started.md) for network setup and recovery.
 
-- **A lightweight reading feed.** The News view uses a single text column: source and Chinese-formatted local time, headline, and a two-line excerpt. Opening an article enters a full page showing full RSS text and recommendation reason with selectable text, and returning preserves the list position.
-- **Personal feedback.** Every article offers Like, Dislike, and Save directly — pinned to the bottom of the detail page so they stay one tap away while reading. Like and Dislike are mutually exclusive and can be toggled off; Save is independent. Disliking an article does not immediately remove it. The reader has no comments UI and does not delete historical comments stored on the server.
-- **Compact tools.** Choose Recommended or All from a menu, filter saved articles separately, and use More for source management, fetch status, and manual fetching. The article detail keeps only a back button in its toolbar; Discuss joins Like, Dislike, and Save in the pinned bottom bar. The client adds no click tracking, view counts, or interest extraction, and does not claim a successful feedback write has already changed recommendations.
+The packaged Android app can check stable GitHub releases and download APK updates; installation still requires Android's system confirmation. It is not an Expo OTA update path.
 
-### Global settings, memory, Dream, and themes
+### iOS and web
 
-- **Server connection management.** Save one reachable Pi Muse address, authenticate with the server AccessKey, and keep the resulting session token on the device. The plaintext AccessKey is not persisted by the client.
-- **Assistant and user profiles.** Edit the assistant name and tone plus global SOUL and USER profiles. Profile changes take effect on later conversations.
-- **Global long-term memory.** Search, create, edit, and delete memories shared across sessions. Refreshes happen when the page opens or returns to the foreground, after successful writes, or manually.
-- **Dream memory maintenance.** Inspect instance-global Dream status, review full pending suggestions and their source sessions, configure the global prompt and enable switch, trigger maintenance, and explicitly apply or dismiss suggestions.
-- **Three complete themes.** Choose Classic Blue, Morning Light, or Midnight Black. The selection is local, survives restarts, and never encodes server credentials.
-- **Android app updates.** The packaged Android app checks public GitHub releases, downloads stable APK assets, and hands installation to the Android system installer. If a check fails, including GitHub rate limiting, the update panel provides the official APK URL and a manual download button. Updates are not Expo OTA and are unavailable in Expo Go, web, or iOS builds.
-- **Current boundaries.** Voice input/transcription and lock-screen push notifications are not implemented. The client uses foreground SSE reconnection rather than claiming always-on background delivery.
+An `app-release-unsigned.ipa` is useful only when actually attached to the selected release and you have your own valid iOS signing credentials. It **cannot be installed directly**: re-sign it yourself before installation. This repository does not provide App Store or TestFlight distribution.
 
-## Quick start
+iOS is also a source-development target. Expo Web is a development preview, not the primary Pi Muse client or a replacement for native Android testing.
 
-### 1. Deploy Pi Muse first
+## Safety and limits
 
-Pi Muse Mobile requires a reachable Pi Muse server and cannot store your model provider key.
-
-Follow the [Pi Muse server quick start](https://github.com/yaotutu/pi-muse#quick-start) to deploy the server, configure its AccessKey, and connect an OpenAI-compatible model. Its runtime `/docs` and `/openapi.json` pages document the HTTP and SSE contracts. The same public API also allows terminals and other platforms to build their own clients; those clients are not part of this repository.
-
-### 2. Install the Android app
-
-1. Download the latest stable `app-release.apk` from [Pi Muse Mobile Releases](https://github.com/yaotutu/pi-muse-mobile/releases/latest).
-2. Install and open it on an Android device or emulator. Android may require you to approve installation from that source.
-3. Open **Settings -> Server Connection**.
-4. Enter an HTTP address reachable from the device, such as `http://192.168.1.100:12330` or `http://your-server.example:12330`. No domain, certificate, or HTTPS reverse proxy is required.
-5. Enter the `server.accessKey` configured on your server.
-6. Tap **Save**. The app verifies the current address and access key before saving. **Test Connection** is optional and does not save anything.
-
-The server exchanges the AccessKey for a session token. The mobile client stores that token and the server address; it does not persist the plaintext AccessKey or any model API key.
-
-HTTP is supported directly. It sends login credentials, tokens, and conversation content without transport encryption, so prefer a trusted network. HTTPS or a secure private network is optional protection for remote access, not a connection requirement.
-
-### 3. iOS unsigned IPA boundary
-
-The release workflow builds `app-release-unsigned.ipa` from the same version commit as `app-release.apk`. Download it only when it is actually attached to the selected Release. It has no Apple code signature and cannot be installed directly. Only download it if you have your own iOS certificate, App ID, and provisioning profile, and sign the app yourself before installation. CI never stores or injects Apple signing credentials.
+- **Credentials stay separated.** Model keys remain on the server. The app exchanges the server AccessKey for a Session Token and persists only the server address and token, not the plaintext AccessKey.
+- **Changing servers needs confirmation.** After successful verification, switching clears the previous connection's local business caches, credentials, and companion selection. It does not delete anything on the old server; the local theme is retained.
+- **Self-hosting is not offline AI.** The configured external provider receives the prompts, attachments, and context needed for a task. Protect the server's plaintext instance data and backups.
+- **Permissions are not cosmetic.** Instructions and skills cannot bypass version-bound file approvals or expand the server's file and network boundaries. Article content is untrusted; message links are limited to credential-free HTTP(S), and Markdown images are not fetched.
+- **Android SMS is optional and off by default.** It needs system permission and a live app process to receive SMS. Important processed results appear in main as notifications; they do not start an extra main-chat model turn. This is not an always-on background service.
+- **Delivery has limits.** The app reconnects SSE in the foreground; voice input/transcription and lock-screen push notifications are not implemented. Scheduled work needs the server online, and missed one-time tasks are not replayed after downtime.
+- **Attachments depend on the model.** Supported images and UTF-8 text/code can be attached; PDF, Office, and archive files are not supported. Image understanding needs a vision-capable server model—there is no automatic model switch.
 
 ## Develop from source
 
-The app is built with Expo 58, React Native 0.88, and TypeScript. For a workspace that develops the mobile client and the Node.js-based Pi Muse server together, use Node.js 24.x LTS, version 24.3.0 or newer. Other Node.js major versions must also satisfy Expo's declared engine range; a higher major number alone does not guarantee support.
+Use Node.js **24.x, at least 24.3.0**, when developing alongside the server, plus npm. The app uses Expo, React Native, and TypeScript; exact dependency versions are in `package.json` and `package-lock.json`.
 
 ```sh
 git clone https://github.com/yaotutu/pi-muse-mobile.git
 cd pi-muse-mobile
 npm ci
-npm start
+npm run android
 ```
 
-### Command guide
+Android development needs the Android SDK and a connected device or emulator. `npm start` starts Metro without choosing a platform; `npm run ios` needs macOS and Xcode; `npm run web` starts the development preview on port `8082`.
 
-| Command | Purpose |
-| --- | --- |
-| `npm ci` | Install dependencies reproducibly from the lockfile. |
-| `npm start` | Start the Expo/Metro development server without launching a specific platform. |
-| `npm run android` | Start Expo and open the Android app on a connected device or emulator. |
-| `npm run ios` | Start Expo and open the iOS simulator when the required macOS and Xcode toolchain is available. |
-| `npm run web` | Start the Expo web development preview on port 8082. |
-| `npm run lint` | Run the Expo/ESLint checks. |
-| `npm run typecheck` | Run TypeScript with `--noEmit`. |
-| `npm test` | Run local Node protocol, state, and contract regression tests. |
-
-Android source development uses the Android SDK and a connected emulator or device. iOS is intended for source development; its release artifact is deliberately unsigned and must be re-signed by a qualified user, with no App Store distribution provided by this repository. The web target is useful for quick development checks, not a standalone web product.
-
-### Development quality gates
-
-Before submitting a code change, run:
+For code changes, run:
 
 ```sh
 npm run lint
@@ -151,33 +101,14 @@ npm run typecheck
 npm test
 ```
 
-These are local development gates. `npm test` uses local protocol and state fixtures; it is not a substitute for testing against a real Pi Muse server, a real external model, and the relevant native Android flow. Functional acceptance requirements are described in [AGENTS.md](AGENTS.md).
+These are local checks, including protocol and state fixtures—not proof of real-model or native-device acceptance. See the engineering guides for those requirements. Native directories are generated by Expo CNG; building and signing release artifacts follow the [release guide](docs/android-release-guide.md).
 
-## Security and data handling
+### Where to look next
 
-- **Credentials stay split.** Model provider keys and the server AccessKey live in the server deployment. The mobile app sends the AccessKey only for authentication and retains the returned session token, not the plaintext key.
-- **Changing servers is explicit.** Replacing the server connection clears the local business data and old credentials for the previous server; it does not delete data stored on that server.
-- **Cautious links and projections.** Message and search links are limited to credential-free HTTP(S), Markdown images are not fetched, and tool cards display server-provided projections without inventing hidden state.
-- **Approved file mutations.** Pi Muse's server policy provides no shell tool. Assistant-initiated file writes and edits are workspace-scoped and require full human diff approval.
-- **Self-hosting is not offline AI.** The configured model provider receives the prompts and context needed for a task. Protect server configuration, backups, and any remotely exposed endpoint accordingly.
-
-## Architecture notes
-
-- Cold launch opens the main chat in Messages. Root tabs are Messages, News, and Settings; article details, settings subpages, overlays, and keyboard-visible views hide the bar. Switching tabs hides rather than unmounts the main chat SSE and draft; reset epochs and server changes retain their existing lifecycle. Navigation uses in-app state, not React Navigation or Expo Router.
-- The chat stream uses AG-UI SSE through `expo/fetch`, with custom framing and aggregation implemented in the client.
-- Runtime status, approvals, activities, and job invalidation share the server's notification SSE. Sessions, files, memory, goals, jobs, monitors, profiles, and Dream use documented REST endpoints.
-- Business state is kept in focused providers and stores around React context. The UI renders native React Native components rather than embedding a web app.
-- The source is purpose-written for this client; it is not a CopilotKit SDK wrapper.
-
-## Documentation
-
-- [Pi Muse server](https://github.com/yaotutu/pi-muse) — deployment, configuration, architecture, and API documentation
-- [Claude Code guide](CLAUDE.md) — development commands, architecture, and task-specific reading
-- [Mobile development guide](docs/mobile-development-guide.md) — navigation, state ownership, and API consumption
-- [Historical records](docs/archive/README.md) — past handoffs and acceptance evidence, not current instructions
-- [Theme maintenance](docs/themes.md) — theme registry, tokens, and verification guidance
-- [Engineering guidelines](AGENTS.md) — development boundaries, protocol rules, and release policy
-- [Release downloads](https://github.com/yaotutu/pi-muse-mobile/releases) — signed Android APK assets and an unsigned iOS IPA for qualified self-signing
+- [Shared user manual](https://github.com/yaotutu/pi-muse/blob/main/docs/manual/en/index.md) — daily use, deployment, and configuration
+- [Mobile development guide](docs/mobile-development-guide.md) — navigation, stores, and HTTP/SSE integration
+- [Theme maintenance](docs/themes.md) · [Engineering rules](AGENTS.md)
+- The running server's `/docs` and `/openapi.json` — current API contracts; chat AG-UI SSE and the shared `/api/events` notification stream are separate
 
 ## License
 

@@ -6,144 +6,94 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-**[Pi Muse](https://github.com/yaotutu/pi-muse) 官方 React Native 移动客户端。Pi Muse 是基于 [pi](https://github.com/earendil-works/pi) 的自部署 personal agent**
+**把 [Pi Muse](https://github.com/yaotutu/pi-muse) 助手，放进原生手机界面**
 
-把 Pi Muse 主聊天、审批、定时任务、网页监控、目标、记忆和工作区文件放进手机，同时让模型凭据继续留在你自己的服务端。
+聊一件事，读一篇值得讨论的文章，让计划继续推进——模型访问与助手数据仍由自己的服务端负责。
 
-[功能总览](#功能总览) · [快速开始](#快速开始) · [源码开发](#源码开发) · [安全与数据](#安全与数据) · [文档](#文档)
+**[下载 Android APK](https://github.com/yaotutu/pi-muse-mobile/releases/latest/download/app-release.apk)** · [版本说明](https://github.com/yaotutu/pi-muse-mobile/releases/latest) · [部署服务端](https://github.com/yaotutu/pi-muse/blob/main/README.zh-CN.md#快速开始)
 
-[![Pi Muse server](https://img.shields.io/badge/服务端-pi--muse-2563EB?style=flat-square)](https://github.com/yaotutu/pi-muse)
-[![Android releases](https://img.shields.io/badge/Android-APK-3DDC84?style=flat-square)](https://github.com/yaotutu/pi-muse-mobile/releases/latest)
-[![License](https://img.shields.io/badge/License-MIT-black?style=flat-square)](LICENSE)
+[使用体验](#使用体验) · [安装与连接](#安装与连接) · [源码开发](#源码开发) · [安全与限制](#安全与限制)
 
-<br/>
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/yaotutu/pi-muse/main/docs/assets/showcase.png" width="98%" alt="Pi Muse Mobile 产品总览">
-</p>
+<img src="https://raw.githubusercontent.com/yaotutu/pi-muse/main/docs/assets/showcase.png" width="98%" alt="Pi Muse Android 客户端：主聊天、新闻与设置">
 
 </div>
 
----
+截图使用演示数据；展示的形象包为可替换示例。本文介绍当前源码能力，请核对所选 Release 的说明与实际产物，不要把这里的每项功能都当成最新发布 APK 已有。
 
-Pi Muse Mobile 是原生移动界面，不是独立运行的助手。它通过 Pi Muse 的公开 HTTP/SSE API 连接服务端；助手执行、模型访问、会话、文件、排期、审批和持久状态都由服务端持有。
+查看单图：[主聊天](https://raw.githubusercontent.com/yaotutu/pi-muse/main/docs/assets/screenshots/chat.png) · [新闻](https://raw.githubusercontent.com/yaotutu/pi-muse/main/docs/assets/screenshots/news.png) · [设置](https://raw.githubusercontent.com/yaotutu/pi-muse/main/docs/assets/screenshots/settings.png)
 
-发布流程构建 Android 签名 APK，以及供自己具备 iOS 签名资格的用户使用的未签名 IPA；请核对所选 Release 实际附带的产物，该 IPA 不能直接安装。除此之外 iOS 是源码开发目标；Expo Web 输出只作为开发预览，不是独立的 Web 产品。
+## 使用体验
 
-## 功能总览
+Pi Muse Mobile 是自部署、个人自用 AI 助手的官方 Expo / React Native 客户端，助手基于 [pi](https://github.com/earendil-works/pi) 构建。它是原生界面，不是内嵌 Web 聊天，也不在本机独立运行模型；使用时需要可访问的 Pi Muse 服务端。
 
-### 单一助手与主聊天
+### 三个入口，一个主聊天
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/yaotutu/pi-muse/main/docs/assets/chat-preview.png" width="88%" alt="聊天 Markdown 与工具卡（既有版本）">
-</p>
+- **消息**直接打开永久 `main` 主聊天，不用选择会话。流式查看回复，阅读原生 Markdown 与可复制代码，添加图片或文本附件，为已保存消息留下反馈。切换 Tab 保留主聊天和草稿。服务端具备专题会话底座，但 App 目前不开放专题会话界面。
+- **新闻**是全局 RSS 阅读与推荐流，提供文章详情、喜欢、不喜欢和收藏。**讨论**只向 main 既有草稿追加明确标记为不可信的可编辑文章引用，绝不自动发送；讨论后可以返回原文章。
+- **设置**把管理操作从聊天记录里拿出来：助手身份、指令与技能、记忆与 Dream、目标、定时任务、网页监控、工作区文件、动态与审批、连接、外观和更新。
 
-- **流式对话。** 消息进入服务端的 AG-UI SSE 执行流，由客户端原生消费。聊天文字流与运行状态使用的共享通知流彼此独立。
-- **持久消息反馈。** 长按已落盘的用户或助手消息气泡，就近打开喜欢／不喜欢反应胶囊与紧凑的评论／复制菜单；已有反应或评论时，气泡边缘显示小徽标，无反馈消息没有徽标。反应互斥且可撤销；评论在独立界面新增、编辑和删除。编辑或删除评论时，原文仍保留在服务端操作账本（ledger）。反馈不会触发模型运行，也不会写入模型偏好。未完成的流式消息不开放反馈；重置或删除会话会清理相应反馈。
-- **有边界的 Markdown 展示。** 助手消息用 React Native 原生组件渲染标题、强调、列表、引用、表格和可复制代码块。Markdown 图片不会加载，HTML 按字面文本展示，消息与搜索来源链接只允许无凭据 HTTP(S)。
-- **透明的工具卡。** 工具活动只展示服务端实际返回的投影。客户端不推断隐藏细节，也不会因为工具返回就把结果说成已保存或已批准。
-- **直接进入主聊天。** 消息页立即打开永久 main 主聊天，无需选择会话或等待目录成功。Pi Muse 形象静态展示，「主聊天操作」保留重置、指令、技能、当前执行、审批与历史。专题会话 UI 暂缓，没有列表、新建、切换、改名或删除入口；既有服务端会话、历史和共用工作区文件保持不变。
-- **实用的附件。** 每条消息最多 4 个附件，支持 PNG、JPEG、GIF、WebP 图片和受支持的 UTF-8 文本／代码文件；附件合计最多 8 MiB，文本附件合计最多 100,000 字节。PDF、Office、压缩包等二进制格式不支持。图片理解要求服务端当前配置的模型具备视觉能力，客户端不会自动换模型。
+### 看得见状态，也换得了形象
 
-### 任务、活动与网页监控
+透明形象悬浮在聊天之上，没有底座，只有极淡的剪影描边。八种姿态表达空闲、思考、回复、工作、等待审批、成功、失败和停止；有限次轻动效强化状态，不是形象视频，也尊重系统减弱动效设置。点击形象，打开主聊天操作、执行、审批和历史。
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/yaotutu/pi-muse/main/docs/assets/tasks-preview.png" width="88%" alt="活动历史、定时任务与网页监控">
-</p>
+内置企鹅始终作为兜底。在「设置 → 助手形象」选择服务端已安装的完整自定义包，App 下载齐八张状态图后才切换；同一服务端的完整缓存可离线使用。包缺失或不完整时，提示并回退企鹅。换服务器会清理旧包缓存与选择；换形象不会创建另一个助手，也不会重启聊天流。
 
-- **模型登记的活动历史。** 筛选和查看已登记活动、状态与步骤，并支持手动刷新。界面只显示服务端返回的活动，不编造进展数据。
-- **定时任务。** 通过聊天创建一次性或每日任务，再在设置的任务页管理内容、时间和生命周期。支持二次确认的暂停、恢复、取消、失败重试和删除。这些操作管理任务排期，不等同于停止正在执行的对话。
-- **网页监控。** 通过聊天创建监控，在设置的任务页筛选、刷新、暂停、恢复、停止或删除。客户端展示累计检查以及最近检查、通知或抓取错误；服务端不提供逐次检查历史。
+<img src="https://raw.githubusercontent.com/yaotutu/pi-muse/main/docs/assets/screenshots/companions.png" width="360" alt="选择可替换的助手形象包">
 
-### 长期目标与里程碑
+界面还可选择**经典蓝白、晨光白、深夜黑**三套主题。主题和形象偏好只属于当前设备。
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/yaotutu/pi-muse/main/docs/assets/goals-preview.png" width="52%" alt="长期目标与里程碑追踪">
-</p>
+### 不只看回复，也能审阅和管理工作
 
-- **把计划拆成检查点。** 创建目标、组织里程碑，并查看 `1 / 3` 这类进度。
-- **由人维护进度。** 目标状态和里程碑完成由你显式操作；应用不会从聊天内容猜测完成情况。
-- **保持视图聚焦。** 按状态筛选、按创建或更新时间排序，并在不可恢复删除前再次确认。
+- **文件审批。** 每次助手 `write` 或 `edit` 都完整展示修改前后内容，由人明确批准当时的文件版本。过期、取消、拒绝或文件已变化的审批不能提交。模型没有 Shell 工具；全部会话共用一个扁平工作区。
+- **任务与目标。** 通过聊天创建一次性或每日任务，再到设置中管理。公网页面监控间隔最短五分钟。目标与里程碑由人显式跟进，App 不从聊天文字猜测完成情况。
+- **记忆与工作方式。** 编辑助手和用户资料、主聊天指令与技能、长期记忆；查看可选的 Dream 整理，明确应用或忽略建议。
+- **同一个真实浏览器。** 服务端浏览器部署可用时，通过 App 的 WebView 打开图形化 Chrome，助手与人工查看器共享浏览器和登录状态。Chrome／noVNC 是否可用及代理限制取决于[服务端配置](https://github.com/yaotutu/pi-muse/blob/main/docs/manual/browser-docker.md)。
 
-### 会话面板、审批与工作区文件
+## 安装与连接
 
-- **会话信息。** 「主聊天操作」或设置中的「动态与审批」打开当前执行、审批与历史；切换面板或底部 Tab 不销毁主聊天的流。
-- **当前执行与活动历史。** 查看当前运行、工具工作、模型登记的活动、进展、结果和关联步骤。活动不是隐藏的模型推理，也不会被包装成所有聊天运行的完整档案。
-- **人工审批。** 助手发起文件写入与修改时，必须查看完整前后内容并明确确认。审批过期后不能覆盖已经变化的新内容。
-- **工作区文件管理。** 从设置→工作区文件打开所有会话共用的扁平目录，完整读取文本、预览受支持图片、下载到设备且不覆盖同名文件。手动保存前完整展示前后原文并确认。
+### Android
 
-一级固定三项：「消息」「新闻」「设置」。冷启动的消息根页直接打开 main 主聊天，输入框和底栏直接可用；文章详情、设置子页、键盘展开和覆盖层隐藏底栏。新闻讨论直接向 main 既有草稿追加明确标记为不可信的可编辑文章引用，不选会话、不自动发送；「返回文章」或 Android Back 返回原文章，点击消息 Tab 清理旧来源。通知续聊只接受 main 引用，其他会话明确提示暂不可用，不把引用改投 main。main 不提供删除入口。
+1. [部署 Pi Muse](https://github.com/yaotutu/pi-muse/blob/main/README.zh-CN.md#快速开始)，设置强随机服务端 AccessKey，以及当前 pi provider 支持的模型接口。App 不需要模型 API key。
+2. [下载最新稳定 `app-release.apk`](https://github.com/yaotutu/pi-muse-mobile/releases/latest/download/app-release.apk)，安装并打开。Android 可能要求先允许来自该来源的安装。
+3. 未连接时打开首页「服务器连接」；已连接时进入「设置 → 服务器连接」。
+4. 填写手机能访问的服务端根地址，例如 `http://192.168.1.100:12330`，以及配置中的 `server.accessKey`。不要附加 `/api` 或 `/docs`；真机上的 `localhost` 指向手机自己。
+5. 点击「保存」，App 先验证地址和 AccessKey，通过后才保存。「测试连接」可选，不会保存配置。
+6. 打开「消息」，发送第一条消息。模型在服务端运行，连接自己的部署不需要重新编译客户端。
 
-### 新闻阅读
+直接支持 HTTP，不要求域名、证书或反向代理，但不会加密凭据、Token 和聊天内容。请优先使用可信网络，并妥善保护远程入口。网络设置与恢复见共用[快速上手指南](https://github.com/yaotutu/pi-muse/blob/main/docs/manual/getting-started.md)。
 
-- **轻量阅读流。** 新闻主视图使用纯文字单列：来源与中文时间、标题、两行摘要。点开文章进入整页详情，阅读完整 RSS 正文和推荐理由，正文支持文字选择；返回列表保留浏览位置。
-- **个人反馈。** 每篇文章直接提供「喜欢」「不喜欢」「收藏」，详情页固定在底部操作栏，阅读时一步可达。喜欢与不喜欢互斥，重复点击可撤销；收藏独立，不喜欢不会立即移走文章。阅读页不提供评论，也不删除服务端已有历史评论。
-- **紧凑工具。** 「推荐／全部」通过菜单选择，收藏独立筛选；来源与抓取状态、手动抓取在「更多」中。文章详情顶栏只保留返回，「讨论」与喜欢／不喜欢／收藏一起放在底部操作栏。客户端不新增点击统计、浏览次数记录或兴趣提取逻辑，也不将反馈成功宣称为推荐已经更新。
+Android 独立安装包可检查稳定 GitHub Release 并下载 APK 更新，最后仍需 Android 系统确认安装；这不是 Expo OTA 更新。
 
-### 全局设置、记忆、Dream 与主题
+### iOS 与 Web
 
-- **服务连接管理。** 保存一个可访问的 Pi Muse 地址，用服务端 AccessKey 认证，并在设备上保留换回的 Session Token。客户端不持久化明文 AccessKey。
-- **助手与用户资料。** 编辑助手称呼、语气，以及全局 SOUL 人设和 USER 用户资料。资料修改从后续对话开始生效。
-- **全局长期记忆。** 搜索、新增、编辑和删除跨会话共享的记忆。页面打开、回前台、写入成功或手动刷新时回读。
-- **Dream 记忆整理。** 查看实例全局 Dream 状态，核对完整待决建议及来源会话，配置全局提示词和启用开关，手动整理，并明确应用或忽略建议。
-- **三套完整主题。** 可选经典蓝白、晨光白、深夜黑。偏好保存在本机、重启后恢复，不携带服务端凭据。
-- **Android 应用更新。** Android 独立包会检查公开 GitHub Release，下载稳定 APK，并交给系统安装器完成安装。遇到 GitHub 限流等检查失败时，更新面板提供官方 APK 地址和手动下载按钮。这不是 Expo OTA，Expo Go、Web 和 iOS 构建不支持。
-- **当前边界。** 语音输入／转写和锁屏系统推送未实现。客户端使用前台 SSE 重连，不宣称后台持续在线交付。
+只有所选 Release 实际附带 `app-release-unsigned.ipa`，且你有自己的有效 iOS 签名资格时，该产物才适用。它**不能直接安装**，需要自行重签后安装；本仓库不提供 App Store 或 TestFlight 分发。
 
-## 快速开始
+iOS 也可从源码开发。Expo Web 只是开发预览，不是主要 Pi Muse 客户端，不能替代原生 Android 验证。
 
-### 1. 先部署 Pi Muse
+## 安全与限制
 
-Pi Muse Mobile 必须连接一个可访问的 Pi Muse 服务端，不能代替服务端保存模型提供方 Key。
-
-请先阅读 [Pi Muse 服务端快速开始](https://github.com/yaotutu/pi-muse#quick-start)，完成部署、AccessKey 配置和 OpenAI 兼容模型接入。服务端运行时的 `/docs` 与 `/openapi.json` 提供 HTTP 与 SSE 契约。同一公开 API 也可以供终端等平台实现自己的客户端；那些客户端不属于本仓库。
-
-### 2. Android 安装
-
-1. 从 [Pi Muse Mobile Releases](https://github.com/yaotutu/pi-muse-mobile/releases/latest) 下载最新的稳定 `app-release.apk`。
-2. 在 Android 手机或模拟器安装并打开。系统可能要求你先允许来自该来源的安装。
-3. 打开 **设置 -> 服务器连接**。
-4. 填写手机可访问的 HTTP 地址，例如 `http://192.168.1.100:12330` 或 `http://your-server.example:12330`，不要求域名、证书或 HTTPS 反向代理。
-5. 输入服务端配置的 `server.accessKey`。
-6. 点击 **保存**，客户端会先验证当前地址和访问密钥，通过后才保存。也可先点击 **测试连接**；测试不会保存配置。
-
-服务端会把 AccessKey 交换为 Session Token。移动端保存这个 Token 和服务地址，不持久化明文 AccessKey，也不保存任何模型 API Key。
-
-直接支持 HTTP。HTTP 下访问密钥、Token 和聊天内容没有传输加密，优先在可信网络中使用；HTTPS 或安全虚拟组网是远程访问的可选保护，不是连接前提。
-
-### 3. iOS 未签名 IPA 边界
-
-发布流程从与 `app-release.apk` 相同的版本提交构建 `app-release-unsigned.ipa`；只有所选 Release 实际附带该文件时才可下载。它没有 Apple 代码签名，不能直接安装；只有自己拥有 iOS 证书、App ID 与描述文件的用户应下载并先自行重签，再安装到设备。CI 不保存、不注入任何 Apple 签名凭据。
+- **凭据职责分离。** 模型 Key 留在服务端。App 用服务端 AccessKey 换取 Session Token，只持久化服务地址与 Token，不保存明文 AccessKey。
+- **换服务器需要确认。** 验证成功后，换服会清理旧连接的本机业务缓存、凭据与形象选择；不会删除旧服务器上的数据，本机主题保留。
+- **自部署不等于离线 AI。** 配置的外部模型提供方会收到任务所需的提示词、附件和上下文。请保护服务端明文实例数据与备份。
+- **权限不是展示效果。** 指令和技能不能绕过版本绑定的文件审批，也不能扩大服务端的文件、网络边界。文章内容不可信；消息链接只允许无凭据 HTTP(S)，Markdown 图片不会自动拉取。
+- **Android 短信可选，默认关闭。** 需要系统权限和存活的应用进程才能接收短信。重要处理结果以通知出现在 main，不额外启动主聊天模型轮；它不是后台常驻服务。
+- **交付能力有边界。** App 在前台重连 SSE；语音输入／转写与锁屏系统推送尚未实现。排期工作依赖服务端在线，停机错过的一次性任务不会补跑。
+- **附件依赖模型能力。** 支持受支持的图片与 UTF-8 文本／代码，不支持 PDF、Office 和压缩包。图片理解要求服务端模型具备视觉能力，不会自动换模型。
 
 ## 源码开发
 
-应用使用 Expo 58、React Native 0.88 和 TypeScript。若在同一工作区同时开发移动端和基于 Node.js 的 Pi Muse 服务端，请使用 Node.js 24.x LTS，最低 24.3.0。其他 Node.js 主版本还须满足 Expo 声明的 engine 范围，不能只凭主版本更高判断兼容。
+与服务端一起开发时，使用 **Node.js 24.x，最低 24.3.0**，以及 npm。应用使用 Expo、React Native 和 TypeScript，准确依赖版本以 `package.json`、`package-lock.json` 为准。
 
 ```sh
 git clone https://github.com/yaotutu/pi-muse-mobile.git
 cd pi-muse-mobile
 npm ci
-npm start
+npm run android
 ```
 
-### 命令说明
+Android 开发需要 Android SDK 和已连接的设备或模拟器。`npm start` 仅启动 Metro，不指定平台；`npm run ios` 需要 macOS 与 Xcode；`npm run web` 在 `8082` 端口启动开发预览。
 
-| 命令 | 用途 |
-| --- | --- |
-| `npm ci` | 按 lockfile 可复现安装依赖。 |
-| `npm start` | 启动 Expo/Metro 开发服务，不指定平台。 |
-| `npm run android` | 启动 Expo 并打开已连接 Android 设备或模拟器上的应用。 |
-| `npm run ios` | 在 macOS 与 Xcode 工具链可用时，启动 Expo 并打开 iOS 模拟器。 |
-| `npm run web` | 在 8082 端口启动 Expo Web 开发预览。 |
-| `npm run lint` | 运行 Expo/ESLint 检查。 |
-| `npm run typecheck` | 以 `--noEmit` 运行 TypeScript。 |
-| `npm test` | 运行本地 Node 协议、状态与契约回归测试。 |
-
-Android 源码开发需要 Android SDK 和已连接的模拟器或设备。iOS 面向源码开发；Release 中的 iOS 产物刻意保持未签名，必须由有资格的用户自行重签，本仓库不提供 App Store 分发。Web 目标适合快速开发检查，不是独立的 Web 产品。
-
-### 开发质量门禁
-
-提交代码变更前运行：
+代码变更运行：
 
 ```sh
 npm run lint
@@ -151,33 +101,14 @@ npm run typecheck
 npm test
 ```
 
-这些是本地开发门禁。`npm test` 使用本地协议和状态夹具，不能替代真实 Pi Muse 服务、真实外部模型以及相关 Android 原生链路验收。功能验收要求见 [AGENTS.md](AGENTS.md)。
+这些是本地检查，包含协议与状态夹具，不代表真实模型或原生设备验收。相应要求见工程指南。原生目录由 Expo CNG 生成，发布产物的构建与签名按[发布指南](docs/android-release-guide.md)执行。
 
-## 安全与数据
+### 继续了解
 
-- **凭据职责分离。** 模型提供方 Key 和服务端 AccessKey 留在服务端部署中。移动端只在认证时发送 AccessKey，之后保留返回的 Session Token，不保存明文 Key。
-- **切换服务器必须显式确认。** 替换服务器连接会清理旧服务端对应的本地业务数据与旧凭据，不会删除远端数据。
-- **谨慎处理链接和投影。** 消息与搜索链接仅允许无凭据 HTTP(S)，不拉取 Markdown 图片；工具卡展示服务端投影，不虚构隐藏状态。
-- **文件修改需审批。** Pi Muse 服务端策略不提供 Shell 工具。助手发起的文件写入与修改限定在工作区内，并要求完整差异的人工审批。
-- **自部署不等于离线 AI。** 配置的模型提供方会收到当前任务所需的提示词和上下文。请同样保护好服务端配置、备份和任何对外入口。
-
-## 架构要点
-
-- 冷启动进入「消息」main 主聊天；一级仅消息/新闻/设置，文章详情、设置子页、覆盖层和键盘展开时隐藏底栏。切 Tab 隐藏而不卸载 main SSE/草稿，重置 epoch 与换服保留原生命周期。导航由应用内状态切换，不使用 React Navigation 或 Expo Router。
-- 聊天执行流通过 `expo/fetch` 消费 AG-UI SSE，分帧解析与事件聚合在客户端自研实现。
-- 运行状态、审批、活动和任务失效提示共用服务端通知 SSE；会话、文件、记忆、目标、任务、监控、资料和 Dream 使用公开 REST 端点。
-- 业务状态围绕 React Context 组织在职责清晰的 Provider 与 store 中。界面使用原生 React Native 组件渲染，而不是嵌入 Web 应用。
-- 客户端源码为本项目专门编写，不是 CopilotKit SDK 外壳。
-
-## 文档
-
-- [Pi Muse 服务端](https://github.com/yaotutu/pi-muse) — 部署、配置、架构与 API 文档
-- [Claude Code 入口](CLAUDE.md) — 开发命令、架构和按任务读取指南
-- [移动开发指南](docs/mobile-development-guide.md) — 导航、状态所有权与接口消费
-- [历史资料](docs/archive/README.md) — 旧交接与验收证据，不作为当前规则
-- [主题维护](docs/themes.md) — 主题注册表、token 与验证说明
-- [工程协作规范](AGENTS.md) — 开发边界、协议规则与发布策略
-- [Release 下载](https://github.com/yaotutu/pi-muse-mobile/releases) — 公开 Android APK 与供资格用户自签的未签名 iOS IPA
+- [共用用户手册](https://github.com/yaotutu/pi-muse/blob/main/docs/manual/index.md) — 日常使用、部署与配置
+- [移动开发指南](docs/mobile-development-guide.md) — 导航、Store 与 HTTP/SSE 接入
+- [主题维护](docs/themes.md) · [工程规则](AGENTS.md)
+- 运行中服务端的 `/docs` 与 `/openapi.json` — 当前接口契约；聊天 AG-UI SSE 与共享 `/api/events` 通知流彼此独立
 
 ## 许可证
 
