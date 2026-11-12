@@ -9,6 +9,10 @@ import { registerHooks } from 'node:module';
 
 registerHooks({
   resolve(specifier, context, nextResolve) {
+    if (specifier === 'expo-file-system') {
+      // Hook 测试显式注入纯本地仓库；不访问原生文件系统或真实文档目录。
+      return { url: 'data:text/javascript,' + encodeURIComponent('export class Directory {} export class File {} export const Paths = {};'), shortCircuit: true };
+    }
     if (specifier === 'react-native') {
       const stub = `
 export const AppState = {

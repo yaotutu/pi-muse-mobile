@@ -1,13 +1,13 @@
 import type { NotificationReference } from '../notifications/contracts';
 /**
- * 聊天会话主视图：消息列表、工具调用卡片、输入框与运行终态历史同步。
+ * 聊天会话主视图：消息列表、工具调用卡片、输入框与本地阅读位置恢复。
  *
  * 边界：单实例绑定单个会话的聊天代次（父级以 sessionId + epoch 隔离生命周期）；
  * assistant Markdown 与工具专用展示由独立组件负责，不猜测审批决定。
  */
 import { AlertCircle, ArrowDown, ArrowUp, CircleHelp, ShieldAlert, Square } from 'lucide-react-native';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View, type LayoutRectangle, type ScrollViewInstance, type TextStyle, type ViewInstance } from 'react-native';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { AppState, Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View, type LayoutRectangle, type ScrollViewInstance, type TextStyle, type ViewInstance } from 'react-native';
 import { useApi } from '../api/ApiProvider';
 import { pickMessageAttachments } from '../attachments/picker';
 import { AttachmentAction, AttachmentStrip, MessageAttachments } from '../attachments/AttachmentViews';
@@ -25,7 +25,8 @@ import { getChatVisibleText } from '../chat/chat-visible-text';
 import { ToolResultCard } from './ToolResultCard';
 import { ActionButton } from '../ui/ActionButton';
 import { MessageFeedbackControls } from '../feedback/MessageFeedbackControls';
-import { ScrollAnchorFrame, ScrollFollow } from './scroll-follow';
+import { ScrollAnchorFrame } from './scroll-follow';
+import { ConversationScroll } from './conversation-scroll';
 import { companionContentInset } from './companion-layout';
 
 const { layout: l, radius: r, typography: t } = workspaceTheme;
@@ -70,11 +71,11 @@ export function ConversationView({
   const messageListStyle = useMemo(() => [styles.messageList, { paddingTop: companionContentInset(fontScale) }], [styles, fontScale]);
   const { colors } = useTheme();
   const scroll = useRef<ScrollViewInstance>(null);
-  const scrollFollow = useRef(new ScrollFollow());
+  const scrollFollow = useRef(new ConversationScroll());
   const visibleRef = useRef(visible);
+  const activeRef = useRef(AppState.currentState !== 'background' && AppState.currentState !== 'inactive');
   const [discardTarget, setDiscardTarget] = useState<string>();
   const previousRunning = useRef(false);
-  const lastRun = useRef('');
   const [stopError, setStopError] = useState('');
   const [showLatest, setShowLatest] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -86,16 +87,31 @@ export function ConversationView({
   const mounted = useRef(true);
   const currentOwner = useRef({ sessions, sessionId, epoch: session.epoch });
   const anchorFrame = useRef<ScrollAnchorFrame | null>(null);
+  const messageIds = useMemo(() => conversation.views.map((message) => message.id), [conversation.views]);
+  const persistReadingPosition = useCallback(() => {
+    const position = scrollFollow.current.position();
+    if (position) sessions.setReadingPosition(sessionId, session.epoch, position);
+  }, [sessions, sessionId, session.epoch]);
 
   useLayoutEffect(() => {
     anchorFrame.current = new ScrollAnchorFrame(
       requestAnimationFrame,
       cancelAnimationFrame,
-      () => mounted.current && visibleRef.current && scrollFollow.current.shouldAnchor(),
-      () => scroll.current?.scrollToEnd({ animated: false }),
+      () => mounted.current && visibleRef.current && activeRef.current && scrollFollow.current.target() !== null,
+      () => {
+        const target = scrollFollow.current.target();
+        if (target && 'latest' in target) scroll.current?.scrollToEnd({ animated: false });
+        else if (target) scroll.current?.scrollTo({ y: target.y, animated: false });
+      },
     );
     return () => { anchorFrame.current?.cancel(); anchorFrame.current = null; };
   }, []);
+
+  useLayoutEffect(() => {
+    scrollFollow.current.updateMessages(session.localLoaded, session.readingPosition, messageIds);
+    setShowLatest(scrollFollow.current.position()?.following === false);
+    if (visibleRef.current) anchorFrame.current?.schedule();
+  }, [session.localLoaded, session.readingPosition, messageIds]);
 
   useLayoutEffect(() => {
     currentOwner.current = { sessions, sessionId, epoch: session.epoch };
@@ -108,26 +124,32 @@ export function ConversationView({
 
   useLayoutEffect(() => {
     visibleRef.current = visible;
-    if (!visible) anchorFrame.current?.cancel();
-    // 隐藏会话继续接收流；重新显示后在下一布局帧锚到最新。
-    else if (scrollFollow.current.shouldAnchor()) anchorFrame.current?.schedule();
-  }, [visible]);
+    if (!visible) {
+      anchorFrame.current?.cancel();
+      scrollFollow.current.suspendInteraction();
+      persistReadingPosition();
+    } else {
+      // Tab 不重新读取磁盘位置；只按既有阅读/跟随意图处理最终布局。
+      anchorFrame.current?.schedule();
+    }
+  }, [visible, persistReadingPosition]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      activeRef.current = state === 'active';
+      if (!activeRef.current) {
+        anchorFrame.current?.cancel();
+        scrollFollow.current.suspendInteraction();
+        persistReadingPosition();
+      } else if (visibleRef.current) anchorFrame.current?.schedule();
+    });
+    return () => { subscription.remove(); persistReadingPosition(); };
+  }, [persistReadingPosition]);
 
   useEffect(() => {
     if (previousRunning.current && !conversation.running) onSettled();
     previousRunning.current = conversation.running;
   }, [conversation.running, onSettled]);
-
-  const recentTerminal = runtime.runs
-    .filter((run) => run.status !== 'running')
-    .map((run) => `${run.runId}:${run.revision}`)
-    .join('|');
-  useEffect(() => {
-    if (recentTerminal && recentTerminal !== lastRun.current) {
-      lastRun.current = recentTerminal;
-      if (!conversation.running) conversation.reload();
-    }
-  }, [recentTerminal, conversation]);
 
   const busy = conversation.running || runtime.running;
   const pending = session.pendingSubmission;
@@ -179,6 +201,7 @@ export function ConversationView({
     setStopError('');
     // 从旧历史发送即转向新消息；之后只有用户主动上滚才停止跟随。
     scrollFollow.current.beginSend();
+    persistReadingPosition();
     setShowLatest(false);
     anchorFrame.current?.schedule();
     void conversation.send(
@@ -198,6 +221,7 @@ export function ConversationView({
     setStopError('');
     setSteering(true);
     scrollFollow.current.beginSend();
+    persistReadingPosition();
     setShowLatest(false);
     anchorFrame.current?.schedule();
     void conversation
@@ -250,9 +274,9 @@ export function ConversationView({
       }
     }
   };
-  const followLatest = () => {
-    // 键盘收缩和转为紧凑顶栏只改变视口尺寸；跟随最新时也要重新锚定，不能截掉尾条回复。
-    if (visible && scrollFollow.current.onLayout()) anchorFrame.current?.schedule();
+  const schedulePosition = () => {
+    // 键盘、字体和内容重排沿用消息锚点；跟随模式则锚到尾部。
+    if (visible) anchorFrame.current?.schedule();
   };
   const atBottom = ({ contentOffset, contentSize, layoutMeasurement }: {
     contentOffset: { y: number }; contentSize: { height: number }; layoutMeasurement: { height: number };
@@ -269,18 +293,45 @@ export function ConversationView({
           showsVerticalScrollIndicator={false}
           onScroll={(event) => {
             if (!visible) return;
-            const next = scrollFollow.current.onScroll(atBottom(event.nativeEvent));
+            const next = scrollFollow.current.onViewportScroll(event.nativeEvent.contentOffset.y, atBottom(event.nativeEvent));
             if (next.anchor) anchorFrame.current?.schedule();
             setShowLatest(next.showLatest);
           }}
           scrollEventThrottle={spacing[16]}
-          onScrollBeginDrag={() => { scrollFollow.current.onDrag(); anchorFrame.current?.cancel(); }}
-          onScrollEndDrag={(event) => {
-            const next = scrollFollow.current.onDragEnd(atBottom(event.nativeEvent));
-            if (visible) setShowLatest(next.showLatest);
+          onScrollBeginDrag={() => {
+            if (!visible) return;
+            scrollFollow.current.onDrag();
+            anchorFrame.current?.cancel();
           }}
-          onLayout={followLatest}
-          onContentSizeChange={() => { scrollFollow.current.onContentSizeChange(); followLatest(); }}
+          onScrollEndDrag={(event) => {
+            if (!visible) return;
+            scrollFollow.current.onViewportScroll(event.nativeEvent.contentOffset.y, atBottom(event.nativeEvent));
+            const next = scrollFollow.current.onDragEnd(atBottom(event.nativeEvent));
+            setShowLatest(next.showLatest);
+            persistReadingPosition();
+          }}
+          onMomentumScrollBegin={() => {
+            if (!visible) return;
+            scrollFollow.current.onMomentumBegin();
+            anchorFrame.current?.cancel();
+          }}
+          onMomentumScrollEnd={(event) => {
+            if (!visible || !scrollFollow.current.isInteracting()) return;
+            scrollFollow.current.onViewportScroll(event.nativeEvent.contentOffset.y, atBottom(event.nativeEvent));
+            const next = scrollFollow.current.onDragEnd(atBottom(event.nativeEvent));
+            setShowLatest(next.showLatest);
+            persistReadingPosition();
+          }}
+          onLayout={(event) => {
+            if (!visible) return;
+            scrollFollow.current.onViewport(event.nativeEvent.layout.height);
+            schedulePosition();
+          }}
+          onContentSizeChange={(_width, height) => {
+            if (!visible) return;
+            scrollFollow.current.onContent(height);
+            schedulePosition();
+          }}
         >
           {conversation.loading && !conversation.views.length ? (
             <Text style={styles.mutedText}>正在读取聊天记录…</Text>
@@ -292,7 +343,11 @@ export function ConversationView({
             )
           )}
           {conversation.views.map((message) => (
-            <View key={message.id}><Message
+            <View key={message.id} onLayout={(event) => {
+              if (!visible) return;
+              scrollFollow.current.onRowLayout(message.id, event.nativeEvent.layout);
+              schedulePosition();
+            }}><Message
               message={message}
               delivery={messageDelivery(message.role, conversation.persistedMessageIds.has(message.id), pending && pending.messageId === message.id ? pending.status : undefined)}
               feedbackScope={message.feedbackAvailable === true && conversation.piSessionId &&
@@ -351,7 +406,12 @@ export function ConversationView({
             />
           )}
         </ScrollView>
-        {showLatest && <Pressable accessibilityRole="button" accessibilityLabel="回到最新消息" onPress={() => { scrollFollow.current.returnLatest(); setShowLatest(false); scroll.current?.scrollToEnd({ animated: true }); }} style={styles.latestButton}><ArrowDown size={sizing[18]} color={colors.ink} /><Text style={styles.caption}>回到最新</Text></Pressable>}
+        {showLatest && <Pressable accessibilityRole="button" accessibilityLabel="回到最新消息" onPress={() => {
+          scrollFollow.current.returnLatest();
+          persistReadingPosition();
+          setShowLatest(false);
+          anchorFrame.current?.schedule();
+        }} style={styles.latestButton}><ArrowDown size={sizing[18]} color={colors.ink} /><Text style={styles.caption}>回到最新</Text></Pressable>}
       </View>
       {visible && <>
         {sessionPendingApprovals.length > 0 && onOpenApprovals && (

@@ -15,7 +15,7 @@ import { useConversation } from '../../src/chat/useConversation';
 
 type HookHandle<T> = {
   result: { current: T };
-  rerender: () => Promise<void>;
+  rerender: (nextRefreshKey?: string | number) => Promise<void>;
   unmount: () => void;
 };
 
@@ -23,7 +23,8 @@ export async function renderConversationHook(
   sessionId: string,
   api: ApiClient,
   store: ChatSessionStore,
-  refreshKey = 0,
+  refreshKey: string | number = 0,
+  environment: { connection?: { enabled: boolean; snapshot: { status: string; refreshVersion: number } }; runtime?: unknown } = {},
 ): Promise<HookHandle<ReturnType<typeof useConversation>>> {
   let stateIndex = 0;
   const states: unknown[] = [];
@@ -110,9 +111,10 @@ export async function renderConversationHook(
     // 测试进程内上下文按调用栈区分：SessionProvider 系列返回 store，连接返回在线快照，其余为 ApiClient。
     useContext: (context: unknown) => {
       const stack = new Error().stack ?? '';
+      if (stack.includes('useOptionalSessionRuntime')) return environment.runtime ?? null;
       if (stack.includes('useChatSessionStore') || stack.includes('useSessionState')) return store;
       if (stack.includes('useServiceConnection')) {
-        return { enabled: true, snapshot: { status: 'online', refreshVersion: 0 }, retry: () => {} };
+        return environment.connection ?? { enabled: true, snapshot: { status: 'online', refreshVersion: 0 }, retry: () => {} };
       }
       return api;
     },

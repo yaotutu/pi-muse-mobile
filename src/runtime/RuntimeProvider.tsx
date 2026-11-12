@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { AppState, Platform } from 'react-native';
 import { useApi } from '../api/ApiProvider';
 import { useServiceConnection } from '../connection/ConnectionProvider';
@@ -16,7 +16,7 @@ import { GoalProvider } from '../goals/GoalProvider';
 import { MonitorStore } from '../monitors/monitor-store';
 import { MonitorProvider } from '../monitors/MonitorProvider';
 
-const Context = createContext<RuntimeStore | null>(null);
+import { RuntimeContext as Context } from './runtime-context';
 
 /** 原生通知流仅前台订阅；开发 Web 的宿主可见性不等于 App 生命周期。 */
 export function RuntimeProvider({ children }: { children: ReactNode }) {
@@ -41,7 +41,7 @@ export function RuntimeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     approvals.setActive(enabled); activities.setActive(enabled); memories.setActive(enabled); jobs.setActive(enabled); goals.setActive(enabled); monitors.setActive(enabled); store.setActive(enabled);
     return () => { store.setActive(false); approvals.setActive(false); activities.setActive(false); memories.setActive(false); jobs.setActive(false); goals.setActive(false); monitors.setActive(false); };
-  }, [store, approvals, activities, memories, jobs, goals, monitors, enabled, connection?.snapshot.refreshVersion]);
+  }, [store, approvals, activities, memories, jobs, goals, monitors, enabled]);
   useEffect(() => () => { store.dispose(); approvals.dispose(); activities.dispose(); memories.dispose(); jobs.dispose(); goals.dispose(); monitors.dispose(); }, [store, approvals, activities, memories, jobs, goals, monitors]);
   return <Context.Provider value={store}><ApprovalProvider store={approvals}><ActivityProvider store={activities}><MemoryProvider store={memories}><JobProvider store={jobs}><GoalProvider store={goals}><MonitorProvider store={monitors}>{children}</MonitorProvider></GoalProvider></JobProvider></MemoryProvider></ActivityProvider></ApprovalProvider></Context.Provider>;
 }

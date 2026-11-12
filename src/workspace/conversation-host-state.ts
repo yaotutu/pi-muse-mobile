@@ -3,7 +3,6 @@ export function conversationRefreshKey(refreshVersion: number, runtime: {
   synchronized: boolean; conversationSyncVersion: number; conversationInvalidationVersion: number;
   conversationInvalidationPiSessionId: string | null | undefined;
 }) {
-  return runtime.synchronized
-    ? `${refreshVersion}:${runtime.conversationSyncVersion}:${runtime.conversationInvalidationVersion}`
-    : `${refreshVersion}:0:0`;
+  // 失同步仅锁定等待 ready；不能把已有版本回退为 0，制造一次断线 GET。
+  return `${refreshVersion}:${runtime.conversationSyncVersion}:${runtime.conversationInvalidationVersion}`;
 }

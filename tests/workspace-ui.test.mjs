@@ -185,11 +185,24 @@ test('原生输入时保持悬浮形象顶部锚点且不挂载底栏，键盘�
   assert.doesNotMatch(source, /<Navigation/);
   assert.match(source, /return \(\) => \{ show\.remove\(\); hide\.remove\(\); \}/);
   const chat = read('src/workspace/ConversationView.tsx');
-  assert.match(chat, /onLayout=\{followLatest\}/);
-  assert.match(chat, /onContentSizeChange=\{\(\) => \{ scrollFollow\.current\.onContentSizeChange\(\); followLatest\(\); \}\}/);
-  assert.match(chat, /if \(visible && scrollFollow\.current\.onLayout\(\)\) anchorFrame\.current\?\.schedule\(\)/);
+  assert.match(chat, /scrollFollow\.current\.onViewport\(event\.nativeEvent\.layout\.height\)/);
+  assert.match(chat, /scrollFollow\.current\.onContent\(height\);\s*schedulePosition\(\)/);
+  assert.match(chat, /scrollFollow\.current\.onRowLayout\(message\.id, event\.nativeEvent\.layout\)/);
   assert.match(chat, /if \(next\.anchor\) anchorFrame\.current\?\.schedule\(\)/);
-  assert.match(chat, /onScrollBeginDrag=\{\(\) => \{ scrollFollow\.current\.onDrag\(\); anchorFrame\.current\?\.cancel\(\); \}\}/);
+  assert.match(chat, /onScrollBeginDrag=\{\(\) => \{\s*if \(!visible\) return;\s*scrollFollow\.current\.onDrag\(\);\s*anchorFrame\.current\?\.cancel\(\)/);
+});
+
+test('聊天阅读位置以 Store 的本地 hydrate 门禁恢复，持久化只在必要事件且终态不重复回读', () => {
+  const chat = read('src/workspace/ConversationView.tsx');
+  assert.match(chat, /updateMessages\(session\.localLoaded, session\.readingPosition, messageIds\)/);
+  assert.match(chat, /sessions\.setReadingPosition\(sessionId, session\.epoch, position\)/);
+  assert.match(chat, /onScrollEndDrag=\{[\s\S]*?persistReadingPosition\(\)/);
+  assert.match(chat, /onMomentumScrollEnd=\{[\s\S]*?persistReadingPosition\(\)/);
+  assert.match(chat, /AppState\.addEventListener\('change'/);
+  const onScroll = chat.slice(chat.indexOf('onScroll={(event)'), chat.indexOf('scrollEventThrottle='));
+  assert.doesNotMatch(onScroll, /persistReadingPosition|setReadingPosition/);
+  assert.doesNotMatch(chat, /recentTerminal|lastRun/);
+  assert.match(chat, /previousRunning\.current && !conversation\.running\) onSettled\(\)/);
 });
 
 test('工具结果缺席不是运行中证据，结束或停止后的空结果保持中性提示', () => {

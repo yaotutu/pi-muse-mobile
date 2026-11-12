@@ -1,9 +1,11 @@
 import type { ApiClient } from '../api/contracts';
 import { ApiError, isRequestCancelled } from '../api/errors';
-import type { DeleteSessionResult, ResetSessionResult, SessionSkills } from '../api/types';
+import type { ConversationMessage, ConversationSnapshot, DeleteSessionResult, ResetSessionResult, SessionSkills } from '../api/types';
+import { isChatReadingPosition, type ChatLocalData, type ChatLocalSessionRepository, type ChatReadingPosition } from '../chat/chat-local-data';
 import { validateAttachmentDrafts } from '../attachments/validation';
 import type { AttachmentDraft, AttachmentDraftUpdateResult } from '../attachments/types';
 import { MAIN_SESSION_ID } from './types';
+export type { ChatReadingPosition } from '../chat/chat-local-data';
 
 export const INSTRUCTIONS_LIMIT = 20_000;
 
@@ -30,6 +32,11 @@ type Field<T> = {
   error?: string;
 };
 export type SessionState = {
+  localLoaded: boolean;
+  localError?: string;
+  readingPosition: ChatReadingPosition | null;
+  /** 展示缓存，不能建立 revision / 已落盘 ID 或审批资格。 */
+  cachedMessages: ConversationMessage[] | null;
   epoch: number;
   /** 仅作聊天上下文失效边界；HTTP 始终以会话 ID 寻址。 */
   piSessionId: string | null;
@@ -54,7 +61,7 @@ const effective = (data: SessionSkills) => Object.fromEntries(data.skills.map((s
 export const equalSwitches = (a: Record<string, boolean>, b: Record<string, boolean>) =>
   Object.keys(a).length === Object.keys(b).length && Object.keys(a).every((name) => a[name] === b[name]);
 
-/** 每个连接工作区独占内存；不持久化正文、凭据或服务端路径。 */
+/** 每个连接工作区独占内存；仅通过显式注入边界保存有界展示缓存和纯文本草稿。 */
 export class ChatSessionStore {
   private sessions = new Map<string, SessionState>();
   private reads = new Map<string, AbortController>();
@@ -63,8 +70,87 @@ export class ChatSessionStore {
   private lifecycleVersion = 0;
   private enabled = true;
   private disposed = false;
+  private localBindings = new Map<string, string | null>();
+  private localReads = new Map<string, Promise<void>>();
+  private localWrites = new Map<string, ReturnType<typeof setTimeout>>();
+  private draftEdits = new Map<string, number>();
+  private readingEdits = new Map<string, number>();
+  private confirmed = new Set<string>();
+  private bound = new Set<string>();
+  private localRestoreAllowed = true;
 
-  constructor(private readonly api: ApiClient) {}
+  constructor(private readonly api: ApiClient, private readonly local?: ChatLocalSessionRepository) {}
+  private localFailure(entry: SessionState) {
+    if (this.disposed) return;
+    entry.localError = '本机聊天缓存未能保存或读取；服务端消息不受影响';
+    this.changed();
+  }
+  private persistLocal(id: string, immediate = false) {
+    if (!this.local || this.disposed || !this.localRestoreAllowed) return;
+    const entry = this.get(id);
+    const epoch = entry.epoch;
+    clearTimeout(this.localWrites.get(id));
+    const save = async () => {
+      this.localWrites.delete(id);
+      await this.localReads.get(id);
+      if (this.disposed || !this.localRestoreAllowed || this.sessions.get(id) !== entry || entry.epoch !== epoch || entry.deleted || entry.resetting || entry.resetUncertain) return;
+      const data: ChatLocalData = { piSessionId: entry.piSessionId ?? this.localBindings.get(id) ?? null,
+        messages: entry.cachedMessages ?? [], draft: entry.draft, readingPosition: entry.readingPosition };
+      try { await this.local!.save(id, data); }
+      catch { this.localFailure(entry); }
+    };
+    if (immediate) void save();
+    else this.localWrites.set(id, setTimeout(() => void save(), 250));
+  }
+  private hydrateLocal(id: string, entry: SessionState) {
+    if (!this.local || !this.localRestoreAllowed) { entry.localLoaded = true; return; }
+    const epoch = entry.epoch;
+    const draftEdit = this.draftEdits.get(id) ?? 0;
+    const readingEdit = this.readingEdits.get(id) ?? 0;
+    const read = (async () => {
+      try {
+        const data = await this.local!.load(id);
+        if (this.disposed || !this.localRestoreAllowed || this.sessions.get(id) !== entry || entry.epoch !== epoch) return;
+        // 已成功网络绑定优先；迟到旧缓存不能覆盖新历史、草稿或阅读位置。
+        if (data && (!this.bound.has(id) || entry.piSessionId === data.piSessionId)) {
+          this.localBindings.set(id, data.piSessionId);
+          if (!this.confirmed.has(id)) entry.cachedMessages = data.messages;
+          if ((this.draftEdits.get(id) ?? 0) === draftEdit) entry.draft = data.draft;
+          if ((this.readingEdits.get(id) ?? 0) === readingEdit) entry.readingPosition = data.readingPosition;
+        }
+      } catch { this.localFailure(entry); }
+      finally {
+        if (!this.disposed && this.sessions.get(id) === entry) { entry.localLoaded = true; this.changed(); }
+      }
+    })();
+    this.localReads.set(id, read);
+  }
+  setReadingPosition(id: string, epoch: number, position: ChatReadingPosition): void {
+    const entry = this.get(id);
+    if (!this.isCurrent(id, epoch) || !isChatReadingPosition(position)) return;
+    entry.readingPosition = { ...position };
+    this.readingEdits.set(id, (this.readingEdits.get(id) ?? 0) + 1);
+    this.persistLocal(id);
+    this.changed();
+  }
+  /** 仅当前 HTTP 权威快照可进入展示缓存；缓存恢复本身不调用此入口。 */
+  cacheConfirmedHistory(id: string, epoch: number, history: ConversationSnapshot) {
+    if (!this.isCurrent(id, epoch) || history.sessionId !== id) return;
+    const entry = this.get(id);
+    this.confirmed.add(id);
+    entry.cachedMessages = history.messages;
+    this.localBindings.set(id, history.piSessionId);
+    this.persistLocal(id);
+  }
+  private clearLocal(id: string, entry: SessionState) {
+    clearTimeout(this.localWrites.get(id)); this.localWrites.delete(id);
+    this.localBindings.delete(id); this.confirmed.delete(id);
+    entry.cachedMessages = null; entry.readingPosition = null;
+    this.readingEdits.set(id, (this.readingEdits.get(id) ?? 0) + 1);
+    this.draftEdits.set(id, (this.draftEdits.get(id) ?? 0) + 1);
+    return this.local?.remove(id).catch(() => this.localFailure(entry)) ?? Promise.resolve();
+  }
+  flushLocal() { for (const id of this.localWrites.keys()) this.persistLocal(id, true); }
   /** 重置未明只回读历史绑定，不重发 reset；读取失败继续锁住旧上下文。 */
   async verifyReset(id: string) {
     if (!this.get(id).resetUncertain || this.disposed) return;
@@ -77,6 +163,8 @@ export class ChatSessionStore {
   }
   acknowledgeDeletion(id: string) { if (!this.disposed) { this.get(id).deleteUncertain = false; this.changed(); } }
   setEnabled(enabled: boolean) { this.enabled = enabled; }
+  /** 401 只禁止新恢复受保护缓存，不重建同服 Store 或丢失 A01 未确认正文。 */
+  setLocalRestoreAllowed(allowed: boolean) { this.localRestoreAllowed = allowed; }
   private available(id: string) { return this.enabled && !this.disposed && this.canWrite(id); }
   /** dispose 后的工作区整体失效：阻止已销毁 Hook 发起新发送或回写正文。 */
   isDisposed() { return this.disposed; }
@@ -88,8 +176,9 @@ export class ChatSessionStore {
   get(id: string): SessionState {
     let entry = this.sessions.get(id);
     if (!entry) {
-      entry = { epoch: 0, piSessionId: null, deleted: false, deleting: false, resetting: false, resetUncertain: false, resetReviewed: false, deleteUncertain: false, draft: '', draftAttachments: [], pendingSubmission: null, instructions: field(''), skills: { ...field<Record<string, boolean>>({}), catalog: [], diagnostics: [] } };
+      entry = { localLoaded: !this.local, readingPosition: null, cachedMessages: null, epoch: 0, piSessionId: null, deleted: false, deleting: false, resetting: false, resetUncertain: false, resetReviewed: false, deleteUncertain: false, draft: '', draftAttachments: [], pendingSubmission: null, instructions: field(''), skills: { ...field<Record<string, boolean>>({}), catalog: [], diagnostics: [] } };
       this.sessions.set(id, entry);
+      this.hydrateLocal(id, entry);
     }
     return entry;
   }
@@ -100,7 +189,7 @@ export class ChatSessionStore {
   canWrite(id: string) { const entry = this.get(id); return !this.disposed && !entry.deleted && !entry.deleting && !entry.resetting && !entry.resetUncertain && !entry.deleteUncertain; }
   hasSettingsWrite(id: string) { const entry = this.get(id); return entry.instructions.saving || entry.skills.saving; }
   hasDirtySettings(id: string) { const entry = this.get(id); return entry.instructions.draft !== entry.instructions.saved || !equalSwitches(entry.skills.draft, entry.skills.saved); }
-  setDraft(id: string, value: string) { if (this.canWrite(id)) { this.get(id).draft = value; this.changed(); } }
+  setDraft(id: string, value: string) { if (this.canWrite(id)) { this.get(id).draft = value; this.draftEdits.set(id, (this.draftEdits.get(id) ?? 0) + 1); this.persistLocal(id); this.changed(); } }
   /** 附件草稿允许在连接短暂 enabled=false 时写入；仍拒绝 dispose、删除、重置与旧 epoch。 */
   private canHoldDraftAttachments(id: string, epoch: number) {
     const entry = this.get(id);
@@ -185,6 +274,8 @@ export class ChatSessionStore {
     const pending = entry.pendingSubmission;
     if (!pending || pending.status !== 'failed') return false;
     entry.draft = pending.text;
+    this.draftEdits.set(id, (this.draftEdits.get(id) ?? 0) + 1);
+    this.persistLocal(id);
     entry.draftAttachments = [...(pending.attachments ?? [])];
     entry.pendingSubmission = null;
     this.changed();
@@ -228,12 +319,20 @@ export class ChatSessionStore {
   /** 列表观察到另一设备重置时，只失效聊天，不能销毁会话规则与未保存的设置草稿。 */
   bindSession(id: string, piSessionId: string | null) {
     const entry = this.get(id);
-    if (entry.deleted || entry.resetting || entry.piSessionId === piSessionId) return;
-    if (entry.piSessionId !== null || entry.resetUncertain) {
+    if (entry.deleted || entry.resetting) return;
+    const previous = this.bound.has(id) ? entry.piSessionId : this.localBindings.has(id) ? this.localBindings.get(id) : undefined;
+    this.bound.add(id);
+    if (previous === piSessionId) {
+      if (entry.piSessionId !== piSessionId) { entry.piSessionId = piSessionId; this.changed(); }
+      return;
+    }
+    // 空会话首次创建 PI 绑定不是重置，不能清掉首轮发送期间新输入的草稿或未确认条目。
+    if (previous != null || entry.resetUncertain) {
       entry.epoch++;
       entry.draft = '';
       entry.draftAttachments = [];
       entry.pendingSubmission = null;
+      this.clearLocal(id, entry);
       this.cancelReads(id);
     }
     entry.piSessionId = piSessionId;
@@ -263,6 +362,8 @@ export class ChatSessionStore {
       entry.draft = '';
       entry.draftAttachments = [];
       entry.pendingSubmission = null;
+      await this.clearLocal(id, entry);
+      this.bound.delete(id);
       entry.resetUncertain = false;
       return result;
     } catch (error) {
@@ -420,6 +521,8 @@ export class ChatSessionStore {
   clear(id: string) {
     const entry = this.get(id);
     this.cancelReads(id);
+    this.clearLocal(id, entry);
+    this.bound.delete(id);
     this.sessions.delete(id);
     const blank = this.get(id);
     blank.epoch = entry.epoch + 1;
@@ -441,6 +544,8 @@ export class ChatSessionStore {
       entry.draft = '';
       entry.draftAttachments = [];
     }
+    for (const timer of this.localWrites.values()) clearTimeout(timer);
+    this.localWrites.clear();
     for (const controller of this.reads.values()) controller.abort();
     this.reads.clear();
     this.listeners.clear();

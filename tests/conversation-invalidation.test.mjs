@@ -112,11 +112,11 @@ test('main 始终持有 SSE 所有者；切 Tab 仅改变可见性，epoch 与�
   assert.match(workspace, /<ApiProvider client=\{connection\.client\} key=\{connection\.snapshot\.workspaceKey\}/);
 });
 
-test('每会话失效只接受自己的 session，未同步时不会消费旧失效版本', () => {
+test('每会话失效只接受自己的 session，未同步时保留版本而不制造回退 GET', () => {
   const runtime = { synchronized: true, conversationSyncVersion: 4, conversationInvalidationVersion: 8, conversationInvalidationPiSessionId: 'session-a' };
   assert.equal(conversationRefreshKey(2, runtime, 'session-a'), '2:4:8');
   assert.equal(conversationRefreshKey(2, runtime, 'session-b'), '2:4:8');
-  assert.equal(conversationRefreshKey(2, { ...runtime, synchronized: false }, 'session-a'), '2:0:0');
+  assert.equal(conversationRefreshKey(2, { ...runtime, synchronized: false }, 'session-a'), '2:4:8');
   const host = readFileSync('src/workspace/ConversationHost.tsx', 'utf8');
   assert.match(host, /runtime\.conversationInvalidationPiSessionId !== session\.piSessionId\) onBindingMismatch\(\)/);
 });

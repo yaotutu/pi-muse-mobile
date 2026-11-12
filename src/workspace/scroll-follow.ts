@@ -4,13 +4,23 @@ export class ScrollFollow {
   private sendingJump = false;
   private sentContentChanged = false;
   private dragging = false;
+  private momentumExpected = false;
 
   beginSend() {
     this.nearBottom = true;
     this.sendingJump = true;
     this.sentContentChanged = false;
     this.dragging = false;
+    this.momentumExpected = false;
   }
+  restoreFollowing(following: boolean) {
+    this.nearBottom = following;
+    this.sendingJump = false;
+    this.dragging = false;
+    this.momentumExpected = false;
+  }
+  isFollowing() { return this.nearBottom || this.sendingJump; }
+  isInteracting() { return this.dragging; }
   onContentSizeChange() {
     if (this.sendingJump) this.sentContentChanged = true;
     return this.shouldAnchor();
@@ -26,19 +36,40 @@ export class ScrollFollow {
     if (this.dragging) this.nearBottom = atBottom;
     return { anchor: !this.dragging && this.nearBottom && !atBottom, showLatest: !this.nearBottom };
   }
-  onDrag() { this.sendingJump = false; this.dragging = true; }
+  onDrag() {
+    this.sendingJump = false;
+    this.nearBottom = false;
+    this.dragging = true;
+    this.momentumExpected = true;
+  }
+  onMomentumBegin() {
+    // 程序 scroll 不获得用户手势资格；发送/点最新也会废弃旧惯性事件。
+    if (!this.momentumExpected) return;
+    this.momentumExpected = false;
+    this.dragging = true;
+  }
+  suspendInteraction() {
+    this.dragging = false;
+    this.momentumExpected = false;
+  }
   onDragEnd(atBottom: boolean) {
     this.nearBottom = atBottom;
     this.dragging = false;
     return { anchor: false, showLatest: !this.nearBottom };
   }
-  returnLatest() { this.nearBottom = true; this.sendingJump = false; this.dragging = false; }
+  returnLatest() {
+    this.nearBottom = true;
+    this.sendingJump = false;
+    this.dragging = false;
+    this.momentumExpected = false;
+  }
   shouldAnchor() { return !this.dragging && (this.nearBottom || this.sendingJump); }
 }
 
-/** 将连续布局纠偏合并到下一帧；执行时重新检查当前会话是否仍需锚定。 */
+/** 将连续布局纠偏合并到下一帧；取消代次拒绝隐藏后快速返回时的迟到回调。 */
 export class ScrollAnchorFrame {
   private frame: number | null = null;
+  private generation = 0;
 
   constructor(
     private readonly requestFrame: (callback: () => void) => number,
@@ -49,13 +80,16 @@ export class ScrollAnchorFrame {
 
   schedule() {
     if (this.frame !== null) return;
+    const generation = ++this.generation;
     this.frame = this.requestFrame(() => {
+      if (generation !== this.generation) return;
       this.frame = null;
       if (this.canAnchor()) this.anchor();
     });
   }
 
   cancel() {
+    ++this.generation;
     if (this.frame === null) return;
     this.cancelFrame(this.frame);
     this.frame = null;

@@ -138,5 +138,5 @@ test('通知仅 main 引用可追加，非 main 不改稿、不路由、不复�
 });
 test('底层绑定变化仍触发该公开会话的历史回读', () => {
   const runtime = { synchronized: true, conversationSyncVersion: 2, conversationInvalidationVersion: 3, conversationInvalidationPiSessionId: 'new' };
-  assert.equal(conversationRefreshKey(1, runtime), '1:2:3'); assert.equal(conversationRefreshKey(1, { ...runtime, synchronized: false }), '1:0:0');
+  assert.equal(conversationRefreshKey(1, runtime), '1:2:3'); assert.equal(conversationRefreshKey(1, { ...runtime, synchronized: false }), '1:2:3');
 });

@@ -10,6 +10,8 @@ import type { ApiClient } from '../api/contracts';
 import { validateOutgoingDraftMessage } from '../attachments/validation';
 import type { AttachmentDraft } from '../attachments/types';
 import type { PendingSubmission } from '../sessions/chat-session-store';
+import { useOptionalSessionRuntime } from '../runtime/runtime-context';
+import { sameConversationMessages } from './conversation-history-equality';
 
 let clientSequence = 0;
 const nextClientId = (prefix: string) => `${prefix}-${Date.now()}-${++clientSequence}`;
@@ -71,6 +73,15 @@ export function useConversation(sessionId: string, refreshKey: string | number =
   const connection = useServiceConnection();
   const enabled = connection?.enabled ?? true;
   const refreshVersion = connection?.snapshot.refreshVersion ?? 0;
+  const runtime = useOptionalSessionRuntime(sessionId);
+  const synchronized = runtime?.synchronized ?? true;
+  const runtimeSyncVersion = runtime?.conversationSyncVersion ?? 0;
+  const invalidationVersion = runtime?.conversationInvalidationVersion ?? 0;
+  // 有通知流时 ready 是恢复的唯一资格；目录/health 晚到的 refreshVersion 不再重读整份历史。
+  const standaloneRefreshVersion = runtime ? 0 : refreshVersion;
+  const standaloneRefreshKey = runtime ? 0 : refreshKey;
+  const hasRuntime = runtime !== null;
+  const terminalKey = runtime?.runs.filter((run) => run.status !== 'running').map((run) => `${run.runId}:${run.revision}`).join(',') ?? '';
   const enabledRef = useRef(enabled);
   const [views, setViews] = useState<MessageView[]>([]);
   const [authorityState, setAuthorityState] = useState<ConversationAuthority>(() => ({
@@ -91,6 +102,16 @@ export function useConversation(sessionId: string, refreshKey: string | number =
   const aliveRef = useRef(false);
   const historyRequest = useRef<AbortController | null>(null);
   const submissionPromiseRef = useRef<Promise<void> | null>(null);
+  const historyMessagesRef = useRef<ConversationMessage[] | null>(null);
+  const historyViewsRef = useRef(true);
+  const historySync = useRef({ busy: false, scheduled: false, dirty: false, invalidation: `${invalidationVersion}:${terminalKey}` });
+  const historyReasons = useRef<readonly unknown[] | null>(null);
+  const observedTerminals = useRef(new Set<string>());
+  const reconciledLocalRuns = useRef(new Set<string>());
+  const latestRuntime = useRef(runtime);
+  useEffect(() => { latestRuntime.current = runtime; });
+  const scheduleHistoryRef = useRef<() => void>(() => {});
+  const historyOperationRef = useRef<() => Promise<void>>(async () => {});
   const current = () => aliveRef.current && sessions.isCurrent(sessionId, epoch);
   const authority = authorityState.api === api && authorityState.sessionId === sessionId && authorityState.epoch === epoch
     ? authorityState
@@ -102,14 +123,16 @@ export function useConversation(sessionId: string, refreshKey: string | number =
   const adoptHistory = useCallback((history: ConversationSnapshot) => {
     if (history.sessionId !== sessionId) throw new ApiError(502, '服务器返回了其他会话的历史');
     sessions.bindSession(sessionId, history.piSessionId);
-    setAuthorityState({
-      api,
-      sessionId,
-      epoch,
-      piSessionId: history.piSessionId,
-      persistedMessageIds: new Set(history.messages.map((message) => message.id)),
-    });
-    setViews(projectHistory(history.messages));
+    if (!sessions.isCurrent(sessionId, epoch)) return;
+    const unchanged = historyViewsRef.current && historyMessagesRef.current !== null && sameConversationMessages(historyMessagesRef.current, history.messages);
+    if (!unchanged) {
+      setAuthorityState({ api, sessionId, epoch, piSessionId: history.piSessionId,
+        persistedMessageIds: new Set(history.messages.map((message) => message.id)) });
+      setViews(projectHistory(history.messages));
+      historyMessagesRef.current = history.messages;
+      historyViewsRef.current = true;
+      sessions.cacheConfirmedHistory(sessionId, epoch, history);
+    }
   }, [api, epoch, sessionId, sessions]);
 
   /** 权威历史核对：原 ID 已落盘则释放暂存；缺失且持有终态证据（含条目内存的流内 RUN_ERROR 记录）才可判定未发送。 */
@@ -161,13 +184,19 @@ export function useConversation(sessionId: string, refreshKey: string | number =
   );
 
   useEffect(() => {
+    if (revisionRef.current === null && sessionState.cachedMessages && connection?.snapshot.status !== 'authentication-required') {
+      setViews(projectHistory(sessionState.cachedMessages).map((view) => ({ ...view, feedbackAvailable: false })));
+    }
+  }, [sessionState.cachedMessages, connection?.snapshot.status]);
+
+  useEffect(() => {
     let previous = AppState.currentState;
     const subscription = AppState.addEventListener('change', (next) => {
-      if (next === 'active' && previous !== 'active' && !abortRef.current) setHistoryVersion((value) => value + 1);
+      if (!hasRuntime && next === 'active' && previous !== 'active' && !abortRef.current) setHistoryVersion((value) => value + 1);
       previous = next;
     });
     return () => subscription.remove();
-  }, []);
+  }, [hasRuntime]);
 
   // 本 Hook 实例卸载仍取消旧流；正文与附件暂存由同连接 ChatSessionStore 持有，重挂后继续可见。
   // reset/delete/logout/dispose 才是必须释放这些数据的生命周期边界。
@@ -186,66 +215,99 @@ export function useConversation(sessionId: string, refreshKey: string | number =
   useEffect(() => {
     enabledRef.current = enabled;
     if (!enabled) abortRef.current?.abort();
-  }, [enabled]);
+    if (!enabled || !synchronized) {
+      queueMicrotask(() => { if (aliveRef.current) setLoading(true); });
+      historySync.current.dirty = true;
+      historyRequest.current?.abort();
+    }
+  }, [enabled, synchronized]);
 
-  // 历史与版本未成功加载前禁止发送，避免以旧版本覆盖其他设备的新消息。
+  // 一个请求持有者合并恢复事件；内容失效若发生在 GET 途中，完成后再核对一次，不能漏通知。
   useEffect(() => {
-    if (!enabled || abortRef.current || !writable) return;
-    let alive = true;
+  historyOperationRef.current = async () => {
+    if (!enabled || !synchronized || abortRef.current || !writable || !current()) return;
     const controller = new AbortController();
     historyRequest.current = controller;
-    void (async () => {
-      await Promise.resolve();
-      if (!alive) return;
-      setLoading(true);
-      try {
-        const history = await api.getConversation(sessionId, controller.signal);
-        if (alive && sessions.isCurrent(sessionId, epoch)) {
-          revisionRef.current = history.revision;
-          const pending = sessions.get(sessionId).pendingSubmission;
-          if (pending && pending.epoch === epoch) {
-            const persisted = history.messages.some((m) => m.role === 'user' && m.id === pending.messageId);
-            if (!persisted && pending.status === 'unconfirmed') {
-              // 首读缺失不等于未发送：先看内存证据，再查该 run 的终态，均以终态之后的历史对账。
-              const probe = pending.terminalError != null
-                ? { terminal: true as const, message: pending.terminalError, latest: history }
-                : await probeRunTerminal(pending.runId);
-              if (!alive || !sessions.isCurrent(sessionId, epoch)) return;
-              // 卸载/取消期间不得写 Hook 状态；代次与 messageId 校验后 probe 可能已被新提交替换。
-              if (sessions.get(sessionId).pendingSubmission?.messageId !== pending.messageId) return;
-              if (probe) {
-                revisionRef.current = probe.latest.revision;
-                reconcilePendingWithHistory(probe.latest.messages, pending.messageId, true, probe.message);
-                adoptHistory(probe.latest);
-                // 终态证据 + 完整历史：无论释放或判 failed，都不是历史失败，解除发送锁。
-                setHistoryFailed(false);
-                setError(undefined);
-                setLoading(false);
-                return;
-              }
-              // 查询失败 / 404 / 仍 running：保守待确认，保持发送锁定。
-              adoptHistory(history);
-              setLoading(false);
-              return;
-            }
-            // sending / failed / unconfirmed 但已持久化：按当前快照直接对账。
-            reconcilePendingWithHistory(history.messages, pending.messageId, pending.status === 'failed', pending.error);
+    const active = () => current() && !controller.signal.aborted && historyRequest.current === controller;
+    if (!revisionRef.current || historyFailed || sessions.get(sessionId).pendingSubmission?.status === 'unconfirmed') setLoading(true);
+    try {
+      const history = await api.getConversation(sessionId, controller.signal);
+      if (!active()) return;
+      revisionRef.current = history.revision;
+      const pending = sessions.get(sessionId).pendingSubmission;
+      if (pending && pending.epoch === epoch) {
+        const persisted = history.messages.some((m) => m.role === 'user' && m.id === pending.messageId);
+        if (!persisted && pending.status === 'unconfirmed') {
+          const probe = pending.terminalError != null
+            ? { terminal: true as const, message: pending.terminalError, latest: history }
+            : await probeRunTerminal(pending.runId);
+          if (!active() || sessions.get(sessionId).pendingSubmission?.messageId !== pending.messageId) return;
+          if (probe) {
+            revisionRef.current = probe.latest.revision;
+            reconcilePendingWithHistory(probe.latest.messages, pending.messageId, true, probe.message);
+            adoptHistory(probe.latest);
+            setHistoryFailed(false);
+            setError(undefined);
+            return;
           }
+          // 查询失败、404、仍 running：展示权威历史但 pending 保持未确认，绝不重发。
           adoptHistory(history);
-          setHistoryFailed(false);
-          setError(undefined);
+          return;
         }
-      } catch (e) {
-        if (alive && sessions.isCurrent(sessionId, epoch) && !isRequestCancelled(e)) {
-          setHistoryFailed(true);
-          setError(e instanceof Error ? e.message : String(e));
-        }
-      } finally {
-        if (alive && sessions.isCurrent(sessionId, epoch)) setLoading(false);
+        reconcilePendingWithHistory(history.messages, pending.messageId, pending.status === 'failed', pending.error);
       }
-    })();
-    return () => { alive = false; controller.abort(); if (historyRequest.current === controller) historyRequest.current = null; };
-  }, [api, sessionId, historyVersion, enabled, refreshVersion, refreshKey, epoch, sessions, writable, probeRunTerminal, reconcilePendingWithHistory, adoptHistory]);
+      adoptHistory(history);
+      setHistoryFailed(false);
+      setError(undefined);
+    } catch (e) {
+      if (active() && !isRequestCancelled(e)) {
+        setHistoryFailed(true);
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    } finally {
+      if (active()) setLoading(false);
+      if (historyRequest.current === controller) historyRequest.current = null;
+    }
+  };
+  scheduleHistoryRef.current = () => {
+    const sync = historySync.current;
+    if (sync.scheduled || sync.busy || !sync.dirty || !enabled || !synchronized || abortRef.current || !writable || !current()) return;
+    sync.scheduled = true;
+    // 同一轮 render / ready / connection 恢复只发一个 GET，不以 effect cleanup 取消重开。
+    queueMicrotask(() => {
+      sync.scheduled = false;
+      if (!sync.dirty || !current()) return;
+      sync.dirty = false;
+      sync.busy = true;
+      void historyOperationRef.current().finally(() => { sync.busy = false; if (sync.dirty) scheduleHistoryRef.current(); });
+    });
+  };
+  });
+  useEffect(() => {
+    const sync = historySync.current;
+    const reasons = [historyVersion, enabled, synchronized, standaloneRefreshVersion, standaloneRefreshKey, epoch, writable, runtimeSyncVersion, invalidationVersion];
+    const reasonChanged = historyReasons.current === null || reasons.some((value, index) => value !== historyReasons.current?.[index]);
+    historyReasons.current = reasons;
+    const terminals = terminalKey ? terminalKey.split(',') : [];
+    const newTerminal = terminals.some((token) => !observedTerminals.current.has(token) && !reconciledLocalRuns.current.has(token.slice(0, token.lastIndexOf(':'))));
+    observedTerminals.current = new Set(terminals);
+    // 本地流已结束并读回完整历史后，迟到的同一运行终态不是新的同步资格。
+    if (!reasonChanged && !newTerminal) return;
+    const invalidation = `${invalidationVersion}:${terminalKey}`;
+    // 恢复类事件可合入进行中的 GET；新的正文/终态事实必须在其后再次读取。
+    if (!sync.busy || invalidation !== sync.invalidation) sync.dirty = true;
+    sync.invalidation = invalidation;
+    scheduleHistoryRef.current();
+  }, [historyVersion, enabled, synchronized, standaloneRefreshVersion, standaloneRefreshKey, epoch, writable, runtimeSyncVersion, invalidationVersion, terminalKey]);
+  useEffect(() => {
+    // 手动连接重试是失败/未明时的兜底，不把迟到的目录成功当作第二个 ready。
+    if (hasRuntime && enabled && synchronized && !historySync.current.busy && !historySync.current.scheduled && (historyFailed || !revisionRef.current || sessions.get(sessionId).pendingSubmission?.status === 'unconfirmed')) {
+      historySync.current.dirty = true;
+      scheduleHistoryRef.current();
+    }
+    // 只响应一次连接重试版本变化；失败本身不能触发自动无限回读。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshVersion]);
 
   useEffect(() => {
     if (!writable) {
@@ -259,6 +321,7 @@ export function useConversation(sessionId: string, refreshKey: string | number =
     const controller = new AbortController();
     historyRequest.current?.abort();
     historyRequest.current = controller;
+    historySync.current.dirty = false;
     try { return await api.getConversation(sessionId, controller.signal); }
     finally { if (historyRequest.current === controller) historyRequest.current = null; }
   };
@@ -284,6 +347,7 @@ export function useConversation(sessionId: string, refreshKey: string | number =
       ? views.map((view) => (view.id === submission.messageId ? userView : view))
       : [...views, userView];
     const aggregator = new StreamAggregator(baseViews);
+    historyViewsRef.current = false;
     setViews([...aggregator.messages]);
     setRunning(true);
 
@@ -377,11 +441,21 @@ export function useConversation(sessionId: string, refreshKey: string | number =
           return;
         }
 
+        const beforeReconcile = latestRuntime.current;
+        const knownTerminals = new Set(beforeReconcile?.runs.filter((run) => run.status !== 'running').map((run) => `${run.runId}:${run.revision}`));
         const history = await syncAfterRun();
         if (current()) {
           revisionRef.current = history.revision;
           // 终态 RUN_ERROR + 完整历史缺失原 ID = 确切未发送证据；正常结束缺失仍待确认。
           const released = reconcilePendingWithHistory(history.messages, submission.messageId, runErrorOccurred, runErrorMessage);
+          if (released || runErrorOccurred) {
+            reconciledLocalRuns.current.add(submission.runId);
+            if (reconciledLocalRuns.current.size > 64) reconciledLocalRuns.current.delete(reconciledLocalRuns.current.values().next().value!);
+            const latest = latestRuntime.current;
+            const unrelatedTerminal = latest?.runs.some((run) => run.status !== 'running' && run.runId !== submission.runId && !knownTerminals.has(`${run.runId}:${run.revision}`));
+            // 仅消费本次运行终态；GET 期间的新正文失效或其他运行终态仍保留再同步资格。
+            if (latest?.conversationInvalidationVersion === beforeReconcile?.conversationInvalidationVersion && !unrelatedTerminal) historySync.current.dirty = false;
+          }
           if (released) {
             adoptHistory(history);
             setHistoryFailed(false);
@@ -503,6 +577,7 @@ export function useConversation(sessionId: string, refreshKey: string | number =
       runIdRef.current = null;
       if (aliveRef.current) {
         setRunning(false);
+        if (historySync.current.dirty) scheduleHistoryRef.current();
         if (stale && sessions.canWrite(sessionId)) setHistoryVersion((value) => value + 1);
       }
     }
@@ -523,7 +598,7 @@ export function useConversation(sessionId: string, refreshKey: string | number =
     attachments?: readonly AttachmentDraft[],
   ) => {
     const text = raw.trim();
-    if (!enabled || sessions.isDisposed() || !sessions.isCurrent(sessionId, epoch) || loading || historyFailed || abortRef.current || !revisionRef.current) return;
+    if (!enabled || !synchronized || sessions.isDisposed() || !sessions.isCurrent(sessionId, epoch) || loading || historyFailed || abortRef.current || !revisionRef.current) return;
     if (sessions.get(sessionId).pendingSubmission) return; // 上一条未确认提交未处理前，禁止重复发送或覆盖
 
     const selectedAttachments = attachments ?? sessions.get(sessionId).draftAttachments;
@@ -553,7 +628,7 @@ export function useConversation(sessionId: string, refreshKey: string | number =
 
   /** 只允许用户显式重试 failed 轮；复用原 ID 与原始附件，避免把失败轮改写成新消息。 */
   const retry = async (): Promise<boolean> => {
-    if (!enabled || sessions.isDisposed() || !sessions.isCurrent(sessionId, epoch) || loading || historyFailed || abortRef.current || !revisionRef.current) return false;
+    if (!enabled || !synchronized || sessions.isDisposed() || !sessions.isCurrent(sessionId, epoch) || loading || historyFailed || abortRef.current || !revisionRef.current) return false;
     const pending = sessions.get(sessionId).pendingSubmission;
     if (!pending || pending.epoch !== epoch || pending.status !== 'failed') return false;
     if (!sessions.retryPendingSubmission(sessionId, epoch, pending.messageId)) return false;
@@ -607,6 +682,7 @@ export function useConversation(sessionId: string, refreshKey: string | number =
 
     if (
       !enabled ||
+      !synchronized ||
       sessions.isDisposed() ||
       !sessions.isCurrent(sessionId, epoch) ||
       loading ||
@@ -624,7 +700,8 @@ export function useConversation(sessionId: string, refreshKey: string | number =
 
   const reload = () => {
     if (abortRef.current || !sessions.canWrite(sessionId)) return;
-    setLoading(true);
+    if (!revisionRef.current || historyFailed) setLoading(true);
+    historySync.current.dirty = true;
     setHistoryVersion((value) => value + 1);
   };
 
@@ -649,8 +726,8 @@ export function useConversation(sessionId: string, refreshKey: string | number =
     piSessionId,
     persistedMessageIds,
     running,
-    error,
-    loading: loading || !enabled,
+    error: error ?? sessionState.localError,
+    loading: loading || !enabled || !synchronized,
     historyFailed,
     send,
     retry,

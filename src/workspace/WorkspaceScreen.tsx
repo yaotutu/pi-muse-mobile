@@ -142,6 +142,8 @@ function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) 
   const leaveCompanion = () => setCompanionPresence({ expanded: false, presented: false });
   const [refreshVersions, setRefreshVersions] = useState<Record<string, number>>({});
   const refresh = useCallback((id: string) => { void store.reload(); goals.invalidate(); setRefreshVersions((old) => ({ ...old, [id]: (old[id] ?? 0) + 1 })); }, [store, goals]);
+  // 聊天终态已由会话 Hook 完成权威对账；这里只刷新关联领域，不能再次失效同一份历史。
+  const settled = useCallback(() => { void store.reload(); goals.invalidate(); }, [store, goals]);
   useEffect(() => {
     news.setActive(AppState.currentState === 'active'); newsPreferences.setActive(AppState.currentState === 'active'); const sub = AppState.addEventListener('change', (state) => { news.setActive(state === 'active'); newsPreferences.setActive(state === 'active'); });
     return () => { sub.remove(); news.dispose(); newsPreferences.dispose(); browser.dispose(); };
@@ -224,7 +226,7 @@ function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) 
     {/* 键盘 screenY 是窗口坐标，避让布局在 SafeAreaView 内；补上顶部安全区才能对齐，不能在 composer 再减一次键盘高度。 */}
     <View style={{ flex: 1 }} pointerEvents={browserOpen || panelPresented ? 'none' : 'auto'} accessibilityElementsHidden={browserOpen || panelPresented} importantForAccessibility={browserOpen || panelPresented ? 'no-hide-descendants' : 'auto'}><KeyboardAvoidingView style={{ flex: 1 }} keyboardVerticalOffset={insets.top} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled={Platform.OS !== 'web'}>
       <View style={{ flex: 1, display: page === 'news' ? 'none' : 'flex' }}><ConversationHost chatVisible={page === 'messages'} otherPage={otherPage} refreshVersions={refreshVersions}
-        onSettled={refresh} onBindingMismatch={store.reload} openConnection={openConnection} onOpenApprovals={() => openCompanion('approvals')} onContinueNotification={(reference) => {
+        onSettled={settled} onBindingMismatch={store.reload} openConnection={openConnection} onOpenApprovals={() => openCompanion('approvals')} onContinueNotification={(reference) => {
           const unavailable = notificationContinuationNotice(reference.sessionId);
           if (unavailable) { setNotice(unavailable); return; }
           if (!chats.canWrite('main')) { setNotice('主聊天正在维护或结果待核对，暂不能追加通知引用。'); return; }

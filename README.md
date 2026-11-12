@@ -28,7 +28,7 @@ Pi Muse Mobile is the official Expo / React Native client for a self-hosted, sin
 
 ### Three tabs, one place to talk
 
-- **Messages** opens the permanent `main` chat directly, with no conversation picker. Stream replies, read native Markdown and copyable code, attach images or text, and leave feedback on saved messages. Switching tabs preserves the main chat and its draft. The server has topic-session foundations, but topic-session UI is not currently exposed in the app.
+- **Messages** opens the permanent `main` chat directly, with no conversation picker. Stream replies, read native Markdown and copyable code, attach images or text, and leave feedback on saved messages. Switching tabs preserves the main chat and its draft. Recent saved messages, the text draft, and the reading position are retained locally for an immediate display on reopening, followed by background server synchronization; this is not offline AI or a complete backup. The server has topic-session foundations, but topic-session UI is not currently exposed in the app.
 - **News** is a global RSS reading and recommendation feed, with article details, Like, Dislike, and Save. **Discuss** adds an editable, explicitly untrusted article citation to the existing main draft; it never sends automatically. Return to the article when you are done.
 - **Settings** keeps controls out of the chat log: assistant identity, instructions and skills, memory and Dream, goals, scheduled tasks, web monitors, workspace files, activity and approvals, connection, appearance, and updates.
 

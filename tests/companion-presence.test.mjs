@@ -257,6 +257,18 @@ function workspaceHarness() {
   return { ...runner, state, listeners, render: () => runner.render(component, { openConnection: noop }), back: () => back(), dismissed: () => dismissed };
 }
 
+test('本地回复已核对历史后，Workspace终态回调不再次失效聊天', () => {
+  const h = workspaceHarness();
+  let tree = h.render();
+  const before = nodes(tree).find((node) => node.type === 'ConversationHost');
+  before.props.onSettled('main');
+  tree = h.render();
+  const after = nodes(tree).find((node) => node.type === 'ConversationHost');
+  assert.equal(after.props.refreshVersions, before.props.refreshVersions);
+  assert.equal(after.key, before.key);
+  h.unmount();
+});
+
 test('实际转译Workspace：唯一ConversationHost/稳定Floating无key，审批同一展开态、关闭/Back反向、页切换与键盘不卸载聊天', () => {
   const h = workspaceHarness(); let tree = h.render();
   const find = (type) => nodes(tree).find((n) => n.type === type);
