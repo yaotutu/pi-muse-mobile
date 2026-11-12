@@ -51,7 +51,7 @@ test('内置默认八态来自唯一B母版，保持原builtin key，不与旧C�
   assert.equal(new Set(manifest.states.map((entry) => entry.sha256)).size, 8);
   const builtin = readFileSync(new URL('../src/companion/builtin-packs.ts', import.meta.url), 'utf8');
   assert.match(builtin, /key: 'builtin:penguin'/);
-  for (const state of COMPANION_STATES) assert.ok(builtin.includes(`assets/images/avatar/${state}.png`), state);
+  // 八张 require 路径的打包接线由 workspace-ui.test 的既有断言负责，此处不重复维护一份。
 });
 
 test('真实B资源逐张校验哈希、512RGBA、透明角与抗锯齿边缘，纸张和人物内部不被抠空', () => {

@@ -128,13 +128,14 @@ function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) 
   const [sessionTab, setSessionTab] = useState<SessionTab>('activity');
   const [companionPresence, setCompanionPresence] = useState({ expanded: false, presented: false });
   const panelOpen = companionPresence.expanded; const panelPresented = companionPresence.presented;
-  const setPanelOpen = (expanded: boolean) => setCompanionPresence((old) => ({ ...old, expanded }));
+  // 只有关闭走这里；打开统一经 openCompanion，避免两个看似等价的入口。
+  const closeCompanion = () => setCompanionPresence((old) => ({ ...old, expanded: false }));
   const onCompanionCollapsed = useCallback(() => setCompanionPresence((old) =>
     old.expanded || !old.presented ? old : { expanded: false, presented: false }), []);
   const openCompanion = (tab: SessionTab) => { Keyboard.dismiss(); setSessionTab(tab); setCompanionPresence({ expanded: true, presented: true }); };
   const toggleCompanion = () => {
     Keyboard.dismiss();
-    if (panelOpen) setPanelOpen(false);
+    if (panelOpen) closeCompanion();
     else openCompanion(panelPresented ? sessionTab : 'activity');
   };
   // 离开消息或打开更高优先级操作时立即隐藏展开态，不将它带入设置/重置弹层。
@@ -167,7 +168,7 @@ function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) 
   };
   const back = () => {
     if (keyboardVisible) { Keyboard.dismiss(); return true; } if (browserOpen) { browser.close(); setBrowserOpen(false); return true; }
-    if (panelPresented) { setPanelOpen(false); return true; } if (settingsPage) { backSettings(); return true; }
+    if (panelPresented) { closeCompanion(); return true; } if (settingsPage) { backSettings(); return true; }
     if (page === 'news' && newsState.selectedArticleId) { news.closeArticle(); return true; } if (page === 'news' && newsManaging) { setNewsManaging(false); return true; }
     if (page === 'messages' && chatReturn === 'news') { returnToArticle(); return true; } return false;
   };
@@ -244,7 +245,7 @@ function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) 
       onReturnArticle={chatReturn === 'news' ? returnToArticle : undefined}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing[12] }}>
         <Text accessibilityRole="header" style={{ ...workspaceTheme.typography.section, color: colors.ink, flexShrink: 1 }}>Pi Muse</Text>
-        <ActionButton label="收起" accessibilityLabel="收起形象展开态" onPress={() => setPanelOpen(false)} testID="workspace-companion-close" />
+        <ActionButton label="收起" accessibilityLabel="收起形象展开态" onPress={closeCompanion} testID="workspace-companion-close" />
       </View>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing[8] }}>
         <ActionButton label="重置会话" disabled={currentState.resetting || currentState.resetUncertain} onPress={() => { setResetError(undefined); leaveCompanion(); setResetTarget('main'); }} />
