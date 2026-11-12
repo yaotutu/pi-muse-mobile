@@ -4,18 +4,17 @@
  */
 import { FeedbackNotice } from "../ui/Feedback";
 import { Card } from "../ui/Surfaces";
-import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useEffect, useMemo } from "react";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { ArrowLeft, Check, ChevronRight, CirclePause, Clock3, Workflow, X } from "lucide-react-native";
 import { useActivities } from "../activities/ActivityProvider";
 import { activityStepKey } from "../activities/contracts";
 import { activityStatusLabel, stepKindLabel, stepStatusLabel } from "../activities/presentation";
-import { activityStatuses, type ActivityFilter, type ActivityOverview, type ActivityStatus } from "../activities/types";
+import { type ActivityFilter, type ActivityOverview, type ActivityStatus } from "../activities/types";
 import { spacing, workspaceTheme, type WorkspaceColors } from "../ui/tokens";
 import { useTheme } from "../theme/ThemeProvider";
 import { EmptyState, StatusPill, type StatusTone } from "./primitives";
 import { ActionButton } from "../ui/ActionButton";
-import { ChoiceChip } from "../ui/ChoiceChip";
 
 function useStyles() {
   const { colors } = useTheme();
@@ -36,11 +35,10 @@ export function ActivityPanel({
   const { store, snapshot } = useActivities();
   const styles = useStyles();
   const { colors } = useTheme();
-  const [scope, setScope] = useState(defaultScope);
-  const [status, setStatus] = useState<ActivityStatus>();
+  // 筛选排已移除：列表固定按 defaultScope 读取，不再提供状态/会话切换。
   const filter = useMemo<ActivityFilter>(
-    () => ({ ...(scope === "session" ? { sessionId } : {}), ...(status ? { status } : {}) }),
-    [scope, sessionId, status]
+    () => ({ ...(defaultScope === "session" ? { sessionId } : {}) }),
+    [defaultScope, sessionId]
   );
 
   useEffect(() => {
@@ -138,32 +136,7 @@ export function ActivityPanel({
         </>
       ) : (
         <>
-          {defaultScope === "all" && (
-            <View style={styles.scopeRow}>
-              <ChoiceChip label="全部会话" selected={scope === "all"} onPress={() => setScope("all")} />
-              <ChoiceChip label="当前会话" selected={scope === "session"} onPress={() => setScope("session")} />
-            </View>
-          )}
-
-          {matches && snapshot.activities.length > 0 && (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.filters}
-              accessibilityLabel="活动状态筛选"
-            >
-              <ChoiceChip label="全部活动状态" text="全部" selected={!status} onPress={() => setStatus(undefined)} />
-              {activityStatuses.map((value) => (
-                <ChoiceChip
-                  key={value}
-                  label={activityStatusLabel(value)}
-                  selected={status === value}
-                  onPress={() => setStatus(value)}
-                />
-              ))}
-            </ScrollView>
-          )}
-
+          {/* 历史只按时间线展示全部登记活动；状态与会话筛选排先移除，避免列表前一堆按钮。 */}
           {snapshot.loading && <ActivityIndicator accessibilityLabel="正在读取活动列表" color={colors.muted} />}
           {matches && !!snapshot.error && <FeedbackNotice text={snapshot.error} tone="danger" />}
           {matches && snapshot.stale && snapshot.loaded && (
@@ -263,8 +236,6 @@ const createStyles = (colors: WorkspaceColors) =>
     backRow: { flexDirection: "row", alignItems: "center", gap: spacing[8], paddingVertical: spacing[6] },
     backText: { fontSize: 15, fontWeight: "500", color: colors.ink },
 
-    scopeRow: { flexDirection: "row", gap: spacing[8], alignItems: "center" },
-    filters: { gap: spacing[8], paddingVertical: spacing[4] },
     card: { borderRadius: workspaceTheme.radius.card, backgroundColor: colors.surface, padding: spacing[16], gap: spacing[10] },
     warning: { padding: spacing[12], borderRadius: workspaceTheme.radius.field, backgroundColor: colors.warningSoft },
     warningText: { ...workspaceTheme.typography.status, color: colors.warning },

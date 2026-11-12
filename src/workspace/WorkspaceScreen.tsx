@@ -246,8 +246,7 @@ function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) 
       visible={page === 'messages' && !browserOpen && !resetTarget} expanded={panelOpen} presented={panelPresented}
       statusLabel={mainStatusLabel} onToggle={toggleCompanion} onCollapsed={onCompanionCollapsed}
       onReturnArticle={chatReturn === 'news' ? returnToArticle : undefined}>
-      {/* 展开页内容：固定锚点下只有居中名字与动态/审批/历史；会话操作全部收在设置里。 */}
-      <Text accessibilityRole="header" style={{ ...workspaceTheme.typography.section, color: colors.ink, textAlign: 'center' }}>Pi Muse</Text>
+      {/* 展开页内容：固定锚点下直接是动态/审批/历史；无标题、无操作按钮。 */}
       <View style={{ flex: 1, minHeight: 300 }}><SessionPanel sessionId="main" tab={sessionTab} onTab={setSessionTab} /></View>
     </FloatingCompanion>
     </View>
