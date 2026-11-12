@@ -2,17 +2,19 @@
 
 import { useMemo } from 'react';
 import { ActivityIndicator, Alert, Linking, StyleSheet, Text, View, type DimensionValue } from 'react-native';
+import * as Device from 'expo-device';
 import { ActionButton } from '../ui/ActionButton';
 import { ErrorNotice } from '../ui/Feedback';
 import { Sheet } from '../ui/Sheet';
 import { Card } from '../ui/Surfaces';
 import { spacing, workspaceTheme, type WorkspaceColors } from '../ui/tokens';
 import { useTheme } from '../theme/ThemeProvider';
-import { RELEASE_REPOSITORY } from './releases';
+import { apkAssetNameForAbi, latestApkDownloadUrl } from './releases';
 import type { UpdateSheetProps, UpdateSnapshot } from './types';
 
-// 手动入口只指向固定官方仓库，不从业务连接或失败响应中拼接可执行安装包地址。
-const MANUAL_APK_URL = `https://github.com/${RELEASE_REPOSITORY}/releases/latest/download/app-release.apk`;
+// 手动入口只指向固定官方仓库，不从业务连接或失败响应中拼接可执行安装包地址；
+// 与自动下载一致，优先当前设备架构的拆分包，识别不了时回退通用包。
+const MANUAL_APK_URL = latestApkDownloadUrl(apkAssetNameForAbi(Device.supportedCpuArchitectures?.[0]));
 
 export function UpdateSheet({
   snapshot,

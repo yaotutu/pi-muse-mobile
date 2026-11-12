@@ -6,7 +6,15 @@ import './register-source.mjs';
 import test from 'node:test';
 
 const releases = await import('../src/update/releases.ts');
-const { isNewerVersion, parseRelease, getLatestRelease, LATEST_RELEASE_URL } = releases;
+const {
+  isNewerVersion,
+  parseRelease,
+  getLatestRelease,
+  apkAssetNameForAbi,
+  latestApkDownloadUrl,
+  LATEST_RELEASE_URL,
+  UNIVERSAL_APK_NAME,
+} = releases;
 
 // --- 辅助 ----------------------------------------------------------------
 
@@ -38,6 +46,27 @@ const buildValidRelease = (overrides = {}) => ({
       'https://github.com/yaotutu/pi-muse-mobile/releases/download/v1.2.3/app-release.apk',
   }],
   ...overrides,
+});
+
+// 带全部拆分资产的正式 release；assetId 前缀用于断言选中了哪个包。
+const buildSplitRelease = () => ({
+  id: 123,
+  draft: false,
+  prerelease: false,
+  tag_name: 'v1.2.3',
+  assets: [
+    'app-release.apk',
+    'app-armeabi-v7a-release.apk',
+    'app-arm64-v8a-release.apk',
+    'app-x86-release.apk',
+    'app-x86_64-release.apk',
+  ].map((name, index) => ({
+    id: 400 + index,
+    name,
+    size: 1000 + index,
+    browser_download_url:
+      `https://github.com/yaotutu/pi-muse-mobile/releases/download/v1.2.3/${name}`,
+  })),
 });
 
 // --- LATEST_RELEASE_URL ---------------------------------------------------
@@ -284,6 +313,75 @@ test('parseRelease: 输入为 null 或非对象抛错', () => {
   assert.throws(() => parseRelease(42));
 });
 
+// --- ABI 拆分资产选择 ------------------------------------------------------
+
+test('apkAssetNameForAbi: 四种 ABI 映射到对应拆分包名', () => {
+  assert.equal(apkAssetNameForAbi('arm64-v8a'), 'app-arm64-v8a-release.apk');
+  assert.equal(apkAssetNameForAbi('armeabi-v7a'), 'app-armeabi-v7a-release.apk');
+  assert.equal(apkAssetNameForAbi('x86'), 'app-x86-release.apk');
+  assert.equal(apkAssetNameForAbi('x86_64'), 'app-x86_64-release.apk');
+});
+
+test('apkAssetNameForAbi: 未知或缺失 ABI 回退通用包名', () => {
+  assert.equal(apkAssetNameForAbi('riscv64'), UNIVERSAL_APK_NAME);
+  assert.equal(apkAssetNameForAbi(''), UNIVERSAL_APK_NAME);
+  assert.equal(apkAssetNameForAbi(null), UNIVERSAL_APK_NAME);
+  assert.equal(apkAssetNameForAbi(undefined), UNIVERSAL_APK_NAME);
+});
+
+test('latestApkDownloadUrl: 生成固定官方 latest 地址', () => {
+  assert.equal(
+    latestApkDownloadUrl('app-arm64-v8a-release.apk'),
+    'https://github.com/yaotutu/pi-muse-mobile/releases/latest/download/app-arm64-v8a-release.apk',
+  );
+  assert.equal(
+    latestApkDownloadUrl(UNIVERSAL_APK_NAME),
+    'https://github.com/yaotutu/pi-muse-mobile/releases/latest/download/app-release.apk',
+  );
+});
+
+test('latestApkDownloadUrl: 拒绝名单外文件名', () => {
+  assert.throws(() => latestApkDownloadUrl('debug.apk'));
+  assert.throws(() => latestApkDownloadUrl('../app-release.apk'));
+});
+
+test('parseRelease: 指定 ABI 资产存在时优先选中并校验其 URL', () => {
+  const summary = parseRelease(buildSplitRelease(), 'app-arm64-v8a-release.apk');
+  assert.equal(summary.assetId, 402);
+  assert.equal(summary.size, 1002);
+  assert.equal(summary.url, 'https://github.com/yaotutu/pi-muse-mobile/releases/download/v1.2.3/app-arm64-v8a-release.apk');
+});
+
+test('parseRelease: 拆分资产缺失时回退通用包', () => {
+  const body = { ...buildSplitRelease(), assets: buildSplitRelease().assets.filter((a) => a.name !== 'app-x86_64-release.apk') };
+  const summary = parseRelease(body, 'app-x86_64-release.apk');
+  assert.equal(summary.assetId, 400);
+  assert.equal(summary.url, 'https://github.com/yaotutu/pi-muse-mobile/releases/download/v1.2.3/app-release.apk');
+  // 过滤掉通用包且拆分包也没有时应抛错。
+  const noMatch = { ...body, assets: body.assets.filter((a) => a.name !== UNIVERSAL_APK_NAME) };
+  assert.throws(() => parseRelease(noMatch, 'app-x86_64-release.apk'));
+});
+
+test('parseRelease: 同名拆分资产出现两份抛错，不猜', () => {
+  const release = buildSplitRelease();
+  const dup = { ...release.assets[2] };
+  release.assets.push(dup);
+  assert.throws(() => parseRelease(release, 'app-arm64-v8a-release.apk'));
+});
+
+test('parseRelease: 选中拆分包但 URL 文件名不一致抛错', () => {
+  const release = buildSplitRelease();
+  release.assets[2].browser_download_url =
+    'https://github.com/yaotutu/pi-muse-mobile/releases/download/v1.2.3/app-release.apk';
+  assert.throws(() => parseRelease(release, 'app-arm64-v8a-release.apk'));
+});
+
+test('parseRelease: 默认仍只认通用包名（旧调用方兼容）', () => {
+  const summary = parseRelease(buildSplitRelease());
+  assert.equal(summary.assetId, 400);
+  assert.equal(summary.url, 'https://github.com/yaotutu/pi-muse-mobile/releases/download/v1.2.3/app-release.apk');
+});
+
 // --- getLatestRelease ----------------------------------------------------
 
 test('getLatestRelease: 正式 release 200 返回精简结构', async () => {
@@ -433,5 +531,17 @@ test('getLatestRelease: 默认 timeoutMs 不强制传入即生效', async () => 
   await withFetch(async () => jsonResponse(buildValidRelease()), async () => {
     const summary = await getLatestRelease(new AbortController().signal);
     assert.equal(summary.version, '1.2.3');
+  });
+});
+
+test('getLatestRelease: apkName 透传给资产选择', async () => {
+  await withFetch(async () => jsonResponse(buildSplitRelease()), async () => {
+    const summary = await getLatestRelease(
+      new AbortController().signal,
+      undefined,
+      'app-armeabi-v7a-release.apk',
+    );
+    assert.equal(summary.assetId, 401);
+    assert.equal(summary.url, 'https://github.com/yaotutu/pi-muse-mobile/releases/download/v1.2.3/app-armeabi-v7a-release.apk');
   });
 });

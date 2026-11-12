@@ -10,7 +10,7 @@
 
 聊一件事，读一篇值得讨论的文章，让计划继续推进——模型访问与助手数据仍由自己的服务端负责。
 
-**[下载 Android APK](https://github.com/yaotutu/pi-muse-mobile/releases/latest/download/app-release.apk)** · [版本说明](https://github.com/yaotutu/pi-muse-mobile/releases/latest) · [部署服务端](https://github.com/yaotutu/pi-muse/blob/main/README.zh-CN.md#快速开始)
+**[下载 Android APK](https://github.com/yaotutu/pi-muse-mobile/releases/latest/download/app-release.apk)**（通用包；每个 Release 另附 `app-arm64-v8a-release.apk` 等按架构拆分的更小安装包） · [版本说明](https://github.com/yaotutu/pi-muse-mobile/releases/latest) · [部署服务端](https://github.com/yaotutu/pi-muse/blob/main/README.zh-CN.md#快速开始)
 
 [使用体验](#使用体验) · [安装与连接](#安装与连接) · [源码开发](#源码开发) · [安全与限制](#安全与限制)
 
@@ -54,7 +54,7 @@ Pi Muse Mobile 是自部署、个人自用 AI 助手的官方 Expo / React Nativ
 ### Android
 
 1. [部署 Pi Muse](https://github.com/yaotutu/pi-muse/blob/main/README.zh-CN.md#快速开始)，设置强随机服务端 AccessKey，以及当前 pi provider 支持的模型接口。App 不需要模型 API key。
-2. [下载最新稳定 `app-release.apk`](https://github.com/yaotutu/pi-muse-mobile/releases/latest/download/app-release.apk)，安装并打开。Android 可能要求先允许来自该来源的安装。
+2. [下载最新稳定 `app-release.apk`](https://github.com/yaotutu/pi-muse-mobile/releases/latest/download/app-release.apk)，安装并打开。Android 可能要求先允许来自该来源的安装。每个 Release 也提供 `app-armeabi-v7a`、`app-arm64-v8a`、`app-x86`、`app-x86_64` 按架构拆分的更小安装包，可按设备架构选择。
 3. 未连接时打开首页「服务器连接」；已连接时进入「设置 → 服务器连接」。
 4. 填写手机能访问的服务端根地址，例如 `http://192.168.1.100:12330`，以及配置中的 `server.accessKey`。不要附加 `/api` 或 `/docs`；真机上的 `localhost` 指向手机自己。
 5. 点击「保存」，App 先验证地址和 AccessKey，通过后才保存。「测试连接」可选，不会保存配置。
@@ -62,7 +62,7 @@ Pi Muse Mobile 是自部署、个人自用 AI 助手的官方 Expo / React Nativ
 
 直接支持 HTTP，不要求域名、证书或反向代理，但不会加密凭据、Token 和聊天内容。请优先使用可信网络，并妥善保护远程入口。网络设置与恢复见共用[快速上手指南](https://github.com/yaotutu/pi-muse/blob/main/docs/manual/getting-started.md)。
 
-Android 独立安装包可检查稳定 GitHub Release 并下载 APK 更新，最后仍需 Android 系统确认安装；这不是 Expo OTA 更新。
+Android 独立安装包可检查稳定 GitHub Release 并下载 APK 更新，自动选择匹配设备 CPU 架构的拆分包（缺失时回退通用包），最后仍需 Android 系统确认安装；这不是 Expo OTA 更新。
 
 ### iOS 与 Web
 

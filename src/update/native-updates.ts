@@ -1,14 +1,20 @@
 import * as Application from 'expo-application';
+import * as Device from 'expo-device';
 import { Directory, File, Paths } from 'expo-file-system';
 import * as IntentLauncher from 'expo-intent-launcher';
 import { Platform } from 'react-native';
 import appConfig from '../../app.json';
-import { getLatestRelease } from './releases';
+import { apkAssetNameForAbi, getLatestRelease } from './releases';
 import type { AppRelease } from './types';
 import type { UpdateDependencies } from './update-manager';
 
 const APP_PACKAGE = 'com.yaotutu.pimusemobile';
 const DOWNLOAD_STALL_MS = 60_000;
+
+// 设备首选 ABI 决定下载哪个拆分安装包；拿不到或不在拆分列表时由纯函数回退通用包。
+function deviceApkAssetName(): string {
+  return apkAssetNameForAbi(Device.supportedCpuArchitectures?.[0]);
+}
 
 function cancelled() {
   const error = new Error('下载已取消');
@@ -90,7 +96,7 @@ export function createUpdateDependencies(): UpdateDependencies {
     unsupportedReason: Platform.OS !== 'android'
       ? '当前平台不支持 Android APK 应用内更新，请使用 Android 安装包'
       : !standalone ? 'Expo Go 不支持 Pi Muse APK 更新，请先安装 Pi Muse Android 安装包' : '无法读取当前安装包版本，请重新安装正式版本',
-    getLatestRelease,
+    getLatestRelease: (signal) => getLatestRelease(signal, undefined, deviceApkAssetName()),
     download: downloadApk,
     fileExists: (uri) => new File(uri).exists,
     install: installApk,

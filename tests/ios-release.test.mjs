@@ -82,8 +82,14 @@ test('Release workflow 从同一源 SHA 构建两平台并等待完整产物', (
   assert.match(workflow, /target_commitish: \$\{\{ needs\.prepare\.outputs\.sha \}\}/);
   assert.match(workflow, /not directly installable/);
   assert.match(workflow, /不能直接安装/);
-  assert.match(workflow, /only downloads this stable APK asset/);
-  assert.match(workflow, /只会下载这个稳定 APK asset/);
+  // 拆分产物：通用包沿用 app-release.apk，另附 4 个按 ABI 拆分的 APK asset。
+  assert.match(workflow, /node tools\/android-abi-splits\.js/);
+  assert.match(workflow, /app-universal-release\.apk/);
+  for (const abi of ['armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64']) {
+    assert.match(workflow, new RegExp(`app-${abi}-release\\.apk`));
+  }
+  assert.match(workflow, /downloads the package matching the device architecture/);
+  assert.match(workflow, /自动下载匹配设备架构的拆分包/);
 });
 
 test('手动 Release workflow 只构建同 SHA 产物而不发布', () => {

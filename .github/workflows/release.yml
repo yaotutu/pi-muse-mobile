@@ -110,6 +110,10 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: node tools/android-signing.js
 
+      # 在临时 android/ 里注入 ABI 拆分：4 个架构包 + 通用包，产物名见 tools/android-abi-splits.js。
+      - name: Inject ABI splits
+        run: node tools/android-abi-splits.js
+
       - uses: actions/cache@v4
         with:
           path: |
@@ -122,10 +126,25 @@ jobs:
       - name: Build Android release APK
         run: cd android && ./gradlew :app:assembleRelease
 
+      # AGP 的通用包输出名为 app-universal-release.apk；归一为 app-release.apk，
+      # 保证历史版本的应用内更新器（只认这个名字）和手动下载链接继续可用。
+      - name: Normalize universal APK asset name
+        run: |
+          cd android/app/build/outputs/apk/release
+          if [ -f app-universal-release.apk ] && [ ! -f app-release.apk ]; then
+            mv app-universal-release.apk app-release.apk
+          fi
+          ls -l
+
       - uses: actions/upload-artifact@v4
         with:
           name: android-release-apk
-          path: android/app/build/outputs/apk/release/app-release.apk
+          path: |
+            android/app/build/outputs/apk/release/app-release.apk
+            android/app/build/outputs/apk/release/app-armeabi-v7a-release.apk
+            android/app/build/outputs/apk/release/app-arm64-v8a-release.apk
+            android/app/build/outputs/apk/release/app-x86-release.apk
+            android/app/build/outputs/apk/release/app-x86_64-release.apk
           if-no-files-found: error
 
   ios:
@@ -205,8 +224,13 @@ jobs:
 
       - name: Require complete release assets
         run: |
-          test -f release-downloads/android/app-release.apk
-          test -f release-downloads/ios/app-release-unsigned.ipa
+          cd release-downloads/android
+          test -f app-release.apk
+          test -f app-armeabi-v7a-release.apk
+          test -f app-arm64-v8a-release.apk
+          test -f app-x86-release.apk
+          test -f app-x86_64-release.apk
+          test -f ../ios/app-release-unsigned.ipa
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
@@ -218,15 +242,19 @@ jobs:
           body: |
             ## Release assets
 
-            - `app-release.apk` is the signed Android installation package. The in-app Android updater only downloads this stable APK asset.
+            - `app-release.apk` is the signed universal Android package containing all CPU architectures. Smaller per-architecture packages (`app-armeabi-v7a-release.apk`, `app-arm64-v8a-release.apk`, `app-x86-release.apk`, `app-x86_64-release.apk`) contain the same app for a single ABI; pick the one matching your device. The in-app Android updater downloads the package matching the device architecture and falls back to the universal package.
             - `app-release-unsigned.ipa` is not directly installable. It is not an App Store or TestFlight build; a user with valid iOS signing credentials and a provisioning profile must re-sign it before installation.
 
             ## 发布产物说明
 
-            - `app-release.apk` 是已签名的 Android 安装包。Android 应用内更新只会下载这个稳定 APK asset。
+            - `app-release.apk` 是包含全部 CPU 架构的通用 Android 安装包。`app-armeabi-v7a-release.apk`、`app-arm64-v8a-release.apk`、`app-x86-release.apk`、`app-x86_64-release.apk` 是同一应用的按架构拆分包，体积更小，请按设备架构选择。Android 应用内更新会自动下载匹配设备架构的拆分包，缺失时回退通用包。
             - `app-release-unsigned.ipa` 不能直接安装，也不是 App Store 或 TestFlight 构建；必须由拥有有效 iOS 证书与描述文件的用户先重签，再安装。
           files: |
             release-downloads/android/app-release.apk
+            release-downloads/android/app-armeabi-v7a-release.apk
+            release-downloads/android/app-arm64-v8a-release.apk
+            release-downloads/android/app-x86-release.apk
+            release-downloads/android/app-x86_64-release.apk
             release-downloads/ios/app-release-unsigned.ipa
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

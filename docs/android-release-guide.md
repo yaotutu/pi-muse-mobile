@@ -8,6 +8,7 @@
 - 版本脚本：`tools/bump-version.js`；`--check` 只计算输出，不带参数会写回版本字段。
 - CI 门禁：`.github/workflows/ci.yml`；Android Release：`.github/workflows/release.yml`。
 - Android 签名注入：`tools/android-signing.js`，只修改 CNG 生成的临时 `android/` 目录。
+- Android ABI 拆分注入：`tools/android-abi-splits.js`，同样只修改临时 `android/` 目录。
 - iOS 打包：`tools/package-ios-unsigned.mjs`，只校验并包装 xcodebuild 生成的未签名 `.app`。
 - 在线更新模块：`src/update/`，由 `src/app/AppRoot.tsx` 根级挂载，独立于业务服务鉴权。
 - 修改以上文件前必须重新读取当前源码；本文只保留边界，不复制 workflow 步骤、历史版本或证书指纹。
@@ -24,6 +25,7 @@
 
 - `android/` 与 `ios/` 是生成目录且被忽略；不要手工编辑或提交。原生配置修改 `app.json` 与 Expo config plugin，再通过 prebuild 验证生成结果。
 - `tools/android-signing.js` 必须在 Android prebuild 后、Gradle release 构建前运行；它把受控环境变量解码为临时 keystore、key properties，并调整临时 `build.gradle` 的 release 签名。
+- `tools/android-abi-splits.js` 在签名注入后运行，向同一临时 `build.gradle` 注入 `splits.abi`：release 构建产出 4 个按 CPU 架构拆分的 APK（`app-<abi>-release.apk`）和一个全架构通用包；CI 把通用包归一改名为 `app-release.apk` 再上传。该工具只在 CI 注入，本地开发构建仍是单 APK。
 - iOS job 不注入 Apple 证书、描述文件、keychain 或签名 secrets；它在 CocoaPods 生成 workspace 后，用 `CODE_SIGNING_ALLOWED=NO` 与 `CODE_SIGNING_REQUIRED=NO` 构建真机 Release，再由打包脚本确认 `Info.plist` 的 iPhoneOS 平台证据、arm64、未签名状态和 `Payload/*.app` ZIP 布局。
 - 版本写入、正式签名、上传/发布、修改 CI 或 push 前，先向用户说明影响并取得明确授权。未获授权时不运行版本写入脚本、不配置正式签名、不触发 workflow、不执行发布操作；派单范围内的产品代码开发、静态核对与 Android 隔离验收仍按根规则执行。
 - 签名密钥、密码、生成的 `key.properties` 和 keystore 是敏感材料；缺失或归属不明时停止并报告，不得用 debug 签名冒充正式包。
@@ -36,7 +38,9 @@
 
 ## APK 在线更新
 
-- 更新模块只检查公开 GitHub Release 的稳定 `app-release.apk`，不包含预发布、draft 或其他 asset；检查失败时提供官方地址与手动下载入口，不用缓存或猜测数据冒充新版本。
+- 更新模块只检查公开 GitHub Release 的稳定版本，不包含预发布、draft 或其他状态的发布；检查失败时提供官方地址与手动下载入口，不用缓存或猜测数据冒充新版本。
+- 安装包按设备首选 CPU 架构选择对应的拆分 APK（`app-<abi>-release.apk`，ABI 来自 `expo-device` 的 `supportedCpuArchitectures`）；拆分资产缺失或架构无法识别时回退通用包 `app-release.apk`。任一候选名出现多份视为异常，不猜测下载目标；下载 URL 仍必须精确匹配官方仓库与选中的文件名。
+- `app-release.apk` 固定为全架构通用包的名字：历史版本的应用内更新器只认这个名字，Release 也必须始终附带该 asset，不能改名或省略。
 - 下载完成后唤起 Android 系统安装器；未知来源授权、系统签名校验和最终安装确认必须保留，不静默安装。取消后可按系统保留的缓存继续安装，系统清理后需重新下载。
 - 该更新是 Android 独立 APK 更新，不是 Expo OTA；Expo Go、Web 和 iOS 不支持此安装路径。模块不读取、缓存或上报业务服务地址与凭据。
 - 修改更新策略、Release asset 命名或安装流程时，必须同时核对当前模块、workflow 产物和 README 双语说明，并完成 Android 原生下载/安装链路验收；不能用接口检查或 Web 演示替代。

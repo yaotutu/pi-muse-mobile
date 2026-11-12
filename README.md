@@ -10,7 +10,7 @@
 
 Start a conversation, read something worth discussing, and keep plans moving—while model access and your assistant's data stay on your own server.
 
-**[Download Android APK](https://github.com/yaotutu/pi-muse-mobile/releases/latest/download/app-release.apk)** · [Release notes](https://github.com/yaotutu/pi-muse-mobile/releases/latest) · [Deploy the server](https://github.com/yaotutu/pi-muse#quick-start)
+**[Download Android APK](https://github.com/yaotutu/pi-muse-mobile/releases/latest/download/app-release.apk)** (universal; smaller per-architecture packages like `app-arm64-v8a-release.apk` are attached to each release) · [Release notes](https://github.com/yaotutu/pi-muse-mobile/releases/latest) · [Deploy the server](https://github.com/yaotutu/pi-muse#quick-start)
 
 [The experience](#the-experience) · [Install and connect](#install-and-connect) · [Develop from source](#develop-from-source) · [Safety and limits](#safety-and-limits)
 
@@ -54,7 +54,7 @@ Choose **Classic Blue, Morning Light, or Midnight Black** for the rest of the in
 ### Android
 
 1. [Deploy Pi Muse](https://github.com/yaotutu/pi-muse#quick-start) with a strong server AccessKey and a model endpoint supported by its configured pi provider. The app does not need your model API key.
-2. [Download the latest stable `app-release.apk`](https://github.com/yaotutu/pi-muse-mobile/releases/latest/download/app-release.apk), install it, and open the app. Android may ask you to allow installation from that source.
+2. [Download the latest stable `app-release.apk`](https://github.com/yaotutu/pi-muse-mobile/releases/latest/download/app-release.apk), install it, and open the app. Android may ask you to allow installation from that source. Each release also carries smaller per-architecture packages (`app-armeabi-v7a`, `app-arm64-v8a`, `app-x86`, `app-x86_64`); pick the one matching your device for a smaller download.
 3. Open **Server Connection** on the disconnected screen, or **Settings → Server Connection** when connected.
 4. Enter the server's base address reachable from the phone, such as `http://192.168.1.100:12330`, and the configured `server.accessKey`. Do not append `/api` or `/docs`; on a physical phone, `localhost` means the phone itself.
 5. Tap **Save**. The app verifies the address and AccessKey before saving. **Test Connection** is optional and does not save anything.
@@ -62,7 +62,7 @@ Choose **Classic Blue, Morning Light, or Midnight Black** for the rest of the in
 
 HTTP is supported without a domain, certificate, or reverse proxy, but does not encrypt credentials, tokens, or conversation content. Prefer a trusted network and protect remote access appropriately. See the shared [Getting Started guide](https://github.com/yaotutu/pi-muse/blob/main/docs/manual/en/getting-started.md) for network setup and recovery.
 
-The packaged Android app can check stable GitHub releases and download APK updates; installation still requires Android's system confirmation. It is not an Expo OTA update path.
+The packaged Android app can check stable GitHub releases and download APK updates, choosing the package that matches the device's CPU architecture (with the universal package as fallback); installation still requires Android's system confirmation. It is not an Expo OTA update path.
 
 ### iOS and web
 

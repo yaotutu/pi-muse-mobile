@@ -88,8 +88,9 @@ test('检查更新失败时保留原错误和重新检查，并提供官方 APK 
   const releases = read('src/update/releases.ts');
 
   assert.match(releases, /export const RELEASE_REPOSITORY = 'yaotutu\/pi-muse-mobile'/);
-  assert.match(source, /import \{ RELEASE_REPOSITORY \} from '\.\/releases'/);
-  assert.match(source, /https:\/\/github\.com\/\$\{RELEASE_REPOSITORY\}\/releases\/latest\/download\/app-release\.apk/);
+  // 手动入口按设备架构选包：优先拆分包，回退通用包，且地址仍来自固定官方仓库。
+  assert.match(source, /import \{ apkAssetNameForAbi, latestApkDownloadUrl \} from '\.\/releases'/);
+  assert.match(source, /latestApkDownloadUrl\(apkAssetNameForAbi\(Device\.supportedCpuArchitectures\?\.\[0\]\)\)/);
   assert.match(source, /snapshot\.status === 'error' && snapshot\.errorStage === 'check'/);
   assert.match(source, /<ErrorNotice error=\{snapshot\.error\} \/>/);
   assert.match(source, /\{checkFailed && \([\s\S]*?<Text selectable style=\{styles\.manualUrl\}>\{MANUAL_APK_URL\}<\/Text>/);
