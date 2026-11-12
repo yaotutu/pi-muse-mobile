@@ -5,7 +5,7 @@ import type { CompanionImages, CompanionState } from '../companion/types';
 import { useTheme } from '../theme/ThemeProvider';
 import { spacing, workspaceTheme } from '../ui/tokens';
 import { useReducedMotion } from '../ui/use-reduced-motion';
-import { ArrowLeft } from 'lucide-react-native';
+import { ArrowLeft, X } from 'lucide-react-native';
 import { IconControl } from '../ui/IconControl';
 import { MuseCompanion } from './MuseCompanion';
 import { COMPANION_SIZE, COMPANION_TOP, COMPANION_STATUS_GAP, COMPANION_STATUS_PADDING,
@@ -80,6 +80,9 @@ export function FloatingCompanion({ state, images, offline, statusLabel, visible
     {/* 文章来源返回独立放在左上角，固定48dp命中区；不把额外一行压到短对话起排空间里。 */}
     {!presented && onReturnArticle && <IconControl icon={ArrowLeft} label="返回文章" onPress={onReturnArticle}
       testID="workspace-return-article" style={styles.returnArticle} />}
+    {/* 展开页的关闭固定在右上角；人物锚点全程不动，只有内容围绕它展开/收起。 */}
+    {presented && <IconControl icon={X} label="关闭形象展开态" onPress={onToggle}
+      testID="workspace-companion-close" style={styles.closeControl} />}
     <Animated.View pointerEvents={presented ? 'auto' : 'none'} accessibilityElementsHidden={!presented}
       importantForAccessibility={presented ? 'auto' : 'no-hide-descendants'}
       style={[styles.content, { top: contentTop }, contentStyle]} testID="workspace-companion-expanded">
@@ -101,6 +104,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[12], paddingVertical: COMPANION_STATUS_PADDING },
   statusText: { ...workspaceTheme.typography.caption, flexShrink: 1 },
   returnArticle: { position: 'absolute', top: COMPANION_TOP, left: spacing[12], minHeight: workspaceTheme.layout.controlSize },
+  closeControl: { position: 'absolute', top: COMPANION_TOP, right: spacing[12], minHeight: workspaceTheme.layout.controlSize },
   content: { position: 'absolute', left: 0, right: 0, bottom: 0 },
   contentContainer: { flexGrow: 1, padding: spacing[16], gap: spacing[12], width: '100%', maxWidth: workspaceTheme.layout.maxWidth, alignSelf: 'center' },
 });

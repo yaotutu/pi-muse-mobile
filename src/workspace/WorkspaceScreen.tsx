@@ -210,7 +210,10 @@ function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) 
   else if (settingsPage === 'rules' || settingsPage === 'skills') settingsContent = <><Text style={{ color: colors.muted }}>主聊天</Text><SessionSettings sessionId="main" section={settingsPage} onSaved={() => refresh('main')} /></>;
   else if (settingsPage === 'activity') settingsContent = <SessionPanel sessionId="main" tab={sessionTab} onTab={setSessionTab} />;
   const rootSettings = <SettingsHome onOpen={setSettingsPage} onConnection={openConnection}
-    onBrowser={() => { Keyboard.dismiss(); browser.open(); setBrowserOpen(true); }} onUpdate={update?.open} />;
+    onBrowser={() => { Keyboard.dismiss(); browser.open(); setBrowserOpen(true); }} onUpdate={update?.open}
+    onReset={() => { Keyboard.dismiss(); setResetError(undefined); setResetTarget('main'); }}
+    resetUncertain={currentState.resetUncertain} onVerifyReset={() => void checkReset()}
+    onAcknowledgeReset={currentState.resetReviewed ? () => chats.acknowledgeReset('main') : undefined} />;
   const otherPage = page === 'settings' ? settingsPage === 'files' ? <FilesScreen onBack={backSettings} /> : settingsPage === 'news-sources' ? <NewsSourcesPage store={news} onBack={backSettings} />
       : settingsPage ? <><PageHeader title={SETTINGS_PAGE_TITLES[settingsPage]} backLabel="返回设置" onBack={backSettings} />
         {settingsPage === 'goals' || settingsPage === 'activity' ? settingsContent : <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: spacing[20], gap: spacing[12] }}>{settingsContent}</ScrollView>}</> : rootSettings : null;
@@ -243,16 +246,8 @@ function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) 
       visible={page === 'messages' && !browserOpen && !resetTarget} expanded={panelOpen} presented={panelPresented}
       statusLabel={mainStatusLabel} onToggle={toggleCompanion} onCollapsed={onCompanionCollapsed}
       onReturnArticle={chatReturn === 'news' ? returnToArticle : undefined}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing[12] }}>
-        <Text accessibilityRole="header" style={{ ...workspaceTheme.typography.section, color: colors.ink, flexShrink: 1 }}>Pi Muse</Text>
-        <ActionButton label="收起" accessibilityLabel="收起形象展开态" onPress={closeCompanion} testID="workspace-companion-close" />
-      </View>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing[8] }}>
-        <ActionButton label="重置会话" disabled={currentState.resetting || currentState.resetUncertain} onPress={() => { setResetError(undefined); leaveCompanion(); setResetTarget('main'); }} />
-        <ActionButton label="编辑此会话指令" onPress={() => { leaveCompanion(); setPage('settings'); setSettingsPage('rules'); }} />
-        <ActionButton label="管理此会话技能" onPress={() => { leaveCompanion(); setPage('settings'); setSettingsPage('skills'); }} />
-      </View>
-      {currentState.resetUncertain && <ActionButton label="回读核对会话操作" onPress={() => void checkReset()} />}{currentState.resetUncertain && currentState.resetReviewed && <ActionButton label="已核对重置结果，恢复此会话" onPress={() => chats.acknowledgeReset('main')} />}
+      {/* 展开页内容：固定锚点下只有居中名字与动态/审批/历史；会话操作全部收在设置里。 */}
+      <Text accessibilityRole="header" style={{ ...workspaceTheme.typography.section, color: colors.ink, textAlign: 'center' }}>Pi Muse</Text>
       <View style={{ flex: 1, minHeight: 300 }}><SessionPanel sessionId="main" tab={sessionTab} onTab={setSessionTab} /></View>
     </FloatingCompanion>
     </View>

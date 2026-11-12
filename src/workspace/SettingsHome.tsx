@@ -1,4 +1,4 @@
-import { BookOpen, Brain, ChevronRight, Clock, FileText, Globe, MessageSquare, Moon, Newspaper, Palette, Radio, Server, Smile, ShieldCheck, SlidersHorizontal, Sparkles, Target, UserRound, Download, type LucideIcon } from 'lucide-react-native';
+import { BookOpen, Brain, ChevronRight, Clock, FileText, Globe, MessageSquare, Moon, Newspaper, Palette, Radio, RotateCcw, Server, ShieldCheck, SlidersHorizontal, Smile, Sparkles, Target, UserRound, Download, type LucideIcon } from 'lucide-react-native';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../theme/ThemeProvider';
 import { spacing, themeTokens } from '../theme/tokens';
@@ -27,12 +27,6 @@ export const SETTINGS_PAGE_TITLES: Record<SettingsPage, string> = {
 type PageEntry = { page: SettingsPage; icon: LucideIcon; description?: string };
 
 const PAGE_GROUPS: readonly { title: string; entries: readonly PageEntry[] }[] = [
-  { title: '助手', entries: [
-    { page: 'profile', icon: UserRound, description: '助手身份与表达风格' },
-    { page: 'rules', icon: FileText, description: '主聊天的自定义指令' },
-    { page: 'skills', icon: Sparkles, description: '主聊天可用的技能' },
-    { page: 'dream', icon: Moon, description: '记忆整理配置与待决建议' },
-  ] },
   { title: '资料与任务', entries: [
     { page: 'memory', icon: Brain },
     { page: 'goals', icon: Target },
@@ -48,11 +42,16 @@ const PAGE_GROUPS: readonly { title: string; entries: readonly PageEntry[] }[] =
   ] },
 ];
 
-export function SettingsHome({ onOpen, onConnection, onBrowser, onUpdate, notice }: {
+export function SettingsHome({ onOpen, onConnection, onBrowser, onUpdate, onReset, resetUncertain, onVerifyReset, onAcknowledgeReset, notice }: {
   onOpen: (page: SettingsPage) => void;
   onConnection: () => void;
   onBrowser: () => void;
   onUpdate?: () => void;
+  /** 重置主聊天移入设置：展开形象页不再承载任何会话操作。 */
+  onReset?: () => void;
+  resetUncertain?: boolean;
+  onVerifyReset?: () => void;
+  onAcknowledgeReset?: () => void;
   notice?: string;
 }) {
   const { colors } = useTheme();
@@ -61,6 +60,26 @@ export function SettingsHome({ onOpen, onConnection, onBrowser, onUpdate, notice
     style={[styles.root, { backgroundColor: colors.canvas }]} contentContainerStyle={styles.content}>
     <Text accessibilityRole="header" style={[styles.title, { color: colors.ink }]}>设置</Text>
     {notice && <Text style={{ ...themeTokens.typography.status, color: colors.muted }}>{notice}</Text>}
+    <View style={styles.group}>
+      <Text accessibilityRole="header" style={[styles.groupTitle, { color: colors.muted }]}>助手</Text>
+      <Card style={styles.card}>
+        <SettingsRow icon={UserRound} label={SETTINGS_PAGE_TITLES.profile} description="助手身份与表达风格"
+          testID="settings-open-profile" onPress={() => onOpen('profile')} />
+        <SettingsRow icon={FileText} label={SETTINGS_PAGE_TITLES.rules} description="主聊天的自定义指令"
+          testID="settings-open-rules" divider onPress={() => onOpen('rules')} />
+        <SettingsRow icon={Sparkles} label={SETTINGS_PAGE_TITLES.skills} description="主聊天可用的技能"
+          testID="settings-open-skills" divider onPress={() => onOpen('skills')} />
+        <SettingsRow icon={Moon} label={SETTINGS_PAGE_TITLES.dream} description="记忆整理配置与待决建议"
+          testID="settings-open-dream" divider onPress={() => onOpen('dream')} />
+        {onReset && <SettingsRow icon={RotateCcw} label="重置主聊天" description="清空聊天历史并换新内部身份"
+          testID="settings-reset-main" divider onPress={onReset} />}
+        {resetUncertain && onVerifyReset && <SettingsRow icon={ShieldCheck} label="回读核对会话操作"
+          description="上次重置结果未明，先核对服务端实际状态"
+          testID="settings-verify-reset" divider onPress={onVerifyReset} />}
+        {resetUncertain && onAcknowledgeReset && <SettingsRow icon={ShieldCheck} label="已核对重置结果，恢复此会话"
+          testID="settings-acknowledge-reset" divider onPress={onAcknowledgeReset} />}
+      </Card>
+    </View>
     {PAGE_GROUPS.map((group) => <View key={group.title} style={styles.group}>
       <Text accessibilityRole="header" style={[styles.groupTitle, { color: colors.muted }]}>{group.title}</Text>
       <Card style={styles.card}>

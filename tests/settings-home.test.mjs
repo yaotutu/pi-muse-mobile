@@ -60,7 +60,7 @@ function style(value) {
   return Object.assign({}, ...[value].flat(Infinity).filter(Boolean));
 }
 
-function render({ colors, update = false } = {}) {
+function render({ colors, update = false, reset = false } = {}) {
   const { SettingsHome, SETTINGS_PAGE_TITLES } = loadHome(colors);
   const calls = [];
   const tree = expand(SettingsHome({
@@ -68,6 +68,7 @@ function render({ colors, update = false } = {}) {
     onConnection: () => calls.push(['connection']),
     onBrowser: () => calls.push(['browser']),
     ...(update ? { onUpdate: () => calls.push(['update']) } : {}),
+    ...(reset ? { onReset: () => calls.push(['reset']) } : {}),
   }));
   return { tree, calls, titles: SETTINGS_PAGE_TITLES, rows: nodes(tree).filter((node) => node.type === 'Pressable') };
 }
@@ -111,6 +112,15 @@ test('未提供 onUpdate 时不展示更新入口，其余功能不变', () => {
   assert.equal(rows.length, 17);
   assert.equal(rows.some((row) => row.props.testID === 'settings-update'), false);
   assert.equal(rows.some((row) => row.props.accessibilityLabel === '应用更新'), false);
+});
+
+test('重置主聊天收在助手分组，未明核对入口只在结果未明时出现', () => {
+  const { rows, calls } = render({ reset: true });
+  assert.equal(rows.length, 18);
+  const reset = rows.find((row) => row.props.testID === 'settings-reset-main');
+  assert.equal(reset.props.accessibilityLabel, '重置主聊天');
+  reset.props.onPress(); assert.deepEqual(calls.splice(0), [['reset']]);
+  assert.equal(rows.some((row) => row.props.testID === 'settings-verify-reset'), false);
 });
 
 test('首页自带滚动和留白，主题只作为二级入口而非横向主题选择器', () => {

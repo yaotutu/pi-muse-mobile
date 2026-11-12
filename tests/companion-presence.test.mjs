@@ -68,7 +68,7 @@ function companionHarness({ reduced = false, colors = availableThemes[0].colors,
     'react-native-reanimated': reanimated,
     '../theme/ThemeProvider': { useTheme: () => ({ colors: environment.colors }) }, '../ui/tokens': tokens,
     '../ui/use-reduced-motion': { useReducedMotion: () => environment.reduced },
-    'lucide-react-native': { ArrowLeft: 'ArrowLeft' }, '../ui/IconControl': { IconControl: 'IconControl' },
+    'lucide-react-native': { ArrowLeft: 'ArrowLeft', X: 'X' }, '../ui/IconControl': { IconControl: 'IconControl' },
     './MuseCompanion': { MuseCompanion: 'MuseCompanion' }, './companion-layout': layout,
   };
   const component = load('FloatingCompanion.tsx', modules).FloatingCompanion;
@@ -133,6 +133,18 @@ test('实际转译compact/expanded：唯一a11y入口含完整状态、单64dp�
     assert.equal(nodes(tree).filter((n) => n.type === 'MuseCompanion').length, 1);
     assert.equal(byId(tree, 'workspace-return-article'), undefined);
     assert.equal(nodes(tree).filter((n) => n.type === 'SessionPanel').length, 1);
+    // 展开页：人物锚点像素不变，关闭是右上角固定 IconControl，不再有操作按钮行。
+    const expandedMuse = nodes(expandedEntry).filter((n) => n.type === 'MuseCompanion')[0];
+    assert.equal(expandedMuse.props.size, muse[0].props.size);
+    assert.equal(expandedMuse.props.state, muse[0].props.state);
+    assert.deepEqual(expandedMuse.props.images, muse[0].props.images);
+    const close = byId(tree, 'workspace-companion-close');
+    assert.equal(close.type, 'IconControl'); assert.equal(close.props.label, '关闭形象展开态');
+    const closeStyle = style(close.props.style);
+    assert.ok(closeStyle.minHeight >= 48); assert.equal(closeStyle.position, 'absolute');
+    assert.equal(closeStyle.top, layout.COMPANION_TOP); assert.equal(closeStyle.right, 12);
+    assert.equal(byId(tree, 'workspace-return-article'), undefined);
+    close.props.onPress(); assert.equal(h.calls.at(-1), 'toggle');
     h.unmount();
   }
 });
@@ -262,7 +274,8 @@ test('实际转译Workspace：唯一ConversationHost/稳定Floating无key，审�
   assert.equal(nodes(find('FloatingCompanion')).find((n) => n.type === 'SessionPanel').props.tab, 'approvals');
   const hiddenChat = nodes(tree).find((n) => n.props?.importantForAccessibility === 'no-hide-descendants');
   assert.equal(hiddenChat.props.pointerEvents, 'none'); assert.equal(hiddenChat.props.accessibilityElementsHidden, true);
-  byId(tree, 'workspace-companion-close').props.onPress(); tree = h.render();
+  // 关闭走右上角 ✕ 的 onToggle；Workspace 沙箱里 Floating 是字符串桩，✕ 已在上方组件测试验证。
+  find('FloatingCompanion').props.onToggle(); tree = h.render();
   assert.equal(find('FloatingCompanion').props.expanded, false); assert.equal(find('FloatingCompanion').props.presented, true);
   find('FloatingCompanion').props.onCollapsed(); tree = h.render();
   assert.equal(find('FloatingCompanion').props.presented, false);

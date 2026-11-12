@@ -66,7 +66,11 @@ test('移除列表/新建/切换/改名/删除入口，Pi Muse 形象居中承�
   assert.match(screen, /visible=\{page === 'messages' && !browserOpen && !resetTarget\}/);
   assert.match(screen, /statusLabel=\{mainStatusLabel\}/);
   // 打开/关闭与 tab 保留由 companion-presence 的实际回调测试覆盖，不绑定 toggle 的私有写法。
-  for (const entry of ['重置会话', '编辑此会话指令', '管理此会话技能']) assert.ok(screen.includes(entry));
+  // 会话操作全部收在设置：形象展开页只剩名字与动态/审批/历史，不再有操作按钮行。
+  assert.doesNotMatch(screen, /重置会话|编辑此会话指令|管理此会话技能|回读核对会话操作/);
+  assert.match(screen, /onReset=\{\(\) => \{ Keyboard\.dismiss\(\); setResetError\(undefined\); setResetTarget\('main'\); \}\}/);
+  const settingsHome = read('workspace/SettingsHome.tsx');
+  for (const entry of ['重置主聊天', '会话指令', '会话技能']) assert.ok(settingsHome.includes(entry), entry);
   assert.match(screen, /<SessionPanel sessionId="main"/);
   assert.match(screen, /chats\.resetSession\(id, clearSchedules\)/);
   assert.match(screen, /approvals\.store\.refreshPending\(\)/);
