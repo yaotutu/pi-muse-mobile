@@ -12,8 +12,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | --- | --- |
 | `npm ci` | 按锁文件安装依赖 |
 | `npm start` | Expo/Metro 开发服务 |
-| `npm run android` | 启动 Expo 并打开 Android 设备或模拟器 |
-| `npm run ios` | iOS 源码开发，不是默认验收平台 |
+| `npm run android` | 编译并安装原生开发包到 Android 设备或模拟器，随后启动 Metro 调试 |
+| `npm run ios` | iOS 原生开发构建，不是默认验收平台 |
 | `npm run web` | 8082 端口的 Expo Web 预览，不能替代原生验收 |
 | `npm run lint` | Expo / ESLint |
 | `npm run typecheck` | `tsc --noEmit` |
