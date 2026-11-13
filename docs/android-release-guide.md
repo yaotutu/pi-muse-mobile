@@ -27,7 +27,7 @@
 - `tools/android-signing.js` 必须在 Android prebuild 后、Gradle release 构建前运行；它把受控环境变量解码为临时 keystore、key properties，并调整临时 `build.gradle` 的 release 签名。
 - `tools/android-abi-splits.js` 在签名注入后运行，向同一临时 `build.gradle` 注入 `splits.abi`：release 构建产出 4 个按 CPU 架构拆分的 APK（`app-<abi>-release.apk`）和一个全架构通用包；CI 把通用包归一改名为 `app-release.apk` 再上传。该工具只在 CI 注入，本地开发构建仍是单 APK。
 - iOS job 不注入 Apple 证书、描述文件、keychain 或签名 secrets；它在 CocoaPods 生成 workspace 后，用 `CODE_SIGNING_ALLOWED=NO` 与 `CODE_SIGNING_REQUIRED=NO` 构建真机 Release，再由打包脚本确认 `Info.plist` 的 iPhoneOS 平台证据、arm64、未签名状态和 `Payload/*.app` ZIP 布局。
-- 版本写入、正式签名、上传/发布、修改 CI 或 push 前，先向用户说明影响并取得明确授权。未获授权时不运行版本写入脚本、不配置正式签名、不触发 workflow、不执行发布操作；派单范围内的产品代码开发、静态核对与 Android 隔离验收仍按根规则执行。
+- 版本写入、正式签名、上传/发布、修改 CI 或 push 前，先向用户说明影响并取得明确授权。未获授权时不运行版本写入脚本、不配置正式签名、不触发 workflow、不执行发布操作；派单范围内的产品代码开发、静态核对与 Android 开发验收仍按根规则执行，默认直接使用主工程 App 和当前后端，不要求另起测试包。
 - 签名密钥、密码、生成的 `key.properties` 和 keystore 是敏感材料；缺失或归属不明时停止并报告，不得用 debug 签名冒充正式包。
 
 ## iOS 未签名 IPA
@@ -49,4 +49,4 @@
 
 - Android 是默认直接安装与在线更新平台；iOS 发布产物只面向有资格自行签名的用户，商店分发不是默认任务。旧 LAN 或专门部署不作为默认验收环境，当前源码本地真实后端才是功能收口口径。
 - 发布前确认本地 lint、typecheck、test，当前契约与真实模型链路，Android 原生关键路径，以及用户可见文档。历史 release 不能替代本次验证。
-- push、创建 Release、更换签名或迁移密钥都属于高风险操作；执行前确认目标仓库、版本、数据影响、回退方式和用户授权。派单范围内的隔离验收可按根规则安装测试包或正式 APK，无需为此额外申请发布授权，也不能据此声称已发布。发布后记录实际版本、产物来源、验证范围与未验证项；未实际运行的 Xcode 构建、iOS 签名安装、OTA 或商店流程都必须保持待验收状态。
+- push、创建 Release、更换签名或迁移密钥都属于高风险操作；执行前确认目标仓库、版本、数据影响、回退方式和用户授权。开发验收可按根规则安装主工程开发包或正式 APK，无需为此额外申请发布授权，也不要求独立测试包名；但不能据此声称已发布。发布后记录实际版本、产物来源、验证范围与未验证项；未实际运行的 Xcode 构建、iOS 签名安装、OTA 或商店流程都必须保持待验收状态。

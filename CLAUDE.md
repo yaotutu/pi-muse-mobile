@@ -8,6 +8,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 在本仓库目录执行。使用 npm；Expo / React Native / TypeScript 配套版本以 `package.json`、`package-lock.json` 为准。与服务端一起开发时使用满足两端 engines 的 Node.js 24.x。
 
+本工作区是可丢弃的开发环境。默认直接用主工程原生 App、当前开发后端和实际开发数据联调，允许按任务写入/重置数据与重启本项目服务，不强制备用后端或独立测试包。调试包打开前先确保 Metro 可用，用户现场看 UI 时保持可运行，不把尚未启动的空包交给用户。
+
 | 命令 | 用途 |
 | --- | --- |
 | `npm ci` | 按锁文件安装依赖 |
