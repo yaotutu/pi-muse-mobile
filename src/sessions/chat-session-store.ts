@@ -31,6 +31,8 @@ type Field<T> = {
   draft: T;
   error?: string;
 };
+/** 单个技能正文的按需读取状态；键为技能名称，与 GET /skills/:name 一致。 */
+export type SkillDetailState = { loading: boolean; content?: string; error?: string };
 export type SessionState = {
   localLoaded: boolean;
   localError?: string;
@@ -52,12 +54,19 @@ export type SessionState = {
   /** A01: 单会话单epoch独占一条未确认提交，收到权威历史包含原user ID前始终保留 */
   pendingSubmission: PendingSubmission | null;
   instructions: Field<string>;
-  skills: Field<Record<string, boolean>> & { catalog: SessionSkills['skills']; diagnostics: NonNullable<SessionSkills['diagnostics']>; notice?: string };
+  skills: Field<Record<string, boolean>> & {
+    catalog: SessionSkills['skills'];
+    diagnostics: NonNullable<SessionSkills['diagnostics']>;
+    details: Record<string, SkillDetailState>;
+    notice?: string;
+  };
 };
 type ReadKind = 'instructions' | 'skills';
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
 const field = <T,>(value: T): Field<T> => ({ loaded: false, loading: false, saving: false, saved: value, draft: value });
-const effective = (data: SessionSkills) => Object.fromEntries(data.skills.map((skill) => [skill.name, skill.enabled]));
+/** 技能开关键：优先来源身份 id（source/name），旧服务端缺少 id 时回退为名称。 */
+const skillKeyOf = (skill: { id?: string; name: string }): string => skill.id || skill.name;
+const effective = (data: SessionSkills) => Object.fromEntries(data.skills.map((skill) => [skillKeyOf(skill), skill.enabled]));
 export const equalSwitches = (a: Record<string, boolean>, b: Record<string, boolean>) =>
   Object.keys(a).length === Object.keys(b).length && Object.keys(a).every((name) => a[name] === b[name]);
 
@@ -176,7 +185,7 @@ export class ChatSessionStore {
   get(id: string): SessionState {
     let entry = this.sessions.get(id);
     if (!entry) {
-      entry = { localLoaded: !this.local, readingPosition: null, cachedMessages: null, epoch: 0, piSessionId: null, deleted: false, deleting: false, resetting: false, resetUncertain: false, resetReviewed: false, deleteUncertain: false, draft: '', draftAttachments: [], pendingSubmission: null, instructions: field(''), skills: { ...field<Record<string, boolean>>({}), catalog: [], diagnostics: [] } };
+      entry = { localLoaded: !this.local, readingPosition: null, cachedMessages: null, epoch: 0, piSessionId: null, deleted: false, deleting: false, resetting: false, resetUncertain: false, resetReviewed: false, deleteUncertain: false, draft: '', draftAttachments: [], pendingSubmission: null, instructions: field(''), skills: { ...field<Record<string, boolean>>({}), catalog: [], diagnostics: [], details: {} } };
       this.sessions.set(id, entry);
       this.hydrateLocal(id, entry);
     }
@@ -301,11 +310,16 @@ export class ChatSessionStore {
     return true;
   }
   setInstructions(id: string, value: string) { if (this.canWrite(id) && !this.get(id).instructions.saving) { this.get(id).instructions.draft = value; this.changed(); } }
-  setSkill(id: string, name: string, enabled: boolean) {
+  setSkill(id: string, keyOrName: string, enabled: boolean) {
     const entry = this.get(id);
-    if (this.canWrite(id) && !entry.skills.saving && entry.skills.catalog.some((skill) => skill.name === name)) {
-      entry.skills.draft = { ...entry.skills.draft, [name]: enabled };
-      this.changed();
+    if (this.canWrite(id) && !entry.skills.saving) {
+      // 支持按 id 或 name 设置；保存与草稿统一以 skillKeyOf(skill) 为键。
+      const target = entry.skills.catalog.find((skill) => skillKeyOf(skill) === keyOrName || skill.name === keyOrName);
+      if (target) {
+        const key = skillKeyOf(target);
+        entry.skills.draft = { ...entry.skills.draft, [key]: enabled };
+        this.changed();
+      }
     }
   }
   discardSettings(id: string, kind: ReadKind) {
@@ -383,6 +397,14 @@ export class ChatSessionStore {
       this.reads.delete(key);
       this.get(id)[kind].loading = false;
     }
+    // 取消技能详情并发读取
+    const detailPrefix = `${id}:skill-detail:`;
+    for (const [key, controller] of this.reads.entries()) {
+      if (key.startsWith(detailPrefix)) {
+        controller.abort();
+        this.reads.delete(key);
+      }
+    }
     this.changed();
   }
   async loadSettings(id: string) { await Promise.all([this.loadInstructions(id), this.loadSkills(id)]); }
@@ -424,11 +446,25 @@ export class ChatSessionStore {
     const target = this.get(id).skills;
     const draft = target.draft;
     const saved = effective(data);
-    const removed = Object.keys(draft).filter((name) => !(name in saved));
+    const removed = Object.keys(draft).filter((key) => !(key in saved));
+    const previousIds = new Map(target.catalog.map((skill) => [skill.name, skillKeyOf(skill)]));
+    const nextIds = new Map(data.skills.map((skill) => [skill.name, skillKeyOf(skill)]));
+    // 正文也绑定来源：刷新后同名来源变更，丢弃旧正文并取消其在途请求。
+    target.details = Object.fromEntries(Object.entries(target.details).filter(([name]) => {
+      if (previousIds.get(name) === nextIds.get(name) && nextIds.has(name)) return true;
+      const key = `${id}:skill-detail:${name}`;
+      this.reads.get(key)?.abort();
+      this.reads.delete(key);
+      return false;
+    }));
     target.catalog = data.skills;
     target.diagnostics = data.diagnostics ?? [];
     target.saved = saved;
-    target.draft = preserveDraft ? Object.fromEntries(data.skills.map((skill) => [skill.name, draft[skill.name] ?? skill.enabled])) : { ...saved };
+    target.draft = preserveDraft ? Object.fromEntries(data.skills.map((skill) => {
+      const key = skillKeyOf(skill);
+      // id 变化即视为新的来源，不能把旧名称草稿套到新来源上。
+      return [key, draft[key] ?? skill.enabled];
+    })) : { ...saved };
     target.notice = removed.length && preserveDraft ? `技能目录已变化，已移除不可提交的技能：${removed.join('、')}；其余草稿已保留。` : undefined;
     target.loaded = true;
   }
@@ -437,6 +473,58 @@ export class ChatSessionStore {
       const target = this.get(id).skills;
       this.applySkills(id, data, !equalSwitches(target.draft, target.saved));
     });
+  }
+
+  /**
+   * 按名称按需加载技能正文（GET /api/sessions/:id/skills/:name）。
+   * 404 返回"技能正文不可用"，其它错误显示具体消息。
+   */
+  async loadSkillDetail(id: string, name: string): Promise<void> {
+    const entry = this.get(id);
+    if (!this.available(id)) return;
+    const epoch = entry.epoch;
+    const selected = entry.skills.catalog.find((skill) => skill.name === name);
+    const selectedId = selected ? skillKeyOf(selected) : undefined;
+    const key = `${id}:skill-detail:${name}`;
+    this.reads.get(key)?.abort();
+    const controller = new AbortController();
+    this.reads.set(key, controller);
+    const prev = entry.skills.details[name];
+    entry.skills.details = {
+      ...entry.skills.details,
+      [name]: { loading: true, content: prev?.content, error: undefined },
+    };
+    this.changed();
+    try {
+      const detail = await this.api.getSessionSkill(id, name, controller.signal);
+      if (detail.name !== name || (selectedId !== undefined && skillKeyOf(detail) !== selectedId)) {
+        throw new ApiError(409, '技能来源已变化，请刷新技能列表后查看说明');
+      }
+      if (!controller.signal.aborted && this.isCurrent(id, epoch) && this.reads.get(key) === controller) {
+        entry.skills.details = {
+          ...entry.skills.details,
+          [name]: { loading: false, content: detail.content, error: undefined },
+        };
+      }
+    } catch (error) {
+      if (!controller.signal.aborted && this.isCurrent(id, epoch) && this.reads.get(key) === controller && !isRequestCancelled(error)) {
+        const errText = error instanceof ApiError && error.status === 404 ? '技能正文不可用' : message(error);
+        entry.skills.details = {
+          ...entry.skills.details,
+          [name]: { loading: false, content: undefined, error: errText },
+        };
+      }
+    } finally {
+      if (this.reads.get(key) === controller) {
+        this.reads.delete(key);
+        // 如果上面未被 catch/success 处理（如被取消），恢复 loading 状态
+        const current = entry.skills.details[name];
+        if (current?.loading) {
+          entry.skills.details = { ...entry.skills.details, [name]: { ...current, loading: false } };
+        }
+        this.changed();
+      }
+    }
   }
 
   async saveInstructions(id: string): Promise<boolean> {
@@ -467,8 +555,11 @@ export class ChatSessionStore {
     if (!this.available(id) || !target.loaded || target.saving) return false;
     this.reads.get(`${id}:skills`)?.abort();
     const epoch = entry.epoch;
-    // PUT 是替换；普通保存提交整个当前目录，重置才发空覆盖表。
-    const overrides = defaults ? {} : Object.fromEntries(target.catalog.map((skill) => [skill.name, target.draft[skill.name]]));
+    // PUT 是替换；普通保存按技能来源身份 id（source/name）提交整个当前目录，重置才发空覆盖表。
+    const overrides = defaults ? {} : Object.fromEntries(target.catalog.map((skill) => {
+      const key = skillKeyOf(skill);
+      return [key, target.draft[key]];
+    }));
     target.saving = true;
     target.error = undefined;
     this.changed();

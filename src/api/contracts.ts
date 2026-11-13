@@ -27,6 +27,8 @@ import type {
   ResetSessionResult,
   SessionRecord,
   SessionInstructions,
+  SessionSkillDetail,
+  SessionSkillSource,
   SessionSkills,
   UpdateGoalInput,
   UpdateJobInput,
@@ -296,6 +298,60 @@ export function parseMessagesSnapshotEvent(event: AgUiEvent): AgUiEvent {
   return { ...event, messages: parseConversationMessages(event.messages) };
 }
 
+// --- 会话技能 ---
+
+const invalidSessionSkills = () => new ApiError(502, '服务器没有返回有效会话技能列表，请确认服务器版本与地址');
+const invalidSessionSkillDetail = () => new ApiError(502, '服务器没有返回有效技能正文，请确认服务器版本与地址');
+const SESSION_SKILL_SOURCES: readonly SessionSkillSource[] = ['builtin', 'user', 'shared'];
+
+/** 缺失 source 的旧服务端按 builtin（自有）处理，同时保留“来源未知”以便界面不显示来源标签。 */
+function parseSkillSource(value: unknown, invalid: () => ApiError): { source: SessionSkillSource; declared: boolean } {
+  if (value === undefined || value === null) return { source: 'builtin', declared: false };
+  if (typeof value === 'string' && SESSION_SKILL_SOURCES.includes(value as SessionSkillSource)) {
+    return { source: value as SessionSkillSource, declared: true };
+  }
+  throw invalid();
+}
+
+/** 技能条目严格解析：id 缺省回退 name，source 缺省回退 builtin，非法来源视为响应无效。 */
+function parseSkillFields(value: unknown, invalid: () => ApiError) {
+  if (!isRecord(value)) throw invalid();
+  const { id, name, description, source, defaultEnabled, enabled } = value;
+  if (typeof name !== 'string' || !name) throw invalid();
+  if (typeof description !== 'string') throw invalid();
+  if (typeof defaultEnabled !== 'boolean' || typeof enabled !== 'boolean') throw invalid();
+  if (id !== undefined && id !== null && (typeof id !== 'string' || !id)) throw invalid();
+  const declared = parseSkillSource(source, invalid);
+  return {
+    id: typeof id === 'string' && id ? id : name,
+    name,
+    description,
+    source: declared.source,
+    sourceDeclared: declared.declared,
+    defaultEnabled,
+    enabled,
+  };
+}
+
+export function parseSessionSkills(value: unknown): SessionSkills {
+  if (!isRecord(value) || !Array.isArray(value.skills)) throw invalidSessionSkills();
+  const skills = value.skills.map((item) => parseSkillFields(item, invalidSessionSkills));
+  if (value.diagnostics === undefined) return { skills };
+  if (!Array.isArray(value.diagnostics)) throw invalidSessionSkills();
+  const diagnostics = value.diagnostics.map((item) => {
+    if (!isRecord(item) || typeof item.path !== 'string' || typeof item.message !== 'string') throw invalidSessionSkills();
+    return { path: item.path, message: item.message };
+  });
+  return { skills, diagnostics };
+}
+
+/** 技能正文：条目字段与列表一致，另需完整 SKILL.md 文本；不合法正文视为响应无效。 */
+export function parseSessionSkillDetail(value: unknown): SessionSkillDetail {
+  if (!isRecord(value) || typeof value.content !== 'string') throw invalidSessionSkillDetail();
+  const { content, ...rest } = value;
+  return { ...parseSkillFields(rest, invalidSessionSkillDetail), content };
+}
+
 /**
  * 客户端接口：页面只依赖此抽象，不感知 mock/HTTP 差异。
  */
@@ -379,7 +435,9 @@ export interface ApiClient extends CompanionClient, DreamClient, ApprovalClient,
   saveSessionInstructions(sessionId: string, instructions: string, signal?: AbortSignal): Promise<SessionInstructions>;
   /** GET /api/sessions/:id/skills 读取会话级技能生效值；diagnostics 缺省视为无诊断 */
   getSessionSkills(sessionId: string, signal?: AbortSignal): Promise<SessionSkills>;
-  /** PUT /api/sessions/:id/skills 用名称→启用态覆盖写入；空对象等价"恢复默认" */
+  /** GET /api/sessions/:id/skills/:name 按名称读取当前优先来源的完整 SKILL.md 正文 */
+  getSessionSkill(sessionId: string, name: string, signal?: AbortSignal): Promise<SessionSkillDetail>;
+  /** PUT /api/sessions/:id/skills 用来源身份 id→启用态覆盖写入；空对象等价"恢复默认" */
   saveSessionSkills(
     sessionId: string,
     overrides: Record<string, boolean>,

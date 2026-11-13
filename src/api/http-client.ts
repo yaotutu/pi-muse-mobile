@@ -29,7 +29,7 @@ import type {
   MonitorsQuery,
   SessionRecord,
   SessionInstructions,
-  SessionSkill,
+  SessionSkillDetail,
   SessionSkills,
   UpdateGoalInput,
   UpdateJobInput,
@@ -47,6 +47,8 @@ import {
   parseMessageFeedbackEvents,
   parseConversationSnapshot,
   parseMessagesSnapshotEvent,
+  parseSessionSkills,
+  parseSessionSkillDetail,
 } from './contracts';
 import { attachmentUploadOf, validateOutgoingMessage } from '../attachments/validation';
 import { ApiError, isRequestCancelled, requestCancelled, responseError } from './errors';
@@ -463,14 +465,8 @@ export class HttpApiClient implements ApiClient {
   // diagnostics 可缺省；skills 字段必须为条目数组，每条字段类型严格。
   async getSessionSkills(sessionId: string, signal?: AbortSignal): Promise<SessionSkills> {
     const path = `/api/sessions/${encodeURIComponent(sessionId)}/skills`;
-    const data = await this.request<SessionSkills>(path, { signal });
-    if (!Array.isArray(data?.skills) || data.skills.some((item) => !this.isValidSessionSkill(item))) {
-      throw new ApiError(502, '服务器没有返回有效会话技能列表，请确认服务器版本与地址');
-    }
-    if (data.diagnostics !== undefined && (!Array.isArray(data.diagnostics) || data.diagnostics.some((item) => typeof item?.path !== 'string' || typeof item?.message !== 'string'))) {
-      throw new ApiError(502, '服务器没有返回有效会话技能列表，请确认服务器版本与地址');
-    }
-    return data;
+    const data = await this.request<unknown>(path, { signal });
+    return parseSessionSkills(data);
   }
 
   async saveSessionSkills(
@@ -479,14 +475,15 @@ export class HttpApiClient implements ApiClient {
     signal?: AbortSignal,
   ): Promise<SessionSkills> {
     const path = `/api/sessions/${encodeURIComponent(sessionId)}/skills`;
-    const data = await this.request<SessionSkills>(path, { method: 'PUT', body: { overrides }, signal });
-    if (!Array.isArray(data?.skills) || data.skills.some((item) => !this.isValidSessionSkill(item))) {
-      throw new ApiError(502, '服务器没有返回有效会话技能列表，请确认服务器版本与地址');
-    }
-    if (data.diagnostics !== undefined && (!Array.isArray(data.diagnostics) || data.diagnostics.some((item) => typeof item?.path !== 'string' || typeof item?.message !== 'string'))) {
-      throw new ApiError(502, '服务器没有返回有效会话技能列表，请确认服务器版本与地址');
-    }
-    return data;
+    const data = await this.request<unknown>(path, { method: 'PUT', body: { overrides }, signal });
+    return parseSessionSkills(data);
+  }
+
+  /** GET 技能正文：按技能名读取当前优先来源的完整 SKILL.md。 */
+  async getSessionSkill(sessionId: string, name: string, signal?: AbortSignal): Promise<SessionSkillDetail> {
+    const path = `/api/sessions/${encodeURIComponent(sessionId)}/skills/${encodeURIComponent(name)}`;
+    const data = await this.request<unknown>(path, { signal });
+    return parseSessionSkillDetail(data);
   }
 
   // DELETE 必须无 body；服务端 404/409 语义保留，不做自动重试副作用。
@@ -502,15 +499,6 @@ export class HttpApiClient implements ApiClient {
       throw new ApiError(502, '服务器没有返回有效会话删除结果，请确认服务器版本与地址');
     }
     return data;
-  }
-
-  private isValidSessionSkill(item: unknown): item is SessionSkill {
-    if (!item || typeof item !== 'object') return false;
-    const skill = item as SessionSkill;
-    return typeof skill.name === 'string'
-      && typeof skill.description === 'string'
-      && typeof skill.defaultEnabled === 'boolean'
-      && typeof skill.enabled === 'boolean';
   }
 
   async runSession(

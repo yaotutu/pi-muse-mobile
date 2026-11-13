@@ -590,33 +590,33 @@ const requestCases = [
     body: undefined,
     respond: {
       skills: [
-        { name: 'web_lookup', description: '查询', defaultEnabled: true, enabled: true },
-        { name: 'shell', description: '执行', defaultEnabled: false, enabled: false },
+        { id: 'builtin/web_lookup', name: 'web_lookup', description: '查询', source: 'builtin', defaultEnabled: true, enabled: true },
+        { id: 'user/shell', name: 'shell', description: '执行', source: 'user', defaultEnabled: false, enabled: false },
       ],
     },
     expect: {
       skills: [
-        { name: 'web_lookup', description: '查询', defaultEnabled: true, enabled: true },
-        { name: 'shell', description: '执行', defaultEnabled: false, enabled: false },
+        { id: 'builtin/web_lookup', name: 'web_lookup', description: '查询', source: 'builtin', sourceDeclared: true, defaultEnabled: true, enabled: true },
+        { id: 'user/shell', name: 'shell', description: '执行', source: 'user', sourceDeclared: true, defaultEnabled: false, enabled: false },
       ],
     },
   },
   {
     name: 'saveSessionSkills 整份转发 overrides 表',
-    call: (client) => client.saveSessionSkills('agent/一', { web_lookup: false, shell: true }),
+    call: (client) => client.saveSessionSkills('agent/一', { 'builtin/web_lookup': false, 'user/shell': true }),
     method: 'PUT',
     url: `${BASE}/api/sessions/agent%2F%E4%B8%80/skills`,
-    body: { overrides: { web_lookup: false, shell: true } },
+    body: { overrides: { 'builtin/web_lookup': false, 'user/shell': true } },
     respond: {
       skills: [
-        { name: 'web_lookup', description: '查询', defaultEnabled: true, enabled: false },
-        { name: 'shell', description: '执行', defaultEnabled: false, enabled: true },
+        { id: 'builtin/web_lookup', name: 'web_lookup', description: '查询', source: 'builtin', defaultEnabled: true, enabled: false },
+        { id: 'user/shell', name: 'shell', description: '执行', source: 'user', defaultEnabled: false, enabled: true },
       ],
     },
     expect: {
       skills: [
-        { name: 'web_lookup', description: '查询', defaultEnabled: true, enabled: false },
-        { name: 'shell', description: '执行', defaultEnabled: false, enabled: true },
+        { id: 'builtin/web_lookup', name: 'web_lookup', description: '查询', source: 'builtin', sourceDeclared: true, defaultEnabled: true, enabled: false },
+        { id: 'user/shell', name: 'shell', description: '执行', source: 'user', sourceDeclared: true, defaultEnabled: false, enabled: true },
       ],
     },
   },
@@ -627,10 +627,36 @@ const requestCases = [
     url: `${BASE}/api/sessions/11111111-1111-4111-8111-111111111111/skills`,
     body: { overrides: {} },
     respond: {
-      skills: [{ name: 'web_lookup', description: '查询', defaultEnabled: true, enabled: true }],
+      skills: [{ id: 'builtin/web_lookup', name: 'web_lookup', description: '查询', source: 'builtin', defaultEnabled: true, enabled: true }],
     },
     expect: {
-      skills: [{ name: 'web_lookup', description: '查询', defaultEnabled: true, enabled: true }],
+      skills: [{ id: 'builtin/web_lookup', name: 'web_lookup', description: '查询', source: 'builtin', sourceDeclared: true, defaultEnabled: true, enabled: true }],
+    },
+  },
+  {
+    name: 'getSessionSkill 编码 sessionId 与 name 并返回技能详情',
+    call: (client) => client.getSessionSkill('agent/一', 'web_lookup'),
+    method: 'GET',
+    url: `${BASE}/api/sessions/agent%2F%E4%B8%80/skills/web_lookup`,
+    body: undefined,
+    respond: {
+      id: 'builtin/web_lookup',
+      name: 'web_lookup',
+      description: '查询',
+      source: 'builtin',
+      defaultEnabled: true,
+      enabled: true,
+      content: '# Web Lookup\n技能说明正文',
+    },
+    expect: {
+      id: 'builtin/web_lookup',
+      name: 'web_lookup',
+      description: '查询',
+      source: 'builtin',
+      sourceDeclared: true,
+      defaultEnabled: true,
+      enabled: true,
+      content: '# Web Lookup\n技能说明正文',
     },
   },
 ];
@@ -900,17 +926,60 @@ test('会话配置端点遇到 200 但响应坏结构抛 502', async () => {
   }
 });
 
-test('getSessionSkills 在 diagnostics 缺省时仍然返回正常结果', async () => {
-  const skills = [
+test('getSessionSkills 兼容旧服务端缺少 id 与 source，回退 id=name 且 source=builtin, sourceDeclared=false', async () => {
+  const legacySkills = [
     { name: 'web_lookup', description: '查询', defaultEnabled: true, enabled: true },
     { name: 'shell', description: '执行', defaultEnabled: false, enabled: false },
   ];
-  await withFetch(async () => jsonResponse({ skills }), async () => {
+  await withFetch(async () => jsonResponse({ skills: legacySkills }), async () => {
     const client = new HttpApiClient(BASE, () => 'token-1', () => {});
     const result = await client.getSessionSkills('11111111-1111-4111-8111-111111111111');
-    assert.deepEqual(result, { skills });
+    assert.deepEqual(result, {
+      skills: [
+        { id: 'web_lookup', name: 'web_lookup', description: '查询', source: 'builtin', sourceDeclared: false, defaultEnabled: true, enabled: true },
+        { id: 'shell', name: 'shell', description: '执行', source: 'builtin', sourceDeclared: false, defaultEnabled: false, enabled: false },
+      ],
+    });
     assert.equal('diagnostics' in result, false);
   });
+});
+
+test('getSessionSkills 遇到非法 source 或结构错位抛 502', async () => {
+  const invalidPayloads = [
+    { skills: [{ name: 'a', description: 'b', defaultEnabled: true, enabled: true, source: 'invalid_source' }] },
+    { skills: [{ name: 'a', description: 'b', defaultEnabled: true, enabled: true, id: 123 }] },
+    { skills: [{ name: '', description: 'b', defaultEnabled: true, enabled: true }] },
+  ];
+  for (const body of invalidPayloads) {
+    await withFetch(async () => jsonResponse(body), async () => {
+      const client = new HttpApiClient(BASE, () => 'token-1', () => {});
+      await assert.rejects(client.getSessionSkills('11111111-1111-4111-8111-111111111111'), (error) => {
+        assert.ok(error instanceof ApiError);
+        assert.equal(error.status, 502);
+        assert.match(error.message, /服务器没有返回有效会话技能列表/);
+        return true;
+      });
+    });
+  }
+});
+
+test('getSessionSkill 遇到坏结构或非法 content 抛 502', async () => {
+  const invalidDetails = [
+    { name: 'a', description: 'b', defaultEnabled: true, enabled: true }, // missing content
+    { name: 'a', description: 'b', defaultEnabled: true, enabled: true, content: 123 }, // content not string
+    { name: 'a', description: 'b', defaultEnabled: true, enabled: true, content: 'ok', source: 'invalid' },
+  ];
+  for (const body of invalidDetails) {
+    await withFetch(async () => jsonResponse(body), async () => {
+      const client = new HttpApiClient(BASE, () => 'token-1', () => {});
+      await assert.rejects(client.getSessionSkill('11111111-1111-4111-8111-111111111111', 'a'), (error) => {
+        assert.ok(error instanceof ApiError);
+        assert.equal(error.status, 502);
+        assert.match(error.message, /服务器没有返回有效技能正文/);
+        return true;
+      });
+    });
+  }
 });
 
 test('getSessionSkills diagnostics 字段类型错位时仍抛 502', async () => {

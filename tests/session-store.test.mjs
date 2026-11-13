@@ -73,6 +73,7 @@ const METHODS = [
   'getSessionInstructions',
   'saveSessionInstructions',
   'getSessionSkills',
+  'getSessionSkill',
   'saveSessionSkills',
   'deleteSession',
   'resetSession',
@@ -691,4 +692,124 @@ test('discardFailedSubmission 在真实删除、重置不确定与销毁生命�
   store.dispose();
   assert.equal(store.discardFailedSubmission('dispose-agent', disposeEpoch, 'dispose-message'), false);
   assert.equal(store.get('dispose-agent').pendingSubmission, null);
+});
+
+// --- 12. 技能来源 id 键、详情正文按需加载与错误分支 ---
+
+test('saveSkills 优先以 id 身份（source/name）作为键发送 overrides', async () => {
+  const stub = makeStub();
+  const store = new ChatSessionStore(stub.api);
+
+  const skills = [
+    { id: 'builtin/web', name: 'web', description: 'web desc', source: 'builtin', sourceDeclared: true, defaultEnabled: true, enabled: true },
+    { id: 'shared/git', name: 'git', description: 'git desc', source: 'shared', sourceDeclared: true, defaultEnabled: false, enabled: false },
+  ];
+  stub.enqueue('getSessionSkills', resolveWith({ skills }));
+  await store.loadSkills('a');
+
+  assert.deepEqual(store.get('a').skills.saved, { 'builtin/web': true, 'shared/git': false });
+  assert.deepEqual(store.get('a').skills.draft, { 'builtin/web': true, 'shared/git': false });
+
+  // 既可通过 id 设置，也可通过 name 设置
+  store.setSkill('a', 'git', true);
+  assert.deepEqual(store.get('a').skills.draft, { 'builtin/web': true, 'shared/git': true });
+
+  let sentOverrides;
+  stub.enqueue('saveSessionSkills', ({ args, resolve }) => {
+    sentOverrides = args[0];
+    resolve({
+      skills: [
+        { ...skills[0], enabled: true },
+        { ...skills[1], enabled: true },
+      ],
+    });
+  });
+  const ok = await store.saveSkills('a');
+  assert.equal(ok, true);
+  assert.deepEqual(sentOverrides, { 'builtin/web': true, 'shared/git': true });
+});
+
+test('同名来源切换不继承草稿，并取消旧来源在途正文和缓存', async () => {
+  const stub = makeStub();
+  const store = new ChatSessionStore(stub.api);
+  const shared = { ...makeSkill('demo'), id: 'shared/demo', source: 'shared', sourceDeclared: true };
+  const own = { ...shared, id: 'user/demo', source: 'user' };
+  stub.enqueue('getSessionSkills', resolveWith({ skills: [shared] }));
+  await store.loadSkills('a');
+  store.setSkill('a', shared.id, true);
+  store.get('a').skills.details.demo = { content: '旧来源正文', loading: false };
+  let complete;
+  let requestSignal;
+  stub.enqueue('getSessionSkill', ({ resolve, signal }) => { complete = resolve; requestSignal = signal; });
+  const pending = store.loadSkillDetail('a', 'demo');
+  await new Promise(setImmediate);
+  stub.enqueue('getSessionSkills', resolveWith({ skills: [own] }));
+  await store.loadSkills('a');
+  assert.equal(requestSignal.aborted, true);
+  complete({ ...shared, content: '迟到的旧来源正文' });
+  await pending;
+  assert.deepEqual(store.get('a').skills.draft, { 'user/demo': false });
+  assert.equal(store.get('a').skills.details.demo, undefined);
+});
+
+test('旧名称草稿升级为来源身份时不自动授权新通用来源', async () => {
+  const stub = makeStub();
+  const store = new ChatSessionStore(stub.api);
+  stub.enqueue('getSessionSkills', resolveWith({ skills: [makeSkill('demo')] }));
+  await store.loadSkills('a');
+  store.setSkill('a', 'demo', true);
+  stub.enqueue('getSessionSkills', resolveWith({ skills: [{ ...makeSkill('demo'), id: 'shared/demo', source: 'shared', sourceDeclared: true }] }));
+  await store.loadSkills('a');
+  assert.deepEqual(store.get('a').skills.draft, { 'shared/demo': false });
+  assert.match(store.get('a').skills.notice, /目录已变化/);
+});
+
+test('技能正文返回不同来源时不挂到旧标签下', async () => {
+  const stub = makeStub();
+  const store = new ChatSessionStore(stub.api);
+  const shared = { ...makeSkill('demo'), id: 'shared/demo', source: 'shared', sourceDeclared: true };
+  stub.enqueue('getSessionSkills', resolveWith({ skills: [shared] }));
+  await store.loadSkills('a');
+  stub.enqueue('getSessionSkill', resolveWith({ ...shared, id: 'user/demo', source: 'user', content: '另一个来源' }));
+  await store.loadSkillDetail('a', 'demo');
+  assert.equal(store.get('a').skills.details.demo.content, undefined);
+  assert.match(store.get('a').skills.details.demo.error, /来源已变化/);
+});
+
+test('loadSkillDetail 成功加载正文，404 映射为技能正文不可用', async () => {
+  const stub = makeStub();
+  const store = new ChatSessionStore(stub.api);
+
+  // 成功分支
+  stub.enqueue('getSessionSkill', resolveWith({
+    id: 'builtin/web',
+    name: 'web',
+    description: 'web desc',
+    source: 'builtin',
+    sourceDeclared: true,
+    defaultEnabled: true,
+    enabled: true,
+    content: '# Web 技能说明',
+  }));
+
+  const promise = store.loadSkillDetail('a', 'web');
+  assert.equal(store.get('a').skills.details.web?.loading, true);
+  await promise;
+
+  assert.equal(store.get('a').skills.details.web?.loading, false);
+  assert.equal(store.get('a').skills.details.web?.content, '# Web 技能说明');
+  assert.equal(store.get('a').skills.details.web?.error, undefined);
+
+  // 404 分支
+  stub.enqueue('getSessionSkill', rejectWith(new ApiError(404, 'Skill not found', 'SKILL_NOT_FOUND')));
+  await store.loadSkillDetail('a', 'missing');
+  assert.equal(store.get('a').skills.details.missing?.loading, false);
+  assert.equal(store.get('a').skills.details.missing?.content, undefined);
+  assert.equal(store.get('a').skills.details.missing?.error, '技能正文不可用');
+
+  // 通用 500 错误分支
+  stub.enqueue('getSessionSkill', rejectWith(new ApiError(500, '读取技能失败')));
+  await store.loadSkillDetail('a', 'fail');
+  assert.equal(store.get('a').skills.details.fail?.loading, false);
+  assert.equal(store.get('a').skills.details.fail?.error, '读取技能失败');
 });
