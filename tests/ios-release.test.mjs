@@ -99,7 +99,15 @@ test('手动 Release workflow 只构建同 SHA 产物而不发布', () => {
   const releaseJob = workflow.split('  release:')[1];
 
   assert.match(workflow, /^  workflow_dispatch:$/m);
-  assert.equal((prepareJob.match(/if: github\.event_name == 'push'/g) ?? []).length, 5);
+  // checkout、setup-node、install、typecheck、lint、test、bump、commit 八个步骤只在 push 时运行。
+  assert.equal((prepareJob.match(/if: github\.event_name == 'push'/g) ?? []).length, 8);
+  for (const gate of ['Typecheck', 'Lint', 'Test']) {
+    assert.match(prepareJob, new RegExp(
+      `- name: ${gate}\\n\\s+run: [^\\n]+\\n\\s+if: github\\.event_name == 'push'`,
+    ));
+  }
+  assert.ok(prepareJob.indexOf('- name: Test') < prepareJob.indexOf('- name: Bump version'),
+    '门禁必须在 bump 与构建之前');
   const bumpStep = prepareJob.slice(
     prepareJob.indexOf('- name: Bump version'),
     prepareJob.indexOf('- name: Commit version bump'),
@@ -111,6 +119,8 @@ test('手动 Release workflow 只构建同 SHA 产物而不发布', () => {
   assert.match(bumpStep, /node tools\/bump-version\.js/);
   assert.match(bumpStep, /if: github\.event_name == 'push'/);
   assert.match(commitStep, /git push origin HEAD:main/);
+  assert.match(commitStep, /if ! git push origin HEAD:main; then/);
+  assert.match(commitStep, /git -c core\.editor=true pull --rebase origin main/);
   assert.match(commitStep, /if: github\.event_name == 'push'/);
   assert.match(prepareJob, /if \[ "\$\{GITHUB_EVENT_NAME\}" = "push" \]/);
   assert.match(prepareJob, /echo "sha=\$\(git rev-parse HEAD\)" >> "\$GITHUB_OUTPUT"/);
