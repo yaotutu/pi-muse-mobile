@@ -60,7 +60,7 @@ function style(value) {
   return Object.assign({}, ...[value].flat(Infinity).filter(Boolean));
 }
 
-function render({ colors, update = false, reset = false } = {}) {
+function render({ colors, update = false, reset = false, uncertain = false } = {}) {
   const { SettingsHome, SETTINGS_PAGE_TITLES } = loadHome(colors);
   const calls = [];
   const tree = expand(SettingsHome({
@@ -69,6 +69,11 @@ function render({ colors, update = false, reset = false } = {}) {
     onBrowser: () => calls.push(['browser']),
     ...(update ? { onUpdate: () => calls.push(['update']) } : {}),
     ...(reset ? { onReset: () => calls.push(['reset']) } : {}),
+    ...(uncertain ? {
+      resetUncertain: true,
+      onVerifyReset: () => calls.push(['verify-reset']),
+      onAcknowledgeReset: () => calls.push(['acknowledge-reset']),
+    } : {}),
   }));
   return { tree, calls, titles: SETTINGS_PAGE_TITLES, rows: nodes(tree).filter((node) => node.type === 'Pressable') };
 }
@@ -77,7 +82,7 @@ test('设置首页公开全部页面标题，四组入口完整且无重复', ()
   const { tree, rows, titles } = render({ update: true });
   assert.deepEqual({ ...titles }, expectedTitles);
   const headers = nodes(tree).filter((node) => node.props.accessibilityRole === 'header');
-  assert.deepEqual(headers.map((node) => node.props.children), ['设置', '助手', '资料与任务', '信息', '应用']);
+  assert.deepEqual(headers.map((node) => node.props.children), ['设置', '助手', '内容与信息', '记录与任务', '应用与连接']);
   const expectedLabels = [...Object.values(expectedTitles), '浏览器', '服务器连接', '应用更新'].sort();
   assert.deepEqual(rows.map((row) => row.props.accessibilityLabel).sort(), expectedLabels);
   const ids = rows.map((row) => row.props.testID);
@@ -87,9 +92,9 @@ test('设置首页公开全部页面标题，四组入口完整且无重复', ()
   assert.deepEqual(cards.map((card) => nodes(card).filter((node) => node.type === 'Pressable')
     .map((row) => row.props.accessibilityLabel)), [
     ['身份与人设', '会话指令', '会话技能', 'Dream 记忆整理'],
-    ['长期记忆', '目标', '定时任务', '网页监控', '工作区文件', '动态与审批'],
     ['新闻来源', '新闻偏好', '短信设置'],
-    ['浏览器', '外观主题', '助手形象', '服务器连接', '应用更新'],
+    ['长期记忆', '目标', '定时任务', '网页监控', '工作区文件', '动态与审批'],
+    ['外观主题', '助手形象', '浏览器', '服务器连接', '应用更新'],
   ]);
 });
 
@@ -114,13 +119,30 @@ test('未提供 onUpdate 时不展示更新入口，其余功能不变', () => {
   assert.equal(rows.some((row) => row.props.accessibilityLabel === '应用更新'), false);
 });
 
-test('重置主聊天收在助手分组，未明核对入口只在结果未明时出现', () => {
-  const { rows, calls } = render({ reset: true });
+test('重置与未明恢复动作集中在底部危险操作组，不混入普通设置卡', () => {
+  const { tree, rows, calls } = render({ reset: true });
   assert.equal(rows.length, 18);
+  const headers = nodes(tree).filter((node) => node.props.accessibilityRole === 'header');
+  assert.deepEqual(headers.map((node) => node.props.children),
+    ['设置', '助手', '内容与信息', '记录与任务', '应用与连接', '危险操作']);
+  const cards = nodes(tree).filter((node) => node.type === 'Card');
+  assert.deepEqual(cards.at(-1) && nodes(cards.at(-1)).filter((node) => node.type === 'Pressable')
+    .map((row) => row.props.accessibilityLabel), ['重置主聊天']);
   const reset = rows.find((row) => row.props.testID === 'settings-reset-main');
   assert.equal(reset.props.accessibilityLabel, '重置主聊天');
   reset.props.onPress(); assert.deepEqual(calls.splice(0), [['reset']]);
   assert.equal(rows.some((row) => row.props.testID === 'settings-verify-reset'), false);
+});
+
+test('重置结果未明时，核对与恢复入口同在危险操作组且各自触发回调', () => {
+  const { tree, rows, calls } = render({ uncertain: true });
+  const headers = nodes(tree).filter((node) => node.props.accessibilityRole === 'header');
+  assert.equal(headers.at(-1).props.children, '危险操作');
+  assert.deepEqual(rows.slice(-2).map((row) => row.props.testID), ['settings-verify-reset', 'settings-acknowledge-reset']);
+  rows.find((row) => row.props.testID === 'settings-verify-reset').props.onPress();
+  assert.deepEqual(calls.splice(0), [['verify-reset']]);
+  rows.find((row) => row.props.testID === 'settings-acknowledge-reset').props.onPress();
+  assert.deepEqual(calls.splice(0), [['acknowledge-reset']]);
 });
 
 test('首页自带滚动和留白，主题只作为二级入口而非横向主题选择器', () => {

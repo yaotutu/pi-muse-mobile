@@ -26,19 +26,21 @@ export const SETTINGS_PAGE_TITLES: Record<SettingsPage, string> = {
 
 type PageEntry = { page: SettingsPage; icon: LucideIcon; description?: string };
 
+// 首页只做导航：助手调整、内容订阅、记录与任务、应用与连接分开；
+// 破坏性操作集中在底部独立分组，不与普通设置同卡。
 const PAGE_GROUPS: readonly { title: string; entries: readonly PageEntry[] }[] = [
-  { title: '资料与任务', entries: [
-    { page: 'memory', icon: Brain },
-    { page: 'goals', icon: Target },
-    { page: 'jobs', icon: Clock },
-    { page: 'monitors', icon: Radio },
-    { page: 'files', icon: BookOpen },
-    { page: 'activity', icon: ShieldCheck, description: '查看主聊天执行与审批' },
+  { title: '内容与信息', entries: [
+    { page: 'news-sources', icon: Newspaper, description: '管理与校验 RSS 订阅源' },
+    { page: 'news-preferences', icon: SlidersHorizontal, description: '新闻推荐与阅读偏好' },
+    { page: 'sms', icon: MessageSquare, description: '短信导入与重要提醒' },
   ] },
-  { title: '信息', entries: [
-    { page: 'news-sources', icon: Newspaper },
-    { page: 'news-preferences', icon: SlidersHorizontal },
-    { page: 'sms', icon: MessageSquare },
+  { title: '记录与任务', entries: [
+    { page: 'memory', icon: Brain, description: '跨会话共享，可搜索与维护' },
+    { page: 'goals', icon: Target, description: '长期目标与里程碑' },
+    { page: 'jobs', icon: Clock, description: '按设定时间自动执行' },
+    { page: 'monitors', icon: Radio, description: '网页变化与关键词提醒' },
+    { page: 'files', icon: BookOpen, description: '浏览与管理共享工作区' },
+    { page: 'activity', icon: ShieldCheck, description: '查看主聊天执行与审批' },
   ] },
 ];
 
@@ -55,6 +57,17 @@ export function SettingsHome({ onOpen, onConnection, onBrowser, onUpdate, onRese
   notice?: string;
 }) {
   const { colors } = useTheme();
+  // 破坏性操作与结果未明时的恢复动作脱离普通设置分组，避免与常规页面并列。
+  const dangerRows = [
+    { enabled: !!onReset, testID: 'settings-reset-main', icon: RotateCcw, label: '重置主聊天',
+      description: '清空聊天历史并换新内部身份', danger: true, onPress: () => onReset?.() },
+    { enabled: resetUncertain === true && !!onVerifyReset, testID: 'settings-verify-reset', icon: ShieldCheck,
+      label: '回读核对会话操作', description: '上次重置结果未明，先核对服务端实际状态', danger: false,
+      onPress: () => onVerifyReset?.() },
+    { enabled: resetUncertain === true && !!onAcknowledgeReset, testID: 'settings-acknowledge-reset', icon: ShieldCheck,
+      label: '已核对重置结果，恢复此会话', description: undefined, danger: false,
+      onPress: () => onAcknowledgeReset?.() },
+  ];
   // 安全区与底栏由工作区根持有；这里只保留正文留白，不叠加另一层避让。
   return <ScrollView testID="settings-home" keyboardShouldPersistTaps="handled"
     style={[styles.root, { backgroundColor: colors.canvas }]} contentContainerStyle={styles.content}>
@@ -71,13 +84,6 @@ export function SettingsHome({ onOpen, onConnection, onBrowser, onUpdate, onRese
           testID="settings-open-skills" divider onPress={() => onOpen('skills')} />
         <SettingsRow icon={Moon} label={SETTINGS_PAGE_TITLES.dream} description="记忆整理配置与待决建议"
           testID="settings-open-dream" divider onPress={() => onOpen('dream')} />
-        {onReset && <SettingsRow icon={RotateCcw} label="重置主聊天" description="清空聊天历史并换新内部身份"
-          testID="settings-reset-main" divider onPress={onReset} />}
-        {resetUncertain && onVerifyReset && <SettingsRow icon={ShieldCheck} label="回读核对会话操作"
-          description="上次重置结果未明，先核对服务端实际状态"
-          testID="settings-verify-reset" divider onPress={onVerifyReset} />}
-        {resetUncertain && onAcknowledgeReset && <SettingsRow icon={ShieldCheck} label="已核对重置结果，恢复此会话"
-          testID="settings-acknowledge-reset" divider onPress={onAcknowledgeReset} />}
       </Card>
     </View>
     {PAGE_GROUPS.map((group) => <View key={group.title} style={styles.group}>
@@ -89,22 +95,35 @@ export function SettingsHome({ onOpen, onConnection, onBrowser, onUpdate, onRese
       </Card>
     </View>)}
     <View style={styles.group}>
-      <Text accessibilityRole="header" style={[styles.groupTitle, { color: colors.muted }]}>应用</Text>
+      <Text accessibilityRole="header" style={[styles.groupTitle, { color: colors.muted }]}>应用与连接</Text>
       <Card style={styles.card}>
-        <SettingsRow icon={Globe} label="浏览器" testID="viewer-open" onPress={onBrowser} />
         <SettingsRow icon={Palette} label={SETTINGS_PAGE_TITLES.appearance} description="选择本机显示主题"
-          testID="settings-open-appearance" divider onPress={() => onOpen('appearance')} />
+          testID="settings-open-appearance" onPress={() => onOpen('appearance')} />
         <SettingsRow icon={Smile} label={SETTINGS_PAGE_TITLES.companion} description="选择本机助手形象包"
           testID="settings-open-companion" divider onPress={() => onOpen('companion')} />
-        <SettingsRow icon={Server} label="服务器连接" testID="settings-connection" divider onPress={onConnection} />
-        {onUpdate && <SettingsRow icon={Download} label="应用更新" testID="settings-update" divider onPress={onUpdate} />}
+        <SettingsRow icon={Globe} label="浏览器" description="打开服务端真实浏览器"
+          testID="viewer-open" divider onPress={onBrowser} />
+        <SettingsRow icon={Server} label="服务器连接" description="服务器地址与访问密钥"
+          testID="settings-connection" divider onPress={onConnection} />
+        {onUpdate && <SettingsRow icon={Download} label="应用更新" description="检查并安装新版本"
+          testID="settings-update" divider onPress={onUpdate} />}
       </Card>
     </View>
+    {dangerRows.some((row) => row.enabled) && <View style={styles.group}>
+      <Text accessibilityRole="header" style={[styles.groupTitle, { color: colors.danger }]}>危险操作</Text>
+      <Card style={styles.card}>
+        {dangerRows.filter((row) => row.enabled).map((row, index) => (
+          <SettingsRow key={row.testID} icon={row.icon} label={row.label} description={row.description}
+            testID={row.testID} divider={index > 0} danger={row.danger} onPress={row.onPress} />
+        ))}
+      </Card>
+    </View>}
   </ScrollView>;
 }
 
-function SettingsRow({ icon: Icon, label, description, onPress, testID, divider = false }: {
-  icon: LucideIcon; label: string; description?: string; onPress: () => void; testID: string; divider?: boolean;
+function SettingsRow({ icon: Icon, label, description, onPress, testID, divider = false, danger = false }: {
+  icon: LucideIcon; label: string; description?: string; onPress: () => void; testID: string;
+  divider?: boolean; danger?: boolean;
 }) {
   const { colors } = useTheme();
   return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityHint={description}
@@ -112,11 +131,11 @@ function SettingsRow({ icon: Icon, label, description, onPress, testID, divider 
     style={({ pressed }) => [styles.row, { backgroundColor: pressed ? colors.selected : colors.surface }]}>
     {divider && <View pointerEvents="none" style={[styles.divider, { backgroundColor: colors.line }]} />}
     <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants"
-      style={[styles.iconBox, { backgroundColor: colors.control }]}>
-      <Icon size={themeTokens.layout.appSettingsIcon} strokeWidth={1.7} color={colors.ink} />
+      style={[styles.iconBox, { backgroundColor: danger ? colors.dangerSoft : colors.control }]}>
+      <Icon size={themeTokens.layout.appSettingsIcon} strokeWidth={1.7} color={danger ? colors.danger : colors.ink} />
     </View>
     <View style={styles.rowText}>
-      <Text style={[styles.rowTitle, { color: colors.ink }]}>{label}</Text>
+      <Text style={[styles.rowTitle, { color: danger ? colors.danger : colors.ink }]}>{label}</Text>
       {description && <Text style={[styles.description, { color: colors.muted }]}>{description}</Text>}
     </View>
     <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.chevron}>
