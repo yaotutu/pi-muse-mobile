@@ -1,6 +1,6 @@
 # 移动开发指南
 
-本文维护导航、状态所有权与协议消费边界。常用命令和高层架构在 [CLAUDE.md](../CLAUDE.md)，项目约束在 [AGENTS.md](../AGENTS.md)，主题和发布分别见 [themes.md](themes.md)、[android-release-guide.md](android-release-guide.md)。源码与测试决定当前实现，历史交接不能替代它们。
+本文维护导航、状态所有权与协议消费边界。常用命令、高层架构和项目约束在 [AGENTS.md](../AGENTS.md)（Claude Code 经 [CLAUDE.md](../CLAUDE.md) 加载），主题和发布分别见 [themes.md](themes.md)、[android-release-guide.md](android-release-guide.md)。源码与测试决定当前实现，历史交接不能替代它们。
 
 ## 连接与页面所有权
 
