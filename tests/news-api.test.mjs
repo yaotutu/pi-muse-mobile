@@ -5,6 +5,8 @@ import { ApiError } from '../src/api/errors.ts';
 import {
   parseNewsArticlePage,
   parseNewsFeedback,
+  parseNewsRefresh,
+  parseNewsSourceCreate,
   parseNewsSourceList,
 } from '../src/news/contracts.ts';
 
@@ -34,6 +36,7 @@ const source = (patch = {}) => ({
   createdAt: '2026-10-30T00:00:00Z',
   lastFetchedAt: null,
   lastError: null,
+  lastErrorDetails: null,
   ...patch,
 });
 
@@ -115,8 +118,8 @@ test('新闻写入端点严格发送冻结请求体并返回完整反馈', async
   const requests = [];
   await withClient(async (url, init) => {
     requests.push({ url, method: init.method, body: init.body ? JSON.parse(init.body) : undefined });
-    if (url.endsWith('/refresh')) return json({ added: 3 });
-    if (url.endsWith('/sources')) return json({ source: source({ id: 'source-2' }) });
+    if (url.endsWith('/refresh')) return json({ added: 3, skipped: 1, resetDeferred: false });
+    if (url.endsWith('/sources')) return json({ source: source({ id: 'source-2' }), skipped: 0 });
     if (url.endsWith('/preferences')) return json({ notes: '新备注', learnedNotes: '' });
     if (url.includes('/saved')) return json({ feedback: feedback({ saved: true }) });
     if (url.includes('/reaction')) return json({ feedback: feedback({ reaction: null }) });
@@ -133,8 +136,8 @@ test('新闻写入端点严格发送冻结请求体并返回完整反馈', async
 
   await withClient(async (url, init) => {
     requests.push({ url, method: init.method, body: init.body ? JSON.parse(init.body) : undefined });
-    if (url.endsWith('/refresh')) return json({ added: 3 });
-    if (url.endsWith('/sources')) return json({ source: source({ id: 'source-2' }) });
+    if (url.endsWith('/refresh')) return json({ added: 3, skipped: 1, resetDeferred: false });
+    if (url.endsWith('/sources')) return json({ source: source({ id: 'source-2' }), skipped: 0 });
     if (url.endsWith('/preferences')) return json({ notes: '新备注', learnedNotes: '' });
     if (url.includes('/saved')) return json({ feedback: feedback({ saved: true }) });
     if (url.includes('/reaction')) return json({ feedback: feedback({ reaction: null }) });
@@ -207,6 +210,46 @@ test('新闻严格解析公开响应；额外字段、错位 ID、坏 URL 和错
       else if ('reaction' in value) parseNewsFeedback(value);
       else parseNewsArticlePage(value);
     }, (error) => error instanceof ApiError && error.status === 502);
+  }
+});
+
+test('新闻源失败分类与添加/刷新计数按当前服务端契约解析', () => {
+  // 旧存储可能省略 lastErrorDetails；客户端按 null 处理，而不是拒绝整个来源列表。
+  const legacy = source();
+  delete legacy.lastErrorDetails;
+  assert.equal(parseNewsSourceList({ sources: [legacy] })[0].lastErrorDetails, null);
+  assert.deepEqual(
+    parseNewsSourceList({ sources: [source({ lastErrorDetails: { category: 'TIMEOUT' } })] })[0].lastErrorDetails,
+    { category: 'TIMEOUT' },
+  );
+  assert.deepEqual(
+    parseNewsSourceList({ sources: [source({ lastErrorDetails: { category: 'HTTP_ERROR', httpStatus: 503 } })] })[0]
+      .lastErrorDetails,
+    { category: 'HTTP_ERROR', httpStatus: 503 },
+  );
+  for (const lastErrorDetails of [
+    { category: 'SECRET' },
+    { category: 'TIMEOUT', httpStatus: 503 },
+    { category: 'HTTP_ERROR', httpStatus: 99 },
+    { category: 'HTTP_ERROR', httpStatus: 600 },
+    { category: 'HTTP_ERROR', extra: true },
+  ]) {
+    assert.throws(() => parseNewsSourceList({ sources: [source({ lastErrorDetails })] }),
+      (error) => error instanceof ApiError && error.status === 502);
+  }
+
+  assert.deepEqual(parseNewsSourceCreate({ source: source(), skipped: 2 }), { source: source(), skipped: 2 });
+  assert.deepEqual(
+    parseNewsRefresh({ added: 3, skipped: 1, resetDeferred: true }),
+    { added: 3, skipped: 1, resetDeferred: true },
+  );
+  for (const value of [
+    { source: source() },
+    { source: source(), skipped: -1 },
+    { added: 3, skipped: 1 },
+  ]) {
+    assert.throws(() => ('source' in value ? parseNewsSourceCreate(value) : parseNewsRefresh(value)),
+      (error) => error instanceof ApiError && error.status === 502);
   }
 });
 

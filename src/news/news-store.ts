@@ -668,7 +668,7 @@ export class NewsStore {
     this.writeControllers.add(controller);
     this.publish({ sourceWriting: true, sourceWriteError: undefined });
     try {
-      const source = await this.client.createNewsSource(input, controller.signal);
+      const { source } = await this.client.createNewsSource(input, controller.signal);
       if (this.disposed) return false;
       this.cancelSources();
       this.publish({

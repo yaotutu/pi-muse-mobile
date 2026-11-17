@@ -44,6 +44,7 @@ const source = (patch = {}) => ({
   createdAt: '2026-10-30T00:00:00Z',
   lastFetchedAt: null,
   lastError: null,
+  lastErrorDetails: null,
   ...patch,
 });
 
@@ -306,7 +307,7 @@ test('RSS 源添加结果未明保留草稿，回读后仍需明确解锁；成�
 
   const second = store.addSource();
   assert.equal(client.calls.createSources.length, 2);
-  client.calls.createSources[1].resolve(source({ id: 'source-2' }));
+  client.calls.createSources[1].resolve({ source: source({ id: 'source-2' }), skipped: 0 });
   assert.equal(await second, true);
   assert.equal(store.getSnapshot().sourceDraft.url, '');
   assert.equal(client.calls.refreshes.length, 0, '源添加成功后不自动 POST refresh');
@@ -322,7 +323,10 @@ test('RSS 写成功取消此前源读取，迟到列表不能丢弃新增源或�
   const staleRead = client.calls.sources[1];
   store.setSourceDraft({ url: 'https://example.com/new.xml', title: '新源' });
   const adding = store.addSource();
-  client.calls.createSources[0].resolve(source({ id: 'source-2', title: '新源', url: 'https://example.com/new.xml' }));
+  client.calls.createSources[0].resolve({
+    source: source({ id: 'source-2', title: '新源', url: 'https://example.com/new.xml' }),
+    skipped: 0,
+  });
   assert.equal(await adding, true);
   assert.equal(staleRead.signal.aborted, true);
   staleRead.resolve([source()]);

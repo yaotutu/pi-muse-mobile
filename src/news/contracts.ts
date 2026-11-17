@@ -10,7 +10,9 @@ import type {
   NewsRefreshResult,
   NewsSource,
   NewsSourceCreateInput,
+  NewsSourceCreateResult,
   NewsSourceDeleteResult,
+  NewsSourceFailure,
   NewsStatus,
 } from './types';
 
@@ -21,6 +23,11 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 const hasOnlyKeys = (value: Record<string, unknown>, keys: readonly string[]) =>
   Object.keys(value).length === keys.length && keys.every((key) => key in value);
+/** 兼容旧存储省略字段：必需键必须存在，可选键可缺席，但任何额外键仍拒绝。 */
+const hasKeys = (value: Record<string, unknown>, required: readonly string[], optional: readonly string[] = []) => {
+  const allowed = [...required, ...optional];
+  return required.every((key) => key in value) && Object.keys(value).every((key) => allowed.includes(key));
+};
 const text = (value: unknown, limits: { min?: number; max?: number } = {}): string => {
   if (typeof value !== 'string') return invalid();
   if (value.length < (limits.min ?? 0) || value.length > (limits.max ?? Number.MAX_SAFE_INTEGER)) return invalid();
@@ -124,10 +131,30 @@ export function parseNewsStatus(value: unknown): NewsStatus {
   };
 }
 
+const NEWS_SOURCE_FAILURE_CATEGORIES = [
+  'NETWORK', 'SSRF_BLOCKED', 'TIMEOUT', 'HTTP_ERROR', 'PARSE_INVALID', 'UNKNOWN',
+] as const;
+
+/** 只校验受控分类和已知 HTTP 状态码；上游文案与地址不会出现在该字段。 */
+function parseNewsSourceFailure(value: unknown): NewsSourceFailure | null {
+  if (value === null || value === undefined) return null;
+  if (!isRecord(value) || !hasKeys(value, ['category'], ['httpStatus'])) return invalid();
+  const category = value.category;
+  if (typeof category !== 'string' ||
+    !NEWS_SOURCE_FAILURE_CATEGORIES.includes(category as NewsSourceFailure['category'])) return invalid();
+  const typedCategory = category as NewsSourceFailure['category'];
+  if (value.httpStatus === undefined) return { category: typedCategory };
+  // 服务端只可能给 HTTP_ERROR 附带已知状态码；其他分类带状态码视为契约漂移。
+  if (typedCategory !== 'HTTP_ERROR') return invalid();
+  const httpStatus = integer(value.httpStatus, 100);
+  if (httpStatus > 599) return invalid();
+  return { category: typedCategory, httpStatus };
+}
+
 function parseNewsSource(value: unknown): NewsSource {
-  if (!isRecord(value) || !hasOnlyKeys(value, [
+  if (!isRecord(value) || !hasKeys(value, [
     'id', 'title', 'url', 'createdAt', 'lastFetchedAt', 'lastError',
-  ])) return invalid();
+  ], ['lastErrorDetails'])) return invalid();
   return {
     id: newsId(value.id),
     title: text(value.title, { min: 1, max: 500 }),
@@ -135,6 +162,7 @@ function parseNewsSource(value: unknown): NewsSource {
     createdAt: timestamp(value.createdAt),
     lastFetchedAt: nullableTimestamp(value.lastFetchedAt),
     lastError: nullableText(value.lastError),
+    lastErrorDetails: parseNewsSourceFailure(value.lastErrorDetails),
   };
 }
 
@@ -145,9 +173,12 @@ export function parseNewsSourceList(value: unknown): NewsSource[] {
   return sources;
 }
 
-export function parseNewsSourceCreate(value: unknown): NewsSource {
-  if (!isRecord(value) || !hasOnlyKeys(value, ['source'])) return invalid();
-  return parseNewsSource(value.source);
+export function parseNewsSourceCreate(value: unknown): NewsSourceCreateResult {
+  if (!isRecord(value) || !hasOnlyKeys(value, ['source', 'skipped'])) return invalid();
+  return {
+    source: parseNewsSource(value.source),
+    skipped: integer(value.skipped),
+  };
 }
 
 export function parseNewsSourceDelete(value: unknown, expectedId?: string): NewsSourceDeleteResult {
@@ -200,8 +231,12 @@ export function parseNewsArticleDetail(value: unknown, expectedId?: string): New
 }
 
 export function parseNewsRefresh(value: unknown): NewsRefreshResult {
-  if (!isRecord(value) || !hasOnlyKeys(value, ['added'])) return invalid();
-  return { added: integer(value.added) };
+  if (!isRecord(value) || !hasOnlyKeys(value, ['added', 'skipped', 'resetDeferred'])) return invalid();
+  return {
+    added: integer(value.added),
+    skipped: integer(value.skipped),
+    resetDeferred: boolean(value.resetDeferred),
+  };
 }
 
 export function parseNewsPreferences(value: unknown): NewsPreferences {

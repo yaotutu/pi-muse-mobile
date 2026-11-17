@@ -11,6 +11,20 @@ export type NewsStatus = {
   lastError: string | null;
 };
 
+/** 服务端只投影受控失败分类；HTTP_ERROR 才可能带已知上游状态码。 */
+export type NewsSourceFailureCategory =
+  | 'NETWORK'
+  | 'SSRF_BLOCKED'
+  | 'TIMEOUT'
+  | 'HTTP_ERROR'
+  | 'PARSE_INVALID'
+  | 'UNKNOWN';
+
+export type NewsSourceFailure = {
+  category: NewsSourceFailureCategory;
+  httpStatus?: number;
+};
+
 export type NewsSource = {
   id: string;
   title: string;
@@ -18,6 +32,14 @@ export type NewsSource = {
   createdAt: string;
   lastFetchedAt: string | null;
   lastError: string | null;
+  /** 旧存储没有分类时服务端省略该字段，客户端统一按 null 处理；成功后也为 null。 */
+  lastErrorDetails: NewsSourceFailure | null;
+};
+
+export type NewsSourceCreateResult = {
+  source: NewsSource;
+  /** 添加源只验证 feed；本次因缺标题或稳定 ID 跳过的条目数。 */
+  skipped: number;
 };
 
 export type NewsSourceCreateInput = {
@@ -75,6 +97,10 @@ export type NewsArticleDetail = {
 
 export type NewsRefreshResult = {
   added: number;
+  /** 成功解析的源中缺标题或稳定 ID 而跳过的条目总数；解析失败的源不计入。 */
+  skipped: number;
+  /** true=新闻模型轮运行，本次未重置 failed 条目；false 不表示模型分析已完成。 */
+  resetDeferred: boolean;
 };
 
 export type NewsPreferences = {
@@ -90,7 +116,7 @@ export type NewsPreferencesInput = {
 export interface NewsClient {
   getNewsStatus(signal?: AbortSignal): Promise<NewsStatus>;
   listNewsSources(signal?: AbortSignal): Promise<NewsSource[]>;
-  createNewsSource(input: NewsSourceCreateInput, signal?: AbortSignal): Promise<NewsSource>;
+  createNewsSource(input: NewsSourceCreateInput, signal?: AbortSignal): Promise<NewsSourceCreateResult>;
   deleteNewsSource(sourceId: string, signal?: AbortSignal): Promise<NewsSourceDeleteResult>;
   listNewsArticles(query?: NewsArticlesQuery, signal?: AbortSignal): Promise<NewsArticlePage>;
   getNewsArticle(articleId: string, signal?: AbortSignal): Promise<NewsArticleDetail>;
