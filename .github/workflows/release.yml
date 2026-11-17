@@ -1,6 +1,7 @@
 name: release
 
-# push 到 main 时，prepare 产生唯一 bump 提交；两个平台都从该 SHA 构建。
+# push 到 main 时，prepare 先跑与 ci.yml 相同的门禁，再产生唯一 bump 提交；
+# 两个平台都从该 SHA 构建。门禁失败时不 bump、不构建、不发布。
 # workflow_dispatch 只做同一 SHA 的双平台构建验收，不 bump、push 或发布。
 # 正式 release job 必须等待 APK 与未签名 IPA 都存在，才能创建 GitHub Release。
 
@@ -39,6 +40,19 @@ jobs:
         run: npm ci
         if: github.event_name == 'push'
 
+      # 发布前先过与 ci.yml 相同的门禁，避免失败的代码仍被手机自动更新取走。
+      - name: Typecheck
+        run: npx tsc --noEmit
+        if: github.event_name == 'push'
+
+      - name: Lint
+        run: npx expo lint
+        if: github.event_name == 'push'
+
+      - name: Test
+        run: npm test
+        if: github.event_name == 'push'
+
       - name: Bump version
         id: bump
         run: node tools/bump-version.js >> "$GITHUB_OUTPUT"
@@ -55,7 +69,12 @@ jobs:
             exit 0
           fi
           git commit -m "ci: bump version to ${{ steps.bump.outputs.version }} [skip ci]"
-          git push origin HEAD:main
+          # main 在构建期间可能被新 push 前进；先 rebase 再重试一次，避免正常发布被拒绝。
+          if ! git push origin HEAD:main; then
+            echo "main 已前进，rebase 后重试"
+            git -c core.editor=true pull --rebase origin main
+            git push origin HEAD:main
+          fi
 
       - name: Resolve build source
         id: release-source
