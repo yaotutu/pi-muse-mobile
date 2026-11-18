@@ -29,6 +29,8 @@ export type MessageAttachmentView = Omit<ConversationAttachment, 'sha256'>;
 /** 消息渲染视图：assistant 消息可同时含文本与多个工具卡 */
 export type MessageView = {
   featureSource?: import('../notifications/contracts').FeatureSource;
+  source?: import('../api/types').MessageSource | null;
+  notificationId?: string | null;
   id: string;
   role: 'user' | 'assistant';
   text: string;
@@ -43,6 +45,33 @@ export type MessageView = {
   streaming?: boolean;
 };
 
+const SMS_NOTIFICATION_ID_PATTERN = /^info-notification-inforun_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-(0|[1-9][0-9]*)$/i;
+const SMS_QUOTE_START = '【短信卡片引用】';
+const SMS_QUOTE_END = '【引用结束】';
+
+/** 判断是否为独立短信通道投递到聊天框的卡片（非普通助手对话，不入模型上下文）。 */
+export function isSmsNotificationMessage(
+  message: Pick<MessageView, 'role' | 'notificationId' | 'featureSource'> & { id?: string },
+): boolean {
+  if (message.role !== 'assistant') return false;
+  if (message.featureSource?.featureId === 'sms') return true;
+  const candidate = message.notificationId !== undefined ? message.notificationId : message.id;
+  return typeof candidate === 'string' && SMS_NOTIFICATION_ID_PATTERN.test(candidate);
+}
+
+/** 生成可编辑的短信卡片引用块；不自动发送，由用户在主聊天确认发出。 */
+export function formatSmsQuote(text: string): string {
+  return `${SMS_QUOTE_START}\n${text.trim()}\n${SMS_QUOTE_END}`;
+}
+
+export function appendSmsQuote(draft: string, text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return draft;
+  const quote = formatSmsQuote(trimmed);
+  if (draft.includes(quote)) return draft;
+  return draft ? `${draft}\n\n${quote}` : quote;
+}
+
 /** 把服务端权威历史（含工具投影）转为视图；role=tool 回填到对应调用。 */
 export function projectHistory(messages: ConversationMessage[]): MessageView[] {
   const views: MessageView[] = [];
@@ -55,6 +84,8 @@ export function projectHistory(messages: ConversationMessage[]): MessageView[] {
         ...(message.attachments?.length ? { attachments: message.attachments } : {}),
         toolCalls: [],
         feedbackAvailable: message.metadata.feedbackAvailable,
+        ...(message.metadata.source === 'notification' ? { source: message.metadata.source } : {}),
+        ...(message.metadata.notificationId ? { notificationId: message.metadata.notificationId } : {}),
         ...(message.metadata.featureSource ? { featureSource: message.metadata.featureSource } : {}),
         feedback: message.feedback,
       });
@@ -69,6 +100,8 @@ export function projectHistory(messages: ConversationMessage[]): MessageView[] {
           args: call.function.arguments,
         })),
         feedbackAvailable: message.metadata.feedbackAvailable,
+        ...(message.metadata.source === 'notification' ? { source: message.metadata.source } : {}),
+        ...(message.metadata.notificationId ? { notificationId: message.metadata.notificationId } : {}),
         ...(message.metadata.featureSource ? { featureSource: message.metadata.featureSource } : {}),
         feedback: message.feedback,
       });

@@ -72,7 +72,7 @@ export function SmsSettingsCard() {
         <Text style={styles.section}>短信处理</Text>
       </View>
       <Text style={styles.caption}>
-        短信由短信会话保存和处理；仅重要结果进入绑定的承接会话，不随当前页面切换。
+        由独立短信 Sub-Agent 在后台筛选分析；重要通知以独立卡片展示在聊天界面中，默认不进入主对话大模型上下文。
       </Text>
       {info.loading && <Text style={styles.caption}>正在读取短信状态…</Text>}
 
@@ -99,7 +99,7 @@ export function SmsSettingsCard() {
         <>
           <View style={styles.body}>
             <Text style={styles.text}>过滤规则与偏好</Text>
-            <Text style={styles.caption}>与短信会话规则（INSTRUCTIONS.md）统一：指导会话如何筛选与判断（重要通知 vs 静默）。</Text>
+            <Text style={styles.caption}>短信专属过滤规则（独立保存，不写入主会话指令）：指导短信 Sub-Agent 如何筛选与判断（重要通知 vs 静默）。</Text>
             <FormInput
               accessibilityLabel="信息过滤指示"
               multiline
@@ -121,6 +121,13 @@ export function SmsSettingsCard() {
               onPress={() => void info.saveNotes()}
             />
           </View>
+
+          {!!info.preferences?.learnedNotes?.trim() && (
+            <View style={styles.itemCard} testID="sms-learned-notes">
+              <Text style={styles.text}>Sub-Agent 已学习的敏感度画像</Text>
+              <Text style={styles.caption}>{info.preferences.learnedNotes.trim()}</Text>
+            </View>
+          )}
 
           {!!info.preferences?.feedbackExamples?.length && (
             <View style={styles.badge}>

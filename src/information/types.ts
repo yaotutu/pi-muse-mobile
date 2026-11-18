@@ -23,6 +23,7 @@ export type InformationFeedbackExample = {
 
 export type InformationPreferences = {
   notes: string;
+  learnedNotes?: string;
   feedbackExamples: InformationFeedbackExample[];
 };
 

@@ -25,9 +25,10 @@ test('parseInformationSettings validates shape and rejects illegal values', () =
   assert.throws(() => parseInformationSettings({ enabled: true, batchWindowSeconds: 3601 }), ApiError);
 });
 
-test('parseInformationPreferences parses valid notes and feedback examples', () => {
+test('parseInformationPreferences parses valid notes, learnedNotes and feedback examples', () => {
   const payload = {
     notes: '整理重要快递',
+    learnedNotes: '偏好取件码与账单，忽略营销推送',
     feedbackExamples: [{
       runId: 'run-1',
       notificationId: 'notif-1',
@@ -46,11 +47,13 @@ test('parseInformationPreferences parses valid notes and feedback examples', () 
   };
   const parsed = parseInformationPreferences(payload);
   assert.equal(parsed.notes, '整理重要快递');
+  assert.equal(parsed.learnedNotes, '偏好取件码与账单，忽略营销推送');
   assert.equal(parsed.feedbackExamples.length, 1);
   assert.equal(parsed.feedbackExamples[0].reaction, 'like');
   assert.equal(parsed.feedbackExamples[0].items[0].source, 'sms');
 
   assert.throws(() => parseInformationPreferences({ notes: 123, feedbackExamples: [] }), ApiError);
+  assert.throws(() => parseInformationPreferences({ notes: 'ok', learnedNotes: 456, feedbackExamples: [] }), ApiError);
 });
 
 test('parseInformationItem and ingest results parse valid items', () => {

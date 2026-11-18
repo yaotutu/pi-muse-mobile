@@ -5,13 +5,13 @@ import type { NotificationReference } from '../notifications/contracts';
  * 边界：单实例绑定单个会话的聊天代次（父级以 sessionId + epoch 隔离生命周期）；
  * assistant Markdown 与工具专用展示由独立组件负责，不猜测审批决定。
  */
-import { AlertCircle, ArrowDown, ArrowUp, CircleHelp, ShieldAlert, Square } from 'lucide-react-native';
+import { AlertCircle, ArrowDown, ArrowUp, CircleHelp, Inbox, ShieldAlert, Square } from 'lucide-react-native';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View, type LayoutRectangle, type ScrollViewInstance, type TextStyle, type ViewInstance } from 'react-native';
 import { useApi } from '../api/ApiProvider';
 import { pickMessageAttachments } from '../attachments/picker';
 import { AttachmentAction, AttachmentStrip, MessageAttachments } from '../attachments/AttachmentViews';
-import type { MessageView } from '../chat/chat-state';
+import { appendSmsQuote, isSmsNotificationMessage, type MessageView } from '../chat/chat-state';
 import { useApprovals } from '../approvals/ApprovalProvider';
 import { useConversation } from '../chat/useConversation';
 import { useServiceConnection } from '../connection/ConnectionProvider';
@@ -25,6 +25,7 @@ import { getChatVisibleText } from '../chat/chat-visible-text';
 import { ToolResultCard } from './ToolResultCard';
 import { ActionButton } from '../ui/ActionButton';
 import { MessageFeedbackControls } from '../feedback/MessageFeedbackControls';
+import { SmsNotificationCard } from '../information/SmsNotificationCard';
 import { ScrollAnchorFrame } from './scroll-follow';
 import { ConversationScroll } from './conversation-scroll';
 import { companionContentInset } from './companion-layout';
@@ -154,6 +155,15 @@ export function ConversationView({
   const busy = conversation.running || runtime.running;
   const pending = session.pendingSubmission;
   const [steering, setSteering] = useState(false);
+  const lastView = conversation.views.at(-1);
+  const latestSmsMessage = lastView && isSmsNotificationMessage(lastView) ? lastView : undefined;
+  const latestSmsText = latestSmsMessage ? getChatVisibleText(latestSmsMessage.text).trim() : '';
+  const showLatestSmsQuoteBar = Boolean(
+    latestSmsMessage &&
+    latestSmsText &&
+    sessions.canWrite(sessionId) &&
+    !session.draft.includes(latestSmsText),
+  );
   const hasInput = !!session.draft.trim() || session.draftAttachments.length > 0;
   const canSend =
     !!connection?.enabled &&
@@ -354,8 +364,13 @@ export function ConversationView({
                 conversation.persistedMessageIds.has(message.id) && message.feedback
                 ? { sessionId, piSessionId: conversation.piSessionId, initialFeedback: message.feedback }
                 : undefined}
+              canQuoteSms={sessions.canWrite(sessionId)}
+              onQuoteSms={(text) => {
+                if (!sessions.canWrite(sessionId)) return;
+                sessions.setDraft(sessionId, appendSmsQuote(sessions.get(sessionId).draft, text));
+              }}
             />
-            {onContinueNotification && message.role === 'assistant' && message.featureSource && conversation.piSessionId && conversation.persistedMessageIds.has(message.id) &&
+            {onContinueNotification && !isSmsNotificationMessage(message) && message.role === 'assistant' && message.featureSource && conversation.piSessionId && conversation.persistedMessageIds.has(message.id) &&
               <ActionButton label="继续处理来源通知" onPress={() => onContinueNotification({ sessionId, messageId: message.id })} />}
             </View>
           ))}
@@ -437,6 +452,27 @@ export function ConversationView({
           }} />
           {!!attachmentError && <Text accessibilityRole="alert" style={styles.error}>{attachmentError}</Text>}
         </View>}
+        {showLatestSmsQuoteBar && (
+          <View style={styles.smsLatestQuoteBar} testID="sms-latest-quote-bar">
+            <View style={styles.smsLatestQuoteContent}>
+              <Inbox size={15} color={colors.blue} />
+              <Text style={styles.smsLatestQuoteText} numberOfLines={1}>
+                针对刚收到的短信提问？
+              </Text>
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="引用刚收到的短信到对话"
+              onPress={() => {
+                sessions.setDraft(sessionId, appendSmsQuote(sessions.get(sessionId).draft, latestSmsText));
+              }}
+              style={({ pressed }) => [styles.smsLatestQuoteButton, pressed && styles.pressed]}
+              testID="sms-latest-quote-action"
+            >
+              <Text style={styles.smsLatestQuoteButtonText}>引用到对话</Text>
+            </Pressable>
+          </View>
+        )}
         <View style={[styles.composer, focused && styles.composerFocused]}>
           <AttachmentAction disabled={busy || !!pending || !sessions.canWrite(sessionId)} selecting={selecting} onPress={() => void selectAttachments()} />
           {/* 聊天输入与发送/停止共用动态高度胶囊；保留专用 TextInput 以维持光标、键盘和流式操作。 */}
@@ -525,7 +561,27 @@ export function ConversationView({
   );
 }
 
-export function Message({ message, delivery, feedbackScope }: {
+export function Message({ message, delivery, feedbackScope, canQuoteSms = false, onQuoteSms }: {
+  message: MessageView;
+  delivery?: MessageDelivery;
+  feedbackScope?: { sessionId: string; piSessionId: string; initialFeedback: NonNullable<MessageView['feedback']> };
+  canQuoteSms?: boolean;
+  onQuoteSms?: (text: string) => void;
+}) {
+  if (isSmsNotificationMessage(message)) {
+    return (
+      <SmsNotificationCard
+        message={message}
+        feedbackScope={feedbackScope}
+        canQuote={canQuoteSms}
+        onQuote={onQuoteSms}
+      />
+    );
+  }
+  return <RegularMessage message={message} delivery={delivery} feedbackScope={feedbackScope} />;
+}
+
+function RegularMessage({ message, delivery, feedbackScope }: {
   message: MessageView;
   delivery?: MessageDelivery;
   feedbackScope?: { sessionId: string; piSessionId: string; initialFeedback: NonNullable<MessageView['feedback']> };
@@ -737,6 +793,44 @@ const createStyles = (c: WorkspaceColors) =>
     userMessageRow: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: spacing[8] },
     deliveryAlert: { width: sizing[24], height: sizing[24], alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
     featureSourceLabel: { ...t.caption, color: c.muted, marginBottom: spacing[4] },
+    smsLatestQuoteBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginHorizontal: l.sidePadding,
+      marginBottom: spacing[8],
+      paddingHorizontal: spacing[12],
+      paddingVertical: spacing[8],
+      borderRadius: r.field,
+      backgroundColor: c.blueSoft,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: c.blue,
+      gap: spacing[8],
+    },
+    smsLatestQuoteContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing[6],
+      flex: 1,
+    },
+    smsLatestQuoteText: {
+      ...t.caption,
+      color: c.ink,
+      flex: 1,
+    },
+    smsLatestQuoteButton: {
+      paddingHorizontal: spacing[10],
+      paddingVertical: spacing[4],
+      borderRadius: r.round,
+      backgroundColor: c.surface,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: c.blue,
+    },
+    smsLatestQuoteButtonText: {
+      ...t.caption,
+      color: c.blue,
+      fontWeight: '600',
+    },
     pendingBanner: {
       padding: spacing[12],
       borderRadius: r.card,

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { projectHistory, StreamAggregator } from '../src/chat/chat-state.ts';
+import { appendSmsQuote, isSmsNotificationMessage, projectHistory, StreamAggregator } from '../src/chat/chat-state.ts';
 
 // 只重放协议事件，不加载 UI、网络或原生模块，确保回归结果不依赖运行环境。
 const aggregate = (events) => events.reduce((state, event) => {
@@ -194,4 +194,46 @@ test('历史投影按调用 ID 回填结果且不修改输入，settle 可重复
   state.settle();
   state.settle();
   assert.ok(state.messages.every((message) => message.streaming === false));
+});
+
+test('独立短信通知识别与方式一引用追加幂等保留原草稿', () => {
+  const smsId = 'info-notification-inforun_01234567-89ab-cdef-0123-456789abcdef-0';
+  const smsNotification = {
+    id: smsId,
+    role: 'assistant',
+    content: '【顺丰速运】取件码 3-4-2018',
+    metadata: {
+      createdAt: '2026-10-28T00:00:00.000Z',
+      source: 'notification',
+      runId: null,
+      jobId: null,
+      notificationId: smsId,
+      feedbackAvailable: true,
+    },
+    feedback,
+  };
+  const genericNotification = {
+    id: 'server-notification-1',
+    role: 'assistant',
+    content: '网页监控命中',
+    metadata: {
+      createdAt: '2026-10-28T00:00:00.000Z',
+      source: 'notification',
+      runId: null,
+      jobId: null,
+      notificationId: 'server-notification-1',
+      feedbackAvailable: true,
+    },
+    feedback,
+  };
+  const views = projectHistory([smsNotification, genericNotification, assistant('normal', '普通回答')]);
+  assert.equal(isSmsNotificationMessage(views[0]), true);
+  assert.equal(isSmsNotificationMessage(views[1]), false);
+  assert.equal(isSmsNotificationMessage(views[2]), false);
+  assert.equal(isSmsNotificationMessage({ role: 'user', notificationId: smsId }), false);
+
+  const quotedOnce = appendSmsQuote('帮我记一下', '【顺丰速运】取件码 3-4-2018');
+  assert.equal(quotedOnce, '帮我记一下\n\n【短信卡片引用】\n【顺丰速运】取件码 3-4-2018\n【引用结束】');
+  assert.equal(appendSmsQuote(quotedOnce, '【顺丰速运】取件码 3-4-2018'), quotedOnce);
+  assert.equal(appendSmsQuote('', '   '), '');
 });
