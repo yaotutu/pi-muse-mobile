@@ -52,7 +52,8 @@ test('parseInformationPreferences parses valid notes, learnedNotes and feedback 
   assert.equal(parsed.feedbackExamples[0].reaction, 'like');
   assert.equal(parsed.feedbackExamples[0].items[0].source, 'sms');
 
-  assert.throws(() => parseInformationPreferences({ notes: 123, feedbackExamples: [] }), ApiError);
+  assert.throws(() => parseInformationPreferences({ notes: 123, learnedNotes: '', feedbackExamples: [] }), ApiError);
+  assert.throws(() => parseInformationPreferences({ notes: 'ok', feedbackExamples: [] }), ApiError);
   assert.throws(() => parseInformationPreferences({ notes: 'ok', learnedNotes: 456, feedbackExamples: [] }), ApiError);
 });
 
@@ -93,10 +94,10 @@ test('HttpApiClient routes information API calls with correct methods and endpoi
       return json({ enabled: false, batchWindowSeconds: 15 });
     }
     if (url.includes('/information/preferences') && init?.method === 'PUT') {
-      return json({ notes: '新偏好', feedbackExamples: [] });
+      return json({ notes: '新偏好', learnedNotes: '', feedbackExamples: [] });
     }
     if (url.includes('/information/preferences')) {
-      return json({ notes: '旧偏好', feedbackExamples: [] });
+      return json({ notes: '旧偏好', learnedNotes: '', feedbackExamples: [] });
     }
     if (url.includes('/information/items') && init?.method === 'POST') {
       return json({ items: [{

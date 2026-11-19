@@ -74,7 +74,7 @@ export function parseInformationPreferences(value: unknown): InformationPreferen
   if (!Array.isArray(value.feedbackExamples)) return invalid();
   return {
     notes: text(value.notes, { max: 20000 }),
-    ...(value.learnedNotes !== undefined ? { learnedNotes: text(value.learnedNotes, { max: 20000 }) } : {}),
+    learnedNotes: text(value.learnedNotes, { max: 20000 }),
     feedbackExamples: value.feedbackExamples.map(parseInformationFeedbackExample),
   };
 }

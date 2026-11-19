@@ -6,7 +6,7 @@ const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve
 const tick=()=>new Promise(r=>setTimeout(r,0));
 function fixture(overrides={}) {
  const remote={settings:{enabled:true,batchWindowSeconds:15},notes:'saved',items:[{id:'one',status:'pending'}]};let reads=0;
- const client={getSmsSettings:async()=>{reads++;return {...remote.settings};},getSmsPreferences:async()=>({notes:remote.notes,feedbackExamples:[]}),listSmsItems:async()=>({items:remote.items.map(i=>({...i}))}),saveSmsSettings:async s=>(remote.settings=s),saveSmsPreferences:async p=>({notes:remote.notes=p.notes,feedbackExamples:[]}),ingestSmsItems:async()=>[],triggerSmsRun:async()=>{},...overrides};
+ const client={getSmsSettings:async()=>{reads++;return {...remote.settings};},getSmsPreferences:async()=>({notes:remote.notes,learnedNotes:'',feedbackExamples:[]}),listSmsItems:async()=>({items:remote.items.map(i=>({...i}))}),saveSmsSettings:async s=>(remote.settings=s),saveSmsPreferences:async p=>({notes:remote.notes=p.notes,learnedNotes:'',feedbackExamples:[]}),ingestSmsItems:async()=>[],triggerSmsRun:async()=>{},...overrides};
  const store=new SmsStore(client,15);return {store,remote,client,reads:()=>reads};
 }
 test('短信仅在设置页前台定期回读，静默分析状态更新；离开、后台或销毁停止',async()=>{
@@ -29,7 +29,7 @@ test('回读保留脏草稿，干净偏好接受远端更新；读取失败保�
 test('保存前废弃旧 GET，晚到读取不能回滚开关；保存中继续修改的草稿保留',async()=>{
  const old=deferred();const saving=deferred();const f=fixture();try {
  await f.store.reload();let readingOld=true;f.client.getSmsSettings=()=>readingOld?(readingOld=false,old.promise):Promise.resolve({enabled:false,batchWindowSeconds:15});const reading=f.store.reload();f.client.saveSmsSettings=async()=>({enabled:false,batchWindowSeconds:15});const write=f.store.toggleEnabled(false);await tick();old.resolve({enabled:true,batchWindowSeconds:15});await Promise.all([reading,write]);assert.equal(f.store.getSnapshot().settings.enabled,false);
- f.client.getSmsSettings=async()=>({enabled:false,batchWindowSeconds:15});f.client.saveSmsPreferences=()=>saving.promise;f.store.setDraftNotes('sent');const save=f.store.saveNotes();f.store.setDraftNotes('new draft');saving.resolve({notes:'sent',feedbackExamples:[]});await save;assert.equal(f.store.getSnapshot().draftNotes,'new draft');
+ f.client.getSmsSettings=async()=>({enabled:false,batchWindowSeconds:15});f.client.saveSmsPreferences=()=>saving.promise;f.store.setDraftNotes('sent');const save=f.store.saveNotes();f.store.setDraftNotes('new draft');saving.resolve({notes:'sent',learnedNotes:'',feedbackExamples:[]});await save;assert.equal(f.store.getSnapshot().draftNotes,'new draft');
  }finally{f.store.dispose();}
 });
 test('写入结果未明时自动回读不解锁、不重发，显式刷新核对仍保留草稿',async()=>{
