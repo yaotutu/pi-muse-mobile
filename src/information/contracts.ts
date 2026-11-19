@@ -7,8 +7,12 @@ import type {
   InformationItemsPage,
   InformationItemsQuery,
   InformationPreferences,
+  InformationRunOptions,
   InformationSettings,
+  InformationStatus,
 } from './types';
+
+export type { InformationRunOptions };
 
 const invalid = (): never => {
   throw new ApiError(502, '服务器信息后台响应格式不正确，请确认服务器版本与地址');
@@ -107,6 +111,21 @@ export function parseInformationItemsPage(value: unknown): InformationItemsPage 
   };
 }
 
+export function parseInformationStatus(value: unknown): InformationStatus {
+  if (!isRecord(value) || !isRecord(value.counts)) return invalid();
+  return {
+    running: boolean(value.running),
+    initialAnalysisCompleted: boolean(value.initialAnalysisCompleted),
+    counts: {
+      total: integer(value.counts.total, 0),
+      pending: integer(value.counts.pending, 0),
+      processing: integer(value.counts.processing, 0),
+      processed: integer(value.counts.processed, 0),
+      failed: integer(value.counts.failed, 0),
+    },
+  };
+}
+
 export interface InformationClient {
   getSmsSettings(signal?: AbortSignal): Promise<InformationSettings>;
   saveSmsSettings(settings: InformationSettings, signal?: AbortSignal): Promise<InformationSettings>;
@@ -114,5 +133,6 @@ export interface InformationClient {
   saveSmsPreferences(preferences: { notes: string }, signal?: AbortSignal): Promise<InformationPreferences>;
   ingestSmsItems(items: InformationInputItem[], signal?: AbortSignal): Promise<InformationItem[]>;
   listSmsItems(query?: InformationItemsQuery, signal?: AbortSignal): Promise<InformationItemsPage>;
-  triggerSmsRun(signal?: AbortSignal): Promise<void>;
+  getSmsStatus(signal?: AbortSignal): Promise<InformationStatus>;
+  triggerSmsRun(signal?: AbortSignal, options?: InformationRunOptions): Promise<void>;
 }

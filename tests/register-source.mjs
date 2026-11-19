@@ -23,10 +23,16 @@ export const Platform = {
   select: (obj) => obj.android ?? obj.default,
 };
 export const PermissionsAndroid = {
-  PERMISSIONS: { RECEIVE_SMS: 'android.permission.RECEIVE_SMS' },
+  PERMISSIONS: {
+    RECEIVE_SMS: 'android.permission.RECEIVE_SMS',
+    READ_SMS: 'android.permission.READ_SMS',
+  },
   RESULTS: { GRANTED: 'granted', DENIED: 'denied', NEVER_ASK_AGAIN: 'never_ask_again' },
   check: async () => false,
   request: async () => 'denied',
+};
+export const Linking = {
+  openSettings: async () => {},
 };
 `;
       return { url: 'data:text/javascript,' + encodeURIComponent(stub), shortCircuit: true };

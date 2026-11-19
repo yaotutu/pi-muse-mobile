@@ -1,5 +1,5 @@
 import { requireNativeModule, type EventSubscription } from "expo-modules-core";
-import { PermissionsAndroid, Platform } from "react-native";
+import { Linking, PermissionsAndroid, Platform } from "react-native";
 
 export type SmsEvent = {
   sender: string;
@@ -14,9 +14,23 @@ export type InboxSmsMessage = {
   timestamp: number;
 };
 
+export type InboxSmsInfo = {
+  permissionGranted: boolean;
+  totalCount: number;
+};
+
+export type InboxSmsPage = {
+  items: InboxSmsMessage[];
+  totalCount: number;
+  scanned: number;
+  nextOffset: number;
+  hasMore: boolean;
+};
+
 type SmsNativeModule = {
   isSupported(): boolean;
-  readInboxSms?(limit: number): InboxSmsMessage[];
+  getInboxSmsInfo?(): Promise<InboxSmsInfo>;
+  readInboxSmsPage?(limit: number, offset: number): Promise<InboxSmsPage>;
   addListener(eventName: "onSmsReceived", listener: (event: SmsEvent) => void): EventSubscription;
 };
 
@@ -63,16 +77,74 @@ export async function requestSmsPermission(): Promise<boolean> {
   }
 }
 
-export async function readInboxSms(limit = 200): Promise<InboxSmsMessage[]> {
-  if (Platform.OS !== "android" || !SmsReceiverNative?.readInboxSms) return [];
+export async function openSmsPermissionSettings(): Promise<void> {
+  if (Platform.OS !== "android") return;
+  try {
+    await Linking.openSettings();
+  } catch {
+    // 忽略无法打开系统设置页面的设备异常
+  }
+}
+
+export async function getInboxSmsInfo(): Promise<InboxSmsInfo> {
+  if (Platform.OS !== "android" || !SmsReceiverNative?.getInboxSmsInfo) {
+    return { permissionGranted: false, totalCount: 0 };
+  }
   try {
     const granted = await checkSmsPermission();
-    if (!granted) return [];
-    const rows = SmsReceiverNative.readInboxSms(limit);
-    return Array.isArray(rows) ? rows : [];
+    if (!granted) return { permissionGranted: false, totalCount: 0 };
+    const info = await SmsReceiverNative.getInboxSmsInfo();
+    return {
+      permissionGranted: Boolean(info?.permissionGranted),
+      totalCount: typeof info?.totalCount === "number" ? Math.max(0, info.totalCount) : 0,
+    };
   } catch {
-    return [];
+    return { permissionGranted: false, totalCount: 0 };
   }
+}
+
+export async function readInboxSmsPage(limit = 200, offset = 0): Promise<InboxSmsPage> {
+  const empty: InboxSmsPage = { items: [], totalCount: 0, scanned: 0, nextOffset: offset, hasMore: false };
+  if (Platform.OS !== "android" || !SmsReceiverNative?.readInboxSmsPage) return empty;
+  try {
+    const granted = await checkSmsPermission();
+    if (!granted) return empty;
+    const page = await SmsReceiverNative.readInboxSmsPage(limit, offset);
+    if (!page || !Array.isArray(page.items)) return empty;
+    return {
+      items: page.items,
+      totalCount: typeof page.totalCount === "number" ? page.totalCount : page.items.length,
+      scanned: typeof page.scanned === "number" ? page.scanned : page.items.length,
+      nextOffset: typeof page.nextOffset === "number" ? page.nextOffset : offset + page.items.length,
+      hasMore: Boolean(page.hasMore),
+    };
+  } catch {
+    return empty;
+  }
+}
+
+export async function readAllInboxSms(
+  onProgress?: (loaded: number, total: number) => void,
+  pageSize = 200,
+): Promise<InboxSmsMessage[]> {
+  if (Platform.OS !== "android" || !SmsReceiverNative?.readInboxSmsPage) return [];
+  const granted = await checkSmsPermission();
+  if (!granted) return [];
+  const all: InboxSmsMessage[] = [];
+  let offset = 0;
+  while (true) {
+    const page = await readInboxSmsPage(pageSize, offset);
+    all.push(...page.items);
+    onProgress?.(Math.min(page.nextOffset, page.totalCount), page.totalCount);
+    if (!page.hasMore || page.nextOffset <= offset) break;
+    offset = page.nextOffset;
+  }
+  return all;
+}
+
+export async function readInboxSms(limit = 200): Promise<InboxSmsMessage[]> {
+  const page = await readInboxSmsPage(limit, 0);
+  return page.items;
 }
 
 export function addSmsListener(listener: (event: SmsEvent) => void): EventSubscription {
@@ -86,6 +158,10 @@ export default {
   isAvailable: isSmsReceiverAvailable,
   checkPermission: checkSmsPermission,
   requestPermission: requestSmsPermission,
+  openPermissionSettings: openSmsPermissionSettings,
+  getInboxSmsInfo,
+  readInboxSmsPage,
+  readAllInboxSms,
   readInboxSms,
   addListener: addSmsListener,
 };

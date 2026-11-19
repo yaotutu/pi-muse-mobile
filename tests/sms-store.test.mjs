@@ -4,9 +4,29 @@ import {readFileSync} from 'node:fs';
 import {SmsStore, SMS_REFRESH_INTERVAL_MS} from '../src/information/sms-store.ts';
 const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b;});return {promise,resolve,reject};};
 const tick=()=>new Promise(r=>setTimeout(r,0));
-function fixture(overrides={}) {
- const remote={settings:{enabled:true,batchWindowSeconds:15},notes:'saved',items:[{id:'one',status:'pending'}]};let reads=0;
- const client={getSmsSettings:async()=>{reads++;return {...remote.settings};},getSmsPreferences:async()=>({notes:remote.notes,learnedNotes:'',feedbackExamples:[]}),listSmsItems:async()=>({items:remote.items.map(i=>({...i}))}),saveSmsSettings:async s=>(remote.settings=s),saveSmsPreferences:async p=>({notes:remote.notes=p.notes,learnedNotes:'',feedbackExamples:[]}),ingestSmsItems:async()=>[],triggerSmsRun:async()=>{},...overrides};
+ function fixture(overrides={}) {
+ const remote={settings:{enabled:true,batchWindowSeconds:15},notes:'saved',items:[{id:'one',status:'pending'}],running:false,initialAnalysisCompleted:false};let reads=0;
+ const client={
+  getSmsSettings:async()=>{reads++;return {...remote.settings};},
+  getSmsPreferences:async()=>({notes:remote.notes,learnedNotes:'',feedbackExamples:[]}),
+  listSmsItems:async()=>({items:remote.items.map(i=>({...i}))}),
+  getSmsStatus:async()=>({
+   running:remote.running,
+   initialAnalysisCompleted:remote.initialAnalysisCompleted,
+   counts:{
+    total:remote.items.length,
+    pending:remote.items.filter(i=>i.status==='pending').length,
+    processing:remote.items.filter(i=>i.status==='processing').length,
+    processed:remote.items.filter(i=>i.status==='processed').length,
+    failed:remote.items.filter(i=>i.status==='failed').length,
+   },
+  }),
+  saveSmsSettings:async s=>(remote.settings=s),
+  saveSmsPreferences:async p=>({notes:remote.notes=p.notes,learnedNotes:'',feedbackExamples:[]}),
+  ingestSmsItems:async()=>[],
+  triggerSmsRun:async()=>{},
+  ...overrides,
+ };
  const store=new SmsStore(client,15);return {store,remote,client,reads:()=>reads};
 }
 test('短信仅在设置页前台定期回读，静默分析状态更新；离开、后台或销毁停止',async()=>{
@@ -74,6 +94,46 @@ test('批量导入短信自动触发分析，条目进入待处理列表并展�
     assert.equal(triggered, 1);
     assert.match(f.store.getSnapshot().notice, /已上报 2 条历史短信/);
     assert.equal(f.store.getSnapshot().items.length, 3);
+  } finally {
+    f.store.dispose();
+  }
+});
+
+test('大批量历史短信分段 200 条上传并清洗脏时间与重复键，后台运行结束时更新完成提示',async()=>{
+  const chunks = [];
+  let runOptions = null;
+  const f = fixture({
+    ingestSmsItems: async (items) => {
+      chunks.push(items);
+      return items.map((item, idx) => ({ id: `${item.externalId}-${idx}`, status: 'pending' }));
+    },
+    triggerSmsRun: async (_signal, options) => {
+      runOptions = options;
+      f.remote.running = true;
+    },
+  });
+  try {
+    await f.store.reload();
+    const rawItems = Array.from({ length: 205 }, (_, i) => ({
+      content: i === 0 ? 'x'.repeat(21_000) : `历史短信-${i}`,
+      title: i === 0 ? 't'.repeat(600) : undefined,
+      externalId: i < 2 ? 'dup-id' : `id-${i}`,
+      receivedAt: i === 0 ? '1970-01-01T00:00:00.000Z' : 'not-a-date',
+    }));
+    await f.store.ingestBatch(rawItems, { background: true, forceInitial: true });
+    assert.deepEqual(chunks.map((c) => c.length), [200, 5]);
+    assert.equal(chunks[0][0].content.length, 20_000);
+    assert.equal(chunks[0][0].title.length, 500);
+    assert.notEqual(chunks[0][0].externalId, chunks[0][1].externalId);
+    assert.ok(Date.parse(chunks[0][0].receivedAt) >= Date.UTC(1990, 0, 1));
+    assert.deepEqual(runOptions, { background: true, forceInitial: true });
+    assert.equal(f.store.getSnapshot().status?.running, true);
+
+    f.remote.running = false;
+    f.remote.items = [{ id: 'done-1', status: 'processed' }];
+    await f.store.reload();
+    assert.equal(f.store.getSnapshot().status?.running, false);
+    assert.match(f.store.getSnapshot().notice, /历史短信全量分析完成：已处理 1 条/);
   } finally {
     f.store.dispose();
   }

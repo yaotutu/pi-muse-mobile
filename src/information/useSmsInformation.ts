@@ -1,7 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { AppState } from 'react-native';
 import { useApi } from '../api/ApiProvider';
-import { addSmsListener, checkSmsPermission, isSmsReceiverAvailable, readInboxSms, requestSmsPermission } from '../../modules/sms-receiver';
+import {
+  addSmsListener,
+  checkSmsPermission,
+  getInboxSmsInfo,
+  isSmsReceiverAvailable,
+  openSmsPermissionSettings,
+  readAllInboxSms,
+  requestSmsPermission,
+  type InboxSmsMessage,
+} from '../../modules/sms-receiver';
 import { SmsStore } from './sms-store';
 
 const buildFallbackHistoryBatch = () => {
@@ -40,45 +49,103 @@ export function useSmsInformation() {
   const api = useApi(); const store = useMemo(() => new SmsStore(api), [api]);
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
   const [hasSmsPermission, setHasSmsPermission] = useState<boolean | null>(null);
+  const [inboxTotalCount, setInboxTotalCount] = useState<number | null>(null);
   const [permissionError, setPermissionError] = useState<string>();
   const autoImportedRef = useRef(false);
   const checkPermission = useCallback(async () => {
-    const granted = await (isSmsReceiverAvailable() ? checkSmsPermission() : Promise.resolve(false));
-    setHasSmsPermission(granted); return granted;
+    if (!isSmsReceiverAvailable()) {
+      setHasSmsPermission(false);
+      setInboxTotalCount(null);
+      return false;
+    }
+    const granted = await checkSmsPermission();
+    setHasSmsPermission(granted);
+    if (!granted) {
+      setInboxTotalCount(null);
+      return false;
+    }
+    setPermissionError(undefined);
+    const info = await getInboxSmsInfo();
+    setInboxTotalCount(info.permissionGranted ? info.totalCount : null);
+    return granted;
   }, []);
   const requestPermission = useCallback(async () => {
     const granted = isSmsReceiverAvailable() && await requestSmsPermission();
-    setHasSmsPermission(granted); setPermissionError(granted ? undefined : '未授予短信权限，无法自动监听或读取历史短信'); return granted;
+    setHasSmsPermission(granted);
+    if (granted) {
+      setPermissionError(undefined);
+      const info = await getInboxSmsInfo();
+      setInboxTotalCount(info.permissionGranted ? info.totalCount : null);
+    } else {
+      setInboxTotalCount(null);
+      setPermissionError('未授予短信读取权限，无法自动监听或读取历史短信；请前往系统设置开启“短信”权限（部分机型还需允许“通知类短信”）。');
+    }
+    return granted;
   }, []);
-  const importInboxSms = useCallback(async (fallbackToSample = true) => {
-    if (isSmsReceiverAvailable()) {
-      const granted = (await checkPermission()) || (await requestPermission());
-      if (granted) {
-        const inbox = await readInboxSms(500);
-        const mapped = inbox
-          .filter((item) => item.body.trim())
-          .map((item) => ({
-            content: item.body,
-            title: item.sender ? `来自: ${item.sender}` : undefined,
-            externalId: `sms-inbox-${item.id}-${item.timestamp}`,
-            receivedAt: new Date(item.timestamp).toISOString(),
-          }));
-        if (mapped.length > 0) {
-          return store.ingestBatch(mapped);
-        }
-      }
-      if (!fallbackToSample) return;
+  const importAllInboxSms = useCallback(async () => {
+    setPermissionError(undefined);
+    if (!isSmsReceiverAvailable()) {
+      return store.ingestBatch(buildFallbackHistoryBatch(), { background: true, forceInitial: true });
     }
-    if (fallbackToSample) {
-      return store.ingestBatch(buildFallbackHistoryBatch());
+    const granted = (await checkPermission()) || (await requestPermission());
+    if (!granted) return;
+    const info = await getInboxSmsInfo();
+    setInboxTotalCount(info.totalCount);
+    if (info.totalCount === 0) {
+      setPermissionError('当前从本机收件箱读取到 0 条短信。若手机内确有历史短信，请前往系统设置确认开启“读取短信”，部分国产系统还需单独开启“通知类短信”权限。');
+      return;
     }
+    store.setImportProgress({ phase: 'reading', current: 0, total: info.totalCount });
+    let inbox: InboxSmsMessage[];
+    try {
+      inbox = await readAllInboxSms((loaded, total) => {
+        store.setImportProgress({ phase: 'reading', current: loaded, total: total || info.totalCount });
+      }, 200);
+    } catch (error) {
+      store.setImportProgress(undefined);
+      setPermissionError(`读取本机短信失败：${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
+    const mapped = inbox
+      .filter((item) => item.body.trim())
+      .map((item) => ({
+        content: item.body,
+        title: item.sender ? `来自: ${item.sender}` : undefined,
+        externalId: `sms-inbox-${item.id}-${item.timestamp}`,
+        receivedAt: Number.isFinite(item.timestamp) && item.timestamp > 0
+          ? new Date(item.timestamp).toISOString()
+          : undefined,
+      }));
+    if (mapped.length === 0) {
+      store.setImportProgress(undefined);
+      setPermissionError('已访问本机收件箱，但未读取到包含有效正文的短信，请核对系统短信与“通知类短信”权限。');
+      return;
+    }
+    return store.ingestBatch(mapped, { background: true, forceInitial: true });
   }, [checkPermission, requestPermission, store]);
+  const importSampleHistory = useCallback(async () => {
+    setPermissionError(undefined);
+    return store.ingestBatch(buildFallbackHistoryBatch(), { background: true, forceInitial: true });
+  }, [store]);
   useEffect(() => {
     let mounted = true;
     store.setForeground(AppState.currentState === 'active');
-    void (isSmsReceiverAvailable() ? checkSmsPermission() : Promise.resolve(false)).then((granted) => {
-      if (mounted) setHasSmsPermission(granted);
-    });
+    void (async () => {
+      if (!isSmsReceiverAvailable()) {
+        if (mounted) {
+          setHasSmsPermission(false);
+          setInboxTotalCount(null);
+        }
+        return;
+      }
+      const granted = await checkSmsPermission();
+      if (!mounted) return;
+      setHasSmsPermission(granted);
+      if (granted) {
+        const info = await getInboxSmsInfo();
+        if (mounted) setInboxTotalCount(info.permissionGranted ? info.totalCount : null);
+      }
+    })();
     const sub = AppState.addEventListener('change', (next) => {
       store.setForeground(next === 'active');
       if (next === 'active') void checkPermission();
@@ -86,18 +153,30 @@ export function useSmsInformation() {
     return () => { mounted = false; sub.remove(); store.dispose(); };
   }, [store, checkPermission]);
   useEffect(() => {
+    const serverTotal = state.status?.counts.total ?? state.items.length;
     if (
       !autoImportedRef.current &&
       state.settings?.enabled &&
       !state.loading &&
-      state.items.length === 0 &&
+      !state.ingesting &&
+      serverTotal === 0 &&
       isSmsReceiverAvailable() &&
-      hasSmsPermission === true
+      hasSmsPermission === true &&
+      (inboxTotalCount ?? 0) > 0
     ) {
       autoImportedRef.current = true;
-      void importInboxSms(false);
+      void importAllInboxSms();
     }
-  }, [state.settings?.enabled, state.loading, state.items.length, hasSmsPermission, importInboxSms]);
+  }, [
+    state.settings?.enabled,
+    state.loading,
+    state.ingesting,
+    state.status?.counts.total,
+    state.items.length,
+    hasSmsPermission,
+    inboxTotalCount,
+    importAllInboxSms,
+  ]);
   useEffect(() => {
     if (!state.settings?.enabled || !isSmsReceiverAvailable() || hasSmsPermission !== true) return;
     const sub = addSmsListener((event) => {
@@ -108,7 +187,10 @@ export function useSmsInformation() {
   }, [store, state.settings?.enabled, hasSmsPermission]);
   return { ...state, error: state.error ?? permissionError,
     setDraftNotes: store.setDraftNotes, toggleEnabled: store.toggleEnabled, saveNotes: store.saveNotes,
-    ingestSms: store.ingestSms, ingestBatch: store.ingestBatch, importInboxSms, triggerRun: store.triggerRun, reload: store.reload, setVisible: store.setVisible,
-    isSmsAvailable: isSmsReceiverAvailable(), hasSmsPermission, checkPermission, requestPermission,
+    ingestSms: store.ingestSms, ingestBatch: store.ingestBatch,
+    importInboxSms: importAllInboxSms, importAllInboxSms, importSampleHistory,
+    triggerRun: store.triggerRun, reload: store.reload, setVisible: store.setVisible,
+    isSmsAvailable: isSmsReceiverAvailable(), hasSmsPermission, inboxTotalCount,
+    checkPermission, requestPermission, openPermissionSettings: openSmsPermissionSettings,
   };
 }

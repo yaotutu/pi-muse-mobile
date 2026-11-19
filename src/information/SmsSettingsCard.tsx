@@ -38,8 +38,8 @@ export function SmsSettingsCard() {
     sampleButtonText: { ...workspaceTheme.typography.caption, color: colors.ink },
     subSection: { gap: spacing[8], marginTop: spacing[8], borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingTop: spacing[12] },
     headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    statusBanner: { flexDirection: 'row', alignItems: 'center', gap: spacing[8], padding: spacing[10], borderRadius: workspaceTheme.radius.card, backgroundColor: colors.successSoft },
-    statusBannerText: { ...workspaceTheme.typography.caption, color: colors.ink, flex: 1 },
+    statusBanner: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing[8], padding: spacing[10], borderRadius: workspaceTheme.radius.card, backgroundColor: colors.successSoft },
+    statusBannerText: { ...workspaceTheme.typography.caption, color: colors.ink },
     permissionBox: { gap: spacing[8], padding: spacing[10], borderRadius: workspaceTheme.radius.card, backgroundColor: colors.warningSoft },
     permissionText: { ...workspaceTheme.typography.caption, color: colors.ink },
     itemList: { gap: spacing[8], marginTop: spacing[4] },
@@ -56,7 +56,11 @@ export function SmsSettingsCard() {
   }), [colors]);
 
   const enabled = !!info.settings?.enabled;
-  const pendingCount = info.items.filter((item) => item.status === 'pending').length;
+  const statusCounts = info.status?.counts;
+  const pendingCount = statusCounts?.pending ?? info.items.filter((item) => item.status === 'pending').length;
+  const totalQueueCount = statusCounts?.total ?? info.items.length;
+  const processedDoneCount = (statusCounts?.processed ?? 0) + (statusCounts?.failed ?? 0);
+  const importBusy = info.ingesting || !!info.importProgress;
 
   return (
     <Card style={styles.card}>
@@ -131,46 +135,108 @@ export function SmsSettingsCard() {
           )}
 
           <View style={styles.subSection}>
-            <Text style={styles.text}>短信接入与测试</Text>
+            <Text style={styles.text}>短信接入与历史全量分析</Text>
             {info.isSmsAvailable ? (
               info.hasSmsPermission === true ? (
                 <View style={styles.statusBanner}>
                   <ShieldCheck size={16} strokeWidth={2} color={colors.success} />
-                  <Text style={styles.statusBannerText}>
-                    Android 原生短信监听已激活：新收到的短信将自动上报至待处理队列。
-                  </Text>
+                  <View style={styles.body}>
+                    <Text style={styles.statusBannerText}>
+                      Android 原生短信监听已激活：新收到的短信将自动上报至待处理队列。
+                    </Text>
+                    {info.inboxTotalCount !== null && (
+                      <Text style={styles.caption} testID="sms-inbox-count">
+                        {info.inboxTotalCount > 0
+                          ? `本机收件箱共检测到 ${info.inboxTotalCount} 条历史短信，支持分页读取全部并后台逐批分析。`
+                          : '本机收件箱当前读取到 0 条短信；若手机内有短信但无法读取，请在系统设置开启“读取短信”及“通知类短信”。'}
+                      </Text>
+                    )}
+                    {info.inboxTotalCount === 0 && (
+                      <View style={styles.buttonRow}>
+                        <ActionButton
+                          label="前往系统设置开启权限"
+                          text="前往系统设置开启权限"
+                          tone="secondary"
+                          onPress={() => void info.openPermissionSettings()}
+                        />
+                      </View>
+                    )}
+                  </View>
                 </View>
               ) : (
                 <View style={styles.permissionBox}>
                   <View style={styles.itemHeader}>
                     <ShieldAlert size={16} strokeWidth={2} color={colors.warning} />
-                    <Text style={styles.permissionText}>尚未开启系统短信读取权限，无法自动监听新短信。</Text>
+                    <Text style={styles.permissionText}>
+                      尚未开启系统短信读取权限，无法读取全部历史短信或监听新短信（部分国产系统还需开启“通知类短信”）。
+                    </Text>
                   </View>
-                  <ActionButton
-                    label="授权短信读取权限"
-                    text="授权短信读取权限"
-                    tone="secondary"
-                    onPress={() => void info.requestPermission()}
-                  />
+                  <View style={styles.buttonRow}>
+                    <ActionButton
+                      label="授权短信读取权限"
+                      text="授权短信读取权限"
+                      tone="secondary"
+                      onPress={() => void info.requestPermission()}
+                    />
+                    <ActionButton
+                      label="前往系统设置开启权限"
+                      text="前往系统设置开启权限"
+                      tone="secondary"
+                      onPress={() => void info.openPermissionSettings()}
+                    />
+                  </View>
                 </View>
               )
             ) : (
               <Text style={styles.caption}>
-                当前环境不支持原生短信监听，可点击下方样例或手动输入短信文本上报测试：
+                当前环境不支持原生短信监听，可点击「导入测试样例」或手动输入短信文本上报测试：
               </Text>
+            )}
+            {(info.importProgress || info.status?.running) && (
+              <View style={styles.itemCard} testID="sms-import-progress">
+                <Text style={styles.text}>
+                  {info.importProgress?.phase === 'reading'
+                    ? `正在分页读取本机短信：${info.importProgress.current} / ${info.importProgress.total} 条…`
+                    : info.importProgress?.phase === 'uploading'
+                      ? `正在分段上传历史短信：${info.importProgress.current} / ${info.importProgress.total} 条…`
+                      : info.status?.running
+                        ? `正在后台全量分析：已处理 ${processedDoneCount} / ${totalQueueCount} 条…`
+                        : '正在启动后台全量分析…'}
+                </Text>
+                {info.status?.running && statusCounts && (
+                  <Text style={styles.caption}>
+                    待处理 {statusCounts.pending} 条 · 处理中 {statusCounts.processing} 条 · 已完成 {statusCounts.processed} 条
+                    {statusCounts.failed > 0 ? ` · 失败 ${statusCounts.failed} 条` : ''}
+                  </Text>
+                )}
+              </View>
             )}
             <View style={styles.buttonRow}>
               <Pressable
                 style={styles.sampleButton}
                 accessibilityRole="button"
-                accessibilityLabel="导入手机历史短信并分析"
-                disabled={info.ingesting || info.triggering || info.needsReadback}
-                onPress={() => void info.importInboxSms(true)}
+                accessibilityLabel="一键导入全部历史短信并分析"
+                disabled={importBusy || info.triggering || info.needsReadback}
+                onPress={() => void info.importAllInboxSms()}
                 testID="sms-import-history-button"
               >
                 <Text style={styles.sampleButtonText}>
-                  {info.ingesting ? '导入分析中…' : '+ 导入手机历史短信'}
+                  {importBusy
+                    ? '全量导入中…'
+                    : info.isSmsAvailable && info.inboxTotalCount && info.inboxTotalCount > 0
+                      ? `导入全部 ${info.inboxTotalCount} 条短信并分析`
+                      : '一键导入全部历史短信并分析'}
                 </Text>
+              </Pressable>
+              <Pressable
+                style={styles.sampleButton}
+                accessibilityRole="button"
+                accessibilityLabel="导入测试样例"
+                disabled={importBusy || info.triggering || info.needsReadback}
+                onPress={() => void info.importSampleHistory()}
+                testID="sms-import-sample-button"
+              >
+                <Text style={styles.sampleButtonText}>导入测试样例</Text>
               </Pressable>
               <Pressable
                 style={styles.sampleButton}
@@ -211,12 +277,12 @@ export function SmsSettingsCard() {
               {pendingCount > 0 && (
                 <ActionButton
                   label="立即分析处理"
-                  text={info.triggering ? '分析中…' : `立即分析 (${pendingCount}条待处理)`}
+                  text={info.triggering || info.status?.running ? '后台分析中…' : `立即分析 (${pendingCount}条待处理)`}
                   icon={Play}
                   tone="primary"
-                  busy={info.triggering}
-                  disabled={info.triggering || info.needsReadback}
-                  onPress={() => void info.triggerRun()}
+                  busy={info.triggering || !!info.status?.running}
+                  disabled={info.triggering || info.needsReadback || !!info.status?.running}
+                  onPress={() => void info.triggerRun({ background: true })}
                 />
               )}
             </View>
@@ -225,8 +291,12 @@ export function SmsSettingsCard() {
           <View style={styles.subSection}>
             <View style={styles.headerRow}>
               <Text style={styles.text}>待处理与历史信息</Text>
-              {info.items.length > 0 && (
-                <Text style={styles.caption}>最近 {info.items.length} 条</Text>
+              {totalQueueCount > 0 && (
+                <Text style={styles.caption}>
+                  {statusCounts
+                    ? `共 ${statusCounts.total} 条 · 已处理 ${statusCounts.processed} 条${statusCounts.failed > 0 ? ` · 失败 ${statusCounts.failed} 条` : ''}`
+                    : `最近 ${info.items.length} 条`}
+                </Text>
               )}
             </View>
             {info.items.length > 0 ? (

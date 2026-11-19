@@ -59,3 +59,26 @@ export type InformationItemsPage = {
   items: InformationItem[];
   nextCursor?: string;
 };
+
+export type InformationStatus = {
+  running: boolean;
+  initialAnalysisCompleted: boolean;
+  counts: {
+    total: number;
+    pending: number;
+    processing: number;
+    processed: number;
+    failed: number;
+  };
+};
+
+export type SmsImportProgress = {
+  phase: 'reading' | 'uploading' | 'analyzing';
+  current: number;
+  total: number;
+};
+
+export type InformationRunOptions = {
+  background?: boolean;
+  forceInitial?: boolean;
+};

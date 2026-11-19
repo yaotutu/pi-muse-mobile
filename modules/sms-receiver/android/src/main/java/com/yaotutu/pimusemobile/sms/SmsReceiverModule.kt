@@ -35,17 +35,55 @@ class SmsReceiverModule : Module() {
       true
     }
 
-    Function("readInboxSms") { limit: Int ->
-      readInbox(limit)
+    AsyncFunction("getInboxSmsInfo") {
+      getInboxInfo()
+    }
+
+    AsyncFunction("readInboxSmsPage") { limit: Int, offset: Int ->
+      readInboxPage(limit, offset)
     }
   }
 
-  private fun readInbox(limit: Int): List<Map<String, Any>> {
-    val context = appContext.reactContext ?: return emptyList()
+  private fun getInboxInfo(): Map<String, Any> {
+    val context = appContext.reactContext
+      ?: return mapOf("permissionGranted" to false, "totalCount" to 0)
+    val granted = context.checkSelfPermission(Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED
+    if (!granted) {
+      return mapOf("permissionGranted" to false, "totalCount" to 0)
+    }
+    var totalCount = 0
+    context.contentResolver.query(
+      Telephony.Sms.Inbox.CONTENT_URI,
+      arrayOf(Telephony.Sms._ID),
+      null,
+      null,
+      null
+    )?.use { cursor ->
+      totalCount = cursor.count
+    }
+    return mapOf("permissionGranted" to true, "totalCount" to totalCount)
+  }
+
+  private fun readInboxPage(limit: Int, offset: Int): Map<String, Any> {
+    val context = appContext.reactContext
+      ?: return mapOf(
+        "items" to emptyList<Map<String, Any>>(),
+        "totalCount" to 0,
+        "scanned" to 0,
+        "nextOffset" to 0,
+        "hasMore" to false
+      )
     if (context.checkSelfPermission(Manifest.permission.READ_SMS) != PackageManager.PERMISSION_GRANTED) {
-      return emptyList()
+      return mapOf(
+        "items" to emptyList<Map<String, Any>>(),
+        "totalCount" to 0,
+        "scanned" to 0,
+        "nextOffset" to 0,
+        "hasMore" to false
+      )
     }
     val bounded = limit.coerceIn(1, 500)
+    val safeOffset = offset.coerceAtLeast(0)
     val projection = arrayOf(
       Telephony.Sms._ID,
       Telephony.Sms.ADDRESS,
@@ -53,31 +91,45 @@ class SmsReceiverModule : Module() {
       Telephony.Sms.DATE
     )
     val items = mutableListOf<Map<String, Any>>()
+    var totalCount = 0
+    var scanned = 0
     context.contentResolver.query(
       Telephony.Sms.Inbox.CONTENT_URI,
       projection,
       null,
       null,
-      "${Telephony.Sms.DATE} DESC"
+      "${Telephony.Sms.DATE} DESC, ${Telephony.Sms._ID} DESC"
     )?.use { cursor ->
-      val idIndex = cursor.getColumnIndexOrThrow(Telephony.Sms._ID)
-      val addrIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.ADDRESS)
-      val bodyIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.BODY)
-      val dateIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.DATE)
-      while (cursor.moveToNext() && items.size < bounded) {
-        val body = cursor.getString(bodyIndex) ?: continue
-        if (body.isBlank()) continue
-        items.add(
-          mapOf(
-            "id" to (cursor.getString(idIndex) ?: ""),
-            "sender" to (cursor.getString(addrIndex) ?: "Unknown"),
-            "body" to body,
-            "timestamp" to cursor.getLong(dateIndex)
-          )
-        )
+      totalCount = cursor.count
+      if (safeOffset < totalCount && cursor.moveToPosition(safeOffset)) {
+        val idIndex = cursor.getColumnIndexOrThrow(Telephony.Sms._ID)
+        val addrIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.ADDRESS)
+        val bodyIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.BODY)
+        val dateIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.DATE)
+        do {
+          scanned++
+          val body = cursor.getString(bodyIndex) ?: ""
+          if (body.isNotBlank()) {
+            items.add(
+              mapOf(
+                "id" to (cursor.getString(idIndex) ?: ""),
+                "sender" to (cursor.getString(addrIndex) ?: "Unknown"),
+                "body" to body,
+                "timestamp" to cursor.getLong(dateIndex)
+              )
+            )
+          }
+        } while (scanned < bounded && cursor.moveToNext())
       }
     }
-    return items
+    val nextOffset = safeOffset + scanned
+    return mapOf(
+      "items" to items,
+      "totalCount" to totalCount,
+      "scanned" to scanned,
+      "nextOffset" to nextOffset,
+      "hasMore" to (scanned > 0 && nextOffset < totalCount)
+    )
   }
 
   private fun registerReceiver() {

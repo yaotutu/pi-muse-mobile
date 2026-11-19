@@ -120,6 +120,8 @@ import {
   parseInformationPreferences,
   parseInformationIngestResult,
   parseInformationItemsPage,
+  parseInformationStatus,
+  type InformationRunOptions,
 } from '../information/contracts';
 import type {
   InformationSettings,
@@ -128,6 +130,7 @@ import type {
   InformationItem,
   InformationItemsQuery,
   InformationItemsPage,
+  InformationStatus,
 } from '../information/types';
 
 export type TransportState = { kind: 'online' | 'offline'; token?: string; error?: string };
@@ -1165,6 +1168,7 @@ export class HttpApiClient implements ApiClient {
         method: 'POST',
         body: { items },
         signal,
+        timeoutMs: 60_000,
       }),
     );
   }
@@ -1180,10 +1184,22 @@ export class HttpApiClient implements ApiClient {
     );
   }
 
-  async triggerSmsRun(signal?: AbortSignal): Promise<void> {
+  async getSmsStatus(signal?: AbortSignal): Promise<InformationStatus> {
+    return parseInformationStatus(
+      await this.request<unknown>(`/api/information/status`, { signal }),
+    );
+  }
+
+  async triggerSmsRun(signal?: AbortSignal, options?: InformationRunOptions): Promise<void> {
+    const body = options
+      ? {
+          ...(options.background === undefined ? {} : { background: options.background }),
+          ...(options.forceInitial === undefined ? {} : { forceInitial: options.forceInitial }),
+        }
+      : {};
     await this.request<unknown>(`/api/information/runs`, {
       method: 'POST',
-      body: {},
+      body,
       signal,
       timeoutMs: DREAM_RUN_TIMEOUT_MS,
     });

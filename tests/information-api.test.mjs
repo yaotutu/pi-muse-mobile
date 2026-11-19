@@ -5,6 +5,7 @@ import { ApiError } from '../src/api/errors.ts';
 import {
   parseInformationSettings,
   parseInformationPreferences,
+  parseInformationStatus,
   parseInformationItem,
   parseInformationIngestResult,
   parseInformationItemsPage,
@@ -80,6 +81,15 @@ test('parseInformationItem and ingest results parse valid items', () => {
   const pageResult = parseInformationItemsPage({ items: [rawItem], nextCursor: 'cursor-abc' });
   assert.equal(pageResult.items.length, 1);
   assert.equal(pageResult.nextCursor, 'cursor-abc');
+
+  const statusResult = parseInformationStatus({
+    running: true,
+    initialAnalysisCompleted: false,
+    counts: { total: 60, pending: 10, processing: 50, processed: 0, failed: 0 },
+  });
+  assert.equal(statusResult.running, true);
+  assert.equal(statusResult.counts.total, 60);
+  assert.throws(() => parseInformationStatus({ running: 'yes', initialAnalysisCompleted: false, counts: {} }), ApiError);
 });
 
 test('HttpApiClient routes information API calls with correct methods and endpoints', async () => {
@@ -113,6 +123,13 @@ test('HttpApiClient routes information API calls with correct methods and endpoi
     if (url.includes('/information/items')) {
       return json({ items: [], nextCursor: undefined });
     }
+    if (url.includes('/information/status')) {
+      return json({
+        running: true,
+        initialAnalysisCompleted: false,
+        counts: { total: 10, pending: 5, processing: 5, processed: 0, failed: 0 },
+      });
+    }
     if (url.includes('/information/runs') && init?.method === 'POST') {
       return json({ ok: true });
     }
@@ -145,16 +162,23 @@ test('HttpApiClient routes information API calls with correct methods and endpoi
     const listed = await client.listSmsItems({ limit: 10, status: 'pending' });
     assert.deepEqual(listed.items, []);
 
-    await client.triggerSmsRun();
+    const status = await client.getSmsStatus();
+    assert.equal(status.running, true);
+    assert.equal(status.counts.total, 10);
 
-    assert.equal(calls.length, 7);
+    await client.triggerSmsRun(undefined, { background: true, forceInitial: true });
+
+    assert.equal(calls.length, 8);
     assert.ok(calls[0].url.endsWith('/api/information/settings'));
     assert.equal(calls[1].method, 'PUT');
     assert.ok(calls[4].url.endsWith('/api/information/items'));
     assert.equal(calls[4].method, 'POST');
     assert.ok(calls[5].url.includes('/api/information/items?limit=10&status=pending'));
-    assert.ok(calls[6].url.endsWith('/api/information/runs'));
-    assert.equal(calls[6].method, 'POST');
+    assert.ok(calls[6].url.endsWith('/api/information/status'));
+    assert.equal(calls[6].method, 'GET');
+    assert.ok(calls[7].url.endsWith('/api/information/runs'));
+    assert.equal(calls[7].method, 'POST');
+    assert.deepEqual(calls[7].body, { background: true, forceInitial: true });
   } finally {
     globalThis.fetch = originalFetch;
   }
