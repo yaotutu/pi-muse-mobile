@@ -7,8 +7,16 @@ export type SmsEvent = {
   timestamp: number;
 };
 
+export type InboxSmsMessage = {
+  id: string;
+  sender: string;
+  body: string;
+  timestamp: number;
+};
+
 type SmsNativeModule = {
   isSupported(): boolean;
+  readInboxSms?(limit: number): InboxSmsMessage[];
   addListener(eventName: "onSmsReceived", listener: (event: SmsEvent) => void): EventSubscription;
 };
 
@@ -29,7 +37,11 @@ export function isSmsReceiverAvailable(): boolean {
 export async function checkSmsPermission(): Promise<boolean> {
   if (Platform.OS !== "android" || !SmsReceiverNative) return false;
   try {
-    return await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.RECEIVE_SMS);
+    const [receiveGranted, readGranted] = await Promise.all([
+      PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.RECEIVE_SMS),
+      PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.READ_SMS),
+    ]);
+    return receiveGranted && readGranted;
   } catch {
     return false;
   }
@@ -38,18 +50,28 @@ export async function checkSmsPermission(): Promise<boolean> {
 export async function requestSmsPermission(): Promise<boolean> {
   if (Platform.OS !== "android" || !SmsReceiverNative) return false;
   try {
-    const granted = await PermissionsAndroid.request(
+    const results = await PermissionsAndroid.requestMultiple([
       PermissionsAndroid.PERMISSIONS.RECEIVE_SMS,
-      {
-        title: "短信自动整理权限",
-        message: "Pi Muse 需要短信读取与接收权限，以自动整理快递码、验证码与账单等重要信息。",
-        buttonPositive: "允许",
-        buttonNegative: "拒绝",
-      }
+      PermissionsAndroid.PERMISSIONS.READ_SMS,
+    ]);
+    return (
+      results[PermissionsAndroid.PERMISSIONS.RECEIVE_SMS] === PermissionsAndroid.RESULTS.GRANTED &&
+      results[PermissionsAndroid.PERMISSIONS.READ_SMS] === PermissionsAndroid.RESULTS.GRANTED
     );
-    return granted === PermissionsAndroid.RESULTS.GRANTED;
   } catch {
     return false;
+  }
+}
+
+export async function readInboxSms(limit = 200): Promise<InboxSmsMessage[]> {
+  if (Platform.OS !== "android" || !SmsReceiverNative?.readInboxSms) return [];
+  try {
+    const granted = await checkSmsPermission();
+    if (!granted) return [];
+    const rows = SmsReceiverNative.readInboxSms(limit);
+    return Array.isArray(rows) ? rows : [];
+  } catch {
+    return [];
   }
 }
 
@@ -64,5 +86,6 @@ export default {
   isAvailable: isSmsReceiverAvailable,
   checkPermission: checkSmsPermission,
   requestPermission: requestSmsPermission,
+  readInboxSms,
   addListener: addSmsListener,
 };

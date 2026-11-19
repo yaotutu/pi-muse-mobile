@@ -1185,6 +1185,7 @@ export class HttpApiClient implements ApiClient {
       method: 'POST',
       body: {},
       signal,
+      timeoutMs: DREAM_RUN_TIMEOUT_MS,
     });
   }
 }

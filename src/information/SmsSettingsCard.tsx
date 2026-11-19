@@ -11,13 +11,6 @@ import { useSmsInformationState } from './SmsProvider';
 
 const SAMPLE_COURIER = '【顺丰速运】您的包裹已送达菜鸟驿站，取件码 3-4-2018，请凭码及时取件。';
 const SAMPLE_SPAM = '【特惠通知】年中大促火热开启，全场五折包邮，回复TD退订。';
-const SAMPLE_HISTORY_BATCH = [
-  { content: '【顺丰速运】您的包裹已送达菜鸟驿站，取件码 3-4-2018，请凭码及时取件。', title: '顺丰速运' },
-  { content: '【招商银行】您的信用卡账户本期账单金额为人民币 3,280.00 元，还款日为 11 月 10 日。', title: '招商银行' },
-  { content: '【中国国航】您预订的 CA1831 航班将于明日 08:30 起飞，请提前两小时到达首都机场 T3 航站楼办理登机。', title: '中国国航' },
-  { content: '【特惠通知】年中大促火热开启，全场五折包邮，回复TD退订。', title: '特惠通知' },
-  { content: '【天天抽奖】恭喜您获得 iPhone 16 抽奖机会一次，点击链接领取，回复TD退订。', title: '天天抽奖' },
-];
 
 export function SmsSettingsCard() {
   const { colors } = useTheme();
@@ -170,10 +163,14 @@ export function SmsSettingsCard() {
               <Pressable
                 style={styles.sampleButton}
                 accessibilityRole="button"
-                accessibilityLabel="批量导入历史短信"
-                onPress={() => void info.ingestBatch(SAMPLE_HISTORY_BATCH)}
+                accessibilityLabel="导入手机历史短信并分析"
+                disabled={info.ingesting || info.triggering || info.needsReadback}
+                onPress={() => void info.importInboxSms(true)}
+                testID="sms-import-history-button"
               >
-                <Text style={styles.sampleButtonText}>+ 批量导入历史短信</Text>
+                <Text style={styles.sampleButtonText}>
+                  {info.ingesting ? '导入分析中…' : '+ 导入手机历史短信'}
+                </Text>
               </Pressable>
               <Pressable
                 style={styles.sampleButton}

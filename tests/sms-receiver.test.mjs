@@ -5,6 +5,7 @@ import smsReceiver, {
   isSmsReceiverAvailable,
   checkSmsPermission,
   requestSmsPermission,
+  readInboxSms,
   addSmsListener,
 } from "../modules/sms-receiver/index.ts";
 
@@ -18,6 +19,9 @@ test("sms-receiver fallback in non-native environment", async () => {
 
   const reqPerm = await requestSmsPermission();
   assert.equal(reqPerm, false);
+
+  const inbox = await readInboxSms(50);
+  assert.deepEqual(inbox, []);
 
   let called = false;
   const sub = addSmsListener((_event) => {

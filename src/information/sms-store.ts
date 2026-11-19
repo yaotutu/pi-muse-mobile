@@ -115,11 +115,11 @@ export class SmsStore {
         title: item.title?.trim() || undefined,
         receivedAt: item.receivedAt ?? new Date().toISOString(),
       })), signal);
-      void this.api.triggerSmsRun().catch(() => undefined);
+      await this.api.triggerSmsRun(signal).catch(() => undefined);
       return result;
     }, (result) => this.publish({
       items: [...result, ...this.state.items.filter((item) => !result.some((next) => next.id === item.id))].slice(0, 10),
-      notice: `已上报 ${result.length} 条历史短信，后台自动启动全面分析`,
+      notice: `已上报 ${result.length} 条历史短信，已完成初始全面分析`,
     }), true);
   };
   triggerRun = async () => {
