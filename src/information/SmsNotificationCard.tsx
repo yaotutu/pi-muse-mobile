@@ -133,7 +133,9 @@ export function SmsNotificationCard({
           <Inbox size={15} color={colors.blue} />
           <Text style={styles.title}>短信速递</Text>
         </View>
-        <Text style={styles.badge}>独立通道 · 不占对话上下文</Text>
+        <View style={styles.badgePill}>
+          <Text style={styles.badge}>独立通道</Text>
+        </View>
       </View>
       {!!visibleText && <MessageContent text={visibleText} streaming={message.streaming === true} />}
       {feedbackScope ? (
@@ -193,9 +195,16 @@ const createStyles = (c: WorkspaceColors) =>
       color: c.ink,
       fontWeight: '600',
     },
+    badgePill: {
+      paddingHorizontal: spacing[8],
+      paddingVertical: spacing[2],
+      borderRadius: r.round,
+      backgroundColor: c.blueSoft,
+    },
     badge: {
       ...t.caption,
-      color: c.muted,
+      color: c.blue,
+      fontWeight: '500',
     },
     actionsRow: {
       flexDirection: 'row',

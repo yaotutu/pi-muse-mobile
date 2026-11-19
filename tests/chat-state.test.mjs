@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { appendSmsQuote, isSmsNotificationMessage, projectHistory, StreamAggregator } from '../src/chat/chat-state.ts';
+import { appendSmsQuote, composeSmsQuote, isSmsNotificationMessage, projectHistory, splitSmsQuote, StreamAggregator } from '../src/chat/chat-state.ts';
 
 // 只重放协议事件，不加载 UI、网络或原生模块，确保回归结果不依赖运行环境。
 const aggregate = (events) => events.reduce((state, event) => {
@@ -233,7 +233,30 @@ test('独立短信通知识别与方式一引用追加幂等保留原草稿', ()
   assert.equal(isSmsNotificationMessage({ role: 'user', notificationId: smsId }), false);
 
   const quotedOnce = appendSmsQuote('帮我记一下', '【顺丰速运】取件码 3-4-2018');
-  assert.equal(quotedOnce, '帮我记一下\n\n【短信卡片引用】\n【顺丰速运】取件码 3-4-2018\n【引用结束】');
+  assert.equal(quotedOnce, '【短信卡片引用】\n【顺丰速运】取件码 3-4-2018\n【引用结束】\n\n帮我记一下');
   assert.equal(appendSmsQuote(quotedOnce, '【顺丰速运】取件码 3-4-2018'), quotedOnce);
+  assert.equal(
+    appendSmsQuote(quotedOnce, '【招商银行】账单到期提醒'),
+    '【短信卡片引用】\n【招商银行】账单到期提醒\n【引用结束】\n\n帮我记一下',
+  );
   assert.equal(appendSmsQuote('', '   '), '');
+
+  assert.deepEqual(splitSmsQuote(quotedOnce), {
+    quotedSms: '【顺丰速运】取件码 3-4-2018',
+    body: '帮我记一下',
+  });
+  assert.deepEqual(
+    splitSmsQuote('【短信卡片引用】\n取件码 3-4-2018\n【引用结束】\n\n什么时候取件 '),
+    { quotedSms: '取件码 3-4-2018', body: '什么时候取件 ' },
+  );
+  assert.deepEqual(
+    splitSmsQuote('帮我记一下\n\n【短信卡片引用】\n【顺丰速运】取件码 3-4-2018\n【引用结束】'),
+    { quotedSms: '【顺丰速运】取件码 3-4-2018', body: '帮我记一下' },
+  );
+  assert.deepEqual(splitSmsQuote('普通问题'), { quotedSms: null, body: '普通问题' });
+  assert.equal(composeSmsQuote(null, '仅保留提问 '), '仅保留提问 ');
+  assert.equal(
+    composeSmsQuote('取件码 3-4-2018', '什么时候取 '),
+    '【短信卡片引用】\n取件码 3-4-2018\n【引用结束】\n\n什么时候取 ',
+  );
 });

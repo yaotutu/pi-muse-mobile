@@ -48,6 +48,8 @@ export type MessageView = {
 const SMS_NOTIFICATION_ID_PATTERN = /^info-notification-inforun_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-(0|[1-9][0-9]*)$/i;
 const SMS_QUOTE_START = '【短信卡片引用】';
 const SMS_QUOTE_END = '【引用结束】';
+const SMS_QUOTE_PREFIX_PATTERN = /^【短信卡片引用】\n([\s\S]*?)\n【引用结束】(?:\n{1,2}([\s\S]*))?$/;
+const SMS_QUOTE_ANY_PATTERN = /^([\s\S]*?)(?:\n{1,2})?【短信卡片引用】\n([\s\S]*?)\n【引用结束】(?:\n{1,2}([\s\S]*))?$/;
 
 /** 判断是否为独立短信通道投递到聊天框的卡片（非普通助手对话，不入模型上下文）。 */
 export function isSmsNotificationMessage(
@@ -59,17 +61,47 @@ export function isSmsNotificationMessage(
   return typeof candidate === 'string' && SMS_NOTIFICATION_ID_PATTERN.test(candidate);
 }
 
-/** 生成可编辑的短信卡片引用块；不自动发送，由用户在主聊天确认发出。 */
+/** 生成可发送的短信卡片引用载荷；界面层应通过 splitSmsQuote 渲染可视化引用卡片。 */
 export function formatSmsQuote(text: string): string {
   return `${SMS_QUOTE_START}\n${text.trim()}\n${SMS_QUOTE_END}`;
+}
+
+/** 从草稿或用户消息正文中拆分结构化的短信引用与用户输入文本，避免向 UI 暴露原始标记。 */
+export function splitSmsQuote(text: string): { quotedSms: string | null; body: string } {
+  const prefixMatch = text.match(SMS_QUOTE_PREFIX_PATTERN);
+  if (prefixMatch) {
+    return {
+      quotedSms: prefixMatch[1]!.trim() || null,
+      body: prefixMatch[2] ?? '',
+    };
+  }
+  const anyMatch = text.match(SMS_QUOTE_ANY_PATTERN);
+  if (anyMatch) {
+    const before = anyMatch[1] ?? '';
+    const after = anyMatch[3] ?? '';
+    const body = before && after ? `${before}\n\n${after}` : (before || after);
+    return {
+      quotedSms: anyMatch[2]!.trim() || null,
+      body,
+    };
+  }
+  return { quotedSms: null, body: text };
+}
+
+/** 将可选的短信引用与用户输入正文重新组合为完整发送草稿。 */
+export function composeSmsQuote(quotedSms: string | null | undefined, body: string): string {
+  const cleanBody = splitSmsQuote(body).body;
+  const trimmedQuote = quotedSms?.trim();
+  if (!trimmedQuote) return cleanBody;
+  const quoteBlock = formatSmsQuote(trimmedQuote);
+  return cleanBody.length > 0 ? `${quoteBlock}\n\n${cleanBody}` : quoteBlock;
 }
 
 export function appendSmsQuote(draft: string, text: string): string {
   const trimmed = text.trim();
   if (!trimmed) return draft;
-  const quote = formatSmsQuote(trimmed);
-  if (draft.includes(quote)) return draft;
-  return draft ? `${draft}\n\n${quote}` : quote;
+  const { body } = splitSmsQuote(draft);
+  return composeSmsQuote(trimmed, body);
 }
 
 /** 把服务端权威历史（含工具投影）转为视图；role=tool 回填到对应调用。 */

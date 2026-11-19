@@ -45,7 +45,7 @@ test('一级固定消息/新闻/设置，冷启动直接挂载 main，不依赖�
   const chat = read('workspace/ConversationView.tsx');
   assert.match(chat, /conversation\.error &&/);
   assert.match(chat, /!conversation\.historyFailed/);
-  assert.match(chat, /onChangeText=\{\(text\) => sessions\.setDraft\(sessionId, text\)\}/);
+  assert.match(chat, /onChangeText=\{\(text\) => sessions\.setDraft\(sessionId, composeSmsQuote\(draftQuotedSms, text\)\)\}/);
 });
 test('主聊天根页有底栏，键盘、设置子页与所有覆盖层隐藏底栏', () => {
   for (const page of ['messages', 'news']) assert.equal(isRootWorkspacePage({ page }), true);

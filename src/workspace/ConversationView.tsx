@@ -5,13 +5,13 @@ import type { NotificationReference } from '../notifications/contracts';
  * 边界：单实例绑定单个会话的聊天代次（父级以 sessionId + epoch 隔离生命周期）；
  * assistant Markdown 与工具专用展示由独立组件负责，不猜测审批决定。
  */
-import { AlertCircle, ArrowDown, ArrowUp, CircleHelp, Inbox, ShieldAlert, Square } from 'lucide-react-native';
+import { AlertCircle, ArrowDown, ArrowUp, CircleHelp, Inbox, ShieldAlert, Square, X } from 'lucide-react-native';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View, type LayoutRectangle, type ScrollViewInstance, type TextStyle, type ViewInstance } from 'react-native';
 import { useApi } from '../api/ApiProvider';
 import { pickMessageAttachments } from '../attachments/picker';
 import { AttachmentAction, AttachmentStrip, MessageAttachments } from '../attachments/AttachmentViews';
-import { appendSmsQuote, isSmsNotificationMessage, type MessageView } from '../chat/chat-state';
+import { appendSmsQuote, composeSmsQuote, isSmsNotificationMessage, splitSmsQuote, type MessageView } from '../chat/chat-state';
 import { useApprovals } from '../approvals/ApprovalProvider';
 import { useConversation } from '../chat/useConversation';
 import { useServiceConnection } from '../connection/ConnectionProvider';
@@ -158,11 +158,12 @@ export function ConversationView({
   const lastView = conversation.views.at(-1);
   const latestSmsMessage = lastView && isSmsNotificationMessage(lastView) ? lastView : undefined;
   const latestSmsText = latestSmsMessage ? getChatVisibleText(latestSmsMessage.text).trim() : '';
+  const { quotedSms: draftQuotedSms, body: draftBody } = useMemo(() => splitSmsQuote(session.draft), [session.draft]);
   const showLatestSmsQuoteBar = Boolean(
+    !draftQuotedSms &&
     latestSmsMessage &&
     latestSmsText &&
-    sessions.canWrite(sessionId) &&
-    !session.draft.includes(latestSmsText),
+    sessions.canWrite(sessionId),
   );
   const hasInput = !!session.draft.trim() || session.draftAttachments.length > 0;
   const canSend =
@@ -473,15 +474,38 @@ export function ConversationView({
             </Pressable>
           </View>
         )}
+        {!!draftQuotedSms && (
+          <View style={styles.smsComposerQuote} testID="sms-composer-quote">
+            <View style={styles.smsComposerQuoteAccent} />
+            <View style={styles.smsComposerQuoteBody}>
+              <View style={styles.smsComposerQuoteHeader}>
+                <Inbox size={13} color={colors.blue} />
+                <Text style={styles.smsComposerQuoteTitle}>引用短信速递</Text>
+              </View>
+              <Text style={styles.smsComposerQuoteText} numberOfLines={2}>
+                {draftQuotedSms}
+              </Text>
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="取消引用短信"
+              onPress={() => sessions.setDraft(sessionId, draftBody)}
+              style={({ pressed }) => [styles.smsComposerQuoteClear, pressed && styles.pressed]}
+              testID="sms-composer-quote-clear"
+            >
+              <X size={15} color={colors.muted} />
+            </Pressable>
+          </View>
+        )}
         <View style={[styles.composer, focused && styles.composerFocused]}>
           <AttachmentAction disabled={busy || !!pending || !sessions.canWrite(sessionId)} selecting={selecting} onPress={() => void selectAttachments()} />
           {/* 聊天输入与发送/停止共用动态高度胶囊；保留专用 TextInput 以维持光标、键盘和流式操作。 */}
           <TextInput
             accessibilityLabel="消息输入框"
-            placeholder="消息"
+            placeholder={draftQuotedSms ? '针对引用短信提问…' : '消息'}
             placeholderTextColor={colors.faint}
-            value={session.draft}
-            onChangeText={(text) => sessions.setDraft(sessionId, text)}
+            value={draftBody}
+            onChangeText={(text) => sessions.setDraft(sessionId, composeSmsQuote(draftQuotedSms, text))}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
             editable={!session.deleting && !session.deleted && !session.resetting && !session.resetUncertain}
@@ -515,7 +539,7 @@ export function ConversationView({
             }
             style={[
               styles.input,
-              { height: session.draft ? inputHeight : l.composerHeight - l.composerPadding * 2 },
+              { height: draftBody ? inputHeight : l.composerHeight - l.composerPadding * 2 },
               Platform.OS === 'web' && ({ outlineStyle: 'none' } as unknown as TextStyle),
             ]}
           />
@@ -588,8 +612,15 @@ function RegularMessage({ message, delivery, feedbackScope }: {
 }) {
   const styles = useStyles();
   const { colors } = useTheme();
-  const visibleText = message.role === 'user' ? message.text : getChatVisibleText(message.text);
-  const hasText = message.role === 'user' ? !!visibleText : !!visibleText.trim();
+  const parsedSmsQuote = message.role === 'user' ? splitSmsQuote(message.text) : null;
+  const quotedSms = parsedSmsQuote?.quotedSms ?? null;
+  const visibleText = message.role === 'user'
+    ? (parsedSmsQuote ? parsedSmsQuote.body : message.text)
+    : getChatVisibleText(message.text);
+  const copyableText = message.role === 'user'
+    ? [quotedSms, visibleText].filter(Boolean).join('\n\n')
+    : visibleText;
+  const hasText = message.role === 'user' ? Boolean(visibleText.trim() || quotedSms) : !!visibleText.trim();
   const bubbleRef = useRef<ViewInstance>(null);
   const [bubbleLayout, setBubbleLayout] = useState<LayoutRectangle | null>(null);
   const [anchor, setAnchor] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
@@ -611,11 +642,23 @@ function RegularMessage({ message, delivery, feedbackScope }: {
   };
   const bubbleContent = <>
     {message.featureSource && <Text style={styles.featureSourceLabel}>来自{message.featureSource.featureId === 'news' ? '新闻' : '短信'}</Text>}
+    {message.role === 'user' && !!quotedSms && (
+      <View style={[styles.userSmsQuoteCard, !!visibleText && styles.userSmsQuoteSpacing]} testID={`message-sms-quote-${message.id}`}>
+        <View style={styles.userSmsQuoteAccent} />
+        <View style={styles.userSmsQuoteBody}>
+          <View style={styles.userSmsQuoteHeader}>
+            <Inbox size={12} color={colors.onAccent} />
+            <Text style={styles.userSmsQuoteTitle}>短信速递</Text>
+          </View>
+          <Text style={styles.userSmsQuoteText} numberOfLines={4}>{quotedSms}</Text>
+        </View>
+      </View>
+    )}
     {!!visibleText && (message.role === 'user'
       ? <Text selectable={!feedbackScope} onLongPress={feedbackScope ? openFeedback : undefined}
         accessibilityActions={feedbackScope ? [{ name: 'openMessageActions', label: '打开消息操作' }] : undefined}
         onAccessibilityAction={feedbackScope ? (event) => { if (event.nativeEvent.actionName === 'openMessageActions') openFeedback(); } : undefined}
-        style={[styles.messageText, styles.userMessageText]}>{message.text}</Text>
+        style={[styles.messageText, styles.userMessageText]}>{visibleText}</Text>
       : <MessageContent text={visibleText} streaming={message.streaming === true} onMessageLongPress={feedbackScope ? openFeedback : undefined} />)}
     {message.role === 'user' && !!message.attachments?.length && <MessageAttachments items={message.attachments} />}
   </>;
@@ -659,7 +702,7 @@ function RegularMessage({ message, delivery, feedbackScope }: {
           sessionId={feedbackScope.sessionId}
           piSessionId={feedbackScope.piSessionId}
           messageId={message.id}
-          messageText={visibleText}
+          messageText={copyableText}
           role={message.role}
           initialFeedback={feedbackScope.initialFeedback}
         />}
@@ -830,6 +873,90 @@ const createStyles = (c: WorkspaceColors) =>
       ...t.caption,
       color: c.blue,
       fontWeight: '600',
+    },
+    smsComposerQuote: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginHorizontal: l.sidePadding,
+      marginBottom: spacing[8],
+      paddingHorizontal: spacing[10],
+      paddingVertical: spacing[8],
+      borderRadius: r.field,
+      backgroundColor: c.surface,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: c.line,
+      gap: spacing[8],
+    },
+    smsComposerQuoteAccent: {
+      width: spacing[3],
+      alignSelf: 'stretch',
+      borderRadius: r.round,
+      backgroundColor: c.blue,
+    },
+    smsComposerQuoteBody: {
+      flex: 1,
+      minWidth: 0,
+      gap: spacing[2],
+    },
+    smsComposerQuoteHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing[4],
+    },
+    smsComposerQuoteTitle: {
+      ...t.caption,
+      color: c.blue,
+      fontWeight: '600',
+    },
+    smsComposerQuoteText: {
+      ...t.caption,
+      color: c.muted,
+    },
+    smsComposerQuoteClear: {
+      width: sizing[28],
+      height: sizing[28],
+      borderRadius: r.round,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    userSmsQuoteCard: {
+      flexDirection: 'row',
+      alignItems: 'stretch',
+      paddingHorizontal: spacing[10],
+      paddingVertical: spacing[8],
+      borderRadius: spacing[12],
+      backgroundColor: c.overlay,
+      gap: spacing[8],
+    },
+    userSmsQuoteSpacing: {
+      marginBottom: spacing[8],
+    },
+    userSmsQuoteAccent: {
+      width: spacing[3],
+      borderRadius: r.round,
+      backgroundColor: c.onAccent,
+      opacity: 0.85,
+    },
+    userSmsQuoteBody: {
+      flexShrink: 1,
+      minWidth: 0,
+      gap: spacing[2],
+    },
+    userSmsQuoteHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing[4],
+      opacity: 0.9,
+    },
+    userSmsQuoteTitle: {
+      ...t.caption,
+      color: c.onAccent,
+      fontWeight: '600',
+    },
+    userSmsQuoteText: {
+      ...t.caption,
+      color: c.onAccent,
+      opacity: 0.92,
     },
     pendingBanner: {
       padding: spacing[12],
