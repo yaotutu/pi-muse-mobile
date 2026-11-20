@@ -200,7 +200,7 @@ export function SmsSettingsCard() {
                     : info.importProgress?.phase === 'uploading'
                       ? `正在分段上传历史短信：${info.importProgress.current} / ${info.importProgress.total} 条…`
                       : info.status?.running
-                        ? `正在后台全量分析：已处理 ${processedDoneCount} / ${totalQueueCount} 条…`
+                        ? `正在后台全量分析：已处理 ${processedDoneCount} / ${totalQueueCount} 条（完成后仅推送 1 份精炼简报）…`
                         : '正在启动后台全量分析…'}
                 </Text>
                 {info.status?.running && statusCounts && (

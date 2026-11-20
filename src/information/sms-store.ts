@@ -125,7 +125,7 @@ export class SmsStore {
         ...(!status.running && this.state.importProgress?.phase === 'analyzing' ? { importProgress: undefined } : {}),
         ...(finishedBackgroundRun
           ? {
-              notice: `历史短信全量分析完成：已处理 ${status.counts.processed} 条${status.counts.failed ? `，失败 ${status.counts.failed} 条` : ''}`,
+              notice: `历史短信全量分析完成：已处理 ${status.counts.processed} 条${status.counts.failed ? `，失败 ${status.counts.failed} 条` : ''}，已生成精炼简报`,
             }
           : {}),
         error: undefined,
@@ -218,7 +218,7 @@ export class SmsStore {
       for (let offset = 0; offset < prepared.length; offset += INGEST_CHUNK_SIZE) {
         const chunk = prepared.slice(offset, offset + INGEST_CHUNK_SIZE);
         this.publish({ importProgress: { phase: 'uploading', current: offset, total: prepared.length } });
-        const result = await this.api.ingestSmsItems(chunk, signal);
+        const result = await this.api.ingestSmsItems(chunk, signal, { bulkImport: true });
         uploaded.push(...result);
         this.publish({
           importProgress: {

@@ -1162,11 +1162,15 @@ export class HttpApiClient implements ApiClient {
     );
   }
 
-  async ingestSmsItems(items: InformationInputItem[], signal?: AbortSignal): Promise<InformationItem[]> {
+  async ingestSmsItems(
+    items: InformationInputItem[],
+    signal?: AbortSignal,
+    options?: { bulkImport?: boolean },
+  ): Promise<InformationItem[]> {
     return parseInformationIngestResult(
       await this.request<unknown>(`/api/information/items`, {
         method: 'POST',
-        body: { items },
+        body: options?.bulkImport ? { items, bulkImport: true } : { items },
         signal,
         timeoutMs: 60_000,
       }),

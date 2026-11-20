@@ -101,10 +101,12 @@ test('批量导入短信自动触发分析，条目进入待处理列表并展�
 
 test('大批量历史短信分段 200 条上传并清洗脏时间与重复键，后台运行结束时更新完成提示',async()=>{
   const chunks = [];
+  const ingestOptions = [];
   let runOptions = null;
   const f = fixture({
-    ingestSmsItems: async (items) => {
+    ingestSmsItems: async (items, _signal, options) => {
       chunks.push(items);
+      ingestOptions.push(options);
       return items.map((item, idx) => ({ id: `${item.externalId}-${idx}`, status: 'pending' }));
     },
     triggerSmsRun: async (_signal, options) => {
@@ -122,6 +124,7 @@ test('大批量历史短信分段 200 条上传并清洗脏时间与重复键，
     }));
     await f.store.ingestBatch(rawItems, { background: true, forceInitial: true });
     assert.deepEqual(chunks.map((c) => c.length), [200, 5]);
+    assert.deepEqual(ingestOptions, [{ bulkImport: true }, { bulkImport: true }]);
     assert.equal(chunks[0][0].content.length, 20_000);
     assert.equal(chunks[0][0].title.length, 500);
     assert.notEqual(chunks[0][0].externalId, chunks[0][1].externalId);
@@ -133,7 +136,7 @@ test('大批量历史短信分段 200 条上传并清洗脏时间与重复键，
     f.remote.items = [{ id: 'done-1', status: 'processed' }];
     await f.store.reload();
     assert.equal(f.store.getSnapshot().status?.running, false);
-    assert.match(f.store.getSnapshot().notice, /历史短信全量分析完成：已处理 1 条/);
+    assert.match(f.store.getSnapshot().notice, /历史短信全量分析完成：已处理 1 条，已生成精炼简报/);
   } finally {
     f.store.dispose();
   }

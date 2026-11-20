@@ -131,7 +131,11 @@ export interface InformationClient {
   saveSmsSettings(settings: InformationSettings, signal?: AbortSignal): Promise<InformationSettings>;
   getSmsPreferences(signal?: AbortSignal): Promise<InformationPreferences>;
   saveSmsPreferences(preferences: { notes: string }, signal?: AbortSignal): Promise<InformationPreferences>;
-  ingestSmsItems(items: InformationInputItem[], signal?: AbortSignal): Promise<InformationItem[]>;
+  ingestSmsItems(
+    items: InformationInputItem[],
+    signal?: AbortSignal,
+    options?: { bulkImport?: boolean },
+  ): Promise<InformationItem[]>;
   listSmsItems(query?: InformationItemsQuery, signal?: AbortSignal): Promise<InformationItemsPage>;
   getSmsStatus(signal?: AbortSignal): Promise<InformationStatus>;
   triggerSmsRun(signal?: AbortSignal, options?: InformationRunOptions): Promise<void>;

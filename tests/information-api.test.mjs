@@ -159,6 +159,12 @@ test('HttpApiClient routes information API calls with correct methods and endpoi
     assert.equal(ingested.length, 1);
     assert.equal(ingested[0].id, 'new-1');
 
+    await client.ingestSmsItems([{
+      source: 'sms',
+      externalId: 'ext-2',
+      content: '历史批量短信',
+    }], undefined, { bulkImport: true });
+
     const listed = await client.listSmsItems({ limit: 10, status: 'pending' });
     assert.deepEqual(listed.items, []);
 
@@ -168,17 +174,19 @@ test('HttpApiClient routes information API calls with correct methods and endpoi
 
     await client.triggerSmsRun(undefined, { background: true, forceInitial: true });
 
-    assert.equal(calls.length, 8);
+    assert.equal(calls.length, 9);
     assert.ok(calls[0].url.endsWith('/api/information/settings'));
     assert.equal(calls[1].method, 'PUT');
     assert.ok(calls[4].url.endsWith('/api/information/items'));
     assert.equal(calls[4].method, 'POST');
-    assert.ok(calls[5].url.includes('/api/information/items?limit=10&status=pending'));
-    assert.ok(calls[6].url.endsWith('/api/information/status'));
-    assert.equal(calls[6].method, 'GET');
-    assert.ok(calls[7].url.endsWith('/api/information/runs'));
-    assert.equal(calls[7].method, 'POST');
-    assert.deepEqual(calls[7].body, { background: true, forceInitial: true });
+    assert.equal(calls[4].body.bulkImport, undefined);
+    assert.equal(calls[5].body.bulkImport, true);
+    assert.ok(calls[6].url.includes('/api/information/items?limit=10&status=pending'));
+    assert.ok(calls[7].url.endsWith('/api/information/status'));
+    assert.equal(calls[7].method, 'GET');
+    assert.ok(calls[8].url.endsWith('/api/information/runs'));
+    assert.equal(calls[8].method, 'POST');
+    assert.deepEqual(calls[8].body, { background: true, forceInitial: true });
   } finally {
     globalThis.fetch = originalFetch;
   }
