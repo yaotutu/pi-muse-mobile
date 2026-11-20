@@ -6,7 +6,7 @@ import { useSessionDirectoryStore } from '../sessions/SessionProvider';
 import { useTheme } from '../theme/ThemeProvider';
 import { ActionButton } from '../ui/ActionButton';
 import { ChoiceChip } from '../ui/ChoiceChip';
-import { FormInput } from '../ui/FormInput';
+import { SettingsTextField } from '../ui/SettingsTextField';
 import { Card } from '../ui/Surfaces';
 import { spacing, workspaceTheme } from '../ui/tokens';
 
@@ -34,7 +34,7 @@ export function DreamPanel() {
         {overview.lastRun && <Text selectable style={{ color: colors.muted }}>最近整理：{overview.lastRun.status} · {overview.lastRun.processed} 条消息{overview.lastRun.error ? ` · ${overview.lastRun.error}` : ''}</Text>}
         <ActionButton label="自定义整理指令" expanded={showPrompt} onPress={() => setShowPrompt(!showPrompt)} />
         {showPrompt && <>
-          <FormInput accessibilityLabel="全局 Dream 提示词" value={snapshot.prompt} multiline maxLength={DREAM_PROMPT_LIMIT} editable={!snapshot.writing} onChangeText={(prompt) => store.setDraft({ prompt })} />
+          <SettingsTextField label="整理指令" empty="使用内置整理指令。" value={snapshot.prompt} maxLength={DREAM_PROMPT_LIMIT} editable={!snapshot.writing} onChangeText={(prompt) => store.setDraft({ prompt })} />
           <ActionButton label="查看内置默认提示词" expanded={showDefault} onPress={() => setShowDefault(!showDefault)} />
           {showDefault && <Text selectable style={{ color: colors.muted }}>{overview.defaultPrompt}</Text>}
         </>}

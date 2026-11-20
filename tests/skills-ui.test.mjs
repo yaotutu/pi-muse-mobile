@@ -102,7 +102,7 @@ test('技能说明与开关分离，技能选择按来源身份更新', () => {
     '../ui/tokens': { workspaceTheme: themeTokens, spacing },
     '../theme/ThemeProvider': { useTheme: () => ({ colors }) },
     '../ui/ActionButton': { ActionButton: (props) => sandboxElement('ActionButton', props) },
-    '../ui/FormInput': { FormInput: (props) => sandboxElement('FormInput', props) },
+    '../ui/SettingsTextField': { SettingsTextField: 'SettingsTextField' },
     '../ui/MarkdownContent': { MarkdownContent: (props) => sandboxElement('MarkdownContent', props) },
     '../ui/Surfaces': { Card: (props) => sandboxElement('Card', props) },
     '../ui/Feedback': { FeedbackNotice: (props) => sandboxElement('FeedbackNotice', props) },

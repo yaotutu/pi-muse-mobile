@@ -38,12 +38,14 @@ export function Sheet({
   subtitle,
   children,
   onClose,
+  onShow,
   wide,
 }: {
   title: string;
   subtitle?: string;
   children: ReactNode;
   onClose: () => void;
+  onShow?: () => void;
   /** 宽形态：内容较宽的弹层（如审批 diff 预览） */
   wide?: boolean;
 }) {
@@ -61,6 +63,7 @@ export function Sheet({
       animationType={reducedMotion ? 'none' : compact ? 'slide' : 'fade'}
       visible
       onRequestClose={onClose}
+      onShow={onShow}
     >
       <ThemeStatusBar />
       <KeyboardAvoidingView

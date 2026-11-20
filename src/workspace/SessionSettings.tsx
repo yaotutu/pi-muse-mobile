@@ -6,7 +6,7 @@ import { useChatSessionStore, useSessionState } from '../sessions/SessionProvide
 import { equalSwitches, INSTRUCTIONS_LIMIT } from '../sessions/chat-session-store';
 import { useTheme } from '../theme/ThemeProvider';
 import { ActionButton } from '../ui/ActionButton';
-import { FormInput } from '../ui/FormInput';
+import { SettingsTextField } from '../ui/SettingsTextField';
 import { MarkdownContent } from '../ui/MarkdownContent';
 import { Card } from '../ui/Surfaces';
 import { FeedbackNotice } from '../ui/Feedback';
@@ -79,11 +79,11 @@ export function SessionSettings({ sessionId, section }: { sessionId: string; sec
       {!!field.error && <FeedbackNotice text={field.error} tone="danger" />}
       {field.loading && <ActivityIndicator accessibilityLabel="正在读取设置" color={colors.blue} />}
       {!field.loaded && !field.loading && <ActionButton label="重新读取" onPress={() => void load()} />}
-      {field.loaded && (isRules ? <FormInput accessibilityLabel="会话指令" multiline
+      {field.loaded && (isRules ? <SettingsTextField label="会话指令" empty="尚未设置会话指令。"
         value={session.instructions.draft} editable={!locked}
         onChangeText={(text) => store.setInstructions(sessionId, text)}
         maxLength={INSTRUCTIONS_LIMIT} placeholder="例如：先给结论，再补充依据"
-        style={styles.editor} /> : <>
+        /> : <>
         {!session.skills.catalog.length && <Text style={[styles.caption, { color: colors.muted }]}>服务器暂无可用技能。</Text>}
         {groups.filter(({ skills }) => skills.length > 0).map(({ title, skills }) => <View key={title} style={styles.group}>
           <Text accessibilityRole="header" style={[styles.label, { color: colors.muted }]}>{title}</Text>
@@ -134,7 +134,6 @@ const styles = StyleSheet.create({
   group: { gap: spacing[8] },
   caption: { ...workspaceTheme.typography.caption },
   label: { ...workspaceTheme.typography.detail, fontWeight: '600' },
-  editor: { minHeight: 220, textAlignVertical: 'top' },
   skillList: { padding: 0 },
   skillRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing[12], gap: spacing[12] },
   skillInfo: { flex: 1, minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: spacing[8], paddingVertical: spacing[8] },

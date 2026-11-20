@@ -33,7 +33,7 @@ test('各页面共用文字操作与输入，保留专用聊天输入和安全�
   }
   for (const page of ['ConnectionPanel', 'DreamPanel', 'FilesScreen', 'GoalsPanel', 'NewsPage',
     'MemoryPanel', 'ProfilePanel', 'SessionSettings']) {
-    assert.match(read(`workspace/${page}.tsx`), /<FormInput\b/, `${page} 使用共享输入`);
+    assert.match(read(`workspace/${page}.tsx`), /<(?:FormInput|SettingsTextField)\b/, `${page} 使用共享输入`);
   }
   const connection = read('workspace/ConnectionPanel.tsx');
   assert.match(connection, /secureTextEntry=\{!showKey\}/);

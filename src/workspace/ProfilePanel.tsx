@@ -8,6 +8,7 @@ import { useTheme } from '../theme/ThemeProvider';
 import { spacing, workspaceTheme, type WorkspaceColors } from '../ui/tokens';
 import { ActionButton } from '../ui/ActionButton';
 import { FormInput } from '../ui/FormInput';
+import { SettingsTextField } from '../ui/SettingsTextField';
 
 const NAME_LIMIT = 80;
 const TEXT_LIMIT = 20000;
@@ -69,19 +70,16 @@ export function ProfilePanel() {
       </View>}
     </Card>
 
-    <Card style={styles.card}>
-      <View style={styles.cardHeading}><Text accessibilityRole="header" style={styles.cardTitle}>人设与资料</Text></View>
-      <Text style={styles.fieldLabel}>助手人设</Text>
-      <FormInput accessibilityLabel="SOUL 助手人设" multiline value={snapshot.draftProfile.soul} onChangeText={(value) => store.setProfile('soul', value)} editable={snapshot.loaded && !snapshot.loading && !snapshot.writing}
-        maxLength={TEXT_LIMIT} placeholder="希望助手具备怎样的性格与工作方式？" placeholderTextColor={colors.faint} style={styles.longInput} textAlignVertical="top" />
-      <Text style={styles.fieldLabel}>关于我</Text>
-      <FormInput accessibilityLabel="USER 用户资料" multiline value={snapshot.draftProfile.user} onChangeText={(value) => store.setProfile('user', value)} editable={snapshot.loaded && !snapshot.loading && !snapshot.writing}
-        maxLength={TEXT_LIMIT} placeholder="希望助手了解你的哪些背景与偏好？" placeholderTextColor={colors.faint} style={styles.longInput} textAlignVertical="top" />
+    <View style={styles.profileFields}>
+      <SettingsTextField label="助手人设" empty="尚未设置助手人设。" value={snapshot.draftProfile.soul} onChangeText={(value) => store.setProfile('soul', value)} editable={snapshot.loaded && !snapshot.loading && !snapshot.writing}
+        maxLength={TEXT_LIMIT} placeholder="希望助手具备怎样的性格与工作方式？" />
+      <SettingsTextField label="关于我" empty="尚未填写个人资料。" value={snapshot.draftProfile.user} onChangeText={(value) => store.setProfile('user', value)} editable={snapshot.loaded && !snapshot.loading && !snapshot.writing}
+        maxLength={TEXT_LIMIT} placeholder="希望助手了解你的哪些背景与偏好？" />
       {snapshot.dirtyProfile && <View style={styles.actions}>
         <ActionButton label="保存人设与资料" text={snapshot.writing === 'profile' ? '正在保存人设与资料…' : '保存人设与资料'} onPress={() => { Keyboard.dismiss(); void store.saveProfile(); }} disabled={!canSaveProfile} tone="primary" wide icon={Check} />
         <ActionButton label="取消人设与资料修改并采用最新服务端值" text="取消人设与资料修改" onPress={() => store.discardProfile()} disabled={!canDiscard || !snapshot.dirtyProfile} wide icon={RotateCcw} />
       </View>}
-    </Card>
+    </View>
   </View>;
 }
 
@@ -90,11 +88,11 @@ const createStyles = (colors: WorkspaceColors) => StyleSheet.create({
   intro: { ...workspaceTheme.typography.status, color: colors.muted },
   statusRow: { flexDirection: 'row', gap: spacing[10], alignItems: 'center' },
   card: { padding: spacing[16], gap: spacing[12], borderRadius: workspaceTheme.radius.card, backgroundColor: colors.surface },
+  profileFields: { gap: spacing[12] },
   cardHeading: { gap: spacing[2], marginBottom: spacing[4] },
   cardTitle: { ...workspaceTheme.typography.itemTitle, color: colors.ink },
   fieldLabel: { ...workspaceTheme.typography.status, color: colors.ink, marginTop: spacing[8] },
   nameInput: { minHeight: workspaceTheme.layout.inputMinHeight },
-  longInput: { height: workspaceTheme.layout.profileTextHeight },
   tones: { flexDirection: 'row', gap: spacing[8] },
   tone: { flex: 1, minWidth: 0, minHeight: workspaceTheme.layout.controlSize, paddingHorizontal: spacing[8], paddingVertical: spacing[10], gap: spacing[2], borderRadius: workspaceTheme.radius.field, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line, backgroundColor: colors.canvas },
   toneSelected: { borderColor: colors.blue, backgroundColor: colors.blueSoft }, toneTitle: { ...workspaceTheme.typography.status, color: colors.ink }, toneTitleSelected: { color: colors.accentText },

@@ -25,6 +25,7 @@ import { workspaceTheme, spacing } from '../ui/tokens';
 import { useTheme } from '../theme/ThemeProvider';
 import { ActionButton } from '../ui/ActionButton';
 import { FormInput } from '../ui/FormInput';
+import { SettingsTextField } from '../ui/SettingsTextField';
 import { PageHeader } from '../workspace/PageHeader';
 import type { InformationItemStatus } from './types';
 import { useSmsInformationState } from './SmsProvider';
@@ -261,7 +262,6 @@ export function SmsSettingsCard({
       backgroundColor: colors.blue,
     },
     buttonRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing[8] },
-    input: { minHeight: 140 },
     smsInput: { minHeight: 68 },
     toggleRow: {
       minHeight: workspaceTheme.layout.smallControl,
@@ -751,19 +751,17 @@ export function SmsSettingsCard({
       {errorBanner}
       {!info.error && !!info.notice && <FeedbackNotice tone="success" text={info.notice} />}
 
-      <Card style={styles.card}>
+      <View style={styles.body}>
         <View style={styles.body}>
           <Text style={styles.caption}>填写哪些短信需要提醒、哪些可以忽略，也可以在聊天中告诉助手。</Text>
         </View>
-        <FormInput
-          accessibilityLabel="信息过滤指示"
-          multiline
+        <SettingsTextField
+          label="提醒规则"
+          empty="尚未设置短信提醒规则。"
           value={info.draftNotes}
           editable={!info.loading && !info.saving && !info.needsReadback}
           onChangeText={info.setDraftNotes}
           placeholder="例如：重要取件码、机票火车票、银行还款提醒我；促销广告和历史验证码直接忽略。"
-          placeholderTextColor={colors.faint}
-          style={styles.input}
           maxLength={20000}
         />
         {(notesDirty || info.saving) && <ActionButton
@@ -775,7 +773,7 @@ export function SmsSettingsCard({
           disabled={!notesDirty || info.loading || info.saving || info.needsReadback}
           onPress={() => void info.saveNotes()}
         />}
-      </Card>
+      </View>
     </>
   );
 

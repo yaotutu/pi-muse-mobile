@@ -5,7 +5,7 @@ import { useTheme } from '../theme/ThemeProvider';
 import { ActionButton } from '../ui/ActionButton';
 import { Card } from '../ui/Surfaces';
 import { FeedbackNotice } from '../ui/Feedback';
-import { FormInput } from '../ui/FormInput';
+import { SettingsTextField } from '../ui/SettingsTextField';
 import { spacing, workspaceTheme } from '../ui/tokens';
 
 /** 新闻明确偏好属于新闻子 Agent 本身，不影响主聊天指令；聊天调整后在此同步可见。 */
@@ -18,9 +18,9 @@ export function NewsPreferencesCard({ store }: { store: NewsPreferencesStore }) 
   const learnedNotes = preferences?.learnedNotes.trim() ?? '';
   return <View style={{ gap: spacing[12] }}>
     <Text style={{ ...workspaceTheme.typography.caption, color: colors.muted }}>填写希望多看或少看的内容，也可以在聊天中告诉助手。</Text>
-    {preferences && <FormInput accessibilityLabel="新闻偏好备注" multiline value={draftNotes} onChangeText={store.setDraftNotes}
-      editable={!!preferences && !saving && !needsReadback} maxLength={20000}
-      placeholder="例如：关注技术进展，少推荐营销内容" style={{ minHeight: 160 }} />}
+    {preferences && <SettingsTextField label="推荐规则" empty="尚未设置新闻推荐规则。" value={draftNotes} onChangeText={store.setDraftNotes}
+      editable={!saving && !needsReadback} maxLength={20000}
+      placeholder="例如：关注技术进展，少推荐营销内容" />}
     {loading && !preferences && <Text style={{ ...workspaceTheme.typography.caption, color: colors.muted }}>正在读取新闻偏好…</Text>}
     <FeedbackNotice tone="danger" text={error} />
     <FeedbackNotice tone="success" text={notice} />
