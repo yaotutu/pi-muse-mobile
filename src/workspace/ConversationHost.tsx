@@ -1,4 +1,3 @@
-import type { NotificationReference } from '../notifications/contracts';
 /**
  * main 的会话 Hook 与 SSE 始终挂载；切换 Tab 只隐藏它。
  * 仅重置 epoch 或当前连接整体销毁时释放聊天生命周期。
@@ -10,10 +9,10 @@ import { useSessionState } from '../sessions/SessionProvider';
 import { ConversationView } from './ConversationView';
 import { conversationRefreshKey } from './conversation-host-state';
 
-function SessionConversation({ sessionId, visible, refreshVersion, onSettled, onBindingMismatch, openConnection, onOpenApprovals, onContinueNotification }: {
+function SessionConversation({ sessionId, visible, refreshVersion, onSettled, onBindingMismatch, openConnection, onOpenApprovals }: {
   sessionId: string; visible: boolean; refreshVersion: number;
   onSettled: (sessionId: string) => void; onBindingMismatch: () => void; openConnection: () => void;
-  onOpenApprovals?: () => void; onContinueNotification?: (reference: NotificationReference) => void;
+  onOpenApprovals?: () => void;
 }) {
   const session = useSessionState(sessionId);
   const runtime = useSessionRuntime(sessionId);
@@ -26,19 +25,19 @@ function SessionConversation({ sessionId, visible, refreshVersion, onSettled, on
   return <View style={[styles.owner, !visible && styles.hidden]} accessibilityElementsHidden={!visible}
     importantForAccessibility={visible ? 'auto' : 'no-hide-descendants'} pointerEvents={visible ? 'auto' : 'none'}>
     <ConversationView key={`${sessionId}:${session.epoch}`} sessionId={sessionId} visible={visible} refreshKey={refreshKey}
-      onSettled={settled} openConnection={openConnection} onOpenApprovals={onOpenApprovals} onContinueNotification={onContinueNotification} />
+      onSettled={settled} openConnection={openConnection} onOpenApprovals={onOpenApprovals} />
   </View>;
 }
 
-export function ConversationHost({ chatVisible, otherPage, refreshVersions, onSettled, onBindingMismatch, openConnection, onOpenApprovals, onContinueNotification }: {
+export function ConversationHost({ chatVisible, otherPage, refreshVersions, onSettled, onBindingMismatch, openConnection, onOpenApprovals }: {
   chatVisible: boolean; otherPage: ReactNode;
   refreshVersions: Record<string, number>; onSettled: (sessionId: string) => void; onBindingMismatch: () => void; openConnection: () => void;
-  onOpenApprovals?: () => void; onContinueNotification?: (reference: NotificationReference) => void;
+  onOpenApprovals?: () => void;
 }) {
   // 不根据目录加载状态决定是否挂载 main，也不因切换到新闻/设置卸载 SSE。
   return <View style={styles.host}>
     <SessionConversation sessionId="main" visible={chatVisible}
-      refreshVersion={refreshVersions.main ?? 0} onSettled={onSettled} onBindingMismatch={onBindingMismatch} openConnection={openConnection} onOpenApprovals={onOpenApprovals} onContinueNotification={onContinueNotification} />
+      refreshVersion={refreshVersions.main ?? 0} onSettled={onSettled} onBindingMismatch={onBindingMismatch} openConnection={openConnection} onOpenApprovals={onOpenApprovals} />
     {!chatVisible && <View style={styles.owner}>{otherPage}</View>}
   </View>;
 }

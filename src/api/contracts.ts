@@ -1,5 +1,4 @@
 import type { CompanionClient } from './companion-contracts';
-import { parseFeatureSource } from '../notifications/contracts';
 /** 页面依赖的客户端契约；网络实现不向上泄露传输细节。 */
 import type {
   AgUiEvent,
@@ -117,22 +116,24 @@ export function parseMessageFeedback(value: unknown): MessageFeedback {
   };
 }
 
+const DOMAIN_ID_PATTERN = /^[a-z][a-z0-9_-]{0,63}$/;
+
 function parseMessageMetadata(value: unknown): ConversationMessageMetadata {
   if (!isRecord(value) || !hasOnlyKeys(value, [
-    'createdAt', 'source', 'runId', 'jobId', 'notificationId', 'feedbackAvailable', 'featureSource',
+    'createdAt', 'source', 'runId', 'jobId', 'notificationId', 'domainId', 'feedbackAvailable',
   ])) {
     throw invalidHistory();
   }
-  const { createdAt, source, runId, jobId, notificationId, feedbackAvailable } = value;
+  const { createdAt, source, runId, jobId, notificationId, domainId, feedbackAvailable } = value;
   if (!isIsoTimestamp(createdAt)) throw invalidHistory();
   if (source !== null && source !== 'chat' && source !== 'job' && source !== 'notification') throw invalidHistory();
   if (runId !== null && typeof runId !== 'string') throw invalidHistory();
   if (jobId !== null && typeof jobId !== 'string') throw invalidHistory();
   if (notificationId !== null && typeof notificationId !== 'string') throw invalidHistory();
+  if (domainId !== null && (typeof domainId !== 'string' || !DOMAIN_ID_PATTERN.test(domainId))) throw invalidHistory();
   if (typeof feedbackAvailable !== 'boolean') throw invalidHistory();
-  const featureSource = value.featureSource === undefined ? undefined : parseFeatureSource(value.featureSource);
-  if (featureSource && (source !== 'notification' || !notificationId)) throw invalidHistory();
-  return { createdAt, source, runId, jobId, notificationId, feedbackAvailable, ...(featureSource ? { featureSource } : {}) };
+  if (domainId !== null && (source !== 'notification' || !notificationId)) throw invalidHistory();
+  return { createdAt, source, runId, jobId, notificationId, domainId, feedbackAvailable };
 }
 
 function parseFeedbackEvent(value: unknown): MessageFeedbackEvent {

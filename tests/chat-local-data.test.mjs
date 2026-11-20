@@ -5,7 +5,7 @@ import { ChatSessionStore } from '../src/sessions/chat-session-store.ts';
 import { ApiError } from '../src/api/errors.ts';
 import { selectReadingAnchor } from '../src/workspace/conversation-scroll.ts';
 
-const metadata = { createdAt: '2026-11-12T00:00:00Z', source: 'chat', runId: null, jobId: null, notificationId: null, feedbackAvailable: true };
+const metadata = { createdAt: '2026-11-12T00:00:00Z', source: 'chat', runId: null, jobId: null, notificationId: null, domainId: null, feedbackAvailable: true };
 const message = (id, content = 'confirmed') => ({ id, role: 'user', content, metadata, feedback: { reaction: null, comments: [] } });
 const position = { messageId: 'u', offset: 27, following: false };
 const data = (patch = {}) => ({ piSessionId: 'binding', messages: [message('u')], draft: 'saved draft', readingPosition: position, ...patch });

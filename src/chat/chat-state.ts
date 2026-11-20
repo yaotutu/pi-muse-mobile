@@ -28,7 +28,7 @@ export type MessageAttachmentView = Omit<ConversationAttachment, 'sha256'>;
 
 /** 消息渲染视图：assistant 消息可同时含文本与多个工具卡 */
 export type MessageView = {
-  featureSource?: import('../notifications/contracts').FeatureSource;
+  domainId?: string | null;
   source?: import('../api/types').MessageSource | null;
   notificationId?: string | null;
   id: string;
@@ -45,63 +45,74 @@ export type MessageView = {
   streaming?: boolean;
 };
 
-const SMS_NOTIFICATION_ID_PATTERN = /^info-notification-inforun_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-(0|[1-9][0-9]*)$/i;
-const SMS_QUOTE_START = '【短信卡片引用】';
-const SMS_QUOTE_END = '【引用结束】';
-const SMS_QUOTE_PREFIX_PATTERN = /^【短信卡片引用】\n([\s\S]*?)\n【引用结束】(?:\n{1,2}([\s\S]*))?$/;
-const SMS_QUOTE_ANY_PATTERN = /^([\s\S]*?)(?:\n{1,2})?【短信卡片引用】\n([\s\S]*?)\n【引用结束】(?:\n{1,2}([\s\S]*))?$/;
+export type DomainQuote = { domainId: string; content: string };
 
-/** 判断是否为独立短信通道投递到聊天框的卡片（非普通助手对话，不入模型上下文）。 */
-export function isSmsNotificationMessage(
-  message: Pick<MessageView, 'role' | 'notificationId' | 'featureSource'> & { id?: string },
+const DOMAIN_ID_PATTERN = /^[a-z][a-z0-9_-]{0,63}$/;
+const DOMAIN_QUOTE_END = '【引用结束】';
+const DOMAIN_QUOTE_PREFIX_PATTERN = /^【领域引用:([a-z][a-z0-9_-]{0,63})】\n([\s\S]*?)\n【引用结束】(?:\n{1,2}([\s\S]*))?$/;
+const DOMAIN_QUOTE_ANY_PATTERN = /^([\s\S]*?)(?:\n{1,2})?【领域引用:([a-z][a-z0-9_-]{0,63})】\n([\s\S]*?)\n【引用结束】(?:\n{1,2}([\s\S]*))?$/;
+
+const DOMAIN_LABELS: Record<string, string> = {
+  sms: '短信速递',
+  news: '新闻',
+};
+
+export function domainLabelOf(domainId: string): string {
+  return DOMAIN_LABELS[domainId] ?? domainId;
+}
+
+/** 判断是否为独立后台领域子 Agent 投递到聊天框的通知卡片（非普通助手对话，不入模型上下文）。 */
+export function isDomainNotificationMessage(
+  message: Pick<MessageView, 'role' | 'domainId'>,
 ): boolean {
-  if (message.role !== 'assistant') return false;
-  if (message.featureSource?.featureId === 'sms') return true;
-  const candidate = message.notificationId !== undefined ? message.notificationId : message.id;
-  return typeof candidate === 'string' && SMS_NOTIFICATION_ID_PATTERN.test(candidate);
+  return message.role === 'assistant' && typeof message.domainId === 'string' && DOMAIN_ID_PATTERN.test(message.domainId);
 }
 
-/** 生成可发送的短信卡片引用载荷；界面层应通过 splitSmsQuote 渲染可视化引用卡片。 */
-export function formatSmsQuote(text: string): string {
-  return `${SMS_QUOTE_START}\n${text.trim()}\n${SMS_QUOTE_END}`;
+/** 生成可发送的领域卡片引用载荷；界面层应通过 splitDomainQuote 渲染可视化引用卡片。 */
+export function formatDomainQuote(domainId: string, text: string): string {
+  const safeId = DOMAIN_ID_PATTERN.test(domainId) ? domainId : 'domain';
+  const safeText = text.trim().replaceAll(DOMAIN_QUOTE_END, '【/引用结束】');
+  return `【领域引用:${safeId}】\n${safeText}\n${DOMAIN_QUOTE_END}`;
 }
 
-/** 从草稿或用户消息正文中拆分结构化的短信引用与用户输入文本，避免向 UI 暴露原始标记。 */
-export function splitSmsQuote(text: string): { quotedSms: string | null; body: string } {
-  const prefixMatch = text.match(SMS_QUOTE_PREFIX_PATTERN);
+/** 从草稿或用户消息正文中拆分结构化的领域引用与用户输入文本，避免向 UI 暴露原始标记。 */
+export function splitDomainQuote(text: string): { quote: DomainQuote | null; body: string } {
+  const prefixMatch = text.match(DOMAIN_QUOTE_PREFIX_PATTERN);
   if (prefixMatch) {
+    const content = prefixMatch[2]!.trim();
     return {
-      quotedSms: prefixMatch[1]!.trim() || null,
-      body: prefixMatch[2] ?? '',
+      quote: content ? { domainId: prefixMatch[1]!, content } : null,
+      body: prefixMatch[3] ?? '',
     };
   }
-  const anyMatch = text.match(SMS_QUOTE_ANY_PATTERN);
+  const anyMatch = text.match(DOMAIN_QUOTE_ANY_PATTERN);
   if (anyMatch) {
     const before = anyMatch[1] ?? '';
-    const after = anyMatch[3] ?? '';
+    const after = anyMatch[4] ?? '';
     const body = before && after ? `${before}\n\n${after}` : (before || after);
+    const content = anyMatch[3]!.trim();
     return {
-      quotedSms: anyMatch[2]!.trim() || null,
+      quote: content ? { domainId: anyMatch[2]!, content } : null,
       body,
     };
   }
-  return { quotedSms: null, body: text };
+  return { quote: null, body: text };
 }
 
-/** 将可选的短信引用与用户输入正文重新组合为完整发送草稿。 */
-export function composeSmsQuote(quotedSms: string | null | undefined, body: string): string {
-  const cleanBody = splitSmsQuote(body).body;
-  const trimmedQuote = quotedSms?.trim();
-  if (!trimmedQuote) return cleanBody;
-  const quoteBlock = formatSmsQuote(trimmedQuote);
+/** 将可选的领域引用与用户输入正文重新组合为完整发送草稿。 */
+export function composeDomainQuote(quote: DomainQuote | null | undefined, body: string): string {
+  const cleanBody = splitDomainQuote(body).body;
+  const trimmedContent = quote?.content.trim();
+  if (!quote || !trimmedContent) return cleanBody;
+  const quoteBlock = formatDomainQuote(quote.domainId, trimmedContent);
   return cleanBody.length > 0 ? `${quoteBlock}\n\n${cleanBody}` : quoteBlock;
 }
 
-export function appendSmsQuote(draft: string, text: string): string {
+export function appendDomainQuote(draft: string, domainId: string, text: string): string {
   const trimmed = text.trim();
   if (!trimmed) return draft;
-  const { body } = splitSmsQuote(draft);
-  return composeSmsQuote(trimmed, body);
+  const { body } = splitDomainQuote(draft);
+  return composeDomainQuote({ domainId, content: trimmed }, body);
 }
 
 /** 把服务端权威历史（含工具投影）转为视图；role=tool 回填到对应调用。 */
@@ -118,7 +129,7 @@ export function projectHistory(messages: ConversationMessage[]): MessageView[] {
         feedbackAvailable: message.metadata.feedbackAvailable,
         ...(message.metadata.source === 'notification' ? { source: message.metadata.source } : {}),
         ...(message.metadata.notificationId ? { notificationId: message.metadata.notificationId } : {}),
-        ...(message.metadata.featureSource ? { featureSource: message.metadata.featureSource } : {}),
+        ...(message.metadata.domainId ? { domainId: message.metadata.domainId } : {}),
         feedback: message.feedback,
       });
     } else if (message.role === 'assistant') {
@@ -134,7 +145,7 @@ export function projectHistory(messages: ConversationMessage[]): MessageView[] {
         feedbackAvailable: message.metadata.feedbackAvailable,
         ...(message.metadata.source === 'notification' ? { source: message.metadata.source } : {}),
         ...(message.metadata.notificationId ? { notificationId: message.metadata.notificationId } : {}),
-        ...(message.metadata.featureSource ? { featureSource: message.metadata.featureSource } : {}),
+        ...(message.metadata.domainId ? { domainId: message.metadata.domainId } : {}),
         feedback: message.feedback,
       });
     } else if (message.role === 'tool' && message.toolCallId) {

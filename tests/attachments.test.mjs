@@ -146,7 +146,7 @@ test('HttpApiClient 只上传四字段 DTO，并严格解析历史与流快照�
         id: 'message-1', role: 'user', content: '',
         metadata: {
           createdAt: '2026-10-28T00:00:00.000Z', source: 'chat', runId: null, jobId: null,
-          notificationId: null, feedbackAvailable: true,
+          notificationId: null, domainId: null, feedbackAvailable: true,
         },
         feedback: { reaction: null, comments: [] },
         attachments: [{
@@ -190,7 +190,7 @@ test('HttpApiClient 只上传四字段 DTO，并严格解析历史与流快照�
       }],
       metadata: {
         createdAt: '2026-10-28T00:00:00.000Z', source: null, runId: null, jobId: null,
-        notificationId: null, feedbackAvailable: true,
+        notificationId: null, domainId: null, feedbackAvailable: true,
       },
       feedback: { reaction: 'like', comments: [] },
     }],

@@ -39,13 +39,8 @@ export function isRootWorkspacePage({
   return false;
 }
 
-/** 专题 UI 暂缓；即使后端仍保留该会话，也不能把它的通知引用改投 main。 */
-export function notificationContinuationNotice(sessionId: string): string | undefined {
-  return sessionId === 'main' ? undefined : `来源会话 ${sessionId} 的继续处理暂不可用，目前仅支持主聊天。`;
-}
-
 export type ChatReturn = 'messages' | 'news';
-/** 只有显式新闻讨论保留文章返回来源；点击消息 Tab 或通知续聊会清理旧来源。 */
+/** 只有显式新闻讨论保留文章返回来源；点击消息 Tab 会清理旧来源。 */
 export function chatReturnForEntry(source: 'messages' | 'news' | 'notification'): ChatReturn {
   return source === 'news' ? 'news' : 'messages';
 }

@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { appendSmsQuote, composeSmsQuote, isSmsNotificationMessage, projectHistory, splitSmsQuote, StreamAggregator } from '../src/chat/chat-state.ts';
+import {
+  appendDomainQuote,
+  composeDomainQuote,
+  domainLabelOf,
+  isDomainNotificationMessage,
+  projectHistory,
+  splitDomainQuote,
+  StreamAggregator,
+} from '../src/chat/chat-state.ts';
 
 // 只重放协议事件，不加载 UI、网络或原生模块，确保回归结果不依赖运行环境。
 const aggregate = (events) => events.reduce((state, event) => {
@@ -17,7 +25,7 @@ const snapshot = (messages) => ({ type: 'MESSAGES_SNAPSHOT', messages });
 const feedback = { reaction: null, comments: [] };
 const metadata = (feedbackAvailable = true) => ({
   createdAt: '2026-10-28T00:00:00.000Z', source: 'chat', runId: null, jobId: null,
-  notificationId: null, feedbackAvailable,
+  notificationId: null, domainId: null, feedbackAvailable,
 });
 const user = (id, content) => ({ id, role: 'user', content, metadata: metadata(), feedback });
 const assistant = (id, content) => ({ id, role: 'assistant', content, metadata: metadata(), feedback });
@@ -196,7 +204,7 @@ test('历史投影按调用 ID 回填结果且不修改输入，settle 可重复
   assert.ok(state.messages.every((message) => message.streaming === false));
 });
 
-test('独立短信通知识别与方式一引用追加幂等保留原草稿', () => {
+test('独立领域通知识别与统一领域引用追加幂等保留原草稿', () => {
   const smsId = 'info-notification-inforun_01234567-89ab-cdef-0123-456789abcdef-0';
   const smsNotification = {
     id: smsId,
@@ -208,6 +216,22 @@ test('独立短信通知识别与方式一引用追加幂等保留原草稿', ()
       runId: null,
       jobId: null,
       notificationId: smsId,
+      domainId: 'sms',
+      feedbackAvailable: true,
+    },
+    feedback,
+  };
+  const emailNotification = {
+    id: 'email-notif-1',
+    role: 'assistant',
+    content: 'Email digest',
+    metadata: {
+      createdAt: '2026-10-28T00:00:00.000Z',
+      source: 'notification',
+      runId: null,
+      jobId: null,
+      notificationId: 'email-notif-1',
+      domainId: 'email',
       feedbackAvailable: true,
     },
     feedback,
@@ -222,41 +246,46 @@ test('独立短信通知识别与方式一引用追加幂等保留原草稿', ()
       runId: null,
       jobId: null,
       notificationId: 'server-notification-1',
+      domainId: null,
       feedbackAvailable: true,
     },
     feedback,
   };
-  const views = projectHistory([smsNotification, genericNotification, assistant('normal', '普通回答')]);
-  assert.equal(isSmsNotificationMessage(views[0]), true);
-  assert.equal(isSmsNotificationMessage(views[1]), false);
-  assert.equal(isSmsNotificationMessage(views[2]), false);
-  assert.equal(isSmsNotificationMessage({ role: 'user', notificationId: smsId }), false);
+  const views = projectHistory([smsNotification, emailNotification, genericNotification, assistant('normal', '普通回答')]);
+  assert.equal(isDomainNotificationMessage(views[0]), true);
+  assert.equal(isDomainNotificationMessage(views[1]), true);
+  assert.equal(isDomainNotificationMessage(views[2]), false);
+  assert.equal(isDomainNotificationMessage(views[3]), false);
+  assert.equal(isDomainNotificationMessage({ role: 'user', domainId: 'sms' }), false);
+  assert.equal(domainLabelOf('sms'), '短信速递');
+  assert.equal(domainLabelOf('news'), '新闻');
+  assert.equal(domainLabelOf('email'), 'email');
 
-  const quotedOnce = appendSmsQuote('帮我记一下', '【顺丰速运】取件码 3-4-2018');
-  assert.equal(quotedOnce, '【短信卡片引用】\n【顺丰速运】取件码 3-4-2018\n【引用结束】\n\n帮我记一下');
-  assert.equal(appendSmsQuote(quotedOnce, '【顺丰速运】取件码 3-4-2018'), quotedOnce);
+  const quotedOnce = appendDomainQuote('帮我记一下', 'sms', '【顺丰速运】取件码 3-4-2018');
+  assert.equal(quotedOnce, '【领域引用:sms】\n【顺丰速运】取件码 3-4-2018\n【引用结束】\n\n帮我记一下');
+  assert.equal(appendDomainQuote(quotedOnce, 'sms', '【顺丰速运】取件码 3-4-2018'), quotedOnce);
   assert.equal(
-    appendSmsQuote(quotedOnce, '【招商银行】账单到期提醒'),
-    '【短信卡片引用】\n【招商银行】账单到期提醒\n【引用结束】\n\n帮我记一下',
+    appendDomainQuote(quotedOnce, 'sms', '【招商银行】账单到期提醒'),
+    '【领域引用:sms】\n【招商银行】账单到期提醒\n【引用结束】\n\n帮我记一下',
   );
-  assert.equal(appendSmsQuote('', '   '), '');
+  assert.equal(appendDomainQuote('', 'sms', '   '), '');
 
-  assert.deepEqual(splitSmsQuote(quotedOnce), {
-    quotedSms: '【顺丰速运】取件码 3-4-2018',
+  assert.deepEqual(splitDomainQuote(quotedOnce), {
+    quote: { domainId: 'sms', content: '【顺丰速运】取件码 3-4-2018' },
     body: '帮我记一下',
   });
   assert.deepEqual(
-    splitSmsQuote('【短信卡片引用】\n取件码 3-4-2018\n【引用结束】\n\n什么时候取件 '),
-    { quotedSms: '取件码 3-4-2018', body: '什么时候取件 ' },
+    splitDomainQuote('【领域引用:news】\nAI 工程实践\n【引用结束】\n\n帮我总结 '),
+    { quote: { domainId: 'news', content: 'AI 工程实践' }, body: '帮我总结 ' },
   );
   assert.deepEqual(
-    splitSmsQuote('帮我记一下\n\n【短信卡片引用】\n【顺丰速运】取件码 3-4-2018\n【引用结束】'),
-    { quotedSms: '【顺丰速运】取件码 3-4-2018', body: '帮我记一下' },
+    splitDomainQuote('帮我记一下\n\n【领域引用:sms】\n【顺丰速运】取件码 3-4-2018\n【引用结束】'),
+    { quote: { domainId: 'sms', content: '【顺丰速运】取件码 3-4-2018' }, body: '帮我记一下' },
   );
-  assert.deepEqual(splitSmsQuote('普通问题'), { quotedSms: null, body: '普通问题' });
-  assert.equal(composeSmsQuote(null, '仅保留提问 '), '仅保留提问 ');
+  assert.deepEqual(splitDomainQuote('普通问题'), { quote: null, body: '普通问题' });
+  assert.equal(composeDomainQuote(null, '仅保留提问 '), '仅保留提问 ');
   assert.equal(
-    composeSmsQuote('取件码 3-4-2018', '什么时候取 '),
-    '【短信卡片引用】\n取件码 3-4-2018\n【引用结束】\n\n什么时候取 ',
+    composeDomainQuote({ domainId: 'sms', content: '取件码 3-4-2018' }, '什么时候取 '),
+    '【领域引用:sms】\n取件码 3-4-2018\n【引用结束】\n\n什么时候取 ',
   );
 });

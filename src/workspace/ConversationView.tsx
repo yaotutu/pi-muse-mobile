@@ -1,4 +1,3 @@
-import type { NotificationReference } from '../notifications/contracts';
 /**
  * 聊天会话主视图：消息列表、工具调用卡片、输入框与本地阅读位置恢复。
  *
@@ -11,7 +10,7 @@ import { AppState, Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, 
 import { useApi } from '../api/ApiProvider';
 import { pickMessageAttachments } from '../attachments/picker';
 import { AttachmentAction, AttachmentStrip, MessageAttachments } from '../attachments/AttachmentViews';
-import { appendSmsQuote, composeSmsQuote, isSmsNotificationMessage, splitSmsQuote, type MessageView } from '../chat/chat-state';
+import { appendDomainQuote, composeDomainQuote, domainLabelOf, isDomainNotificationMessage, splitDomainQuote, type MessageView } from '../chat/chat-state';
 import { useApprovals } from '../approvals/ApprovalProvider';
 import { useConversation } from '../chat/useConversation';
 import { useServiceConnection } from '../connection/ConnectionProvider';
@@ -44,7 +43,6 @@ export type ConversationViewProps = {
   onSettled: () => void;
   openConnection: () => void;
   onOpenApprovals?: () => void;
-  onContinueNotification?: (reference: NotificationReference) => void;
 };
 
 export function ConversationView({
@@ -54,7 +52,6 @@ export function ConversationView({
   onSettled,
   openConnection,
   onOpenApprovals,
-  onContinueNotification,
 }: ConversationViewProps) {
   const approvals = useApprovals();
   const sessionPendingApprovals = approvals.snapshot.pendingIds
@@ -155,7 +152,7 @@ export function ConversationView({
   const busy = conversation.running || runtime.running;
   const pending = session.pendingSubmission;
   const [steering, setSteering] = useState(false);
-  const { quotedSms: draftQuotedSms, body: draftBody } = useMemo(() => splitSmsQuote(session.draft), [session.draft]);
+  const { quote: draftQuote, body: draftBody } = useMemo(() => splitDomainQuote(session.draft), [session.draft]);
   const hasInput = !!session.draft.trim() || session.draftAttachments.length > 0;
   const canSend =
     !!connection?.enabled &&
@@ -359,11 +356,9 @@ export function ConversationView({
               canQuoteSms={sessions.canWrite(sessionId)}
               onQuoteSms={(text) => {
                 if (!sessions.canWrite(sessionId)) return;
-                sessions.setDraft(sessionId, appendSmsQuote(sessions.get(sessionId).draft, text));
+                sessions.setDraft(sessionId, appendDomainQuote(sessions.get(sessionId).draft, message.domainId ?? 'sms', text));
               }}
             />
-            {onContinueNotification && !isSmsNotificationMessage(message) && message.role === 'assistant' && message.featureSource && conversation.piSessionId && conversation.persistedMessageIds.has(message.id) &&
-              <ActionButton label="继续处理来源通知" onPress={() => onContinueNotification({ sessionId, messageId: message.id })} />}
             </View>
           ))}
           {pending?.status === 'failed' && (
@@ -444,24 +439,24 @@ export function ConversationView({
           }} />
           {!!attachmentError && <Text accessibilityRole="alert" style={styles.error}>{attachmentError}</Text>}
         </View>}
-        {!!draftQuotedSms && (
-          <View style={styles.smsComposerQuote} testID="sms-composer-quote">
+        {!!draftQuote && (
+          <View style={styles.smsComposerQuote} testID="domain-composer-quote">
             <View style={styles.smsComposerQuoteAccent} />
             <View style={styles.smsComposerQuoteBody}>
               <View style={styles.smsComposerQuoteHeader}>
                 <Inbox size={13} color={colors.blue} />
-                <Text style={styles.smsComposerQuoteTitle}>引用短信速递</Text>
+                <Text style={styles.smsComposerQuoteTitle}>引用{domainLabelOf(draftQuote.domainId)}</Text>
               </View>
               <Text style={styles.smsComposerQuoteText} numberOfLines={2}>
-                {draftQuotedSms}
+                {draftQuote.content}
               </Text>
             </View>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="取消引用短信"
+              accessibilityLabel="取消引用"
               onPress={() => sessions.setDraft(sessionId, draftBody)}
               style={({ pressed }) => [styles.smsComposerQuoteClear, pressed && styles.pressed]}
-              testID="sms-composer-quote-clear"
+              testID="domain-composer-quote-clear"
             >
               <X size={15} color={colors.muted} />
             </Pressable>
@@ -472,10 +467,10 @@ export function ConversationView({
           {/* 聊天输入与发送/停止共用动态高度胶囊；保留专用 TextInput 以维持光标、键盘和流式操作。 */}
           <TextInput
             accessibilityLabel="消息输入框"
-            placeholder={draftQuotedSms ? '针对引用短信提问…' : '消息'}
+            placeholder={draftQuote ? '针对引用内容提问…' : '消息'}
             placeholderTextColor={colors.faint}
             value={draftBody}
-            onChangeText={(text) => sessions.setDraft(sessionId, composeSmsQuote(draftQuotedSms, text))}
+            onChangeText={(text) => sessions.setDraft(sessionId, composeDomainQuote(draftQuote, text))}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
             editable={!session.deleting && !session.deleted && !session.resetting && !session.resetUncertain}
@@ -562,7 +557,7 @@ export function Message({ message, delivery, feedbackScope, canQuoteSms = false,
   canQuoteSms?: boolean;
   onQuoteSms?: (text: string) => void;
 }) {
-  if (isSmsNotificationMessage(message)) {
+  if (isDomainNotificationMessage(message)) {
     return (
       <SmsNotificationCard
         message={message}
@@ -582,15 +577,15 @@ function RegularMessage({ message, delivery, feedbackScope }: {
 }) {
   const styles = useStyles();
   const { colors } = useTheme();
-  const parsedSmsQuote = message.role === 'user' ? splitSmsQuote(message.text) : null;
-  const quotedSms = parsedSmsQuote?.quotedSms ?? null;
+  const parsedQuote = message.role === 'user' ? splitDomainQuote(message.text) : null;
+  const quotedDomain = parsedQuote?.quote ?? null;
   const visibleText = message.role === 'user'
-    ? (parsedSmsQuote ? parsedSmsQuote.body : message.text)
+    ? (parsedQuote ? parsedQuote.body : message.text)
     : getChatVisibleText(message.text);
   const copyableText = message.role === 'user'
-    ? [quotedSms, visibleText].filter(Boolean).join('\n\n')
+    ? [quotedDomain?.content, visibleText].filter(Boolean).join('\n\n')
     : visibleText;
-  const hasText = message.role === 'user' ? Boolean(visibleText.trim() || quotedSms) : !!visibleText.trim();
+  const hasText = message.role === 'user' ? Boolean(visibleText.trim() || quotedDomain) : !!visibleText.trim();
   const bubbleRef = useRef<ViewInstance>(null);
   const [bubbleLayout, setBubbleLayout] = useState<LayoutRectangle | null>(null);
   const [anchor, setAnchor] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
@@ -611,16 +606,15 @@ function RegularMessage({ message, delivery, feedbackScope }: {
     });
   };
   const bubbleContent = <>
-    {message.featureSource && <Text style={styles.featureSourceLabel}>来自{message.featureSource.featureId === 'news' ? '新闻' : '短信'}</Text>}
-    {message.role === 'user' && !!quotedSms && (
-      <View style={[styles.userSmsQuoteCard, !!visibleText && styles.userSmsQuoteSpacing]} testID={`message-sms-quote-${message.id}`}>
+    {message.role === 'user' && !!quotedDomain && (
+      <View style={[styles.userSmsQuoteCard, !!visibleText && styles.userSmsQuoteSpacing]} testID={`message-domain-quote-${message.id}`}>
         <View style={styles.userSmsQuoteAccent} />
         <View style={styles.userSmsQuoteBody}>
           <View style={styles.userSmsQuoteHeader}>
             <Inbox size={12} color={colors.onAccent} />
-            <Text style={styles.userSmsQuoteTitle}>短信速递</Text>
+            <Text style={styles.userSmsQuoteTitle}>{domainLabelOf(quotedDomain.domainId)}</Text>
           </View>
-          <Text style={styles.userSmsQuoteText} numberOfLines={4}>{quotedSms}</Text>
+          <Text style={styles.userSmsQuoteText} numberOfLines={4}>{quotedDomain.content}</Text>
         </View>
       </View>
     )}
@@ -805,7 +799,6 @@ const createStyles = (c: WorkspaceColors) =>
     userMessageUnconfirmed: { opacity: 0.75 },
     userMessageRow: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: spacing[8] },
     deliveryAlert: { width: sizing[24], height: sizing[24], alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-    featureSourceLabel: { ...t.caption, color: c.muted, marginBottom: spacing[4] },
     smsComposerQuote: {
       flexDirection: 'row',
       alignItems: 'center',

@@ -23,7 +23,7 @@ const { renderConversationHook } = await import('./helpers/hook-runner.ts');
 const feedback = { reaction: null, comments: [] };
 const metadata = (feedbackAvailable = true) => ({
   createdAt: '2026-10-28T00:00:00.000Z', source: 'chat', runId: null, jobId: null,
-  notificationId: null, feedbackAvailable,
+  notificationId: null, domainId: null, feedbackAvailable,
 });
 const userMessage = (id, content) => ({ id, role: 'user', content, metadata: metadata(), feedback });
 const conversation = (messages, revision, piSessionId = 'mock-session') => ({ sessionId: '11111111-1111-4111-8111-111111111111', piSessionId, revision, messages });

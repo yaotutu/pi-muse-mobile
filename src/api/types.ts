@@ -55,8 +55,8 @@ export type ConversationMessageMetadata = {
   runId: string | null;
   jobId: string | null;
   notificationId: string | null;
+  domainId: string | null;
   feedbackAvailable: boolean;
-  featureSource?: import('../notifications/contracts').FeatureSource;
 };
 
 type ConversationMessageBase = {

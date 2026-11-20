@@ -36,6 +36,7 @@ test('getConversation 保留 revision 与 messages 响应结构', async () => {
         runId: 'run-1',
         jobId: null,
         notificationId: null,
+        domainId: null,
         feedbackAvailable: true,
       },
       feedback: { reaction: null, comments: [] },

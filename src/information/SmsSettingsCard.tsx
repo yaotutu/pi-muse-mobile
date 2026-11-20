@@ -754,7 +754,7 @@ export function SmsSettingsCard({
       <Card style={styles.card}>
         <View style={styles.body}>
           <Text style={styles.title}>过滤规则与偏好</Text>
-          <Text style={styles.caption}>仅用于短信筛选，不影响聊天会话或助手人设。</Text>
+          <Text style={styles.caption}>仅用于短信筛选，不影响聊天会话或助手人设；也可以在聊天中直接告诉助手调整短信提醒规则。</Text>
         </View>
         <FormInput
           accessibilityLabel="信息过滤指示"
@@ -765,7 +765,7 @@ export function SmsSettingsCard({
           placeholder="例如：重要取件码、机票火车票、银行还款提醒我；促销广告和历史验证码直接忽略。"
           placeholderTextColor={colors.faint}
           style={styles.input}
-          maxLength={1000}
+          maxLength={20000}
         />
         <ActionButton
           label="保存提醒偏好"

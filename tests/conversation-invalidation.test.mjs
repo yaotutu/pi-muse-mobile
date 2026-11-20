@@ -44,7 +44,7 @@ test('conversation_updated 触发的权威历史刷新保留草稿，流式运�
     revision: `rev-${id}`,
     messages: [{
       id, role: 'assistant', content: id, metadata: {
-        createdAt: '2026-10-29T00:00:00.000Z', source: 'chat', runId: 'run-a', jobId: null, notificationId: null, feedbackAvailable: false,
+        createdAt: '2026-10-29T00:00:00.000Z', source: 'chat', runId: 'run-a', jobId: null, notificationId: null, domainId: null, feedbackAvailable: false,
       }, feedback: { reaction: null, comments: [] },
     }],
   });
@@ -80,7 +80,7 @@ test('会话切换后的历史读取只归属新会话，不回写旧会话消�
     revision: `rev-${sessionId}`,
     messages: [{
       id: `message-${sessionId}`, role: 'assistant', content: sessionId, metadata: {
-        createdAt: '2026-10-29T00:00:00.000Z', source: 'chat', runId: 'run-a', jobId: null, notificationId: null, feedbackAvailable: false,
+        createdAt: '2026-10-29T00:00:00.000Z', source: 'chat', runId: 'run-a', jobId: null, notificationId: null, domainId: null, feedbackAvailable: false,
       }, feedback: { reaction: null, comments: [] },
     }],
   });

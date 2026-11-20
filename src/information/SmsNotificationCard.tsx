@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Bookmark, Inbox, MessageSquare, ThumbsDown, ThumbsUp } from 'lucide-react-native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import type { MessageView } from '../chat/chat-state';
+import { domainLabelOf, type MessageView } from '../chat/chat-state';
 import { getChatVisibleText } from '../chat/chat-visible-text';
 import { useMessageFeedback } from '../feedback/useMessageFeedback';
 import { useTheme } from '../theme/ThemeProvider';
@@ -125,13 +125,14 @@ export function SmsNotificationCard({
   const styles = useMemo(() => createStyles(colors), [colors]);
   const visibleText = getChatVisibleText(message.text);
   const canQuoteText = canQuote && Boolean(onQuote) && !!visibleText.trim();
+  const domainTitle = domainLabelOf(message.domainId ?? 'sms');
 
   return (
-    <View style={styles.card} testID={`sms-card-${message.id}`}>
+    <View style={styles.card} testID={`domain-card-${message.id}`}>
       <View style={styles.header}>
         <View style={styles.titleRow}>
           <Inbox size={15} color={colors.blue} />
-          <Text style={styles.title}>短信速递</Text>
+          <Text style={styles.title}>{domainTitle}</Text>
         </View>
         <View style={styles.badgePill}>
           <Text style={styles.badge}>独立通道</Text>

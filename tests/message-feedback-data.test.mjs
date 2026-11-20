@@ -27,6 +27,7 @@ const metadata = (feedbackAvailable = true) => ({
   runId: 'run-1',
   jobId: null,
   notificationId: null,
+  domainId: null,
   feedbackAvailable,
 });
 const userMessage = (id, content, available = true) => ({

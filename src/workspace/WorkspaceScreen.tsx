@@ -51,7 +51,7 @@ import { MuseCompanion } from './MuseCompanion';
 import { FloatingCompanion } from './FloatingCompanion';
 import { COMPANION_OUTCOME_MS, companionState } from './companion-state';
 import { filesBackAction } from './settings-navigation';
-import { isRootWorkspacePage, notificationContinuationNotice, chatReturnForEntry, type ChatReturn, type PrimaryTabId } from './primary-nav';
+import { isRootWorkspacePage, chatReturnForEntry, type ChatReturn, type PrimaryTabId } from './primary-nav';
 
 
 /** 换服务器才销毁连接子树；切换主题、页面与会话不停止隐藏中的聊天流。 */
@@ -228,12 +228,7 @@ function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) 
     {/* 键盘 screenY 是窗口坐标，避让布局在 SafeAreaView 内；补上顶部安全区才能对齐，不能在 composer 再减一次键盘高度。 */}
     <View style={{ flex: 1 }} pointerEvents={browserOpen || panelPresented ? 'none' : 'auto'} accessibilityElementsHidden={browserOpen || panelPresented} importantForAccessibility={browserOpen || panelPresented ? 'no-hide-descendants' : 'auto'}><KeyboardAvoidingView style={{ flex: 1 }} keyboardVerticalOffset={insets.top} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled={Platform.OS !== 'web'}>
       <View style={{ flex: 1, display: page === 'news' ? 'none' : 'flex' }}><ConversationHost chatVisible={page === 'messages'} otherPage={otherPage} refreshVersions={refreshVersions}
-        onSettled={settled} onBindingMismatch={store.reload} openConnection={openConnection} onOpenApprovals={() => openCompanion('approvals')} onContinueNotification={(reference) => {
-          const unavailable = notificationContinuationNotice(reference.sessionId);
-          if (unavailable) { setNotice(unavailable); return; }
-          if (!chats.canWrite('main')) { setNotice('主聊天正在维护或结果待核对，暂不能追加通知引用。'); return; }
-          chats.setDraft('main', appendNewsQuote(chats.get('main').draft, `请继续处理这条来源通知（消息 ID：${reference.messageId}）。`)); openMain('notification');
-        }} /></View>
+        onSettled={settled} onBindingMismatch={store.reload} openConnection={openConnection} onOpenApprovals={() => openCompanion('approvals')} /></View>
       <View style={{ flex: 1, display: page === 'news' ? 'flex' : 'none' }} pointerEvents={page === 'news' ? 'auto' : 'none'} accessibilityElementsHidden={page !== 'news'} importantForAccessibility={page === 'news' ? 'auto' : 'no-hide-descendants'}>
         <NewsPage store={news} visible={page === 'news'} managing={newsManaging} onManaging={setNewsManaging} onDiscuss={(id) => {
           const snapshot = news.getSnapshot(); const article = snapshot.article?.id === id ? snapshot.article : snapshot.articles.find((item) => item.id === id);

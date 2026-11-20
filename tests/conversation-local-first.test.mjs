@@ -7,7 +7,7 @@ import { createMockApi, sessionStatusOf } from './helpers/conversation-test-harn
 import { renderConversationHook } from './helpers/hook-runner.ts';
 
 const id = 'main';
-const metadata = { createdAt: '2026-11-12T00:00:00Z', source: 'chat', runId: null, jobId: null, notificationId: null, feedbackAvailable: true };
+const metadata = { createdAt: '2026-11-12T00:00:00Z', source: 'chat', runId: null, jobId: null, notificationId: null, domainId: null, feedbackAvailable: true };
 const message = (content = 'hello') => ({ id: 'u', role: 'user', content, metadata, feedback: { reaction: null, comments: [] } });
 const snapshot = (messages = [message()]) => ({ sessionId: id, piSessionId: 'binding', revision: 'r', messages });
 const local = { piSessionId: 'binding', messages: [message('cached')], draft: 'draft', readingPosition: { messageId: 'u', offset: 5, following: false } };

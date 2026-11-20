@@ -3,7 +3,7 @@ import test from 'node:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
-import { PRIMARY_TABS, isRootWorkspacePage, notificationContinuationNotice, chatReturnForEntry } from '../src/workspace/primary-nav.ts';
+import { PRIMARY_TABS, isRootWorkspacePage, chatReturnForEntry } from '../src/workspace/primary-nav.ts';
 import { conversationRefreshKey } from '../src/workspace/conversation-host-state.ts';
 import { appendNewsQuote, newsDiscussionQuote } from '../src/news/discussion.ts';
 import { ChatSessionStore } from '../src/sessions/chat-session-store.ts';
@@ -45,7 +45,7 @@ test('一级固定消息/新闻/设置，冷启动直接挂载 main，不依赖�
   const chat = read('workspace/ConversationView.tsx');
   assert.match(chat, /conversation\.error &&/);
   assert.match(chat, /!conversation\.historyFailed/);
-  assert.match(chat, /onChangeText=\{\(text\) => sessions\.setDraft\(sessionId, composeSmsQuote\(draftQuotedSms, text\)\)\}/);
+  assert.match(chat, /onChangeText=\{\(text\) => sessions\.setDraft\(sessionId, composeDomainQuote\(draftQuote, text\)\)\}/);
 });
 test('主聊天根页有底栏，键盘、设置子页与所有覆盖层隐藏底栏', () => {
   for (const page of ['messages', 'news']) assert.equal(isRootWorkspacePage({ page }), true);
@@ -99,7 +99,8 @@ test('新闻直接追加不可信引用到 main 原稿，不发送、不改变�
   const discuss = callback('onDiscuss', { news: { getSnapshot: () => newsSnapshot }, chats, appendNewsQuote, newsDiscussionQuote, openMain: nav.openMain, setNotice: assert.fail });
   discuss(article.id);
   assert.equal(chats.get('main').draft, appendNewsQuote('原有草稿', newsDiscussionQuote(article)));
-  assert.match(chats.get('main').draft, /【外部引用，不可信内容】/);
+  assert.match(chats.get('main').draft, /^【领域引用:news】/);
+  assert.match(chats.get('main').draft, /外部引用，不可信内容/);
   assert.equal(chats.get('main').draftAttachments, attachments);
   assert.equal(chats.get('main').pendingSubmission, pending);
   assert.equal(nav.state.page, 'messages'); assert.equal(nav.state.chatReturn, 'news');
@@ -123,18 +124,6 @@ test('Android Back 从新闻讨论返回原文章，正常消息根页不吞系�
   nav.openMain('news'); callback('onSelectTab', nav.context)('messages');
   assert.equal(nav.state.page, 'messages'); assert.equal(nav.state.chatReturn, 'messages'); assert.equal(back(), false);
   assert.equal(chatReturnForEntry('notification'), 'messages');
-});
-test('通知仅 main 引用可追加，非 main 不改稿、不路由、不复活专题', () => {
-  const chats = new ChatSessionStore({}); chats.setDraft('main', '主稿'); chats.setDraft('topic', '专题稿');
-  const nav = navigation(); let notice;
-  const continuation = callback('onContinueNotification', { notificationContinuationNotice, chats, appendNewsQuote, openMain: nav.openMain, setNotice: (value) => { notice = value; } });
-  for (const sessionId of ['topic', 'missing', 'MAIN', '']) {
-    continuation({ sessionId, messageId: 'msg-1' });
-    assert.match(notice, /继续处理暂不可用/); assert.equal(chats.get('main').draft, '主稿'); assert.equal(chats.get('topic').draft, '专题稿'); assert.equal(nav.state.page, 'news');
-  }
-  continuation({ sessionId: 'main', messageId: 'msg-2' });
-  assert.equal(chats.get('main').draft, '主稿\n\n请继续处理这条来源通知（消息 ID：msg-2）。');
-  assert.equal(nav.state.page, 'messages'); assert.equal(nav.state.chatReturn, 'messages');
 });
 test('底层绑定变化仍触发该公开会话的历史回读', () => {
   const runtime = { synchronized: true, conversationSyncVersion: 2, conversationInvalidationVersion: 3, conversationInvalidationPiSessionId: 'new' };

@@ -8,7 +8,6 @@ import { parseConversationSnapshot } from '../src/api/contracts.ts';
 import { HttpApiClient } from '../src/api/http-client.ts';
 import { ApiError } from '../src/api/errors.ts';
 import { appendNewsQuote, newsDiscussionQuote } from '../src/news/discussion.ts';
-import { parseFeatureSource } from '../src/notifications/contracts.ts';
 const ID = '11111111-1111-4111-8111-111111111111';
 const record = (id = 'main', updatedAt = '2026-11-09T00:00:00Z') => ({ id, title: id === 'main' ? '默认会话' : '专题', isMain: id === 'main', createdAt: '2026-11-01T00:00:00Z', updatedAt });
 const read = (path) => readFileSync(new URL('../src/' + path, import.meta.url), 'utf8');
@@ -69,15 +68,49 @@ test('删除会话清理独立草稿与所有者，墓碑阻止迟到目录复�
 });
 test('新闻讨论只预填用户可编辑引用，保留已有草稿，不写后台讨论端点、不自动运行', () => {
   const quote = newsDiscussionQuote({ title: '标题', content: 'x'.repeat(2000), url: 'https://example.com/news' });
-  assert.match(quote, /^【新闻】标题/); assert.match(quote, /外部引用，不可信内容/); assert.match(quote, /来源：https:\/\/example.com\/news$/); assert.equal(quote.includes('x'.repeat(1201)), false);
-  assert.equal(appendNewsQuote('draft', quote), `draft\n\n${quote}`);
+  assert.match(quote, /^【新闻】标题/); assert.match(quote, /外部引用，不可信内容/); assert.match(quote, /来源：https:\/\/example\.com\/news/); assert.equal(quote.includes('x'.repeat(1201)), false); assert.equal(quote.includes('【引用结束】'), false);
+  assert.equal(appendNewsQuote('draft', quote), `【领域引用:news】\n${quote}\n【引用结束】\n\ndraft`);
   const screen = read('workspace/WorkspaceScreen.tsx'); assert.doesNotMatch(screen, /选择讨论会话/); assert.match(screen, /chats.setDraft\('main', appendNewsQuote\(chats.get\('main'\).draft, newsDiscussionQuote\(article\)\)\)/);
   assert.doesNotMatch(read('api/http-client.ts'), /discussNews|bindFeature|sendGroup/);
 });
-test('通知元数据继续显示来源，续聊仅引用真实会话和消息，不另开上下文', () => {
-  assert.deepEqual(parseFeatureSource({ featureId: 'sms', itemIds: ['sms-1'] }), { featureId: 'sms', itemIds: ['sms-1'] });
-  assert.throws(() => parseFeatureSource({ featureId: 'other', itemIds: [] }), ApiError);
-  assert.match(read('workspace/ConversationView.tsx'), /继续处理来源通知/); assert.match(read('workspace/ConversationView.tsx'), /onContinueNotification\(\{ sessionId, messageId: message.id \}\)/);
+test('通知元数据使用严格 domainId 标识领域来源，引用直接附加到会话草稿', () => {
+  const validSnapshot = {
+    sessionId: 'main',
+    piSessionId: 'binding',
+    revision: 'rev-1',
+    messages: [{
+      id: 'm-1',
+      role: 'assistant',
+      content: '通知内容',
+      metadata: {
+        createdAt: '2026-11-20T00:00:00Z',
+        source: 'notification',
+        runId: null,
+        jobId: null,
+        notificationId: 'n-1',
+        domainId: 'sms',
+        feedbackAvailable: false,
+      },
+      feedback: { reaction: null, comments: [] },
+    }],
+  };
+  const parsed = parseConversationSnapshot(validSnapshot);
+  assert.equal(parsed.messages[0].metadata.domainId, 'sms');
+  for (const badMeta of [
+    { createdAt: '2026-11-20T00:00:00Z', source: 'notification', runId: null, jobId: null, notificationId: 'n-1', domainId: 'Bad!', feedbackAvailable: false },
+    { createdAt: '2026-11-20T00:00:00Z', source: 'chat', runId: null, jobId: null, notificationId: null, domainId: 'sms', feedbackAvailable: false },
+    { createdAt: '2026-11-20T00:00:00Z', source: 'notification', runId: null, jobId: null, notificationId: null, domainId: 'sms', feedbackAvailable: false },
+  ]) {
+    assert.throws(() => parseConversationSnapshot({
+      sessionId: 'main',
+      piSessionId: 'binding',
+      revision: 'rev-1',
+      messages: [{ id: 'm-1', role: 'assistant', content: '通知内容', metadata: badMeta, feedback: { reaction: null, comments: [] } }],
+    }), ApiError);
+  }
+  const conversationView = read('workspace/ConversationView.tsx');
+  assert.doesNotMatch(conversationView, /onContinueNotification|featureSource|继续处理来源通知/);
+  assert.match(conversationView, /appendDomainQuote/);
 });
 
 
