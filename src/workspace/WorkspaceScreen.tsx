@@ -108,6 +108,7 @@ function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) 
   // 新近终态：运行从 running 回落时短时驱动成功/失败/停止姿态，随后清除；setState 全部异步调度避免级联渲染。
   const [recentOutcome, setRecentOutcome] = useState<'succeeded' | 'failed' | 'cancelled'>();
   const currentState = useSessionState('main'); const mainRuntime = useSessionRuntime('main'); const [settingsPage, setSettingsPage] = useState<SettingsPage | null>(null);
+  const smsBackRef = useRef<(() => boolean) | null>(null);
   const wasRunning = useRef(false);
   useEffect(() => {
     const falling = wasRunning.current && !mainRuntime.running;
@@ -159,6 +160,7 @@ function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) 
   };
   const returnToArticle = () => { Keyboard.dismiss(); setChatReturn('messages'); setPage('news'); };
   const backSettings = () => {
+    if (settingsPage === 'sms' && smsBackRef.current?.()) return;
     if (settingsPage === 'files') {
       const action = filesBackAction(files.getSnapshot());
       if (action === 'locked') { Alert.alert('文件操作未收口', '请先回读核对，不能通过返回解除锁定。'); return; }
@@ -206,7 +208,6 @@ function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) 
   else if (settingsPage === 'profile') settingsContent = <ProfilePanel />;
   else if (settingsPage === 'memory') settingsContent = <MemoryPanel />;
   else if (settingsPage === 'dream') settingsContent = <DreamPanel />;
-  else if (settingsPage === 'sms') settingsContent = <SmsSettingsCard onOpenChat={() => openMain('messages')} />;
   else if (settingsPage === 'goals') settingsContent = <GoalsPanel />;
   else if (settingsPage === 'jobs' || settingsPage === 'monitors') settingsContent = <SchedulePanel kind={settingsPage} />;
   else if (settingsPage === 'rules' || settingsPage === 'skills') settingsContent = <><Text style={{ color: colors.muted }}>主聊天</Text><SessionSettings sessionId="main" section={settingsPage} onSaved={() => refresh('main')} /></>;
@@ -217,6 +218,7 @@ function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) 
     resetUncertain={currentState.resetUncertain} onVerifyReset={() => void checkReset()}
     onAcknowledgeReset={currentState.resetReviewed ? () => chats.acknowledgeReset('main') : undefined} />;
   const otherPage = page === 'settings' ? settingsPage === 'files' ? <FilesScreen onBack={backSettings} /> : settingsPage === 'news-sources' ? <NewsSourcesPage store={news} onBack={backSettings} />
+      : settingsPage === 'sms' ? <SmsSettingsCard backRef={smsBackRef} onBack={backSettings} onOpenChat={() => openMain('messages')} />
       : settingsPage ? <><PageHeader title={SETTINGS_PAGE_TITLES[settingsPage]} backLabel="返回设置" onBack={backSettings} />
         {settingsPage === 'goals' || settingsPage === 'activity' ? settingsContent : <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: spacing[20], gap: spacing[12] }}>{settingsContent}</ScrollView>}</> : rootSettings : null;
   const root = isRootWorkspacePage({ page, settingsSubpage: settingsPage, newsDetailOpen: !!newsState.selectedArticleId, newsManaging, sessionMounted: panelPresented || browserOpen || !!resetTarget });

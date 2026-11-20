@@ -155,16 +155,7 @@ export function ConversationView({
   const busy = conversation.running || runtime.running;
   const pending = session.pendingSubmission;
   const [steering, setSteering] = useState(false);
-  const lastView = conversation.views.at(-1);
-  const latestSmsMessage = lastView && isSmsNotificationMessage(lastView) ? lastView : undefined;
-  const latestSmsText = latestSmsMessage ? getChatVisibleText(latestSmsMessage.text).trim() : '';
   const { quotedSms: draftQuotedSms, body: draftBody } = useMemo(() => splitSmsQuote(session.draft), [session.draft]);
-  const showLatestSmsQuoteBar = Boolean(
-    !draftQuotedSms &&
-    latestSmsMessage &&
-    latestSmsText &&
-    sessions.canWrite(sessionId),
-  );
   const hasInput = !!session.draft.trim() || session.draftAttachments.length > 0;
   const canSend =
     !!connection?.enabled &&
@@ -453,27 +444,6 @@ export function ConversationView({
           }} />
           {!!attachmentError && <Text accessibilityRole="alert" style={styles.error}>{attachmentError}</Text>}
         </View>}
-        {showLatestSmsQuoteBar && (
-          <View style={styles.smsLatestQuoteBar} testID="sms-latest-quote-bar">
-            <View style={styles.smsLatestQuoteContent}>
-              <Inbox size={15} color={colors.blue} />
-              <Text style={styles.smsLatestQuoteText} numberOfLines={1}>
-                针对刚收到的短信提问？
-              </Text>
-            </View>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="引用刚收到的短信到对话"
-              onPress={() => {
-                sessions.setDraft(sessionId, appendSmsQuote(sessions.get(sessionId).draft, latestSmsText));
-              }}
-              style={({ pressed }) => [styles.smsLatestQuoteButton, pressed && styles.pressed]}
-              testID="sms-latest-quote-action"
-            >
-              <Text style={styles.smsLatestQuoteButtonText}>引用到对话</Text>
-            </Pressable>
-          </View>
-        )}
         {!!draftQuotedSms && (
           <View style={styles.smsComposerQuote} testID="sms-composer-quote">
             <View style={styles.smsComposerQuoteAccent} />
@@ -836,44 +806,6 @@ const createStyles = (c: WorkspaceColors) =>
     userMessageRow: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: spacing[8] },
     deliveryAlert: { width: sizing[24], height: sizing[24], alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
     featureSourceLabel: { ...t.caption, color: c.muted, marginBottom: spacing[4] },
-    smsLatestQuoteBar: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      marginHorizontal: l.sidePadding,
-      marginBottom: spacing[8],
-      paddingHorizontal: spacing[12],
-      paddingVertical: spacing[8],
-      borderRadius: r.field,
-      backgroundColor: c.blueSoft,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: c.blue,
-      gap: spacing[8],
-    },
-    smsLatestQuoteContent: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing[6],
-      flex: 1,
-    },
-    smsLatestQuoteText: {
-      ...t.caption,
-      color: c.ink,
-      flex: 1,
-    },
-    smsLatestQuoteButton: {
-      paddingHorizontal: spacing[10],
-      paddingVertical: spacing[4],
-      borderRadius: r.round,
-      backgroundColor: c.surface,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: c.blue,
-    },
-    smsLatestQuoteButtonText: {
-      ...t.caption,
-      color: c.blue,
-      fontWeight: '600',
-    },
     smsComposerQuote: {
       flexDirection: 'row',
       alignItems: 'center',

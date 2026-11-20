@@ -67,8 +67,20 @@ test('原生并发短信不丢失，条目去重并有界；分析成功与读�
  f.client.listSmsItems=async()=>{throw Error('offline');};await f.store.triggerRun();assert.equal(runs,1);assert.equal(f.store.getSnapshot().needsReadback,false);assert.match(f.store.getSnapshot().notice,/分析已完成/);assert.match(f.store.getSnapshot().error,/同步失败/);
  }finally{f.store.dispose();}
 });
-test('页面只控制刷新生命周期，权限与监听在连接所有者，状态文案为中文，展示已学习习惯且无开发杂项常驻首屏',()=>{
- const read=p=>readFileSync(new URL('../src/'+p,import.meta.url),'utf8');const ui=read('information/SmsSettingsCard.tsx');assert.match(ui,/setVisible\(true\); return \(\) => setVisible\(false\)/);assert.match(ui,/processing: '分析中'/);assert.match(ui,/failed: '分析失败'/);assert.match(ui,/sms-learned-notes/);assert.match(ui,/已学习的短信习惯/);
+test('页面只控制刷新生命周期，权限与监听在连接所有者，采用一层总览与二级子页且简报默认折叠，输入框上方无常驻引用提示条',()=>{
+ const read=p=>readFileSync(new URL('../src/'+p,import.meta.url),'utf8');
+ const ui=read('information/SmsSettingsCard.tsx');
+ assert.match(ui,/setVisible\(true\); return \(\) => setVisible\(false\)/);
+ assert.match(ui,/processing: '分析中'/);
+ assert.match(ui,/failed: '分析失败'/);
+ assert.match(ui,/sms-learned-notes/);
+ assert.match(ui,/已学习的短信习惯/);
+ assert.match(ui,/sms-nav-briefing/);
+ assert.match(ui,/sms-nav-preferences/);
+ assert.match(ui,/sms-briefing-toggle/);
+ assert.match(ui,/useState\(false\)/);
+ const conv=read('workspace/ConversationView.tsx');
+ assert.doesNotMatch(conv,/sms-latest-quote-bar|针对刚收到的短信提问/);
  const hook=read('information/useSmsInformation.ts');assert.match(hook,/AppState.addEventListener/);assert.match(hook,/store.setForeground\(next === 'active'\)/);assert.match(hook,/hasSmsPermission !== true/);assert.doesNotMatch(ui,/setInterval|addSmsListener|requestSmsPermission/);
 });
 
