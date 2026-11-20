@@ -139,8 +139,6 @@ function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) 
     if (panelOpen) closeCompanion();
     else openCompanion(panelPresented ? sessionTab : 'activity');
   };
-  // 离开消息或打开更高优先级操作时立即隐藏展开态，不将它带入设置/重置弹层。
-  const leaveCompanion = () => setCompanionPresence({ expanded: false, presented: false });
   const [refreshVersions, setRefreshVersions] = useState<Record<string, number>>({});
   const refresh = useCallback((id: string) => { void store.reload(); goals.invalidate(); setRefreshVersions((old) => ({ ...old, [id]: (old[id] ?? 0) + 1 })); }, [store, goals]);
   // 聊天终态已由会话 Hook 完成权威对账；这里只刷新关联领域，不能再次失效同一份历史。

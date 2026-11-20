@@ -72,7 +72,7 @@
 - 公开 `sessionId` 为 main 或服务端创建的 UUID；`piSessionId` 仅表示底层历史绑定。reset 保留公开 ID，完整历史读取后建立新绑定。聊天所有者以公开 ID + epoch 隔离。
 - `SessionStore` 保留通用目录能力，`ChatSessionStore` 保留每会话聊天/设置草稿；当前 UI 只绑定 main，不用目录结果决定聊天是否挂载。目录与正文不复制第二份服务端事实，目录失败也不合成记录。通用创建 API 无客户端幂等键，结果未明锁住再次创建，先回读核对；当前 UI 不提供创建入口。
 - `/api/events` 唯一通知流使用 `session_status_updated` / `session_presence_updated`，ready 集合为 sessionStatuses / sessionPresences。`conversation_updated` 只失效指定公开会话；piSessionId 变化也需要回读，不能继续旧上下文。
-- 来源元数据仅消费服务端的 featureSource，不从正文猜来源。通知续聊仅 main 引用可追加到用户既有草稿；非 main 引用明确提示暂不可用，不改投 main、不复活或进入专题 UI，也不自动发送。
+- 来源元数据仅消费服务端的 `domainId`（仅当 `source === 'notification'` 且存在 `notificationId` 时允许），不从正文猜来源。各领域卡片通过 `src/chat/chat-state.ts` 的 `splitDomainQuote` / `appendDomainQuote` 使用统一 `【领域引用:<domainId>】...【引用结束】` 载荷追加到主聊天草稿，不自动发送，不另开会话上下文。
 - subagent 是无独立会话的模型工具，UI 显示“子任务”，协议字段 subagentId / waiting_subagents 保持不变。
 
 ## 新闻与短信
