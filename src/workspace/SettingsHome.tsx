@@ -4,7 +4,7 @@ import { useTheme } from '../theme/ThemeProvider';
 import { spacing, themeTokens } from '../theme/tokens';
 import { Card } from '../ui/Surfaces';
 
-export type SettingsPage = 'profile' | 'memory' | 'dream' | 'goals' | 'jobs' | 'monitors' | 'files' | 'sms' | 'rules' | 'skills' | 'activity' | 'news-sources' | 'news-preferences' | 'appearance' | 'companion';
+export type SettingsPage = 'profile' | 'memory' | 'dream' | 'goals' | 'jobs' | 'monitors' | 'files' | 'sms' | 'rules' | 'skills' | 'news-sources' | 'news-preferences' | 'appearance' | 'companion';
 
 export const SETTINGS_PAGE_TITLES: Record<SettingsPage, string> = {
   profile: '身份与人设',
@@ -17,7 +17,6 @@ export const SETTINGS_PAGE_TITLES: Record<SettingsPage, string> = {
   sms: '短信设置',
   rules: '会话指令',
   skills: '会话技能',
-  activity: '动态与审批',
   'news-sources': '新闻来源',
   'news-preferences': '新闻偏好',
   appearance: '外观主题',
@@ -40,7 +39,6 @@ const PAGE_GROUPS: readonly { title: string; entries: readonly PageEntry[] }[] =
     { page: 'jobs', icon: Clock, description: '按设定时间自动执行' },
     { page: 'monitors', icon: Radio, description: '网页变化与关键词提醒' },
     { page: 'files', icon: BookOpen, description: '浏览与管理共享工作区' },
-    { page: 'activity', icon: ShieldCheck, description: '查看主聊天执行与审批' },
   ] },
 ];
 

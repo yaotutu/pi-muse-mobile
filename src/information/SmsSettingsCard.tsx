@@ -753,8 +753,7 @@ export function SmsSettingsCard({
 
       <Card style={styles.card}>
         <View style={styles.body}>
-          <Text style={styles.title}>过滤规则与偏好</Text>
-          <Text style={styles.caption}>仅用于短信筛选，不影响聊天会话或助手人设；也可以在聊天中直接告诉助手调整短信提醒规则。</Text>
+          <Text style={styles.caption}>填写哪些短信需要提醒、哪些可以忽略，也可以在聊天中告诉助手。</Text>
         </View>
         <FormInput
           accessibilityLabel="信息过滤指示"
@@ -767,15 +766,15 @@ export function SmsSettingsCard({
           style={styles.input}
           maxLength={20000}
         />
-        <ActionButton
+        {(notesDirty || info.saving) && <ActionButton
           label="保存提醒偏好"
-          text={info.saving ? '正在保存…' : notesDirty ? '保存偏好' : '已保存'}
+          text="保存偏好"
           icon={Check}
-          tone={notesDirty ? 'primary' : 'secondary'}
+          tone="primary"
           busy={info.saving}
           disabled={!notesDirty || info.loading || info.saving || info.needsReadback}
           onPress={() => void info.saveNotes()}
-        />
+        />}
       </Card>
     </>
   );

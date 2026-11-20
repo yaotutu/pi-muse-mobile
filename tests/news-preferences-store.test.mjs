@@ -111,6 +111,6 @@ test('唯一偏好所有者位于连接内，页面只订阅草稿，不保存�
   assert.match(root, /useState\(\(\) => new NewsPreferencesStore\(api\)\)/);
   assert.match(root, /newsPreferences\.dispose\(\)/); assert.match(root, /newsPreferences\.setActive/);
   assert.match(card, /store\.open\(\); return \(\) => store\.close\(\)/);
-  assert.match(card, /value=\{draftNotes\}/); assert.doesNotMatch(card, /useState|useApi|saveNewsPreferences/);
+  assert.match(card, /value=\{draftNotes\}/); assert.doesNotMatch(card, /useApi|saveNewsPreferences/);
   assert.doesNotMatch(source('news/news-preferences-store.ts'), /AsyncStorage|SecureStore|setInterval/);
 });

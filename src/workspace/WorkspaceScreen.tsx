@@ -208,8 +208,7 @@ function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) 
   else if (settingsPage === 'dream') settingsContent = <DreamPanel />;
   else if (settingsPage === 'goals') settingsContent = <GoalsPanel />;
   else if (settingsPage === 'jobs' || settingsPage === 'monitors') settingsContent = <SchedulePanel kind={settingsPage} />;
-  else if (settingsPage === 'rules' || settingsPage === 'skills') settingsContent = <><Text style={{ color: colors.muted }}>主聊天</Text><SessionSettings sessionId="main" section={settingsPage} onSaved={() => refresh('main')} /></>;
-  else if (settingsPage === 'activity') settingsContent = <SessionPanel sessionId="main" tab={sessionTab} onTab={setSessionTab} />;
+  else if (settingsPage === 'rules' || settingsPage === 'skills') settingsContent = <SessionSettings key={settingsPage} sessionId="main" section={settingsPage} />;
   const rootSettings = <SettingsHome onOpen={setSettingsPage} onConnection={openConnection}
     onBrowser={() => { Keyboard.dismiss(); browser.open(); setBrowserOpen(true); }} onUpdate={update?.open}
     onReset={() => { Keyboard.dismiss(); setResetError(undefined); setResetTarget('main'); }}
@@ -218,7 +217,7 @@ function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) 
   const otherPage = page === 'settings' ? settingsPage === 'files' ? <FilesScreen onBack={backSettings} /> : settingsPage === 'news-sources' ? <NewsSourcesPage store={news} onBack={backSettings} />
       : settingsPage === 'sms' ? <SmsSettingsCard backRef={smsBackRef} onBack={backSettings} onOpenChat={() => openMain('messages')} />
       : settingsPage ? <><PageHeader title={SETTINGS_PAGE_TITLES[settingsPage]} backLabel="返回设置" onBack={backSettings} />
-        {settingsPage === 'goals' || settingsPage === 'activity' ? settingsContent : <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: spacing[20], gap: spacing[12] }}>{settingsContent}</ScrollView>}</> : rootSettings : null;
+        {(settingsPage === 'goals' || settingsPage === 'rules' || settingsPage === 'skills') ? settingsContent : <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: spacing[20], gap: spacing[12] }}>{settingsContent}</ScrollView>}</> : rootSettings : null;
   const root = isRootWorkspacePage({ page, settingsSubpage: settingsPage, newsDetailOpen: !!newsState.selectedArticleId, newsManaging, sessionMounted: panelPresented || browserOpen || !!resetTarget });
   return <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} testID="workspace-screen"><ThemeStatusBar />
     {/* 普通相对容器位于安全区内容内，避免绝对定位直接相对 SafeAreaView 边界压进状态栏。 */}

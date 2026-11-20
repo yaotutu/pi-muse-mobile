@@ -10,7 +10,7 @@ const source = readFileSync(new URL('../src/workspace/SettingsHome.tsx', import.
 const expectedTitles = {
   profile: '身份与人设', memory: '长期记忆', dream: 'Dream 记忆整理', goals: '目标',
   jobs: '定时任务', monitors: '网页监控', files: '工作区文件', sms: '短信设置',
-  rules: '会话指令', skills: '会话技能', activity: '动态与审批',
+  rules: '会话指令', skills: '会话技能',
   'news-sources': '新闻来源', 'news-preferences': '新闻偏好', appearance: '外观主题', companion: '助手形象',
 };
 
@@ -87,13 +87,13 @@ test('设置首页公开全部页面标题，四组入口完整且无重复', ()
   assert.deepEqual(rows.map((row) => row.props.accessibilityLabel).sort(), expectedLabels);
   const ids = rows.map((row) => row.props.testID);
   assert.equal(new Set(ids).size, rows.length);
-  assert.equal(rows.length, 18);
+  assert.equal(rows.length, 17);
   const cards = nodes(tree).filter((node) => node.type === 'Card');
   assert.deepEqual(cards.map((card) => nodes(card).filter((node) => node.type === 'Pressable')
     .map((row) => row.props.accessibilityLabel)), [
     ['身份与人设', '会话指令', '会话技能', 'Dream 记忆整理'],
     ['新闻来源', '新闻偏好', '短信设置'],
-    ['长期记忆', '目标', '定时任务', '网页监控', '工作区文件', '动态与审批'],
+    ['长期记忆', '目标', '定时任务', '网页监控', '工作区文件'],
     ['外观主题', '助手形象', '浏览器', '服务器连接', '应用更新'],
   ]);
 });
@@ -114,14 +114,14 @@ test('每个页面和独立操作仅调用对应目标，浏览器保留原 test
 
 test('未提供 onUpdate 时不展示更新入口，其余功能不变', () => {
   const { rows } = render();
-  assert.equal(rows.length, 17);
+  assert.equal(rows.length, 16);
   assert.equal(rows.some((row) => row.props.testID === 'settings-update'), false);
   assert.equal(rows.some((row) => row.props.accessibilityLabel === '应用更新'), false);
 });
 
 test('重置与未明恢复动作集中在底部危险操作组，不混入普通设置卡', () => {
   const { tree, rows, calls } = render({ reset: true });
-  assert.equal(rows.length, 18);
+  assert.equal(rows.length, 17);
   const headers = nodes(tree).filter((node) => node.props.accessibilityRole === 'header');
   assert.deepEqual(headers.map((node) => node.props.children),
     ['设置', '助手', '内容与信息', '记录与任务', '应用与连接', '危险操作']);
