@@ -1199,6 +1199,7 @@ export class HttpApiClient implements ApiClient {
       ? {
           ...(options.background === undefined ? {} : { background: options.background }),
           ...(options.forceInitial === undefined ? {} : { forceInitial: options.forceInitial }),
+          ...(options.retryFailed === undefined ? {} : { retryFailed: options.retryFailed }),
         }
       : {};
     await this.request<unknown>(`/api/information/runs`, {

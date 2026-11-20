@@ -60,6 +60,15 @@ export type InformationItemsPage = {
   nextCursor?: string;
 };
 
+export type InformationLatestBriefing = {
+  runId: string;
+  notificationId: string;
+  text: string;
+  createdAt: string;
+  itemCount: number;
+  messageId?: string;
+};
+
 export type InformationStatus = {
   running: boolean;
   initialAnalysisCompleted: boolean;
@@ -70,6 +79,8 @@ export type InformationStatus = {
     processed: number;
     failed: number;
   };
+  latestBriefing?: InformationLatestBriefing;
+  lastError?: string;
 };
 
 export type SmsImportProgress = {
@@ -81,4 +92,5 @@ export type SmsImportProgress = {
 export type InformationRunOptions = {
   background?: boolean;
   forceInitial?: boolean;
+  retryFailed?: boolean;
 };

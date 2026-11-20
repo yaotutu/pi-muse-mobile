@@ -189,7 +189,7 @@ export function useSmsInformation() {
     setDraftNotes: store.setDraftNotes, toggleEnabled: store.toggleEnabled, saveNotes: store.saveNotes,
     ingestSms: store.ingestSms, ingestBatch: store.ingestBatch,
     importInboxSms: importAllInboxSms, importAllInboxSms, importSampleHistory,
-    triggerRun: store.triggerRun, reload: store.reload, setVisible: store.setVisible,
+    triggerRun: store.triggerRun, retryFailed: store.retryFailed, reload: store.reload, setVisible: store.setVisible,
     isSmsAvailable: isSmsReceiverAvailable(), hasSmsPermission, inboxTotalCount,
     checkPermission, requestPermission, openPermissionSettings: openSmsPermissionSettings,
   };

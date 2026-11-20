@@ -206,7 +206,7 @@ function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) 
   else if (settingsPage === 'profile') settingsContent = <ProfilePanel />;
   else if (settingsPage === 'memory') settingsContent = <MemoryPanel />;
   else if (settingsPage === 'dream') settingsContent = <DreamPanel />;
-  else if (settingsPage === 'sms') settingsContent = <SmsSettingsCard />;
+  else if (settingsPage === 'sms') settingsContent = <SmsSettingsCard onOpenChat={() => openMain('messages')} />;
   else if (settingsPage === 'goals') settingsContent = <GoalsPanel />;
   else if (settingsPage === 'jobs' || settingsPage === 'monitors') settingsContent = <SchedulePanel kind={settingsPage} />;
   else if (settingsPage === 'rules' || settingsPage === 'skills') settingsContent = <><Text style={{ color: colors.muted }}>主聊天</Text><SessionSettings sessionId="main" section={settingsPage} onSaved={() => refresh('main')} /></>;

@@ -67,8 +67,8 @@ test('原生并发短信不丢失，条目去重并有界；分析成功与读�
  f.client.listSmsItems=async()=>{throw Error('offline');};await f.store.triggerRun();assert.equal(runs,1);assert.equal(f.store.getSnapshot().needsReadback,false);assert.match(f.store.getSnapshot().notice,/分析已完成/);assert.match(f.store.getSnapshot().error,/同步失败/);
  }finally{f.store.dispose();}
 });
-test('页面只控制刷新生命周期，权限与监听在连接所有者，状态文案为中文，展示 Sub-Agent 自学习画像',()=>{
- const read=p=>readFileSync(new URL('../src/'+p,import.meta.url),'utf8');const ui=read('information/SmsSettingsCard.tsx');assert.match(ui,/setVisible\(true\); return \(\) => setVisible\(false\)/);assert.match(ui,/processing: '分析中'/);assert.match(ui,/failed: '分析失败'/);assert.match(ui,/sms-learned-notes/);assert.match(ui,/Sub-Agent 已学习的敏感度画像/);
+test('页面只控制刷新生命周期，权限与监听在连接所有者，状态文案为中文，展示已学习习惯且无开发杂项常驻首屏',()=>{
+ const read=p=>readFileSync(new URL('../src/'+p,import.meta.url),'utf8');const ui=read('information/SmsSettingsCard.tsx');assert.match(ui,/setVisible\(true\); return \(\) => setVisible\(false\)/);assert.match(ui,/processing: '分析中'/);assert.match(ui,/failed: '分析失败'/);assert.match(ui,/sms-learned-notes/);assert.match(ui,/已学习的短信习惯/);
  const hook=read('information/useSmsInformation.ts');assert.match(hook,/AppState.addEventListener/);assert.match(hook,/store.setForeground\(next === 'active'\)/);assert.match(hook,/hasSmsPermission !== true/);assert.doesNotMatch(ui,/setInterval|addSmsListener|requestSmsPermission/);
 });
 
@@ -136,7 +136,79 @@ test('大批量历史短信分段 200 条上传并清洗脏时间与重复键，
     f.remote.items = [{ id: 'done-1', status: 'processed' }];
     await f.store.reload();
     assert.equal(f.store.getSnapshot().status?.running, false);
-    assert.match(f.store.getSnapshot().notice, /历史短信全量分析完成：已处理 1 条，已生成精炼简报/);
+    assert.match(f.store.getSnapshot().notice, /历史短信分析完成：已整理 1 条/);
+  } finally {
+    f.store.dispose();
+  }
+});
+
+test('存在失败短信时自动携带 retryFailed，绝不误报无需重复处理，且 retryFailed 可拉起重试并区分简报/失败结束提示', async () => {
+  const { ApiError } = await import('../src/api/errors.ts');
+  const { parseInformationStatus } = await import('../src/information/contracts.ts');
+  const parsed = parseInformationStatus({
+    running: false,
+    initialAnalysisCompleted: false,
+    counts: { total: 10, pending: 0, processing: 0, processed: 5, failed: 5 },
+    lastError: 'INVALID_MODEL_RESULT',
+    latestBriefing: {
+      runId: 'run-1',
+      notificationId: 'notif-1',
+      text: '简报正文',
+      createdAt: '2026-11-20T09:00:00.000Z',
+      itemCount: 0,
+      messageId: 'msg-1',
+    },
+  });
+  assert.equal(parsed.lastError, 'INVALID_MODEL_RESULT');
+  assert.equal(parsed.latestBriefing?.itemCount, 0);
+
+  const runCalls = [];
+  const f = fixture({
+    ingestSmsItems: async () => [{ id: 'failed-1', status: 'failed' }],
+    triggerSmsRun: async (_signal, options) => {
+      runCalls.push(options);
+      if (runCalls.length === 1) throw new ApiError(409, 'No pending information', 'NO_PENDING');
+      f.remote.running = true;
+    },
+  });
+  f.remote.items = [{ id: 'failed-1', status: 'failed' }];
+  try {
+    await f.store.reload();
+    await f.store.ingestBatch([{ content: '历史短信 1', externalId: 'ext-1' }]);
+    assert.equal(runCalls[0]?.retryFailed, true);
+    assert.doesNotMatch(f.store.getSnapshot().notice ?? '', /无需重复/);
+    assert.equal(f.store.getSnapshot().needsReadback, true);
+
+    await f.store.reload();
+    assert.equal(f.store.getSnapshot().needsReadback, false);
+    await f.store.retryFailed();
+    assert.deepEqual(runCalls[1], { background: true, forceInitial: true, retryFailed: true });
+    assert.equal(f.store.getSnapshot().status?.running, true);
+
+    // Ends still having failed items -> must NOT claim briefing succeeded
+    f.remote.running = false;
+    await f.store.reload();
+    assert.match(f.store.getSnapshot().notice, /有 1 条失败，请点击重试/);
+    assert.doesNotMatch(f.store.getSnapshot().notice, /已生成简报/);
+
+    // Ends with all processed and latestBriefing present -> notifies briefing ready
+    await f.store.retryFailed();
+    f.remote.running = false;
+    f.remote.items = [{ id: 'failed-1', status: 'processed' }];
+    f.client.getSmsStatus = async () => ({
+      running: false,
+      initialAnalysisCompleted: true,
+      counts: { total: 1, pending: 0, processing: 0, processed: 1, failed: 0 },
+      latestBriefing: {
+        runId: 'run-2',
+        notificationId: 'notif-2',
+        text: '全量简报已完成',
+        createdAt: '2026-11-20T10:00:00.000Z',
+        itemCount: 1,
+      },
+    });
+    await f.store.reload();
+    assert.match(f.store.getSnapshot().notice, /已生成简报并推送到消息页/);
   } finally {
     f.store.dispose();
   }

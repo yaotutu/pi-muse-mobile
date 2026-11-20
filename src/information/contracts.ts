@@ -6,6 +6,7 @@ import type {
   InformationItemStatus,
   InformationItemsPage,
   InformationItemsQuery,
+  InformationLatestBriefing,
   InformationPreferences,
   InformationRunOptions,
   InformationSettings,
@@ -111,6 +112,18 @@ export function parseInformationItemsPage(value: unknown): InformationItemsPage 
   };
 }
 
+export function parseInformationLatestBriefing(value: unknown): InformationLatestBriefing {
+  if (!isRecord(value)) return invalid();
+  return {
+    runId: text(value.runId, { min: 1, max: 128 }),
+    notificationId: text(value.notificationId, { min: 1, max: 200 }),
+    text: text(value.text, { min: 1, max: 4000 }),
+    createdAt: timestamp(value.createdAt),
+    itemCount: integer(value.itemCount, 0),
+    messageId: value.messageId !== undefined ? text(value.messageId, { min: 1, max: 200 }) : undefined,
+  };
+}
+
 export function parseInformationStatus(value: unknown): InformationStatus {
   if (!isRecord(value) || !isRecord(value.counts)) return invalid();
   return {
@@ -123,6 +136,8 @@ export function parseInformationStatus(value: unknown): InformationStatus {
       processed: integer(value.counts.processed, 0),
       failed: integer(value.counts.failed, 0),
     },
+    latestBriefing: value.latestBriefing !== undefined ? parseInformationLatestBriefing(value.latestBriefing) : undefined,
+    lastError: value.lastError !== undefined ? text(value.lastError, { min: 1, max: 500 }) : undefined,
   };
 }
 

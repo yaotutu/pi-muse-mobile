@@ -116,6 +116,14 @@ export class SmsStore {
       if (signal.aborted || this.read !== read || this.disposed) return;
       const clean = this.state.draftNotes === (this.state.preferences?.notes ?? '');
       const finishedBackgroundRun = Boolean(this.state.status?.running && !status.running);
+      const finishNotice = finishedBackgroundRun
+        ? status.counts.failed > 0
+          ? `分析已暂停：已完成 ${status.counts.processed} 条，有 ${status.counts.failed} 条失败，请点击重试`
+          : status.latestBriefing
+            ? `历史短信分析完成：已整理 ${status.counts.processed} 条，已生成简报并推送到消息页`
+            : `历史短信分析完成：已整理 ${status.counts.processed} 条`
+        : undefined;
+      const clearStaleNotice = !finishedBackgroundRun && !status.running && status.counts.failed > 0;
       this.publish({
         settings,
         preferences,
@@ -123,11 +131,7 @@ export class SmsStore {
         status,
         ...(clean ? { draftNotes: preferences.notes } : {}),
         ...(!status.running && this.state.importProgress?.phase === 'analyzing' ? { importProgress: undefined } : {}),
-        ...(finishedBackgroundRun
-          ? {
-              notice: `历史短信全量分析完成：已处理 ${status.counts.processed} 条${status.counts.failed ? `，失败 ${status.counts.failed} 条` : ''}，已生成精炼简报`,
-            }
-          : {}),
+        ...(finishNotice ? { notice: finishNotice } : clearStaleNotice ? { notice: undefined } : {}),
         error: undefined,
         needsReadback: false,
       });
@@ -211,8 +215,10 @@ export class SmsStore {
     const runOptions: InformationRunOptions = {
       background: options?.background ?? true,
       forceInitial: options?.forceInitial ?? true,
+      ...(options?.retryFailed === undefined ? {} : { retryFailed: options.retryFailed }),
     };
     let alreadyAnalyzed = false;
+    let alreadyRunning = false;
     return this.write('ingesting', async (signal) => {
       const uploaded: InformationItem[] = [];
       for (let offset = 0; offset < prepared.length; offset += INGEST_CHUNK_SIZE) {
@@ -228,12 +234,30 @@ export class SmsStore {
           },
         });
       }
+      const hasFailed = uploaded.some((item) => item.status === 'failed') || (this.state.status?.counts.failed ?? 0) > 0;
+      const effectiveRunOptions: InformationRunOptions = {
+        ...runOptions,
+        ...(hasFailed ? { retryFailed: true } : {}),
+      };
       this.publish({ importProgress: { phase: 'analyzing', current: 0, total: prepared.length } });
       try {
-        await this.api.triggerSmsRun(signal, runOptions);
+        await this.api.triggerSmsRun(signal, effectiveRunOptions);
       } catch (error) {
         if (error instanceof ApiError && error.status === 409) {
-          alreadyAnalyzed = uploaded.every((item) => item.status !== 'pending');
+          const anyProcessing = error.code === 'BUSY' ||
+            Boolean(this.state.status?.running) ||
+            uploaded.some((item) => item.status === 'processing');
+          if (anyProcessing) {
+            alreadyRunning = true;
+          } else if (
+            (error.code === 'NO_PENDING' || error.code === undefined) &&
+            uploaded.every((item) => item.status === 'processed') &&
+            (this.state.status?.counts.failed ?? 0) === 0
+          ) {
+            alreadyAnalyzed = true;
+          } else {
+            throw error;
+          }
         } else {
           throw error;
         }
@@ -242,15 +266,27 @@ export class SmsStore {
     }, (result) => this.publish({
       items: [...result, ...this.state.items.filter((item) => !result.some((next) => next.id === item.id))].slice(0, 10),
       ...(alreadyAnalyzed ? { importProgress: undefined } : {}),
-      notice: alreadyAnalyzed
-        ? `本机 ${result.length} 条历史短信已全部导入并分析过，无需重复分析`
-        : `已上报 ${result.length} 条历史短信，${runOptions.background ? '后台已开始全量分析' : '已完成初始全面分析'}`,
+      notice: alreadyRunning
+        ? '后台正在整理历史短信，请稍候查看进度'
+        : alreadyAnalyzed
+          ? `本机 ${result.length} 条历史短信均已分析完成，无需重复处理`
+          : `已上报 ${result.length} 条历史短信，${runOptions.background ? '后台已开始全量分析' : '已完成初始全面分析'}`,
     }), true);
   };
   triggerRun = async (options?: InformationRunOptions) => {
     await this.write('triggering', (signal) => this.api.triggerSmsRun(signal, options), () => this.publish({
       notice: options?.background ? '后台分析已启动，正在排空队列…' : '本轮信息分析已完成，请查看条目状态',
     }));
+  };
+  retryFailed = async () => {
+    const total = this.state.status?.counts.total ?? this.state.items.length;
+    const processed = this.state.status?.counts.processed ?? 0;
+    this.publish({ importProgress: { phase: 'analyzing', current: processed, total } });
+    await this.write(
+      'triggering',
+      (signal) => this.api.triggerSmsRun(signal, { background: true, forceInitial: true, retryFailed: true }),
+      () => this.publish({ notice: '已重新提交失败短信，后台正在整理并生成简报…' }),
+    );
   };
   dispose = () => {
     this.disposed = true;
