@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { ChatLocalRepository, CHAT_LOCAL_MAX_BYTES, boundChatLocalData } from '../src/chat/chat-local-data.ts';
+import { ChatLocalRepository, ChatLocalCorruptError, CHAT_LOCAL_MAX_BYTES, boundChatLocalData } from '../src/chat/chat-local-data.ts';
 import { ChatSessionStore } from '../src/sessions/chat-session-store.ts';
 import { ApiError } from '../src/api/errors.ts';
 import { selectReadingAnchor } from '../src/workspace/conversation-scroll.ts';
@@ -177,4 +177,39 @@ test('成功历史缓存写失败仅提示，不改变 pending、权威绑定或
   store.cacheConfirmedHistory('main', 0, { sessionId: 'main', piSessionId: 'binding', revision: 'r', messages: [message('u')] });
   store.flushLocal(); await tick(); assert.match(entry.localError, /服务端消息不受影响/);
   assert.equal(entry.piSessionId, 'binding'); assert.equal(entry.pendingSubmission, null); assert.equal(entry.cachedMessages[0].id, 'u'); store.dispose();
+});
+
+test('本地读取失败后，权威历史成功重建缓存会解除提示', async () => {
+  const local = new ChatLocalRepository(memory('{')).forServer('https://example.test');
+  const store = new ChatSessionStore({}, local);
+  try {
+    const entry = store.get('main');
+    await waitLoaded(store);
+    assert.match(entry.localError, /本机/);
+    store.bindSession('main', 'binding');
+    store.cacheConfirmedHistory('main', entry.epoch, { sessionId: 'main', piSessionId: 'binding', revision: 'network', messages: [message('u')] });
+    store.flushLocal();
+    await tick();
+    assert.equal((await local.load('main')).messages[0].id, 'u');
+    assert.equal(entry.localError, undefined);
+  } finally { store.dispose(); }
+});
+
+test('超限本地文件允许重建，真正的读取失败禁止覆盖', async () => {
+  for (const error of [new ChatLocalCorruptError('oversize'), new Error('permission denied')]) {
+    let stored;
+    const local = new ChatLocalRepository({
+      async read() { if (!stored) throw error; return stored; },
+      async write(text) { stored = text; },
+      async clear() { stored = undefined; },
+    }).forServer('https://example.test');
+    await assert.rejects(local.load('main'), error);
+    if (error instanceof ChatLocalCorruptError) {
+      await local.save('main', data());
+      assert.deepEqual(await local.load('main'), data());
+    } else {
+      await assert.rejects(local.save('main', data()), error);
+      assert.equal(stored, undefined);
+    }
+  }
 });

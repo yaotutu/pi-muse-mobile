@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 import { Directory, File, Paths } from 'expo-file-system';
-import { CHAT_LOCAL_MAX_BYTES, ChatLocalRepository, type ChatLocalStorage } from './chat-local-data';
+import { CHAT_LOCAL_MAX_BYTES, ChatLocalCorruptError, ChatLocalRepository, type ChatLocalStorage } from './chat-local-data';
 
 let sequence = 0;
 function nativeStorage(): ChatLocalStorage {
@@ -11,7 +11,7 @@ function nativeStorage(): ChatLocalStorage {
     async read() {
       const target = published()[0];
       if (!target) return null;
-      if (target.size > CHAT_LOCAL_MAX_BYTES) throw new Error('聊天本地文件超过限制');
+      if (target.size > CHAT_LOCAL_MAX_BYTES) throw new ChatLocalCorruptError('聊天本地文件超过限制');
       return target.text();
     },
     async write(text) {

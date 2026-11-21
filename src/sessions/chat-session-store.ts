@@ -76,8 +76,14 @@ export class ChatSessionStore {
       if (this.disposed || !this.localRestoreAllowed || this.sessions.get(id) !== entry || entry.epoch !== epoch || entry.deleted || entry.resetting || entry.resetUncertain) return;
       const data: ChatLocalData = { piSessionId: entry.piSessionId ?? this.localBindings.get(id) ?? null,
         messages: entry.cachedMessages ?? [], draft: entry.draft, readingPosition: entry.readingPosition };
-      try { await this.local!.save(id, data); }
-      catch { this.localFailure(entry); }
+      const current = () => !this.disposed && this.sessions.get(id) === entry && entry.epoch === epoch && !entry.deleted;
+      try {
+        await this.local!.save(id, data);
+        // 只在当前会话实际写入成功后解除提示，服务端读成功不能证明本机已恢复。
+        if (current() && entry.localError) { entry.localError = undefined; this.changed(); }
+      } catch {
+        if (current()) this.localFailure(entry);
+      }
     };
     if (immediate) void save();
     else this.localWrites.set(id, setTimeout(() => void save(), 250));

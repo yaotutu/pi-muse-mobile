@@ -23,6 +23,8 @@ export interface ChatLocalStorage {
 }
 export const CHAT_LOCAL_MAX_BYTES = 4 * 1024 * 1024;
 export const CHAT_LOCAL_MAX_MESSAGES = 200;
+/** 文件已读取或确认超限，但内容不可恢复。真实 I/O 错误继续阻止覆盖。 */
+export class ChatLocalCorruptError extends Error {}
 const MAX_SESSIONS = 8;
 const MAX_TEXT = 64 * 1024;
 const clipText = (text: string) => {
@@ -112,7 +114,12 @@ export class ChatLocalRepository {
         return this.serial(async () => {
           if (generation !== this.generation) return;
           let entries: Entry[];
-          const text = await this.storage.read();
+          let text: string | null;
+          try { text = await this.storage.read(); }
+          catch (error) {
+            if (!(error instanceof ChatLocalCorruptError)) throw error;
+            text = null;
+          }
           try { entries = parseDocument(text); } catch { entries = []; }
           entries = [...entries.filter((entry) => entry.serverUrl !== serverUrl || entry.sessionId !== id), { serverUrl, sessionId: id, data: bounded }].slice(-MAX_SESSIONS);
           const encoded = entries.map((entry) => { const text = JSON.stringify(entry); return { text, size: bytes(text) + 1 }; });
