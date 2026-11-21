@@ -65,7 +65,7 @@ export function AssistantSettings({ section }: { section: 'rules' | 'skills' }) 
   };
 
   const groups = [
-    { title: '助手技能', skills: session.skills.catalog.filter((skill) => skill.source !== 'shared') },
+    { title: '内置与自建', skills: session.skills.catalog.filter((skill) => skill.source !== 'shared') },
     { title: '共享技能', skills: session.skills.catalog.filter((skill) => skill.source === 'shared') },
   ];
   const save = async () => {
@@ -86,8 +86,8 @@ export function AssistantSettings({ section }: { section: 'rules' | 'skills' }) 
       {field.loading && <ActivityIndicator accessibilityLabel="正在读取设置" color={colors.blue} />}
       {!field.loaded && !field.loading && <ActionButton label="重新读取" onPress={() => void load()} />}
       {field.loaded && (isRules ? <SettingsTextField label="助手指令" empty="尚未设置助手指令。"
-        value={session.instructions.draft} editable={!locked}
-        onChangeText={(text) => store.setInstructions(text)}
+        value={session.instructions.draft} editable={!locked} saveDirect
+        onChangeText={(text) => { store.setInstructions(text); void save(); }}
         maxLength={INSTRUCTIONS_LIMIT} placeholder="例如：先给结论，再补充依据"
         /> : <>
         {!session.skills.catalog.length && <Text style={[styles.caption, { color: colors.muted }]}>服务器暂无可用技能。</Text>}
@@ -120,7 +120,7 @@ export function AssistantSettings({ section }: { section: 'rules' | 'skills' }) 
           <ActionButton label="技能加载诊断" expanded={showDiagnostics} onPress={() => setShowDiagnostics(!showDiagnostics)} />
           {showDiagnostics && session.skills.diagnostics.map(({ path, message }) => <Text key={`${path}:${message}`} style={[styles.caption, { color: colors.muted }]}>{path}：{message}</Text>)}
         </>}
-        {!field.writeUncertain && <ActionButton label="刷新技能列表" disabled={locked || field.loading} onPress={() => void load()} />}
+        {field.error && !field.writeUncertain && <ActionButton label="刷新技能列表" disabled={locked || field.loading} onPress={() => void load()} />}
       </>)}
     </ScrollView>
     {field.loaded && (dirty || field.saving || (saved && !field.error)) && <View style={[styles.footer, { borderTopColor: colors.line, backgroundColor: colors.canvas }]}>

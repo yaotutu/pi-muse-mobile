@@ -18,7 +18,7 @@ export function NewsPreferencesCard({ store }: { store: NewsPreferencesStore }) 
   const learnedNotes = preferences?.learnedNotes.trim() ?? '';
   return <View style={{ gap: spacing[12] }}>
     <Text style={{ ...workspaceTheme.typography.caption, color: colors.muted }}>填写希望多看或少看的内容，也可以在聊天中告诉助手。</Text>
-    {preferences && <SettingsTextField label="推荐规则" empty="尚未设置新闻推荐规则。" value={draftNotes} onChangeText={store.setDraftNotes}
+    {preferences && <SettingsTextField label="推荐规则" empty="尚未设置新闻推荐规则。" value={draftNotes} saveDirect onChangeText={(notes) => { store.setDraftNotes(notes); void store.save(); }}
       editable={!saving && !needsReadback} maxLength={20000}
       placeholder="例如：关注技术进展，少推荐营销内容" />}
     {loading && !preferences && <Text style={{ ...workspaceTheme.typography.caption, color: colors.muted }}>正在读取新闻偏好…</Text>}

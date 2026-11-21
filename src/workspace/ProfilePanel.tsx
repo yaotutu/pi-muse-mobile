@@ -52,32 +52,33 @@ export function ProfilePanel() {
     <Card style={styles.card}>
       <View style={styles.cardHeading}><Text accessibilityRole="header" style={styles.cardTitle}>助手设置</Text></View>
       <Text style={styles.fieldLabel}>助手名字</Text>
-      <FormInput accessibilityLabel="助手名字" value={name} onChangeText={(value) => store.setIdentity('name', value)} editable={snapshot.loaded && !snapshot.loading && !snapshot.writing}
+      <FormInput accessibilityLabel="助手名字" value={name} onChangeText={(value) => store.setIdentity('name', value)} editable={canWrite}
         maxLength={NAME_LIMIT} placeholder="给助手起个名字" placeholderTextColor={colors.faint} autoCapitalize="words" returnKeyType="done" style={styles.nameInput} />
       {snapshot.loaded && !nameValid && <Text style={styles.error}>请填写 1–80 字的助手名字。</Text>}
       <Text style={styles.fieldLabel}>说话语气</Text>
       <View style={styles.tones} accessibilityLabel="助手语气选项">
-        {TONES.map((option) => <Pressable key={option.value} accessibilityRole="radio" accessibilityLabel={`语气${option.label}`} accessibilityState={{ checked: tone === option.value, disabled: !snapshot.loaded || snapshot.loading || !!snapshot.writing }}
-          disabled={!snapshot.loaded || snapshot.loading || !!snapshot.writing} onPress={() => store.setIdentity('tone', option.value)} style={({ pressed }) => [styles.tone, tone === option.value && styles.toneSelected, pressed && styles.pressed]}>
+        {TONES.map((option) => <Pressable key={option.value} accessibilityRole="radio" accessibilityLabel={`语气${option.label}`} accessibilityState={{ checked: tone === option.value, disabled: !canWrite }}
+          disabled={!canWrite} onPress={() => store.setIdentity('tone', option.value)} style={({ pressed }) => [styles.tone, tone === option.value && styles.toneSelected, pressed && styles.pressed]}>
           <Text style={[styles.toneTitle, tone === option.value && styles.toneTitleSelected]}>{option.label}</Text><Text style={styles.caption}>{option.description}</Text>
         </Pressable>)}
       </View>
       {snapshot.loaded && unsupportedServerTone && <Text accessibilityRole="alert" style={styles.warning}>服务端当前语气值为「{unsupportedServerTone}」，不在当前可选项中。请选择温暖、简洁或周到并保存。</Text>}
       {snapshot.loaded && !toneKnown && !unsupportedServerTone && <Text accessibilityRole="alert" style={styles.warning}>当前语气草稿为「{tone || '空值'}」，请选择温暖、简洁或周到后再保存。</Text>}
       {snapshot.dirtyIdentity && <View style={styles.actions}>
-        <ActionButton label="保存助手设置" text={snapshot.writing === 'identity' ? '正在保存助手设置…' : '保存助手设置'} onPress={() => { Keyboard.dismiss(); void store.saveIdentity(); }} disabled={!canSaveIdentity} tone="primary" wide icon={Check} />
-        <ActionButton label="取消助手设置修改并采用最新服务端值" text="取消助手设置修改" onPress={() => store.discardIdentity()} disabled={!canDiscard || !snapshot.dirtyIdentity} wide icon={RotateCcw} />
+        <ActionButton label="保存助手设置" text={snapshot.writing === 'identity' ? '正在保存助手设置…' : '保存助手设置'} onPress={() => { Keyboard.dismiss(); void store.saveIdentity(); }} disabled={!canSaveIdentity} tone="primary" icon={Check} />
+        <ActionButton label="取消助手设置修改并采用最新服务端值" text="撤销修改" onPress={() => store.discardIdentity()} disabled={!canDiscard || !snapshot.dirtyIdentity} icon={RotateCcw} />
       </View>}
     </Card>
 
     <View style={styles.profileFields}>
-      <SettingsTextField label="助手人设" empty="尚未设置助手人设。" value={snapshot.draftProfile.soul} onChangeText={(value) => store.setProfile('soul', value)} editable={snapshot.loaded && !snapshot.loading && !snapshot.writing}
+      <Text accessibilityRole="header" style={styles.cardTitle}>个性化资料</Text>
+      <SettingsTextField label="助手人设" empty="尚未设置助手人设。" value={snapshot.draftProfile.soul} onChangeText={(value) => store.setProfile('soul', value)} editable={canWrite}
         maxLength={TEXT_LIMIT} placeholder="希望助手具备怎样的性格与工作方式？" />
-      <SettingsTextField label="关于我" empty="尚未填写个人资料。" value={snapshot.draftProfile.user} onChangeText={(value) => store.setProfile('user', value)} editable={snapshot.loaded && !snapshot.loading && !snapshot.writing}
+      <SettingsTextField label="关于我" empty="尚未填写个人资料。" value={snapshot.draftProfile.user} onChangeText={(value) => store.setProfile('user', value)} editable={canWrite}
         maxLength={TEXT_LIMIT} placeholder="希望助手了解你的哪些背景与偏好？" />
       {snapshot.dirtyProfile && <View style={styles.actions}>
-        <ActionButton label="保存人设与资料" text={snapshot.writing === 'profile' ? '正在保存人设与资料…' : '保存人设与资料'} onPress={() => { Keyboard.dismiss(); void store.saveProfile(); }} disabled={!canSaveProfile} tone="primary" wide icon={Check} />
-        <ActionButton label="取消人设与资料修改并采用最新服务端值" text="取消人设与资料修改" onPress={() => store.discardProfile()} disabled={!canDiscard || !snapshot.dirtyProfile} wide icon={RotateCcw} />
+        <ActionButton label="保存人设与资料" text={snapshot.writing === 'profile' ? '正在保存人设与资料…' : '保存人设与资料'} onPress={() => { Keyboard.dismiss(); void store.saveProfile(); }} disabled={!canSaveProfile} tone="primary" icon={Check} />
+        <ActionButton label="取消人设与资料修改并采用最新服务端值" text="撤销修改" onPress={() => store.discardProfile()} disabled={!canDiscard || !snapshot.dirtyProfile} icon={RotateCcw} />
       </View>}
     </View>
   </View>;

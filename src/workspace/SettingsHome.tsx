@@ -42,7 +42,7 @@ const PAGE_GROUPS: readonly { title: string; entries: readonly PageEntry[] }[] =
   ] },
 ];
 
-export function SettingsHome({ onOpen, onConnection, onBrowser, onUpdate, onReset, resetUncertain, onVerifyReset, onAcknowledgeReset, notice }: {
+export function SettingsHome({ onOpen, onConnection, onBrowser, onUpdate, onReset, resetUncertain, onVerifyReset, onAcknowledgeReset, notice, offline = false }: {
   onOpen: (page: SettingsPage) => void;
   onConnection: () => void;
   onBrowser: () => void;
@@ -53,6 +53,7 @@ export function SettingsHome({ onOpen, onConnection, onBrowser, onUpdate, onRese
   onVerifyReset?: () => void;
   onAcknowledgeReset?: () => void;
   notice?: string;
+  offline?: boolean;
 }) {
   const { colors } = useTheme();
   // 破坏性操作与结果未明时的恢复动作脱离普通设置分组，避免与常规页面并列。
@@ -71,7 +72,7 @@ export function SettingsHome({ onOpen, onConnection, onBrowser, onUpdate, onRese
     style={[styles.root, { backgroundColor: colors.canvas }]} contentContainerStyle={styles.content}>
     <Text accessibilityRole="header" style={[styles.title, { color: colors.ink }]}>设置</Text>
     {notice && <Text style={{ ...themeTokens.typography.status, color: colors.muted }}>{notice}</Text>}
-    <View style={styles.group}>
+    {!offline && <View style={styles.group}>
       <Text accessibilityRole="header" style={[styles.groupTitle, { color: colors.muted }]}>助手</Text>
       <Card style={styles.card}>
         <SettingsRow icon={UserRound} label={SETTINGS_PAGE_TITLES.profile} description="助手身份与表达风格"
@@ -83,8 +84,8 @@ export function SettingsHome({ onOpen, onConnection, onBrowser, onUpdate, onRese
         <SettingsRow icon={Moon} label={SETTINGS_PAGE_TITLES.dream} description="记忆整理配置与待决建议"
           testID="settings-open-dream" divider onPress={() => onOpen('dream')} />
       </Card>
-    </View>
-    {PAGE_GROUPS.map((group) => <View key={group.title} style={styles.group}>
+    </View>}
+    {!offline && PAGE_GROUPS.map((group) => <View key={group.title} style={styles.group}>
       <Text accessibilityRole="header" style={[styles.groupTitle, { color: colors.muted }]}>{group.title}</Text>
       <Card style={styles.card}>
         {group.entries.map((entry, index) => <SettingsRow key={entry.page} icon={entry.icon}
@@ -99,8 +100,8 @@ export function SettingsHome({ onOpen, onConnection, onBrowser, onUpdate, onRese
           testID="settings-open-appearance" onPress={() => onOpen('appearance')} />
         <SettingsRow icon={Smile} label={SETTINGS_PAGE_TITLES.companion} description="选择本机助手形象包"
           testID="settings-open-companion" divider onPress={() => onOpen('companion')} />
-        <SettingsRow icon={Globe} label="浏览器" description="打开服务端真实浏览器"
-          testID="viewer-open" divider onPress={onBrowser} />
+        {!offline && <SettingsRow icon={Globe} label="浏览器" description="打开服务端真实浏览器"
+          testID="viewer-open" divider onPress={onBrowser} />}
         <SettingsRow icon={Server} label="服务器连接" description="服务器地址与访问密钥"
           testID="settings-connection" divider onPress={onConnection} />
         {onUpdate && <SettingsRow icon={Download} label="应用更新" description="检查并安装新版本"

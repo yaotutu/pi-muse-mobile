@@ -15,7 +15,8 @@ test('长期记忆保留直接操作和提交安全提示，紧凑展示真实�
   assert.match(source, /snapshot\.stale && snapshot\.loaded/);
   assert.match(source, /<Text selectable style=\{styles\.body\}>\{memory\.text\}/);
   assert.match(source, /<Text selectable style=\{styles\.body\}>\{snapshot\.deleteTarget\.text\}/);
-  assert.match(source, /<ActionButton label="确认删除记忆"[^\n]+tone="danger" wide/);
+  assert.match(source, /<Sheet title="删除这条记忆？"/);
+  assert.match(source, /<ActionButton label="确认删除记忆"[^\n]+tone="danger"/);
 });
 
 test('全局设置子页使用固定返回栏，资料记忆与 Dream 不绑定聊天所有者', () => {

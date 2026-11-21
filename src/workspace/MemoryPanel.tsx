@@ -1,7 +1,7 @@
 import { FeedbackNotice } from '../ui/Feedback';
 import { Card } from '../ui/Surfaces';
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Keyboard, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Keyboard, StyleSheet, Text, View } from 'react-native';
 import { Plus, RefreshCw, Search, SquarePen, Trash2 } from 'lucide-react-native';
 import { useMemories } from '../memories/MemoryProvider';
 import { MEMORY_QUERY_LIMIT, MEMORY_TEXT_LIMIT } from '../memories/memory-store';
@@ -10,6 +10,7 @@ import { useTheme } from '../theme/ThemeProvider';
 import { ActionButton } from '../ui/ActionButton';
 import { ChoiceChip } from '../ui/ChoiceChip';
 import { FormInput } from '../ui/FormInput';
+import { Sheet } from '../ui/Sheet';
 
 /** 记忆属于服务全局；固定标题与返回由设置页承载，不参与领域草稿生命周期。 */
 export function MemoryPanel() {
@@ -19,6 +20,18 @@ export function MemoryPanel() {
   useEffect(() => { store.open(); return () => store.close(); }, [store]);
   const submitSearch = () => { Keyboard.dismiss(); store.search(query); };
   const locked = !store.canWrite();
+  const closeEditor = () => {
+    if (snapshot.writing || !snapshot.editor) return;
+    const original = snapshot.memories.find(({ id }) => id === snapshot.editor?.id)?.text ?? '';
+    if (snapshot.editor.text === original) {
+      store.cancelEdit();
+      return;
+    }
+    Alert.alert('放弃记忆草稿？', undefined, [
+      { text: '继续编辑', style: 'cancel' },
+      { text: '放弃编辑', style: 'destructive', onPress: store.cancelEdit },
+    ]);
+  };
   return <View style={styles.root} testID="memory-panel">
     <View style={styles.topRow}>
       <ActionButton label="刷新记忆" text="刷新" onPress={() => void store.refresh()} disabled={snapshot.loading || snapshot.writing} icon={RefreshCw} />
@@ -45,19 +58,31 @@ export function MemoryPanel() {
       <Text style={styles.body}>请求中断不代表服务端未执行。请先点击“全部记忆”回读并核对，避免重复新增或再次覆盖；我们不会自动重试。</Text>
       {snapshot.reviewed && <ActionButton label="已核对，解除提交锁定" onPress={store.acknowledgeReviewed} disabled={snapshot.loading || snapshot.stale} />}
     </Card>}
-    {snapshot.editor && <Card style={styles.card} testID="memory-editor">
-      <Text style={styles.title}>{snapshot.editor.id ? '编辑记忆' : '新增记忆'}</Text>
-      <FormInput accessibilityLabel="记忆内容" multiline textAlignVertical="top" value={snapshot.editor.text} onChangeText={store.setText} editable={!snapshot.writing && !snapshot.uncertain}
-        maxLength={MEMORY_TEXT_LIMIT + 1} placeholder="值得记住的一件事…" placeholderTextColor={colors.faint} style={styles.input} />
-      <Text style={styles.caption}>{snapshot.editor.text.length} / {MEMORY_TEXT_LIMIT} · 保存到全局长期记忆</Text>
-      <View style={styles.formActions}><ActionButton label={snapshot.writing ? '正在保存记忆' : '保存记忆'} onPress={() => { Keyboard.dismiss(); void store.save(); }} disabled={locked} tone="primary" wide />
-        <ActionButton label="取消编辑记忆" onPress={store.cancelEdit} disabled={snapshot.writing || snapshot.uncertain} wide /></View>
-    </Card>}
-    {snapshot.deleteTarget && <Card style={styles.card} tone="danger" testID="memory-delete-confirmation">
-      <Text style={styles.title}>确认删除这条全局记忆？</Text><Text selectable style={styles.body}>{snapshot.deleteTarget.text}</Text>
-      <Text style={styles.caption}>删除会影响全部会话，无法撤销；不会删除聊天历史。</Text>
-      <View style={styles.formActions}><ActionButton label="确认删除记忆" onPress={() => void store.confirmDelete()} disabled={locked} tone="danger" wide /><ActionButton label="取消删除记忆" onPress={store.cancelDelete} disabled={snapshot.writing} wide /></View>
-    </Card>}
+    {snapshot.editor && !snapshot.uncertain && <Sheet title={snapshot.editor.id ? '编辑记忆' : '新增记忆'}
+      onClose={closeEditor}
+      footer={<View style={styles.formActions}>
+        <ActionButton label="取消编辑记忆" text="取消" onPress={closeEditor} disabled={snapshot.writing} />
+        <ActionButton label="保存记忆" onPress={() => { Keyboard.dismiss(); void store.save(); }} disabled={locked} busy={snapshot.writing} tone="primary" />
+      </View>}>
+      <View style={styles.editor} testID="memory-editor">
+        <FormInput accessibilityLabel="记忆内容" multiline textAlignVertical="top" value={snapshot.editor.text} onChangeText={store.setText} editable={!snapshot.writing}
+          maxLength={MEMORY_TEXT_LIMIT + 1} placeholder="值得记住的一件事…" style={styles.input} />
+        <Text style={styles.caption}>{snapshot.editor.text.length} / {MEMORY_TEXT_LIMIT}</Text>
+        {!!snapshot.error && <FeedbackNotice text={snapshot.error} tone="danger" />}
+      </View>
+    </Sheet>}
+    {snapshot.deleteTarget && !snapshot.uncertain && <Sheet title="删除这条记忆？"
+      onClose={() => { if (!snapshot.writing) store.cancelDelete(); }}
+      footer={<View style={styles.formActions}>
+        <ActionButton label="取消删除记忆" text="取消" onPress={store.cancelDelete} disabled={snapshot.writing} />
+        <ActionButton label="确认删除记忆" text="删除" onPress={() => void store.confirmDelete()} disabled={locked} busy={snapshot.writing} tone="danger" />
+      </View>}>
+      <View style={styles.editor} testID="memory-delete-confirmation">
+        <Text selectable style={styles.body}>{snapshot.deleteTarget.text}</Text>
+        <Text style={styles.caption}>删除会影响全部会话，无法撤销。</Text>
+        {!!snapshot.error && <FeedbackNotice text={snapshot.error} tone="danger" />}
+      </View>
+    </Sheet>}
     {snapshot.loaded && !snapshot.loading && !snapshot.error && !snapshot.memories.length && <View style={styles.empty}>
       <Text style={styles.title}>{snapshot.query ? '没有匹配的记忆' : '还没有长期记忆'}</Text>
       <Text style={styles.caption}>{snapshot.query ? '换个关键词，或查看全部记忆。' : '可以在这里新增，或在聊天中告诉助手值得记住的事。'}</Text>
@@ -81,8 +106,9 @@ const createStyles = (colors: WorkspaceColors) => StyleSheet.create({
   card: { padding: spacing[16], gap: spacing[12], minWidth: 0, borderRadius: workspaceTheme.radius.card, backgroundColor: colors.surface },
   title: { ...workspaceTheme.typography.itemTitle, color: colors.ink }, body: { ...workspaceTheme.typography.detail, color: colors.ink },
   caption: { ...workspaceTheme.typography.caption, color: colors.faint },
-  input: { height: workspaceTheme.layout.profileTextHeight },
-  formActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing[8], marginTop: spacing[8] },
+  editor: { gap: spacing[12] },
+  input: { minHeight: 108, maxHeight: 224 },
+  formActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing[8], justifyContent: 'flex-end' },
   empty: { gap: spacing[6], padding: spacing[16], borderRadius: workspaceTheme.radius.card, backgroundColor: colors.surface },
   memory: { gap: spacing[12], minWidth: 0, padding: spacing[16], borderRadius: workspaceTheme.radius.card, backgroundColor: colors.surface },
 

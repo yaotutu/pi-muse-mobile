@@ -121,7 +121,7 @@ test('技能说明与开关分离，技能选择按来源身份更新', () => {
   const allNodes = nodes(tree);
 
   const headers = allNodes.filter((item) => item.props.accessibilityRole === 'header');
-  assert.deepEqual(headers.map((item) => item.props.children), ['助手技能', '共享技能']);
+  assert.deepEqual(headers.map((item) => item.props.children), ['内置与自建', '共享技能']);
   const switches = allNodes.filter((item) => item.type === 'Switch');
   assert.deepEqual(switches.map((item) => item.props.value), [true, false, false, false]);
   switches[0].props.onValueChange(false);

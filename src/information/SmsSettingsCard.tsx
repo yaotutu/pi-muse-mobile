@@ -752,15 +752,14 @@ export function SmsSettingsCard({
       {!info.error && !!info.notice && <FeedbackNotice tone="success" text={info.notice} />}
 
       <View style={styles.body}>
-        <View style={styles.body}>
-          <Text style={styles.caption}>填写哪些短信需要提醒、哪些可以忽略，也可以在聊天中告诉助手。</Text>
-        </View>
+        <Text style={styles.caption}>填写哪些短信需要提醒、哪些可以忽略，也可以在聊天中告诉助手。</Text>
         <SettingsTextField
           label="提醒规则"
           empty="尚未设置短信提醒规则。"
           value={info.draftNotes}
           editable={!info.loading && !info.saving && !info.needsReadback}
-          onChangeText={info.setDraftNotes}
+          saveDirect
+          onChangeText={(notes) => { info.setDraftNotes(notes); void info.saveNotes(); }}
           placeholder="例如：重要取件码、机票火车票、银行还款提醒我；促销广告和历史验证码直接忽略。"
           maxLength={20000}
         />
@@ -807,13 +806,6 @@ export function SmsSettingsCard({
             icon={RefreshCw}
             disabled={info.saving || info.ingesting || info.triggering}
             onPress={() => void info.reload()}
-          />
-          <ActionButton
-            label="导入测试样例"
-            text="导入测试样例"
-            disabled={activeRun || info.needsReadback}
-            onPress={() => void info.importSampleHistory()}
-            testID="sms-import-sample-button"
           />
         </View>
       </Card>
@@ -862,7 +854,7 @@ export function SmsSettingsCard({
           style={styles.toggleRow}
           testID="sms-debug-input-toggle"
         >
-          <Text style={styles.title}>手动模拟单条短信</Text>
+          <Text style={styles.title}>短信调试工具</Text>
           <View style={styles.toggleAction}>
             <Text style={styles.caption}>{debugInputOpen ? '收起' : '展开'}</Text>
             {debugInputOpen
@@ -873,6 +865,13 @@ export function SmsSettingsCard({
 
         {debugInputOpen && (
           <>
+            <ActionButton
+              label="导入测试样例"
+              text="导入测试样例"
+              disabled={activeRun || info.needsReadback}
+              onPress={() => void info.importSampleHistory()}
+              testID="sms-import-sample-button"
+            />
             <FormInput
               accessibilityLabel="短信文本输入"
               multiline

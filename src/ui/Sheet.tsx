@@ -40,6 +40,7 @@ export function Sheet({
   onClose,
   onShow,
   wide,
+  footer,
 }: {
   title: string;
   subtitle?: string;
@@ -48,6 +49,7 @@ export function Sheet({
   onShow?: () => void;
   /** 宽形态：内容较宽的弹层（如审批 diff 预览） */
   wide?: boolean;
+  footer?: ReactNode;
 }) {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -101,6 +103,7 @@ export function Sheet({
           >
             <ErrorBoundary title={`${title} 显示异常`}>{children}</ErrorBoundary>
           </ScrollView>
+          {footer && <View style={styles.footer}>{footer}</View>}
         </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -132,6 +135,12 @@ const createStyles = (colors: WorkspaceColors) => StyleSheet.create({
     borderRadius: workspaceTheme.radius.round,
     backgroundColor: colors.control,
     marginTop: spacing[10],
+  },
+  footer: {
+    paddingHorizontal: spacing[20],
+    paddingVertical: spacing[12],
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.line,
   },
   sheetHeader: {
     flexDirection: 'row',
