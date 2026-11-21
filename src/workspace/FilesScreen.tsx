@@ -1,7 +1,7 @@
 import { Card } from '../ui/Surfaces';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Image as RNImage, Keyboard, Modal, Pressable, ScrollView, StyleSheet, Text, View, type ScrollViewInstance, type ViewInstance } from 'react-native';
-import { ChevronLeft, Download, File, Folder, Info, Plus, RefreshCw, Trash2 } from 'lucide-react-native';
+import { ActivityIndicator, Image as RNImage, Keyboard, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, type ScrollViewInstance, type ViewInstance } from 'react-native';
+import { ChevronLeft, Download, Ellipsis, File, Folder, House, Plus, Trash2 } from 'lucide-react-native';
 import { MAX_WORKSPACE_TEXT_BYTES, utf8ByteLength, validateWorkspaceWritePath } from '../files/contracts';
 import { useFiles } from '../files/FilesProvider';
 import { isManagedWorkspaceFile, workspaceCreateDirectory, workspaceDisplayEntries, workspaceEntryLabel } from '../files/presentation';
@@ -82,6 +82,10 @@ export function FilesScreen({ onBack }: { onBack: () => void }) {
   const currentDirectory = snapshot.directoryPath;
   const directoryTitle = currentDirectory === '.' ? '文件' : workspaceEntryLabel(currentDirectory, 'directory');
   const createDirectory = workspaceCreateDirectory(currentDirectory);
+  const directoryOpen = viewKey.startsWith('directory:');
+  const directoryMenu = directoryOpen && (currentDirectory !== '.' || !!createDirectory);
+  const actionKey = fileOpen ? detailKey : directoryMenu ? viewKey : undefined;
+  const refreshDirectory = () => { if (canNavigate && !snapshot.loading) void store.refresh(); };
   const selectedLabel = snapshot.selectedPath ? workspaceEntryLabel(snapshot.selectedPath, 'file') : undefined;
   const title = snapshot.uncertain ? '核对文件操作' : snapshot.savePreview ? '确认保存'
     : snapshot.editor?.mode === 'create' ? '新建文件' : snapshot.deleteTarget ? '确认删除' : selectedLabel ?? directoryTitle;
@@ -94,12 +98,12 @@ export function FilesScreen({ onBack }: { onBack: () => void }) {
     return () => { measureSequence.current += 1; };
   }, [store, selectedKey, viewKey]);
   const openInfo = () => {
-    if (!detailKey || !fileOpen) return;
+    if (!actionKey) return;
     Keyboard.dismiss();
     const sequence = ++measureSequence.current;
     infoButton.current?.measureInWindow((x, y, width, height) => {
       if (sequence !== measureSequence.current || width <= 0 || height <= 0) return;
-      setInfoState({ store, owner: menuOwner, info: { key: detailKey, anchor: { x, y, width, height } } });
+      setInfoState({ store, owner: menuOwner, info: { key: actionKey, anchor: { x, y, width, height } } });
     });
   };
   const verification = snapshot.verificationDetail;
@@ -122,16 +126,21 @@ export function FilesScreen({ onBack }: { onBack: () => void }) {
   };
 
   return <View style={styles.screen}>
-    <PageHeader title={title} caption={caption} onBack={onBack} action={fileOpen && <View ref={infoButton} collapsable={false}>
-      <IconControl icon={Info} label="查看文件详情与操作" onPress={openInfo} disabled={!detail} testID="file-information" />
+    <PageHeader title={title} caption={caption} onBack={onBack} action={(fileOpen || directoryMenu) && <View ref={infoButton} collapsable={false}>
+      <IconControl icon={Ellipsis} label={fileOpen ? "查看文件详情与操作" : "更多目录操作"} onPress={openInfo}
+        disabled={!actionKey} testID={fileOpen ? "file-information" : "workspace-directory-menu"} />
     </View>} />
     <ScrollView ref={scroll} key={viewKey} style={styles.screen} contentContainerStyle={styles.root}
     keyboardShouldPersistTaps="handled" testID="workspace-files-screen"
+    refreshControl={directoryOpen ? <RefreshControl refreshing={snapshot.loading} enabled={canNavigate}
+      onRefresh={refreshDirectory} colors={[colors.blue]} tintColor={colors.blue} /> : undefined}
+    accessibilityActions={directoryOpen ? [{ name: 'refresh', label: '刷新目录' }] : undefined}
+    onAccessibilityAction={directoryOpen ? (event) => { if (event.nativeEvent.actionName === 'refresh') refreshDirectory(); } : undefined}
     onContentSizeChange={() => { if (viewKey.startsWith('directory:')) scroll.current?.scrollTo({ y: offsets.current[viewKey] ?? 0, animated: false }); }}
     onScroll={(event) => { if (viewKey.startsWith('directory:')) offsets.current[viewKey] = event.nativeEvent.contentOffset.y; }} scrollEventThrottle={100}>
     {!!snapshot.error && <Text selectable accessibilityRole="alert" style={styles.error}>{snapshot.error}</Text>}
     {!!snapshot.notice && <Text accessibilityLiveRegion="polite" style={styles.success}>{snapshot.notice}</Text>}
-    {snapshot.stale && snapshot.loaded && <Text style={styles.warning}>目录内容可能已变化；请手动刷新后核对。旧列表仍按上次读取结果显示。</Text>}
+    {snapshot.stale && snapshot.loaded && <Text style={styles.warning}>目录内容可能已变化；请下拉刷新后核对。旧列表仍按上次读取结果显示。</Text>}
 
     {snapshot.uncertain && <Card style={styles.warningCard} tone="warning">
       <Text style={styles.cardTitle}>上次文件操作结果未明</Text>
@@ -200,13 +209,6 @@ export function FilesScreen({ onBack }: { onBack: () => void }) {
       </View>
     </Card> : <>
       {!snapshot.selectedPath && <>
-      <View style={styles.toolbar}>
-        <ActionButton label="刷新工作区目录" text="刷新" icon={RefreshCw} onPress={() => void store.refresh()} disabled={!canNavigate || snapshot.loading} />
-        {snapshot.directoryPath !== '.' && <ActionButton label="返回工作区根目录" text="根目录" onPress={() => store.openDirectory('.')} disabled={!canNavigate} />}
-        {snapshot.directoryPath !== '.' && <ActionButton label="返回工作区上级目录" text="上级" icon={ChevronLeft} onPress={store.goUp} disabled={!canNavigate} />}
-        {createDirectory && <ActionButton label="新建工作区文本文件" text="新建文本" icon={Plus}
-          onPress={() => { store.beginCreate(); store.setDraftPath(`${createDirectory}/`); }} disabled={!canWrite} />}
-      </View>
       {snapshot.directoryPath !== '.' && <Text selectable style={styles.path}>目录：{snapshot.directoryPath}</Text>}
       {snapshot.loading && <View style={styles.loading}><ActivityIndicator accessibilityLabel="正在读取工作区目录" color={colors.blue} /><Text style={styles.caption}>正在读取目录…</Text></View>}
       {!snapshot.loaded && !snapshot.loading && <Text style={styles.caption}>尚未读取目录。请刷新后重试。</Text>}
@@ -241,6 +243,21 @@ export function FilesScreen({ onBack }: { onBack: () => void }) {
       <ActionButton label="预览工作区文件保存前后全文" text={snapshot.writing ? '正在保存…' : '预览保存'} onPress={() => { Keyboard.dismiss(); store.requestSave(); }} disabled={!canWrite || utf8ByteLength(sourceDraft.content) > MAX_WORKSPACE_TEXT_BYTES} tone="primary" />
       <ActionButton label="取消编辑并丢弃文件草稿" text="放弃修改" onPress={() => { Keyboard.dismiss(); store.cancelEditor(); }} disabled={snapshot.writing !== false} />
     </View>}
+    {info && info.key === viewKey && directoryMenu && <Modal transparent animationType="none" statusBarTranslucent navigationBarTranslucent onRequestClose={closeInfo}>
+      <ThemeStatusBar />
+      <AnchoredFeedbackMenu anchor={info.anchor} align="right" width={l.fileInformationWidth} dismissLabel="关闭目录菜单" onDismiss={closeInfo} testID="workspace-directory-actions">
+        <FeedbackMenuRows>
+          {createDirectory && <FeedbackMenuRow icon={Plus} label="新建工作区文本文件" text="新建文本" disabled={!canWrite}
+            onPress={() => { closeInfo(); store.beginCreate(); store.setDraftPath(`${createDirectory}/`); }} />}
+          {currentDirectory !== '.' && <>
+            <FeedbackMenuRow icon={ChevronLeft} label="返回工作区上级目录" text="上一级" disabled={!canNavigate}
+              onPress={() => { closeInfo(); store.goUp(); }} />
+            <FeedbackMenuRow icon={House} label="返回工作区根目录" text="返回根目录" disabled={!canNavigate}
+              onPress={() => { closeInfo(); store.openDirectory('.'); }} />
+          </>}
+        </FeedbackMenuRows>
+      </AnchoredFeedbackMenu>
+    </Modal>}
     {info && info.key === detailKey && detail && fileOpen && <Modal transparent animationType="none" statusBarTranslucent navigationBarTranslucent onRequestClose={closeInfo}>
       <ThemeStatusBar />
       <AnchoredFeedbackMenu anchor={info.anchor} align="right" width={l.fileInformationWidth} dismissLabel="关闭文件详情" onDismiss={closeInfo} testID="file-information-menu">
@@ -291,7 +308,7 @@ const createStyles = (c: WorkspaceColors) => StyleSheet.create({
   cardTitle: { ...t.itemTitle, color: c.ink, fontWeight: '600' },
   body: { ...t.detail, color: c.ink }, caption: { ...t.caption, color: c.faint },
   warning: { ...t.detail, color: c.warning }, error: { ...t.detail, color: c.danger }, success: { ...t.detail, color: c.success },
-  toolbar: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }, actions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
 
   disabled: { opacity: workspaceTheme.interaction.disabledOpacity }, pressed: { opacity: workspaceTheme.interaction.pressedOpacity },
   loading: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
