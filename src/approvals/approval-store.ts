@@ -77,6 +77,7 @@ export class ApprovalStore {
       || event.event === 'session_presence_updated'
       || event.event === 'activity_updated'
       || event.event === 'conversation_updated'
+      || event.event === 'session_directory_updated'
     ) return;
     this.eventVersion++;
     if (event.event === 'ready') {

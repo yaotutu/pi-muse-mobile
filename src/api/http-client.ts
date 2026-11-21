@@ -1088,7 +1088,10 @@ export class HttpApiClient implements ApiClient {
             event = { event: decoded.event, data: { ...approval, instanceId: readyInstanceId } };
           } else if (decoded.event === 'approval_updated') event = { event: 'approval_updated', data: { ...parseApprovalResolution(decoded.data), instanceId: readyInstanceId } };
           else if (decoded.event === 'activity_updated') event = { event: 'activity_updated', data: { ...parseActivityOverview(decoded.data), instanceId: readyInstanceId } };
-          else event = { event: 'conversation_updated', data: parseConversationUpdated(decoded.data, readyInstanceId) };
+          else if (decoded.event === 'session_directory_updated') {
+            if (Object.keys(decoded.data).length !== 1) throw new ApiError(502, '会话目录事件字段不符合契约');
+            event = { event: decoded.event, data: { instanceId: readyInstanceId } };
+          } else event = { event: 'conversation_updated', data: parseConversationUpdated(decoded.data, readyInstanceId) };
           try { onEvent(event); } catch (error) { markCallbackFailed(); throw error; }
         }
       }

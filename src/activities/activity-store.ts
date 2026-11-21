@@ -121,8 +121,10 @@ export class ActivityStore {
         ...(this.state.detail?.activity.id === activity.id ? { detail: { ...this.state.detail, activity } } : {}),
       });
       this.invalidate(activity.sessionId);
-    } else if (event.event !== 'conversation_updated' && event.event !== 'session_presence_updated') {
-      // 运行与审批变化仍可能带来活动事实；conversation_updated 只失效聊天历史。
+    } else if (event.event === 'session_directory_updated') {
+      this.invalidate();
+    } else if (event.event !== 'session_presence_updated') {
+      // 重置会清空会话 JSONL 中的活动事实，保留页面时也需要重新读取。
       this.invalidate(event.data.sessionId ?? undefined);
     }
   };

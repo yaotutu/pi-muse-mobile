@@ -159,3 +159,51 @@ test('删除预览提供任务范围版本，DELETE 原样提交显式处理策�
     assert.deepEqual(calls, [[`/api/sessions/${ID}/schedules`, 'GET', undefined], [`/api/sessions/${ID}`, 'DELETE', options]]);
   } finally { globalThis.fetch = original; }
 });
+
+test('目录失效在写入期间延后到提交后回读，以捕获另一客户端的改名', async () => {
+  const writing = deferred();
+  const readback = deferred();
+  let reads = 0;
+  const api = {
+    listSessions: async () => ++reads === 1 ? [record()] : readback.promise,
+    createSession: () => writing.promise,
+  };
+  const chats = new ChatSessionStore(api);
+  const directory = new SessionStore(api, chats);
+  await directory.reload();
+  const create = directory.create('原始名称');
+  directory.invalidate();
+  assert.equal(reads, 1);
+  writing.resolve({ ...record(ID), title: '原始名称' });
+  await create;
+  assert.equal(reads, 2);
+  readback.resolve([record(), { ...record(ID), title: '另一客户端改名' }]);
+  await new Promise(setImmediate);
+  assert.equal(directory.records.find(({ id }) => id === ID).title, '另一客户端改名');
+  directory.dispose();
+  chats.dispose();
+});
+
+test('本端删除收尾废弃旧目录读取后会补读，保留另一端新建且不复活已删会话', async () => {
+  const stale = deferred();
+  const latest = deferred();
+  const another = { ...record('22222222-2222-4222-8222-222222222222'), title: '另一端会话' };
+  let reads = 0;
+  const api = { listSessions: async () => {
+    reads++;
+    if (reads === 1) return [record(), record(ID)];
+    return reads === 2 ? stale.promise : latest.promise;
+  } };
+  const chats = new ChatSessionStore(api);
+  const directory = new SessionStore(api, chats);
+  await directory.reload();
+  directory.invalidate();
+  directory.forget(ID);
+  assert.equal(reads, 3);
+  latest.resolve([record(), another]);
+  stale.resolve([record(), record(ID)]);
+  await new Promise(setImmediate);
+  assert.deepEqual(directory.records.map(({ id }) => id), ['main', another.id]);
+  directory.dispose();
+  chats.dispose();
+});

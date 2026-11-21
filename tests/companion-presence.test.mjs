@@ -19,7 +19,7 @@ function load(file, modules, extra = '') {
   const output = transpileTsx(file, source(file) + extra);
   runInNewContext(output, { exports, require: (name) => {
     assert.ok(Object.hasOwn(modules, name), `missing ${name}`); return modules[name];
-  }, setTimeout, clearTimeout });
+  }, setTimeout, clearTimeout, AbortController });
   return exports;
 }
 
@@ -333,4 +333,41 @@ test('切换专题、返回主聊天时保留已打开的会话所有者', () =>
   assert.equal(find('ConversationHost').props.activeSessionId, 'main');
   assert.deepEqual(Array.from(find('ConversationHost').props.sessionIds), ['main', 'topic']);
   h.unmount();
+});
+
+test('会话删除成功响应与未明结果回读到已删除时，均交同一工作区收尾', async () => {
+  for (const uncertain of [false, true]) {
+    const runner = hooks();
+    const topicId = 'topic';
+    const state = { deleting: false, deleteUncertain: uncertain, deleted: false };
+    const calls = [];
+    const modules = {
+      react: runner.react, 'react/jsx-runtime': { jsx, jsxs: jsx },
+      'react-native': { View: 'View', Text: 'Text' },
+      '../api/ApiProvider': { useApi: () => api }, '../api/errors': { ApiError: Error },
+      '../theme/ThemeProvider': { useTheme: () => ({ colors: availableThemes[0].colors }) },
+      '../sessions/SessionProvider': { useChatSessionStore: () => chats, useSessionState: () => state },
+      '../ui/ActionButton': { ActionButton: 'ActionButton' }, '../ui/Surfaces': { Card: 'Card' },
+      '../ui/FormInput': { FormInput: 'FormInput' }, '../ui/Feedback': { FeedbackNotice: 'FeedbackNotice' },
+      '../ui/Sheet': { Sheet: 'Sheet' }, '../ui/tokens': tokens,
+    };
+    const api = { getSessionSchedules: async () => ({ jobs: [], monitors: [], scheduleRevision: 'r1' }) };
+    const chats = {
+      deleteSession: async (id, options) => { calls.push('request'); assert.equal(id, topicId); assert.equal(options.scheduleRevision, 'r1'); return { ok: true }; },
+      get: () => state,
+    };
+    const props = {
+      session: { id: topicId, title: '专题' },
+      onRemoved: (id) => calls.push(['removed', id]),
+      reload: async () => { calls.push('readback'); state.deleted = true; return true; },
+    };
+    const { SessionDeleteSheet } = load('SessionDirectory.tsx', modules, '\nexport { SessionDeleteSheet };');
+    runner.render(SessionDeleteSheet, props);
+    await new Promise(setImmediate);
+    const tree = runner.render(SessionDeleteSheet, props);
+    nodes(tree).find((node) => node.props?.label === (uncertain ? '核对删除结果' : '确认删除会话')).props.onPress();
+    await new Promise(setImmediate);
+    assert.deepEqual(calls, [uncertain ? 'readback' : 'request', ['removed', topicId]]);
+    runner.unmount();
+  }
 });

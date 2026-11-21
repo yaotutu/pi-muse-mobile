@@ -8,6 +8,7 @@ type Field<T> = {
   loaded: boolean;
   loading: boolean;
   saving: boolean;
+  writeUncertain: boolean;
   saved: T;
   draft: T;
   error?: string;
@@ -25,7 +26,9 @@ type SettingsState = {
 };
 type ReadKind = 'instructions' | 'skills';
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
-const field = <T,>(value: T): Field<T> => ({ loaded: false, loading: false, saving: false, saved: value, draft: value });
+const field = <T,>(value: T): Field<T> => ({ loaded: false, loading: false, saving: false, writeUncertain: false, saved: value, draft: value });
+const isUncertainWrite = (error: unknown) =>
+  !(error instanceof ApiError) || error.status === 0 || error.status === 408 || error.status >= 500;
 const effective = (data: SessionSkills) => Object.fromEntries(data.skills.map((skill) => [skill.id, skill.enabled]));
 export const equalSwitches = (a: Record<string, boolean>, b: Record<string, boolean>) =>
   Object.keys(a).length === Object.keys(b).length && Object.keys(a).every((name) => a[name] === b[name]);
@@ -61,10 +64,10 @@ export class AssistantSettingsStore {
     this.listeners.clear();
   }
 
-  setInstructions(value: string) { if (this.canWrite() && !this.state.instructions.saving) { this.state.instructions.draft = value; this.changed(); } }
+  setInstructions(value: string) { if (this.canWrite() && !this.state.instructions.saving && !this.state.instructions.writeUncertain) { this.state.instructions.draft = value; this.changed(); } }
   setSkill(id: string, enabled: boolean) {
     const entry = this.state;
-    if (this.canWrite() && !entry.skills.saving) {
+    if (this.canWrite() && !entry.skills.saving && !entry.skills.writeUncertain) {
       const target = entry.skills.catalog.find((skill) => skill.id === id);
       if (target) {
         const key = target.id;
@@ -74,7 +77,7 @@ export class AssistantSettingsStore {
     }
   }
   discardSettings(kind: ReadKind) {
-    if (!this.canWrite() || this.hasSettingsWrite()) return;
+    if (!this.canWrite() || this.hasSettingsWrite() || this.state[kind].writeUncertain) return;
     const entry = this.state;
     if (kind === 'instructions') entry.instructions.draft = entry.instructions.saved;
     else { entry.skills.draft = { ...entry.skills.saved }; entry.skills.notice = undefined; }
@@ -92,9 +95,9 @@ export class AssistantSettingsStore {
   }
   async loadSettings() { await Promise.all([this.loadInstructions(), this.loadSkills()]); }
 
-  private async read<T>(kind: ReadKind, fetch: (signal: AbortSignal) => Promise<T>, apply: (data: T) => void) {
+  private async read<T>(kind: ReadKind, fetch: (signal: AbortSignal) => Promise<T>, apply: (data: T) => void, reconcileUncertain: boolean) {
     const entry = this.state;
-    if (!this.canWrite() || entry[kind].saving) return;
+    if (!this.canWrite() || entry[kind].saving || (entry[kind].writeUncertain && !reconcileUncertain)) return;
 
     const key = kind;
     this.reads.get(key)?.abort();
@@ -105,7 +108,10 @@ export class AssistantSettingsStore {
     this.changed();
     try {
       const data = await fetch(controller.signal);
-      if (!controller.signal.aborted && !this.disposed && this.reads.get(key) === controller) apply(data);
+      if (!controller.signal.aborted && !this.disposed && this.reads.get(key) === controller) {
+        apply(data);
+        entry[kind].writeUncertain = false;
+      }
     } catch (error) {
       if (!controller.signal.aborted && !this.disposed && this.reads.get(key) === controller && !isRequestCancelled(error)) entry[kind].error = message(error);
     } finally {
@@ -116,14 +122,14 @@ export class AssistantSettingsStore {
       }
     }
   }
-  loadInstructions() {
+  loadInstructions(reconcileUncertain = false) {
     return this.read('instructions', (signal) => this.api.getAssistantInstructions(signal), (data) => {
       const target = this.state.instructions;
       const dirty = target.draft !== target.saved;
       target.saved = data.instructions;
       if (!dirty) target.draft = data.instructions;
       target.loaded = true;
-    });
+    }, reconcileUncertain);
   }
   private applySkills(data: SessionSkills, preserveDraft: boolean) {
     const target = this.state.skills;
@@ -151,11 +157,11 @@ export class AssistantSettingsStore {
     target.notice = removed.length && preserveDraft ? `技能目录已变化，已移除不可提交的技能：${removed.join('、')}；其余草稿已保留。` : undefined;
     target.loaded = true;
   }
-  loadSkills() {
+  loadSkills(reconcileUncertain = false) {
     return this.read('skills', (signal) => this.api.getAssistantSkills(signal), (data) => {
       const target = this.state.skills;
       this.applySkills(data, !equalSwitches(target.draft, target.saved));
-    });
+    }, reconcileUncertain);
   }
 
   /**
@@ -213,7 +219,7 @@ export class AssistantSettingsStore {
   async saveInstructions(): Promise<boolean> {
     const entry = this.state;
     const target = entry.instructions;
-    if (!this.canWrite() || !target.loaded || target.saving) return false;
+    if (!this.canWrite() || !target.loaded || target.saving || target.writeUncertain) return false;
     if (target.draft.length > INSTRUCTIONS_LIMIT) { target.error = `助手指令最多 ${INSTRUCTIONS_LIMIT.toLocaleString()} 字符`; this.changed(); return false; }
     this.reads.get('instructions')?.abort();
 
@@ -223,19 +229,22 @@ export class AssistantSettingsStore {
     this.changed();
     try {
       const data = await this.api.saveAssistantInstructions(draft);
-      if (!!this.disposed) return false;
+      if (this.disposed) return false;
       target.saved = data.instructions;
       if (target.draft === draft) target.draft = data.instructions;
       return true;
     } catch (error) {
-      if (!this.disposed && !isRequestCancelled(error)) target.error = message(error);
+      if (!this.disposed) {
+        target.writeUncertain = isUncertainWrite(error);
+        target.error = message(error);
+      }
       return false;
     } finally { target.saving = false; this.changed(); }
   }
   async saveSkills(defaults = false): Promise<boolean> {
     const entry = this.state;
     const target = entry.skills;
-    if (!this.canWrite() || !target.loaded || target.saving) return false;
+    if (!this.canWrite() || !target.loaded || target.saving || target.writeUncertain) return false;
     this.reads.get('skills')?.abort();
 
     // PUT 是替换；普通保存按技能来源身份 id（source/name）提交整个当前目录，重置才发空覆盖表。
@@ -249,11 +258,12 @@ export class AssistantSettingsStore {
     let refreshCatalog = false;
     try {
       const data = await this.api.saveAssistantSkills(overrides);
-      if (!!this.disposed) return false;
+      if (this.disposed) return false;
       this.applySkills(data, false);
       return true;
     } catch (error) {
-      if (!this.disposed && !isRequestCancelled(error)) {
+      if (!this.disposed) {
+        target.writeUncertain = isUncertainWrite(error);
         target.error = message(error);
         refreshCatalog = error instanceof ApiError && error.status === 400;
       }

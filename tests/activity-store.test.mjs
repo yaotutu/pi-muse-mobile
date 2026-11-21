@@ -26,12 +26,25 @@ test('不可见不读接口，打开/前台恢复读真实第一页；关闭和�
   lists[1].resolve(activityPage([])); await tick(); assert.equal(store.getSnapshot().activities.length, 1); store.dispose();
 });
 
-test('conversation_updated 不触发活动列表或详情补读', async () => {
-  const { store, lists } = fixture(); store.setActive(true); store.open({ sessionId: '22222222-2222-4222-8222-222222222222' });
+test('远端重置和删除使活动过期，其他会话的历史变化不触发当前列表读取', async () => {
+  const { store, lists } = fixture();
+  const sessionId = '22222222-2222-4222-8222-222222222222';
+  store.setActive(true); store.open({ sessionId });
   lists[0].resolve(activityPage()); await tick();
-  store.receive({ event: 'conversation_updated', data: { instanceId: 'i', sessionId: '22222222-2222-4222-8222-222222222222', piSessionId: 'session-a' } });
+  store.receive({ event: 'conversation_updated', data: {
+    instanceId: 'i', sessionId: '33333333-3333-4333-8333-333333333333', piSessionId: 'other',
+  } });
   await wait();
-  assert.equal(lists.length, 1); store.dispose();
+  assert.equal(lists.length, 1);
+  store.receive({ event: 'conversation_updated', data: { instanceId: 'i', sessionId, piSessionId: 'rotated' } });
+  await wait();
+  assert.equal(lists.length, 2);
+  lists[1].resolve(activityPage([])); await tick();
+  assert.deepEqual(store.getSnapshot().activities, []);
+  store.receive({ event: 'session_directory_updated', data: { instanceId: 'i' } });
+  await wait();
+  assert.equal(lists.length, 3);
+  store.dispose();
 });
 
 test('运行与审批通知仍驱动活动补读', async () => {

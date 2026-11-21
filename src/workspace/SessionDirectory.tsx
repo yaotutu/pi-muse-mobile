@@ -16,12 +16,12 @@ import { spacing, workspaceTheme } from '../ui/tokens';
 
 type Edit = { kind: 'create' } | { kind: 'rename' | 'delete'; session: SessionRecord };
 
-export function SessionDirectory({ directory, selectedId, onClose, onSelect, onDelete }: {
+export function SessionDirectory({ directory, selectedId, onClose, onSelect, onRemoved }: {
   directory: ReturnType<typeof useSessions>;
   selectedId: string;
   onClose: () => void;
   onSelect: (id: string) => void;
-  onDelete: (id: string, options: SessionDeleteOptions) => Promise<boolean>;
+  onRemoved: (id: string) => void;
 }) {
   const { colors } = useTheme();
   const [edit, setEdit] = useState<Edit>();
@@ -33,7 +33,7 @@ export function SessionDirectory({ directory, selectedId, onClose, onSelect, onD
   };
 
   if (edit?.kind === 'delete') return <SessionDeleteSheet session={edit.session}
-    onClose={() => setEdit(undefined)} onDelete={onDelete} onRemoved={onClose} reload={directory.store.reload} />;
+    onClose={() => setEdit(undefined)} onRemoved={onRemoved} reload={directory.store.reload} />;
 
   return <Sheet title={edit ? edit.kind === 'create' ? '新建会话' : '重命名会话' : '会话'} onClose={() => {
     if (!directory.busy) { if (edit) setEdit(undefined); else onClose(); }
@@ -70,11 +70,10 @@ export function SessionDirectory({ directory, selectedId, onClose, onSelect, onD
   </Sheet>;
 }
 
-function SessionDeleteSheet({ session, onClose, onDelete, onRemoved, reload }: {
+function SessionDeleteSheet({ session, onClose, onRemoved, reload }: {
   session: SessionRecord;
   onClose: () => void;
-  onDelete: (id: string, options: SessionDeleteOptions) => Promise<boolean>;
-  onRemoved: () => void;
+  onRemoved: (id: string) => void;
   reload: ReturnType<typeof useSessions>['store']['reload'];
 }) {
   const api = useApi();
@@ -100,7 +99,7 @@ function SessionDeleteSheet({ session, onClose, onDelete, onRemoved, reload }: {
     if (!preview || state.deleting || state.deleteUncertain || checking) return;
     setError(undefined);
     try {
-      if (await onDelete(session.id, { scheduleDisposition, scheduleRevision: preview.scheduleRevision })) onRemoved();
+      if (await chats.deleteSession(session.id, { scheduleDisposition, scheduleRevision: preview.scheduleRevision })) onRemoved(session.id);
       else setError('当前会话无法删除，请检查连接状态后重试。');
     } catch (cause) {
       if (cause instanceof ApiError && cause.code === 'SESSION_SCHEDULES_CHANGED') {
@@ -118,7 +117,7 @@ function SessionDeleteSheet({ session, onClose, onDelete, onRemoved, reload }: {
     setChecking(true);
     try {
       if (!await reload()) { setError('无法重新核对会话。请检查连接后再核对。'); return; }
-      if (chats.get(session.id).deleted) onRemoved();
+      if (chats.get(session.id).deleted) onRemoved(session.id);
       else { chats.acknowledgeDeletion(session.id); retryPreview(); }
     } finally { setChecking(false); }
   };

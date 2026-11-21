@@ -116,4 +116,5 @@ export type RuntimeEvent = RuntimeReadyEvent | RuntimeSessionStatusUpdatedEvent
   | { event: 'approval_pending'; data: ApprovalView & { instanceId: string } }
   | { event: 'approval_updated'; data: ApprovalResolution & { instanceId: string } }
   | { event: 'activity_updated'; data: ActivityOverview & { instanceId: string } }
+  | { event: 'session_directory_updated'; data: { instanceId: string } }
   | { event: 'conversation_updated'; data: ConversationInvalidation & { instanceId: string } };

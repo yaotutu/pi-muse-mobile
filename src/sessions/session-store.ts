@@ -22,6 +22,7 @@ export class SessionStore {
   directoryUncertain = false;
   private directoryGeneration = 0;
   private directoryRead?: AbortController;
+  private invalidatedDuringWrite = false;
   private tombstones = new Set<string>();
   constructor(private readonly api: ApiClient, private readonly chats: ChatSessionStore) {}
 
@@ -45,6 +46,11 @@ export class SessionStore {
       return false;
     } finally { if (generation === this.directoryGeneration && !this.disposed) { this.loading = false; this.changed(); } }
   };
+  invalidate() {
+    if (this.directoryWriting) this.invalidatedDuringWrite = true;
+    else void this.reload();
+  }
+
   private async directoryWrite(action: () => Promise<SessionRecord>): Promise<SessionRecord | undefined> {
     if (this.disposed || !this.enabled || this.directoryWriting || this.directoryUncertain) return;
     ++this.directoryGeneration; this.directoryRead?.abort(); this.loading = false;
@@ -59,7 +65,16 @@ export class SessionStore {
         this.directoryUncertain = !(error instanceof ApiError) || error.status === 0 || error.status === 408 || error.status >= 500;
         this.directoryError = message(error);
       }
-    } finally { if (!this.disposed) { this.directoryWriting = false; this.changed(); } }
+    } finally {
+      if (!this.disposed) {
+        this.directoryWriting = false;
+        this.changed();
+        if (this.invalidatedDuringWrite) {
+          this.invalidatedDuringWrite = false;
+          void this.reload();
+        }
+      }
+    }
   }
   create = (title?: string) => this.directoryWrite(() => this.api.createSession(title));
   rename = (id: string, title: string) => this.records.some((item) => item.id === id)
@@ -67,12 +82,26 @@ export class SessionStore {
 
   update(record: SessionRecord) {
     if (this.disposed || this.tombstones.has(record.id)) return;
-    ++this.directoryGeneration; this.directoryRead?.abort(); this.loading = false;
-    this.records = orderSessions([record, ...this.records.filter((item) => item.id !== record.id)]); this.changed();
+    this.applyMutation(() => {
+      this.records = orderSessions([record, ...this.records.filter((item) => item.id !== record.id)]);
+    });
   }
   forget(id: string) {
-    ++this.directoryGeneration; this.directoryRead?.abort(); this.loading = false;
-    this.tombstones.add(id); this.records = this.records.filter((item) => item.id !== id); this.changed();
+    this.applyMutation(() => {
+      this.tombstones.add(id);
+      this.records = this.records.filter((item) => item.id !== id);
+    });
+  }
+  private applyMutation(change: () => void) {
+    if (this.disposed) return;
+    const retry = this.loading;
+    ++this.directoryGeneration;
+    this.directoryRead?.abort();
+    this.loading = false;
+    change();
+    this.changed();
+    // 在途读可能来自另一端的失效信号，局部写回不消费该信号。
+    if (retry) this.invalidate();
   }
   dispose() { this.disposed = true; this.directoryRead?.abort(); this.listeners.clear(); }
 }

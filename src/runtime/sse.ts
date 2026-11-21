@@ -120,6 +120,7 @@ export function decodeRuntimeFrame(frame: ParsedRuntimeFrame): RuntimeEvent | nu
     'approval_updated',
     'activity_updated',
     'conversation_updated',
+    'session_directory_updated',
   ].includes(frame.event)) return null;
   let payload: unknown;
   try {

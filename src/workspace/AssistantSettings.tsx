@@ -45,11 +45,11 @@ export function AssistantSettings({ section }: { section: 'rules' | 'skills' }) 
   const isRules = section === 'rules';
   const field = isRules ? session.instructions : session.skills;
   const available = store.canWrite();
-  const locked = !available || store.hasSettingsWrite();
+  const locked = !available || store.hasSettingsWrite() || field.writeUncertain;
   const dirty = isRules
     ? session.instructions.draft !== session.instructions.saved
     : !equalSwitches(session.skills.saved, session.skills.draft);
-  const load = () => isRules ? store.loadInstructions() : store.loadSkills();
+  const load = (reconcileUncertain = false) => isRules ? store.loadInstructions(reconcileUncertain) : store.loadSkills(reconcileUncertain);
 
   useEffect(() => {
     if (!available) return;
@@ -79,6 +79,10 @@ export function AssistantSettings({ section }: { section: 'rules' | 'skills' }) 
         {isRules ? '告诉助手在所有会话中如何工作。保存后从下一轮起生效。' : '选择所有会话可使用的技能。保存后从下一轮起生效。'}
       </Text>
       {!!field.error && <FeedbackNotice text={field.error} tone="danger" />}
+      {field.writeUncertain && <>
+        <FeedbackNotice text="保存结果未明，核对服务器设置后再继续。" tone="warning" />
+        <ActionButton label="核对服务器设置" disabled={!available || field.loading} onPress={() => void load(true)} />
+      </>}
       {field.loading && <ActivityIndicator accessibilityLabel="正在读取设置" color={colors.blue} />}
       {!field.loaded && !field.loading && <ActionButton label="重新读取" onPress={() => void load()} />}
       {field.loaded && (isRules ? <SettingsTextField label="助手指令" empty="尚未设置助手指令。"
@@ -116,7 +120,7 @@ export function AssistantSettings({ section }: { section: 'rules' | 'skills' }) 
           <ActionButton label="技能加载诊断" expanded={showDiagnostics} onPress={() => setShowDiagnostics(!showDiagnostics)} />
           {showDiagnostics && session.skills.diagnostics.map(({ path, message }) => <Text key={`${path}:${message}`} style={[styles.caption, { color: colors.muted }]}>{path}：{message}</Text>)}
         </>}
-        <ActionButton label="刷新技能列表" disabled={locked || field.loading} onPress={() => void load()} />
+        {!field.writeUncertain && <ActionButton label="刷新技能列表" disabled={locked || field.loading} onPress={() => void load()} />}
       </>)}
     </ScrollView>
     {field.loaded && (dirty || field.saving || (saved && !field.error)) && <View style={[styles.footer, { borderTopColor: colors.line, backgroundColor: colors.canvas }]}>

@@ -8,7 +8,6 @@ import { useConnection } from '../connection/useConnection';
 import { RuntimeProvider, useRuntimeStore, useSessionRuntime } from '../runtime/RuntimeProvider';
 import { SessionProvider, useSessionState, useChatSessionStore } from '../sessions/SessionProvider';
 import { MAIN_SESSION_ID } from '../sessions/types';
-import type { SessionDeleteOptions } from '../api/types';
 import { useSessions } from '../sessions/useSessions';
 import { SmsProvider } from '../information/SmsProvider';
 import { SmsSettingsCard } from '../information/SmsSettingsCard';
@@ -174,14 +173,12 @@ function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) 
     setSessionDirectoryOpen(false);
     setChatReturn(chatReturnForEntry(source)); setSettingsPage(null); setPage('messages'); Keyboard.dismiss();
   };
-  const removeSession = async (id: string, options: SessionDeleteOptions) => {
-    const result = await chats.deleteSession(id, options);
-    if (!result) return false;
+  const finishSessionDeletion = (id: string) => {
     store.forget(id); runtime.forgetSession(id);
     setStartedSessions((ids) => ids.filter((item) => item !== id));
     if (requestedSessionId === id) openSession(MAIN_SESSION_ID, 'messages');
+    else setSessionDirectoryOpen(false);
     jobs.invalidate(); monitors.invalidate(); void approvals.store.refreshPending();
-    return true;
   };
   const returnToArticle = () => { Keyboard.dismiss(); setChatReturn('messages'); setPage('news'); };
   const backSettings = () => {
@@ -279,7 +276,7 @@ function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) 
     </FloatingCompanion>
     </View>
     {sessionDirectoryOpen && <SessionDirectory directory={directory} selectedId={activeSessionId}
-      onClose={() => setSessionDirectoryOpen(false)} onSelect={(id) => openSession(id, 'messages')} onDelete={removeSession} />}
+      onClose={() => setSessionDirectoryOpen(false)} onSelect={(id) => openSession(id, 'messages')} onRemoved={finishSessionDeletion} />}
     {resetTarget && <ResetSessionDialog sessionId={resetTarget} available={!!connection?.enabled} error={resetError} onCancel={() => setResetTarget(undefined)} onConfirm={async (id) => {
       try { const result = await chats.resetSession(id); if (!result) return; store.update(result.session); runtime.forgetSession(id); await approvals.store.refreshPending(); setResetTarget(undefined); refresh(id); }
       catch (error) { setResetError(error instanceof Error ? error.message : '重置失败'); }

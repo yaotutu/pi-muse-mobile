@@ -387,28 +387,50 @@ for (const kind of ['instructions', 'skills']) {
   });
 }
 
-// --- 9. 500 保留草稿 + 解除锁 + 不伪成功 ---
+// --- 9. 写入未明须显式回读 ---
+for (const kind of ['instructions', 'skills']) {
+  test(`${kind} 写入结果未明时保留草稿并锁定，显式回读失败仍保持锁`, async () => {
+    const stub = makeStub();
+    const store = new AssistantSettingsStore(stub.api);
+    const rules = kind === 'instructions';
+    const get = rules ? 'getAssistantInstructions' : 'getAssistantSkills';
+    const put = rules ? 'saveAssistantInstructions' : 'saveAssistantSkills';
+    const initial = rules ? { instructions: '原指令' } : { skills: [makeSkill('web', true, true)] };
+    const committed = rules ? { instructions: '新指令' } : { skills: [makeSkill('web', false, true)] };
+    const load = (reconcile) => rules ? store.loadInstructions(reconcile) : store.loadSkills(reconcile);
+    const save = () => rules ? store.saveInstructions() : store.saveSkills();
+    stub.enqueue(get, resolveWith(initial));
+    await load();
+    if (rules) store.setInstructions('新指令');
+    else store.setSkill('builtin/web', false);
 
-test('saveInstructions 500 时草稿保留、saving=false、返回 false', async () => {
-  const stub = makeStub();
-  const store = new AssistantSettingsStore(stub.api);
-  stub.enqueue('getAssistantInstructions', resolveWith({ instructions: 'orig' }));
-  await store.loadInstructions();
-  store.setInstructions('新指令');
-  stub.enqueue('saveAssistantInstructions', rejectWith(new ApiError(500, '服务器开小差')));
-  const ok = await store.saveInstructions();
-  assert.equal(ok, false, '不能伪成功');
-  assert.equal(store.state.instructions.saving, false, '保存结束应清 saving 锁');
-  assert.equal(store.state.instructions.draft, '新指令', '草稿保留');
-  assert.equal(store.state.instructions.saved, 'orig', 'saved 未更新');
-  assert.equal(store.state.instructions.error, '服务器开小差');
+    const draft = structuredClone(store.state[kind].draft);
+    const previous = structuredClone(store.state[kind].saved);
+    stub.enqueue(put, rejectWith(new ApiError(rules ? 500 : 408, '响应未确认')));
+    assert.equal(await save(), false);
+    assert.equal(store.state[kind].writeUncertain, true);
+    assert.equal(store.state[kind].saving, false);
+    assert.equal(await save(), false);
+    await load();
+    assert.equal(stub.callCount(put), 1);
+    assert.equal(stub.callCount(get), 1);
+    assert.deepEqual(store.state[kind].draft, draft);
+    assert.deepEqual(store.state[kind].saved, previous);
 
-  // 同会话再次提交仍可走：saving 锁已释放。
-  stub.enqueue('saveAssistantInstructions', resolveWith({ instructions: '新指令' }));
-  const ok2 = await store.saveInstructions();
-  assert.equal(ok2, true);
-  assert.equal(store.state.instructions.saved, '新指令');
-});
+    stub.enqueue(get, rejectWith(new ApiError(500, '核对失败')));
+    await load(true);
+    assert.equal(store.state[kind].writeUncertain, true);
+    assert.equal(await save(), false);
+    assert.deepEqual(store.state[kind].saved, previous);
+
+    stub.enqueue(get, resolveWith(committed));
+    await load(true);
+    assert.equal(store.state[kind].writeUncertain, false);
+    assert.deepEqual(store.state[kind].saved, draft, '回读发现首次修改已生效');
+    assert.deepEqual(store.state[kind].draft, draft);
+    assert.equal(stub.callCount(put), 1, '仅核对，不重新发出保存请求');
+  });
+}
 
 // --- 10. delete 与晚到 GET（忽略 signal 的 promise）不得复活 ---
 

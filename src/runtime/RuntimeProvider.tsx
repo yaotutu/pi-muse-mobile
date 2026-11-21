@@ -16,12 +16,14 @@ import { GoalProvider } from '../goals/GoalProvider';
 import { MonitorStore } from '../monitors/monitor-store';
 import { MonitorProvider } from '../monitors/MonitorProvider';
 
+import { useSessionDirectoryStore } from '../sessions/SessionProvider';
 import { RuntimeContext as Context } from './runtime-context';
 
 /** 原生通知流仅前台订阅；开发 Web 的宿主可见性不等于 App 生命周期。 */
 export function RuntimeProvider({ children }: { children: ReactNode }) {
   const api = useApi();
   const connection = useServiceConnection();
+  const directory = useSessionDirectoryStore();
   const [foreground, setForeground] = useState(AppState.currentState === 'active');
   const approvals = useMemo(() => new ApprovalStore(api), [api]);
   const activities = useMemo(() => new ActivityStore(api), [api]);
@@ -30,9 +32,13 @@ export function RuntimeProvider({ children }: { children: ReactNode }) {
   const goals = useMemo(() => new GoalStore(api), [api]);
   const monitors = useMemo(() => new MonitorStore(api), [api]);
   const store = useMemo(() => new RuntimeStore(api, {
-    onEvent: (event) => { approvals.receive(event); activities.receive(event); jobs.receive(event); },
+    onEvent: (event) => {
+      approvals.receive(event); activities.receive(event); jobs.receive(event);
+      if (event.event === 'ready' || event.event === 'session_directory_updated') directory.invalidate();
+      if (event.event === 'session_directory_updated') { jobs.invalidate(); monitors.invalidate(); }
+    },
     onConnection: (state) => { approvals.setConnection(state); activities.setConnection(state); },
-  }), [api, approvals, activities, jobs]);
+  }), [api, approvals, activities, jobs, monitors, directory]);
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => setForeground(state === 'active'));
     return () => subscription.remove();
