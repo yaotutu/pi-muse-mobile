@@ -101,12 +101,12 @@ test('会话切换后的历史读取只归属新会话，不回写旧会话消�
   nextSession.unmount();
 });
 
-test('main 始终持有 SSE 所有者；切 Tab 仅改变可见性，epoch 与连接保持原生命周期', () => {
+test('已打开会话保持 SSE 所有者；切会话与 Tab 仅改变可见性，epoch 与连接保持原生命周期', () => {
   const host = readFileSync('src/workspace/ConversationHost.tsx', 'utf8');
-  assert.match(host, /return <View style=\{styles.host\}>\s*<SessionConversation sessionId="main" visible=\{chatVisible\}/);
+  assert.match(host, /sessionIds\.map\(\(sessionId\) => <SessionConversation key=\{sessionId\} sessionId=\{sessionId\} visible=\{chatVisible && sessionId === activeSessionId\}/);
   assert.match(host, /!visible && styles\.hidden/);
   assert.match(host, /<ConversationView key=\{`\$\{sessionId\}:\$\{session\.epoch\}`\}/);
-  assert.doesNotMatch(host, /chatVisible && <SessionConversation|sessionIds|setVisited/);
+  assert.doesNotMatch(host, /chatVisible && <SessionConversation/);
   const workspace = readFileSync('src/workspace/WorkspaceScreen.tsx', 'utf8');
   assert.match(workspace, /display: page === 'news' \? 'none' : 'flex'[^\n]*><ConversationHost/);
   assert.match(workspace, /<ApiProvider client=\{connection\.client\} key=\{connection\.snapshot\.workspaceKey\}/);

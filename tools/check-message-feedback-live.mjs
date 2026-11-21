@@ -5,6 +5,7 @@
  * 通过 HttpApiClient 发起一次真实模型轮，再验证反馈读取、CRUD、原始事件、
  * 错误状态与聊天 revision 不变，最后删除本轮会话。Token 不打印、不落仓库。
  */
+import { deleteTestSession, temporaryAssistantInstructions } from './session-live-helpers.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
@@ -38,6 +39,7 @@ assert.ok(token, 'token file is empty');
 const api = new HttpApiClient(base, () => token, () => {
   throw new Error('Real token was rejected by the service');
 });
+const assistantInstructions = temporaryAssistantInstructions(api);
 const stamp = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 let sessionId;
 const marker = `FEEDBACK_LIVE_${stamp}`;
@@ -90,7 +92,7 @@ try {
 
   cleanupRequired = true;
   sessionId = (await api.createSession(marker)).id;
-  await api.saveSessionInstructions(sessionId, [
+  await assistantInstructions.set([
     `Dedicated message-feedback acceptance session ${stamp}.`,
     'Follow only the explicit test prompt. Do not use tools, create jobs or monitors, or touch other sessions.',
   ].join(' '));
@@ -195,9 +197,11 @@ try {
   failure = error;
   throw error;
 } finally {
+  try { await assistantInstructions.restore(); }
+  catch { console.error('Unable to restore the original assistant instructions'); process.exitCode = 1; }
   if (cleanupRequired) {
     try {
-      await api.deleteSession(sessionId);
+      await deleteTestSession(api, sessionId);
       assert.equal((await api.listSessions()).some((session) => session.id === sessionId), false);
       console.log(`CLEANUP session=${sessionId}`);
     } catch (cleanupError) {

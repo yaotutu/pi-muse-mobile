@@ -15,8 +15,8 @@ export const SETTINGS_PAGE_TITLES: Record<SettingsPage, string> = {
   monitors: '网页监控',
   files: '工作区文件',
   sms: '短信设置',
-  rules: '会话指令',
-  skills: '会话技能',
+  rules: '助手指令',
+  skills: '助手技能',
   'news-sources': '新闻来源',
   'news-preferences': '新闻偏好',
   appearance: '外观主题',
@@ -76,9 +76,9 @@ export function SettingsHome({ onOpen, onConnection, onBrowser, onUpdate, onRese
       <Card style={styles.card}>
         <SettingsRow icon={UserRound} label={SETTINGS_PAGE_TITLES.profile} description="助手身份与表达风格"
           testID="settings-open-profile" onPress={() => onOpen('profile')} />
-        <SettingsRow icon={FileText} label={SETTINGS_PAGE_TITLES.rules} description="主聊天的自定义指令"
+        <SettingsRow icon={FileText} label={SETTINGS_PAGE_TITLES.rules} description="所有会话共享的自定义指令"
           testID="settings-open-rules" divider onPress={() => onOpen('rules')} />
-        <SettingsRow icon={Sparkles} label={SETTINGS_PAGE_TITLES.skills} description="主聊天可用的技能"
+        <SettingsRow icon={Sparkles} label={SETTINGS_PAGE_TITLES.skills} description="所有会话共享的技能"
           testID="settings-open-skills" divider onPress={() => onOpen('skills')} />
         <SettingsRow icon={Moon} label={SETTINGS_PAGE_TITLES.dream} description="记忆整理配置与待决建议"
           testID="settings-open-dream" divider onPress={() => onOpen('dream')} />

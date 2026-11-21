@@ -1,13 +1,11 @@
 import type { ApiClient } from '../api/contracts';
-import { ApiError, isRequestCancelled } from '../api/errors';
-import type { ConversationMessage, ConversationSnapshot, DeleteSessionResult, ResetSessionResult, SessionSkills } from '../api/types';
+import { ApiError } from '../api/errors';
+import type { ConversationMessage, ConversationSnapshot, DeleteSessionResult, ResetSessionResult, SessionDeleteOptions } from '../api/types';
 import { isChatReadingPosition, type ChatLocalData, type ChatLocalSessionRepository, type ChatReadingPosition } from '../chat/chat-local-data';
 import { validateAttachmentDrafts } from '../attachments/validation';
 import type { AttachmentDraft, AttachmentDraftUpdateResult } from '../attachments/types';
 import { MAIN_SESSION_ID } from './types';
 export type { ChatReadingPosition } from '../chat/chat-local-data';
-
-export const INSTRUCTIONS_LIMIT = 20_000;
 
 /** A01: 客户端未确认提交条目（内存持有，随会话与 epoch 隔离，连接销毁即释放，不持久化正文）。 */
 export type PendingSubmission = {
@@ -23,16 +21,6 @@ export type PendingSubmission = {
   attachments?: AttachmentDraft[];
 };
 
-type Field<T> = {
-  loaded: boolean;
-  loading: boolean;
-  saving: boolean;
-  saved: T;
-  draft: T;
-  error?: string;
-};
-/** 单个技能正文的按需读取状态；键为技能名称，与 GET /skills/:name 一致。 */
-export type SkillDetailState = { loading: boolean; content?: string; error?: string };
 export type SessionState = {
   localLoaded: boolean;
   localError?: string;
@@ -53,27 +41,10 @@ export type SessionState = {
   draftAttachments: AttachmentDraft[];
   /** A01: 单会话单epoch独占一条未确认提交，收到权威历史包含原user ID前始终保留 */
   pendingSubmission: PendingSubmission | null;
-  instructions: Field<string>;
-  skills: Field<Record<string, boolean>> & {
-    catalog: SessionSkills['skills'];
-    diagnostics: NonNullable<SessionSkills['diagnostics']>;
-    details: Record<string, SkillDetailState>;
-    notice?: string;
-  };
 };
-type ReadKind = 'instructions' | 'skills';
-const message = (error: unknown) => error instanceof Error ? error.message : String(error);
-const field = <T,>(value: T): Field<T> => ({ loaded: false, loading: false, saving: false, saved: value, draft: value });
-/** 技能开关键：优先来源身份 id（source/name），旧服务端缺少 id 时回退为名称。 */
-const skillKeyOf = (skill: { id?: string; name: string }): string => skill.id || skill.name;
-const effective = (data: SessionSkills) => Object.fromEntries(data.skills.map((skill) => [skillKeyOf(skill), skill.enabled]));
-export const equalSwitches = (a: Record<string, boolean>, b: Record<string, boolean>) =>
-  Object.keys(a).length === Object.keys(b).length && Object.keys(a).every((name) => a[name] === b[name]);
-
 /** 每个连接工作区独占内存；仅通过显式注入边界保存有界展示缓存和纯文本草稿。 */
 export class ChatSessionStore {
   private sessions = new Map<string, SessionState>();
-  private reads = new Map<string, AbortController>();
   private listeners = new Set<() => void>();
   private version = 0;
   private lifecycleVersion = 0;
@@ -185,7 +156,7 @@ export class ChatSessionStore {
   get(id: string): SessionState {
     let entry = this.sessions.get(id);
     if (!entry) {
-      entry = { localLoaded: !this.local, readingPosition: null, cachedMessages: null, epoch: 0, piSessionId: null, deleted: false, deleting: false, resetting: false, resetUncertain: false, resetReviewed: false, deleteUncertain: false, draft: '', draftAttachments: [], pendingSubmission: null, instructions: field(''), skills: { ...field<Record<string, boolean>>({}), catalog: [], diagnostics: [], details: {} } };
+      entry = { localLoaded: !this.local, readingPosition: null, cachedMessages: null, epoch: 0, piSessionId: null, deleted: false, deleting: false, resetting: false, resetUncertain: false, resetReviewed: false, deleteUncertain: false, draft: '', draftAttachments: [], pendingSubmission: null };
       this.sessions.set(id, entry);
       this.hydrateLocal(id, entry);
     }
@@ -196,13 +167,11 @@ export class ChatSessionStore {
     return entry.epoch === epoch && this.canWrite(id);
   }
   canWrite(id: string) { const entry = this.get(id); return !this.disposed && !entry.deleted && !entry.deleting && !entry.resetting && !entry.resetUncertain && !entry.deleteUncertain; }
-  hasSettingsWrite(id: string) { const entry = this.get(id); return entry.instructions.saving || entry.skills.saving; }
-  hasDirtySettings(id: string) { const entry = this.get(id); return entry.instructions.draft !== entry.instructions.saved || !equalSwitches(entry.skills.draft, entry.skills.saved); }
   setDraft(id: string, value: string) { if (this.canWrite(id)) { this.get(id).draft = value; this.draftEdits.set(id, (this.draftEdits.get(id) ?? 0) + 1); this.persistLocal(id); this.changed(); } }
   /** 附件草稿允许在连接短暂 enabled=false 时写入；仍拒绝 dispose、删除、重置与旧 epoch。 */
   private canHoldDraftAttachments(id: string, epoch: number) {
     const entry = this.get(id);
-    return !this.disposed && entry.epoch === epoch && !entry.deleted && !entry.deleting &&
+    return !this.disposed && entry.epoch === epoch && !entry.deleted && !entry.deleting && !entry.deleteUncertain &&
       !entry.resetting && !entry.resetUncertain;
   }
   setDraftAttachments(id: string, epoch: number, attachments: AttachmentDraft[]): AttachmentDraftUpdateResult {
@@ -309,27 +278,6 @@ export class ChatSessionStore {
     this.changed();
     return true;
   }
-  setInstructions(id: string, value: string) { if (this.canWrite(id) && !this.get(id).instructions.saving) { this.get(id).instructions.draft = value; this.changed(); } }
-  setSkill(id: string, keyOrName: string, enabled: boolean) {
-    const entry = this.get(id);
-    if (this.canWrite(id) && !entry.skills.saving) {
-      // 支持按 id 或 name 设置；保存与草稿统一以 skillKeyOf(skill) 为键。
-      const target = entry.skills.catalog.find((skill) => skillKeyOf(skill) === keyOrName || skill.name === keyOrName);
-      if (target) {
-        const key = skillKeyOf(target);
-        entry.skills.draft = { ...entry.skills.draft, [key]: enabled };
-        this.changed();
-      }
-    }
-  }
-  discardSettings(id: string, kind: ReadKind) {
-    if (!this.canWrite(id) || this.hasSettingsWrite(id)) return;
-    const entry = this.get(id);
-    if (kind === 'instructions') entry.instructions.draft = entry.instructions.saved;
-    else { entry.skills.draft = { ...entry.skills.saved }; entry.skills.notice = undefined; }
-    this.changed();
-  }
-
   /** 列表观察到另一设备重置时，只失效聊天，不能销毁会话规则与未保存的设置草稿。 */
   bindSession(id: string, piSessionId: string | null) {
     const entry = this.get(id);
@@ -347,16 +295,15 @@ export class ChatSessionStore {
       entry.draftAttachments = [];
       entry.pendingSubmission = null;
       this.clearLocal(id, entry);
-      this.cancelReads(id);
     }
     entry.piSessionId = piSessionId;
     entry.resetUncertain = false;
     this.changed();
   }
 
-  async resetSession(id: string, clearSchedules = false): Promise<ResetSessionResult | undefined> {
+  async resetSession(id: string): Promise<ResetSessionResult | undefined> {
     const entry = this.get(id);
-    if (!this.available(id) || this.hasSettingsWrite(id)) return undefined;
+    if (!this.available(id)) return undefined;
     // 先切本地代次再请求：旧 SSE、历史回读和迟到 finally 都不能写入新上下文。
     // 请求被拒绝或结果未明时必须保留正文、附件与暂存，只在成功或权威绑定变化后清理。
     entry.resetting = true; entry.resetReviewed = false;
@@ -366,10 +313,9 @@ export class ChatSessionStore {
         status: entry.pendingSubmission.status === 'sending' ? 'unconfirmed' : entry.pendingSubmission.status };
     }
     this.lifecycleVersion++;
-    this.cancelReads(id);
     this.changed();
     try {
-      const result = await this.api.resetSession(id, { clearSchedules });
+      const result = await this.api.resetSession(id);
       if (this.get(id) !== entry) return undefined;
       // reset 响应不泄漏底层绑定；下一次完整历史读取建立新绑定。
       entry.piSessionId = null;
@@ -390,216 +336,19 @@ export class ChatSessionStore {
     }
   }
 
-  cancelReads(id: string) {
-    for (const kind of ['instructions', 'skills'] as const) {
-      const key = `${id}:${kind}`;
-      this.reads.get(key)?.abort();
-      this.reads.delete(key);
-      this.get(id)[kind].loading = false;
-    }
-    // 取消技能详情并发读取
-    const detailPrefix = `${id}:skill-detail:`;
-    for (const [key, controller] of this.reads.entries()) {
-      if (key.startsWith(detailPrefix)) {
-        controller.abort();
-        this.reads.delete(key);
-      }
-    }
-    this.changed();
-  }
-  async loadSettings(id: string) { await Promise.all([this.loadInstructions(id), this.loadSkills(id)]); }
-
-  private async read<T>(id: string, kind: ReadKind, fetch: (signal: AbortSignal) => Promise<T>, apply: (data: T) => void) {
-    const entry = this.get(id);
-    if (!this.available(id) || entry[kind].saving) return;
-    const epoch = entry.epoch;
-    const key = `${id}:${kind}`;
-    this.reads.get(key)?.abort();
-    const controller = new AbortController();
-    this.reads.set(key, controller);
-    entry[kind].loading = true;
-    entry[kind].error = undefined;
-    this.changed();
-    try {
-      const data = await fetch(controller.signal);
-      if (!controller.signal.aborted && this.isCurrent(id, epoch) && this.reads.get(key) === controller) apply(data);
-    } catch (error) {
-      if (!controller.signal.aborted && this.isCurrent(id, epoch) && this.reads.get(key) === controller && !isRequestCancelled(error)) entry[kind].error = message(error);
-    } finally {
-      if (this.reads.get(key) === controller) {
-        this.reads.delete(key);
-        entry[kind].loading = false;
-        this.changed();
-      }
-    }
-  }
-  loadInstructions(id: string) {
-    return this.read(id, 'instructions', (signal) => this.api.getSessionInstructions(id, signal), (data) => {
-      const target = this.get(id).instructions;
-      const dirty = target.draft !== target.saved;
-      target.saved = data.instructions;
-      if (!dirty) target.draft = data.instructions;
-      target.loaded = true;
-    });
-  }
-  private applySkills(id: string, data: SessionSkills, preserveDraft: boolean) {
-    const target = this.get(id).skills;
-    const draft = target.draft;
-    const saved = effective(data);
-    const removed = Object.keys(draft).filter((key) => !(key in saved));
-    const previousIds = new Map(target.catalog.map((skill) => [skill.name, skillKeyOf(skill)]));
-    const nextIds = new Map(data.skills.map((skill) => [skill.name, skillKeyOf(skill)]));
-    // 正文也绑定来源：刷新后同名来源变更，丢弃旧正文并取消其在途请求。
-    target.details = Object.fromEntries(Object.entries(target.details).filter(([name]) => {
-      if (previousIds.get(name) === nextIds.get(name) && nextIds.has(name)) return true;
-      const key = `${id}:skill-detail:${name}`;
-      this.reads.get(key)?.abort();
-      this.reads.delete(key);
-      return false;
-    }));
-    target.catalog = data.skills;
-    target.diagnostics = data.diagnostics ?? [];
-    target.saved = saved;
-    target.draft = preserveDraft ? Object.fromEntries(data.skills.map((skill) => {
-      const key = skillKeyOf(skill);
-      // id 变化即视为新的来源，不能把旧名称草稿套到新来源上。
-      return [key, draft[key] ?? skill.enabled];
-    })) : { ...saved };
-    target.notice = removed.length && preserveDraft ? `技能目录已变化，已移除不可提交的技能：${removed.join('、')}；其余草稿已保留。` : undefined;
-    target.loaded = true;
-  }
-  loadSkills(id: string) {
-    return this.read(id, 'skills', (signal) => this.api.getSessionSkills(id, signal), (data) => {
-      const target = this.get(id).skills;
-      this.applySkills(id, data, !equalSwitches(target.draft, target.saved));
-    });
-  }
-
-  /**
-   * 按名称按需加载技能正文（GET /api/sessions/:id/skills/:name）。
-   * 404 返回"技能正文不可用"，其它错误显示具体消息。
-   */
-  async loadSkillDetail(id: string, name: string): Promise<void> {
-    const entry = this.get(id);
-    if (!this.available(id)) return;
-    const epoch = entry.epoch;
-    const selected = entry.skills.catalog.find((skill) => skill.name === name);
-    const selectedId = selected ? skillKeyOf(selected) : undefined;
-    const key = `${id}:skill-detail:${name}`;
-    this.reads.get(key)?.abort();
-    const controller = new AbortController();
-    this.reads.set(key, controller);
-    const prev = entry.skills.details[name];
-    entry.skills.details = {
-      ...entry.skills.details,
-      [name]: { loading: true, content: prev?.content, error: undefined },
-    };
-    this.changed();
-    try {
-      const detail = await this.api.getSessionSkill(id, name, controller.signal);
-      if (detail.name !== name || (selectedId !== undefined && skillKeyOf(detail) !== selectedId)) {
-        throw new ApiError(409, '技能来源已变化，请刷新技能列表后查看说明');
-      }
-      if (!controller.signal.aborted && this.isCurrent(id, epoch) && this.reads.get(key) === controller) {
-        entry.skills.details = {
-          ...entry.skills.details,
-          [name]: { loading: false, content: detail.content, error: undefined },
-        };
-      }
-    } catch (error) {
-      if (!controller.signal.aborted && this.isCurrent(id, epoch) && this.reads.get(key) === controller && !isRequestCancelled(error)) {
-        const errText = error instanceof ApiError && error.status === 404 ? '技能正文不可用' : message(error);
-        entry.skills.details = {
-          ...entry.skills.details,
-          [name]: { loading: false, content: undefined, error: errText },
-        };
-      }
-    } finally {
-      if (this.reads.get(key) === controller) {
-        this.reads.delete(key);
-        // 如果上面未被 catch/success 处理（如被取消），恢复 loading 状态
-        const current = entry.skills.details[name];
-        if (current?.loading) {
-          entry.skills.details = { ...entry.skills.details, [name]: { ...current, loading: false } };
-        }
-        this.changed();
-      }
-    }
-  }
-
-  async saveInstructions(id: string): Promise<boolean> {
-    const entry = this.get(id);
-    const target = entry.instructions;
-    if (!this.available(id) || !target.loaded || target.saving) return false;
-    if (target.draft.length > INSTRUCTIONS_LIMIT) { target.error = `专属规则最多 ${INSTRUCTIONS_LIMIT.toLocaleString()} 字符`; this.changed(); return false; }
-    this.reads.get(`${id}:instructions`)?.abort();
-    const epoch = entry.epoch;
-    const draft = target.draft;
-    target.saving = true;
-    target.error = undefined;
-    this.changed();
-    try {
-      const data = await this.api.saveSessionInstructions(id, draft);
-      if (!this.isCurrent(id, epoch)) return false;
-      target.saved = data.instructions;
-      if (target.draft === draft) target.draft = data.instructions;
-      return true;
-    } catch (error) {
-      if (this.isCurrent(id, epoch) && !isRequestCancelled(error)) target.error = message(error);
-      return false;
-    } finally { target.saving = false; this.changed(); }
-  }
-  async saveSkills(id: string, defaults = false): Promise<boolean> {
-    const entry = this.get(id);
-    const target = entry.skills;
-    if (!this.available(id) || !target.loaded || target.saving) return false;
-    this.reads.get(`${id}:skills`)?.abort();
-    const epoch = entry.epoch;
-    // PUT 是替换；普通保存按技能来源身份 id（source/name）提交整个当前目录，重置才发空覆盖表。
-    const overrides = defaults ? {} : Object.fromEntries(target.catalog.map((skill) => {
-      const key = skillKeyOf(skill);
-      return [key, target.draft[key]];
-    }));
-    target.saving = true;
-    target.error = undefined;
-    this.changed();
-    let refreshCatalog = false;
-    try {
-      const data = await this.api.saveSessionSkills(id, overrides);
-      if (!this.isCurrent(id, epoch)) return false;
-      this.applySkills(id, data, false);
-      return true;
-    } catch (error) {
-      if (this.isCurrent(id, epoch) && !isRequestCancelled(error)) {
-        target.error = message(error);
-        refreshCatalog = error instanceof ApiError && error.status === 400;
-      }
-      return false;
-    } finally {
-      target.saving = false;
-      this.changed();
-      if (refreshCatalog && this.enabled) {
-        const error = target.error;
-        await this.loadSkills(id);
-        if (this.isCurrent(id, epoch)) { target.error = error; this.changed(); }
-      }
-    }
-  }
-
-  async deleteSession(id: string): Promise<DeleteSessionResult | undefined> {
+  async deleteSession(id: string, options: SessionDeleteOptions): Promise<DeleteSessionResult | undefined> {
     if (id === MAIN_SESSION_ID) throw new ApiError(409, '默认会话不可删除');
     const entry = this.get(id);
-    if (!this.available(id) || this.hasSettingsWrite(id)) return undefined;
+    if (!this.available(id)) return undefined;
     entry.deleting = true;
     // 请求进行时先锁写入但保留运行代次；失败后当前轮仍可恢复，成功清理才永久失效。
-    this.cancelReads(id);
     this.changed();
     try {
       let result: DeleteSessionResult;
-      try { result = await this.api.deleteSession(id); }
+      try { result = await this.api.deleteSession(id, options); }
       catch (error) {
         if (!(error instanceof ApiError) || error.status !== 404) throw error;
-        result = { ok: true, removed: { sessions: 0 } };
+        result = { ok: true, removed: { sessions: 0, jobs: 0, monitors: 0 }, moved: { jobs: 0, monitors: 0 } };
       }
       if (this.disposed) return;
       this.clear(id);
@@ -611,7 +360,6 @@ export class ChatSessionStore {
   }
   clear(id: string) {
     const entry = this.get(id);
-    this.cancelReads(id);
     this.clearLocal(id, entry);
     this.bound.delete(id);
     this.sessions.delete(id);
@@ -637,8 +385,6 @@ export class ChatSessionStore {
     }
     for (const timer of this.localWrites.values()) clearTimeout(timer);
     this.localWrites.clear();
-    for (const controller of this.reads.values()) controller.abort();
-    this.reads.clear();
     this.listeners.clear();
   }
 }

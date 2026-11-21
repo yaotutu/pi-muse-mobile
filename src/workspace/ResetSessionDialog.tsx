@@ -1,7 +1,6 @@
 /** 会话重置只在设置页发起；独立原生窗口隔离背景触控与读屏，并固定本次操作的目标会话。 */
 import { useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Square, SquareCheck } from 'lucide-react-native';
 import { useSessionState, useChatSessionStore } from '../sessions/SessionProvider';
 import { MAIN_SESSION_ID } from '../sessions/types';
 import { ThemeStatusBar } from '../theme/ThemeStatusBar';
@@ -16,9 +15,8 @@ export function ResetSessionDialog({ sessionId, available, error, onCancel, onCo
   available: boolean;
   error?: string;
   onCancel: () => void;
-  onConfirm: (sessionId: string, clearSchedules: boolean) => Promise<void>;
+  onConfirm: (sessionId: string) => Promise<void>;
 }) {
-  const [clearSchedules, setClearSchedules] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const session = useSessionState(sessionId);
   const sessions = useChatSessionStore();
@@ -26,13 +24,12 @@ export function ResetSessionDialog({ sessionId, available, error, onCancel, onCo
   const { colors } = useTheme();
   const styles = createStyles(colors);
   const busy = submitting || session.resetting;
-  const disabled = busy || !available || session.resetUncertain || !sessions.canWrite(sessionId) || sessions.hasSettingsWrite(sessionId);
-  const CheckIcon = clearSchedules ? SquareCheck : Square;
+  const disabled = busy || !available || session.resetUncertain || !sessions.canWrite(sessionId);
   const cancel = () => { if (!busy) onCancel(); };
   const confirm = async () => {
     if (disabled) return;
     setSubmitting(true);
-    try { await onConfirm(sessionId, clearSchedules); } finally { setSubmitting(false); }
+    try { await onConfirm(sessionId); } finally { setSubmitting(false); }
   };
 
   return <Modal visible transparent animationType={reducedMotion ? 'none' : 'fade'} onRequestClose={cancel} testID="workspace-reset-dialog">
@@ -43,14 +40,8 @@ export function ResetSessionDialog({ sessionId, available, error, onCancel, onCo
         <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <Text accessibilityRole="header" style={styles.title}>重置当前会话？</Text>
           <Text selectable style={styles.target}>目标会话：{sessionId === MAIN_SESSION_ID ? '默认会话' : sessionId}</Text>
-          <Text style={styles.detail}>重置将停止当前运行，清空本会话的聊天历史、消息反馈（喜欢/不喜欢/评论及操作记录）及未完成的审批，开启全新对话。其他会话的历史不受影响；会话规则、技能开关与已保存的工作区文件都会保留。</Text>
-          <Pressable accessibilityRole="checkbox" accessibilityLabel="同时清理定时任务与网页监控"
-            accessibilityState={{ checked: clearSchedules, disabled: busy }} disabled={busy}
-            onPress={() => setClearSchedules((value) => !value)} style={styles.option}>
-            <CheckIcon size={workspaceTheme.layout.iconSize} color={clearSchedules ? colors.blue : colors.faint} />
-            <Text style={styles.optionText}>{clearSchedules ? '已选择：' : '未选择：'}同时清理此会话下的定时任务与网页监控</Text>
-          </Pressable>
-          <Text style={styles.caption}>默认保留定时任务与监控，并由服务端绑定到新会话。清空的聊天历史与消息反馈无法恢复。</Text>
+          <Text style={styles.detail}>重置将停止当前运行，清空本会话的聊天历史、消息反馈（喜欢/不喜欢/评论及操作记录）及未完成的审批，开启全新对话。其他会话的历史不受影响；助手指令、技能开关与已保存的工作区文件都会保留。</Text>
+          <Text style={styles.caption}>定时任务和网页监控仍属于此会话。清空的聊天历史与消息反馈无法恢复。</Text>
           {session.resetUncertain && <Text accessibilityRole="alert" style={styles.error}>重置结果未确认，请关闭对话框并刷新会话列表核对；不会自动重试。</Text>}
           {!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
           <View style={styles.actions}>
@@ -73,8 +64,6 @@ function createStyles(c: WorkspaceColors) {
     title: { ...t.itemTitle, color: c.ink },
     target: { ...t.detail, color: c.ink },
     detail: { ...t.detail, color: c.muted },
-    option: { flexDirection: 'row', alignItems: 'center', gap: spacing[14], paddingVertical: spacing[12] },
-    optionText: { ...t.detail, color: c.muted, flex: 1 },
     caption: { ...t.caption, color: c.faint },
     error: { ...t.caption, color: c.danger },
     actions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing[8] },

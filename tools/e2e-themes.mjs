@@ -1,4 +1,5 @@
 /** 真实 HTTP/SSE 与 Android 界面的主题验收；只在专用会话消费一次实际聊天，结束经 API 清理。 */
+import { deleteTestSession, temporaryAssistantInstructions } from './session-live-helpers.mjs';
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -22,6 +23,7 @@ let token; let initialVersion; let baseline; let created = false; let failure; l
 let ready = false;
 const streamController = new AbortController();
 const api = new HttpApiClient(base, () => token, () => { throw new Error('Real service rejected authentication'); });
+const assistantInstructions = temporaryAssistantInstructions(api);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const write = (name, value) => writeFileSync(join(output, name), JSON.stringify(value, null, 2));
 const pass = (name, extra = {}) => { checks.push({ name, ...extra }); console.log('PASS', name); };
@@ -63,7 +65,7 @@ try {
   const auth = await api.createConnectionSession(process.env.E2E_ACCESS_KEY); assert.equal(auth.mode, 'live'); token = auth.token;
   baseline = (await api.listSessions()).map((session) => session.id);
   sessionId = (await api.createSession(marker)).id;
-  await api.saveSessionInstructions(sessionId, 'Dedicated mobile theme acceptance. Reply only with the requested literal string. Never use tools or change files, memories, activities, goals, schedules, monitors or other sessions.');
+  await assistantInstructions.set('Dedicated mobile theme acceptance. Reply only with the requested literal string. Never use tools or change files, memories, activities, goals, schedules, monitors or other sessions.');
   created = true;
   assert.deepEqual((await api.getConversation(sessionId)).messages, []);
   assert.deepEqual((await api.listActivities({ sessionId })).activities, []);
@@ -94,11 +96,13 @@ try {
 } catch (error) {
   failure ??= error; console.error('FAIL', error.message);
 } finally {
+  try { await assistantInstructions.restore(); }
+  catch { console.error('Unable to restore the original assistant instructions'); process.exitCode = 1; }
   if (driver && driverExit === undefined) { driver.kill('SIGTERM'); await sleep(500); }
   try {
     for (const status of statuses.values()) if (status.status === 'running') await api.stopRun(sessionId, status.runId);
     if (created) {
-      assert.equal((await api.deleteSession(sessionId)).ok, true);
+      assert.equal((await deleteTestSession(api, sessionId)).ok, true);
       const remaining = (await api.listSessions()).map((session) => session.id);
       assert.ok(!remaining.includes(sessionId));
       assert.ok(baseline.every((id) => remaining.includes(id)), 'preexisting sessions remain');

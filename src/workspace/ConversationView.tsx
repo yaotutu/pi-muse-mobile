@@ -163,7 +163,7 @@ export function ConversationView({
     !conversation.loading &&
     !conversation.historyFailed &&
     !session.deleted &&
-    !session.deleting && !session.resetting && !session.resetUncertain;
+    !session.deleting && !session.deleteUncertain && !session.resetting && !session.resetUncertain;
   const canInterruptAndSend =
     !!connection?.enabled &&
     runtime.synchronized &&
@@ -174,7 +174,7 @@ export function ConversationView({
     !conversation.loading &&
     !conversation.historyFailed &&
     !session.deleted &&
-    !session.deleting && !session.resetting && !session.resetUncertain;
+    !session.deleting && !session.deleteUncertain && !session.resetting && !session.resetUncertain;
 
   const stop = async () => {
     setStopError('');
@@ -392,6 +392,7 @@ export function ConversationView({
           )}
           {!!stopError && <Text accessibilityRole="alert" style={styles.error}>{stopError}</Text>}
           {!!conversation.error && <Text accessibilityRole="alert" style={styles.error}>{conversation.error}</Text>}
+          {session.deleteUncertain && <Text accessibilityRole="alert" style={styles.error}>删除结果待核对。请打开会话列表，进入删除页核对结果。</Text>}
           {session.resetUncertain && <>
             <Text accessibilityRole="alert" style={styles.error}>重置结果未确认，已暂停发送。请核对会话列表中的当前会话，不会自动重发重置。</Text>
             <ActionButton label="核对重置结果" onPress={onSettled} />
@@ -473,7 +474,7 @@ export function ConversationView({
             onChangeText={(text) => sessions.setDraft(sessionId, composeDomainQuote(draftQuote, text))}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
-            editable={!session.deleting && !session.deleted && !session.resetting && !session.resetUncertain}
+            editable={!session.deleting && !session.deleteUncertain && !session.deleted && !session.resetting && !session.resetUncertain}
             multiline
             onContentSizeChange={(event) =>
               setInputHeight(

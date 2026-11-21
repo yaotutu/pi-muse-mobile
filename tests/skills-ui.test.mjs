@@ -6,7 +6,7 @@ import { sandboxElement, transpileTsx } from './helpers/tsx-sandbox.mjs';
 import { availableThemes } from '../src/theme/registry.ts';
 import { spacing, themeTokens } from '../src/theme/tokens.ts';
 
-const source = readFileSync(new URL('../src/workspace/SessionSettings.tsx', import.meta.url), 'utf8');
+const source = readFileSync(new URL('../src/workspace/AssistantSettings.tsx', import.meta.url), 'utf8');
 
 function nodes(tree) {
   if (tree == null || typeof tree !== 'object') return [];
@@ -25,16 +25,16 @@ test('技能说明与开关分离，技能选择按来源身份更新', () => {
           : { ...tree, props: { ...tree.props, children: expand(tree.props.children) } };
 
   const catalog = [
-    { id: 'builtin/web_search', name: 'web_search', description: '网页查询', source: 'builtin', sourceDeclared: true, defaultEnabled: true, enabled: true },
-    { id: 'user/custom_tool', name: 'custom_tool', description: '自建工具', source: 'user', sourceDeclared: true, defaultEnabled: false, enabled: false },
-    { id: 'legacy_tool', name: 'legacy_tool', description: '旧工具', source: 'builtin', sourceDeclared: false, defaultEnabled: false, enabled: false },
-    { id: 'shared/shell_cmd', name: 'shell_cmd', description: '通用脚本', source: 'shared', sourceDeclared: true, defaultEnabled: false, enabled: false },
+    { id: 'builtin/web_search', name: 'web_search', description: '网页查询', source: 'builtin', defaultEnabled: true, enabled: true },
+    { id: 'user/custom_tool', name: 'custom_tool', description: '自建工具', source: 'user', defaultEnabled: false, enabled: false },
+    { id: 'builtin/legacy_tool', name: 'legacy_tool', description: '旧工具', source: 'builtin', defaultEnabled: false, enabled: false },
+    { id: 'shared/shell_cmd', name: 'shell_cmd', description: '通用脚本', source: 'shared', defaultEnabled: false, enabled: false },
   ];
 
   const draft = {
     'builtin/web_search': true,
     'user/custom_tool': false,
-    legacy_tool: false,
+    'builtin/legacy_tool': false,
     'shared/shell_cmd': false,
   };
 
@@ -51,9 +51,9 @@ test('技能说明与开关分离，技能选择按来源身份更新', () => {
     loadSkills: (sessionId) => calls.push(['loadSkills', sessionId]),
     loadInstructions: () => {},
     cancelReads: () => {},
-    setSkill: (sessionId, id, enabled) => calls.push(['setSkill', sessionId, id, enabled]),
+    setSkill: (id, enabled) => calls.push(['setSkill', id, enabled]),
     saveSkills: () => Promise.resolve(true),
-    loadSkillDetail: (sessionId, name) => calls.push(['loadSkillDetail', sessionId, name]),
+    loadSkillDetail: (name) => calls.push(['loadSkillDetail', name]),
   };
 
   const mockSession = {
@@ -92,10 +92,9 @@ test('技能说明与开关分离，技能选择按来源身份更新', () => {
     },
     'lucide-react-native': { ChevronDown: 'ChevronDown', ChevronUp: 'ChevronUp' },
     '../sessions/SessionProvider': {
-      useSessionState: () => mockSession,
-      useChatSessionStore: () => mockStore,
+      useAssistantSettings: () => ({ ...mockStore, state: mockSession }),
     },
-    '../sessions/chat-session-store': {
+    '../sessions/assistant-settings-store': {
       INSTRUCTIONS_LIMIT: 20000,
       equalSwitches: (a, b) => JSON.stringify(a) === JSON.stringify(b),
     },
@@ -108,7 +107,7 @@ test('技能说明与开关分离，技能选择按来源身份更新', () => {
     '../ui/Feedback': { FeedbackNotice: (props) => sandboxElement('FeedbackNotice', props) },
   };
 
-  const output = transpileTsx('SessionSettings.tsx', source);
+  const output = transpileTsx('AssistantSettings.tsx', source);
   const exports = {};
   runInNewContext(output, {
     exports,
@@ -118,7 +117,7 @@ test('技能说明与开关分离，技能选择按来源身份更新', () => {
     },
   });
 
-  const tree = expand(exports.SessionSettings({ sessionId: 'main', section: 'skills', onSaved: () => {} }));
+  const tree = expand(exports.AssistantSettings({ section: 'skills', onSaved: () => {} }));
   const allNodes = nodes(tree);
 
   const headers = allNodes.filter((item) => item.props.accessibilityRole === 'header');
@@ -128,13 +127,13 @@ test('技能说明与开关分离，技能选择按来源身份更新', () => {
   switches[0].props.onValueChange(false);
   switches[1].props.onValueChange(true);
   assert.deepEqual(calls.splice(0), [
-    ['setSkill', 'main', 'builtin/web_search', false],
-    ['setSkill', 'main', 'user/custom_tool', true],
+    ['setSkill', 'builtin/web_search', false],
+    ['setSkill', 'user/custom_tool', true],
   ]);
 
   const detail = allNodes.find((item) => item.props.accessibilityLabel === 'legacy_tool 说明');
   assert.ok(detail);
   assert.equal(detail.props.accessibilityState.expanded, false);
   detail.props.onPress();
-  assert.deepEqual(calls, [['loadSkillDetail', 'main', 'legacy_tool']]);
+  assert.deepEqual(calls, [['loadSkillDetail', 'legacy_tool']]);
 });

@@ -3,6 +3,7 @@
  * 正常系统输入驱动页面；独立 HTTP 核对落盘。Token 仅在内存，不读取设备凭据。
  * 通过真实停止自建任务制造失败再重试，不篡改服务端存储/配置或绕过审批。
  */
+import { deleteTestSession, temporaryAssistantInstructions } from './session-live-helpers.mjs';
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -33,6 +34,7 @@ let token, initialVersion, baselineJobs, baselineSessions, id, failure, driver, 
 let sessionMayExist = false;
 let createCount = 0;
 const api = new HttpApiClient(base, () => token, () => { throw new Error('Real authentication rejected'); });
+const assistantInstructions = temporaryAssistantInstructions(api);
 const store = new JobStore(api);
 const runtime = new RuntimeStore(api, { onEvent: (event) => {
   store.receive(event);
@@ -102,7 +104,7 @@ async function createJob(label) {
 async function prepareRun(stop) {
   await sameDeployment(); const at = new Date(Date.now() + 20000).toISOString();
   if (stop) stopJobId = id;
-  const updated = await api.updateJob(id, { daily: false, at, prompt: texts.initial, originSessionId: sessionId });
+  const updated = await api.updateJob(id, { daily: false, at, prompt: texts.initial });
   assert.equal(updated.enabled, true); assert.equal(updated.status, 'scheduled');
   pass(stop ? 'rearmed owned task for real stop/failure fixture' : 'scheduled real near-future execution', { at });
 }
@@ -133,7 +135,7 @@ try {
   assert.ok(!baselineSessions.includes(sessionId)); assert.ok(!baselineJobs.some((job) => job.prompt.startsWith(marker) || job.originSessionId === sessionId));
   const rules = `Dedicated mobile Jobs acceptance ${marker}. Create exactly one new reminder per explicit test request, with exact source ${sessionId}; never edit existing tasks through chat. No other jobs, activities, subagents, files, goals, monitors, memory or profile changes. Scheduled execution only replies with the marker; no tools or writes.`;
   sessionMayExist = true; sessionId = (await api.createSession(marker)).id;
-  await api.saveSessionInstructions(sessionId, rules);
+  await assistantInstructions.set(rules);
   const managedId = await createJob('management');
   for (const sort of ['nextRunAt', 'updatedAt', 'createdAt']) for (const order of ['asc', 'desc']) {
     const list = await api.listJobs({ sessionId, sort, order }); assert.equal(list.length, 1); assert.equal(list[0].id, id);
@@ -208,6 +210,8 @@ try {
 } catch (error) {
   failure = error; phase('failed', { error: error.message }); console.error('FAIL', error.stack);
 } finally {
+  try { await assistantInstructions.restore(); }
+  catch { console.error('Unable to restore the original assistant instructions'); process.exitCode = 1; }
   if (driver && driverExit === undefined) { driver.kill('SIGTERM'); await sleep(500); }
   runtime.dispose(); store.dispose();
   try {
@@ -221,7 +225,7 @@ try {
         for (const run of ownRuns) await api.stopRun(sessionId, run.runId);
         await api.deleteJob(job.id);
       }
-      if (sessionMayExist && (await api.listSessions()).some((session) => session.id === sessionId)) await api.deleteSession(sessionId);
+      if (sessionMayExist && (await api.listSessions()).some((session) => session.id === sessionId)) await deleteTestSession(api, sessionId);
       const remaining = await api.listJobs(); const sessions = (await api.listSessions()).map((session) => session.id);
       assert.ok(!remaining.some((job) => ownIds.has(job.id) || cleanupOwned(job))); assert.ok(!sessions.includes(sessionId));
       for (const original of baselineJobs) assert.ok(remaining.some((job) => job.id === original.id), 'Original job retained');

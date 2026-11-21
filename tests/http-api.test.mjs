@@ -288,6 +288,8 @@ test('SSE 收到终止事件正常完成；无终止事件的 EOF 报连接中�
 });
 
 // 仅锁定客户端传输契约；假响应测试不代表服务端联调。
+const deleteOptions = { scheduleDisposition: 'delete', scheduleRevision: 'schedule-rev' };
+
 const BASE = 'https://api.example';
 
 // token 字段缺省表示已登录，显式 undefined 表示登录前。
@@ -566,28 +568,28 @@ const requestCases = [
     expect: { soul: '严谨', user: '偏好中文' },
   },
   {
-    name: 'getSessionInstructions 编码 sessionId 并返回 instructions 字符串',
-    call: (client) => client.getSessionInstructions('agent/一'),
+    name: 'getAssistantInstructions 读取全局路径并返回 instructions 字符串',
+    call: (client) => client.getAssistantInstructions(),
     method: 'GET',
-    url: `${BASE}/api/sessions/agent%2F%E4%B8%80/instructions`,
+    url: `${BASE}/api/assistant/instructions`,
     body: undefined,
     respond: { instructions: '请简洁回答' },
     expect: { instructions: '请简洁回答' },
   },
   {
-    name: 'saveSessionInstructions 用 PUT 整份提交 instructions',
-    call: (client) => client.saveSessionInstructions('agent/一', '新指令'),
+    name: 'saveAssistantInstructions 用 PUT 整份提交 instructions',
+    call: (client) => client.saveAssistantInstructions('新指令'),
     method: 'PUT',
-    url: `${BASE}/api/sessions/agent%2F%E4%B8%80/instructions`,
+    url: `${BASE}/api/assistant/instructions`,
     body: { instructions: '新指令' },
     respond: { instructions: '新指令' },
     expect: { instructions: '新指令' },
   },
   {
-    name: 'getSessionSkills 编码 sessionId 并允许 diagnostics 缺省',
-    call: (client) => client.getSessionSkills('agent/一'),
+    name: 'getAssistantSkills 读取全局路径并允许 diagnostics 缺省',
+    call: (client) => client.getAssistantSkills(),
     method: 'GET',
-    url: `${BASE}/api/sessions/agent%2F%E4%B8%80/skills`,
+    url: `${BASE}/api/assistant/skills`,
     body: undefined,
     respond: {
       skills: [
@@ -597,16 +599,16 @@ const requestCases = [
     },
     expect: {
       skills: [
-        { id: 'builtin/web_lookup', name: 'web_lookup', description: '查询', source: 'builtin', sourceDeclared: true, defaultEnabled: true, enabled: true },
-        { id: 'user/shell', name: 'shell', description: '执行', source: 'user', sourceDeclared: true, defaultEnabled: false, enabled: false },
+        { id: 'builtin/web_lookup', name: 'web_lookup', description: '查询', source: 'builtin', defaultEnabled: true, enabled: true },
+        { id: 'user/shell', name: 'shell', description: '执行', source: 'user', defaultEnabled: false, enabled: false },
       ],
     },
   },
   {
-    name: 'saveSessionSkills 整份转发 overrides 表',
-    call: (client) => client.saveSessionSkills('agent/一', { 'builtin/web_lookup': false, 'user/shell': true }),
+    name: 'saveAssistantSkills 整份转发 overrides 表',
+    call: (client) => client.saveAssistantSkills({ 'builtin/web_lookup': false, 'user/shell': true }),
     method: 'PUT',
-    url: `${BASE}/api/sessions/agent%2F%E4%B8%80/skills`,
+    url: `${BASE}/api/assistant/skills`,
     body: { overrides: { 'builtin/web_lookup': false, 'user/shell': true } },
     respond: {
       skills: [
@@ -616,29 +618,29 @@ const requestCases = [
     },
     expect: {
       skills: [
-        { id: 'builtin/web_lookup', name: 'web_lookup', description: '查询', source: 'builtin', sourceDeclared: true, defaultEnabled: true, enabled: false },
-        { id: 'user/shell', name: 'shell', description: '执行', source: 'user', sourceDeclared: true, defaultEnabled: false, enabled: true },
+        { id: 'builtin/web_lookup', name: 'web_lookup', description: '查询', source: 'builtin', defaultEnabled: true, enabled: false },
+        { id: 'user/shell', name: 'shell', description: '执行', source: 'user', defaultEnabled: false, enabled: true },
       ],
     },
   },
   {
-    name: 'saveSessionSkills 空覆盖对象也发送 overrides: {}',
-    call: (client) => client.saveSessionSkills('11111111-1111-4111-8111-111111111111', {}),
+    name: 'saveAssistantSkills 空覆盖对象也发送 overrides: {}',
+    call: (client) => client.saveAssistantSkills({}),
     method: 'PUT',
-    url: `${BASE}/api/sessions/11111111-1111-4111-8111-111111111111/skills`,
+    url: `${BASE}/api/assistant/skills`,
     body: { overrides: {} },
     respond: {
       skills: [{ id: 'builtin/web_lookup', name: 'web_lookup', description: '查询', source: 'builtin', defaultEnabled: true, enabled: true }],
     },
     expect: {
-      skills: [{ id: 'builtin/web_lookup', name: 'web_lookup', description: '查询', source: 'builtin', sourceDeclared: true, defaultEnabled: true, enabled: true }],
+      skills: [{ id: 'builtin/web_lookup', name: 'web_lookup', description: '查询', source: 'builtin', defaultEnabled: true, enabled: true }],
     },
   },
   {
-    name: 'getSessionSkill 编码 sessionId 与 name 并返回技能详情',
-    call: (client) => client.getSessionSkill('agent/一', 'web_lookup'),
+    name: 'getAssistantSkill 编码技能名称 并返回技能详情',
+    call: (client) => client.getAssistantSkill('web_lookup'),
     method: 'GET',
-    url: `${BASE}/api/sessions/agent%2F%E4%B8%80/skills/web_lookup`,
+    url: `${BASE}/api/assistant/skills/web_lookup`,
     body: undefined,
     respond: {
       id: 'builtin/web_lookup',
@@ -654,7 +656,6 @@ const requestCases = [
       name: 'web_lookup',
       description: '查询',
       source: 'builtin',
-      sourceDeclared: true,
       defaultEnabled: true,
       enabled: true,
       content: '# Web Lookup\n技能说明正文',
@@ -682,19 +683,18 @@ for (const testCase of requestCases) {
 
 // --- 会话配置 5 个端点的契约细节：URL 编码、DELETE 无 body、状态码语义、字段校验 ---
 
-test('deleteSession 编码 sessionId 且为 DELETE 方法，body=null 表示不会序列化', async () => {
+test('deleteSession 编码 sessionId 并发送被确认的调度处理选项', async () => {
   let observed;
   await withFetch(async (url, init) => {
     observed = { url, method: init.method, body: init.body };
-    return jsonResponse({ ok: true, removed: { sessions: 1 } });
+    return jsonResponse({ ok: true, removed: { sessions: 1, jobs: 0, monitors: 0 }, moved: { jobs: 0, monitors: 0 } });
   }, async () => {
     const client = new HttpApiClient(BASE, () => 'token-1', () => {});
-    await client.deleteSession('agent/一');
+    await client.deleteSession('agent/一', deleteOptions);
   });
   assert.equal(observed.url, `${BASE}/api/sessions/agent%2F%E4%B8%80`);
   assert.equal(observed.method, 'DELETE');
-  // DELETE 请求 body 应为 null/undefined：底座 fetch 接受 null 与 undefined 等价不带负载。
-  assert.ok(observed.body === undefined || observed.body === null);
+  assert.deepEqual(JSON.parse(observed.body), deleteOptions);
 });
 
 test('deleteSession 在 404/409 上保留 ApiError 语义且不重试', async () => {
@@ -704,7 +704,7 @@ test('deleteSession 在 404/409 上保留 ApiError 语义且不重试', async ()
     return jsonResponse({ error: '会话仍被任务引用' }, 409);
   }, async () => {
     const client = new HttpApiClient(BASE, () => 'token-1', () => {});
-    await assert.rejects(client.deleteSession('11111111-1111-4111-8111-111111111111'), (error) => {
+    await assert.rejects(client.deleteSession('11111111-1111-4111-8111-111111111111', deleteOptions), (error) => {
       assert.ok(error instanceof ApiError);
       assert.equal(error.status, 409);
       assert.equal(error.message, '会话仍被任务引用');
@@ -714,17 +714,17 @@ test('deleteSession 在 404/409 上保留 ApiError 语义且不重试', async ()
   assert.equal(calls, 1, '副作用请求不应自动重试');
 });
 
-test('deleteSession 成功响应只校验 sessions 为非负整数，无需 removed.tasks', async () => {
+test('deleteSession 成功响应包含移除与转移统计', async () => {
   const successPayloads = [
-    { ok: true, removed: { sessions: 0 } },
-    { ok: true, removed: { sessions: 1 } },
-    { ok: true, removed: { sessions: 0 } },
-    { ok: true, removed: { sessions: 3 } },
+    { ok: true, removed: { sessions: 0, jobs: 0, monitors: 0 }, moved: { jobs: 0, monitors: 0 } },
+    { ok: true, removed: { sessions: 1, jobs: 0, monitors: 0 }, moved: { jobs: 0, monitors: 0 } },
+    { ok: true, removed: { sessions: 0, jobs: 0, monitors: 0 }, moved: { jobs: 0, monitors: 0 } },
+    { ok: true, removed: { sessions: 3, jobs: 0, monitors: 0 }, moved: { jobs: 0, monitors: 0 } },
   ];
   for (const payload of successPayloads) {
     await withFetch(async () => jsonResponse(payload), async () => {
       const client = new HttpApiClient(BASE, () => 'token-1', () => {});
-      assert.deepEqual(await client.deleteSession('11111111-1111-4111-8111-111111111111'), payload);
+      assert.deepEqual(await client.deleteSession('11111111-1111-4111-8111-111111111111', deleteOptions), payload);
     });
   }
 });
@@ -739,7 +739,7 @@ test('deleteSession 缺 sessions 时抛 502', async () => {
   for (const payload of badPayloads) {
     await withFetch(async () => jsonResponse(payload), async () => {
       const client = new HttpApiClient(BASE, () => 'token-1', () => {});
-      await assert.rejects(client.deleteSession('11111111-1111-4111-8111-111111111111'), (error) => {
+      await assert.rejects(client.deleteSession('11111111-1111-4111-8111-111111111111', deleteOptions), (error) => {
         assert.ok(error instanceof ApiError);
         assert.equal(error.status, 502);
         return true;
@@ -762,7 +762,7 @@ test('deleteSession jobs/monitors 不是非负安全整数时抛 502', async () 
   for (const payload of badPayloads) {
     await withFetch(async () => jsonResponse(payload), async () => {
       const client = new HttpApiClient(BASE, () => 'token-1', () => {});
-      await assert.rejects(client.deleteSession('11111111-1111-4111-8111-111111111111'), (error) => {
+      await assert.rejects(client.deleteSession('11111111-1111-4111-8111-111111111111', deleteOptions), (error) => {
         assert.ok(error instanceof ApiError);
         assert.equal(error.status, 502);
         return true;
@@ -779,7 +779,7 @@ test('deleteSession 对 AGENT_DELETING 409 抛 ApiError 仅一次并保留 code'
     return jsonResponse({ error: '会话正在删除中', code: 'AGENT_DELETING' }, 409);
   }, async () => {
     const client = new HttpApiClient(BASE, () => 'token-1', () => {});
-    await assert.rejects(client.deleteSession('11111111-1111-4111-8111-111111111111'), (error) => {
+    await assert.rejects(client.deleteSession('11111111-1111-4111-8111-111111111111', deleteOptions), (error) => {
       assert.ok(error instanceof ApiError);
       assert.equal(error.status, 409);
       assert.equal(error.code, 'AGENT_DELETING');
@@ -816,7 +816,7 @@ test('runSession 对 AGENT_DELETING 409 抛 ApiError 仅一次并保留 code', a
   assert.equal(calls, 1, 'run AGENT_DELETING 不应自动重试');
 });
 
-test('saveSessionInstructions 对 AGENT_DELETING 409 抛 ApiError 仅一次并保留 code', async () => {
+test('saveAssistantInstructions 对 AGENT_DELETING 409 抛 ApiError 仅一次并保留 code', async () => {
   let calls = 0;
   await withFetch(async (_url, init) => {
     calls += 1;
@@ -825,7 +825,7 @@ test('saveSessionInstructions 对 AGENT_DELETING 409 抛 ApiError 仅一次并�
     return jsonResponse({ error: '会话正在删除中', code: 'AGENT_DELETING' }, 409);
   }, async () => {
     const client = new HttpApiClient(BASE, () => 'token-1', () => {});
-    await assert.rejects(client.saveSessionInstructions('agent/一', '新指令'), (error) => {
+    await assert.rejects(client.saveAssistantInstructions('新指令'), (error) => {
       assert.ok(error instanceof ApiError);
       assert.equal(error.status, 409);
       assert.equal(error.code, 'AGENT_DELETING');
@@ -836,7 +836,7 @@ test('saveSessionInstructions 对 AGENT_DELETING 409 抛 ApiError 仅一次并�
   assert.equal(calls, 1, 'instructions PUT AGENT_DELETING 不应自动重试');
 });
 
-test('saveSessionSkills 对 AGENT_DELETING 409 抛 ApiError 仅一次并保留 code', async () => {
+test('saveAssistantSkills 对 AGENT_DELETING 409 抛 ApiError 仅一次并保留 code', async () => {
   let calls = 0;
   await withFetch(async (_url, init) => {
     calls += 1;
@@ -844,7 +844,7 @@ test('saveSessionSkills 对 AGENT_DELETING 409 抛 ApiError 仅一次并保留 c
     return jsonResponse({ error: '会话正在删除中', code: 'AGENT_DELETING' }, 409);
   }, async () => {
     const client = new HttpApiClient(BASE, () => 'token-1', () => {});
-    await assert.rejects(client.saveSessionSkills('agent/一', {}), (error) => {
+    await assert.rejects(client.saveAssistantSkills({}), (error) => {
       assert.ok(error instanceof ApiError);
       assert.equal(error.status, 409);
       assert.equal(error.code, 'AGENT_DELETING');
@@ -884,10 +884,10 @@ test('runSession 普通 revision 409 透传 server code 且不重试', async () 
 test('会话配置端点把 400/401/404/500 都映射成 ApiError 状态码', async () => {
   // 服务端 {error} 字段保持权威客户端语义；个别端点不重新包装。
   const scenarios = [
-    { call: (c) => c.getSessionInstructions('agent/一'), status: 400, message: '参数无效' },
-    { call: (c) => c.saveSessionInstructions('agent/一', 'x'), status: 404, message: '会话不存在' },
-    { call: (c) => c.getSessionSkills('agent/一'), status: 500, message: '内部错误' },
-    { call: (c) => c.saveSessionSkills('agent/一', {}), status: 409, message: '技能不可写' },
+    { call: (c) => c.getAssistantInstructions(), status: 400, message: '参数无效' },
+    { call: (c) => c.saveAssistantInstructions('x'), status: 404, message: '会话不存在' },
+    { call: (c) => c.getAssistantSkills(), status: 500, message: '内部错误' },
+    { call: (c) => c.saveAssistantSkills({}), status: 409, message: '技能不可写' },
   ];
   for (const scenario of scenarios) {
     await withFetch(async (_url, init) => {
@@ -909,11 +909,11 @@ test('会话配置端点把 400/401/404/500 都映射成 ApiError 状态码', as
 
 test('会话配置端点遇到 200 但响应坏结构抛 502', async () => {
   const scenarios = [
-    { call: (c) => c.getSessionInstructions('agent/一'), body: { wrong: 'shape' } },
-    { call: (c) => c.saveSessionInstructions('agent/一', 'x'), body: { instructions: 7 } },
-    { call: (c) => c.getSessionSkills('agent/一'), body: { skills: [{ name: 1 }] } },
-    { call: (c) => c.saveSessionSkills('agent/一', {}), body: { skills: 'not-array' } },
-    { call: (c) => c.deleteSession('agent/一'), body: { ok: true, removed: { jobs: 0 } } },
+    { call: (c) => c.getAssistantInstructions(), body: { wrong: 'shape' } },
+    { call: (c) => c.saveAssistantInstructions('x'), body: { instructions: 7 } },
+    { call: (c) => c.getAssistantSkills(), body: { skills: [{ name: 1 }] } },
+    { call: (c) => c.saveAssistantSkills({}), body: { skills: 'not-array' } },
+    { call: (c) => c.deleteSession('agent/一', deleteOptions), body: { ok: true, removed: { jobs: 0 } } },
   ];
   for (const scenario of scenarios) {
     await withFetch(async () => jsonResponse(scenario.body), async () => {
@@ -927,25 +927,17 @@ test('会话配置端点遇到 200 但响应坏结构抛 502', async () => {
   }
 });
 
-test('getSessionSkills 兼容旧服务端缺少 id 与 source，回退 id=name 且 source=builtin, sourceDeclared=false', async () => {
-  const legacySkills = [
-    { name: 'web_lookup', description: '查询', defaultEnabled: true, enabled: true },
-    { name: 'shell', description: '执行', defaultEnabled: false, enabled: false },
-  ];
-  await withFetch(async () => jsonResponse({ skills: legacySkills }), async () => {
-    const client = new HttpApiClient(BASE, () => 'token-1', () => {});
-    const result = await client.getSessionSkills('11111111-1111-4111-8111-111111111111');
-    assert.deepEqual(result, {
-      skills: [
-        { id: 'web_lookup', name: 'web_lookup', description: '查询', source: 'builtin', sourceDeclared: false, defaultEnabled: true, enabled: true },
-        { id: 'shell', name: 'shell', description: '执行', source: 'builtin', sourceDeclared: false, defaultEnabled: false, enabled: false },
-      ],
+test('助手技能目录拒绝缺失来源或身份的条目', async () => {
+  const skill = { id: 'builtin/web', source: 'builtin', name: 'web', description: '查询', defaultEnabled: true, enabled: true };
+  for (const item of [{ ...skill, id: undefined }, { ...skill, source: undefined }, { ...skill, id: 'user/web' }]) {
+    await withFetch(async () => jsonResponse({ skills: [item] }), async () => {
+      const client = new HttpApiClient(BASE, () => 'token-1', () => {});
+      await assert.rejects(client.getAssistantSkills(), (error) => error.status === 502);
     });
-    assert.equal('diagnostics' in result, false);
-  });
+  }
 });
 
-test('getSessionSkills 遇到非法 source 或结构错位抛 502', async () => {
+test('getAssistantSkills 遇到非法 source 或结构错位抛 502', async () => {
   const invalidPayloads = [
     { skills: [{ name: 'a', description: 'b', defaultEnabled: true, enabled: true, source: 'invalid_source' }] },
     { skills: [{ name: 'a', description: 'b', defaultEnabled: true, enabled: true, id: 123 }] },
@@ -954,17 +946,17 @@ test('getSessionSkills 遇到非法 source 或结构错位抛 502', async () => 
   for (const body of invalidPayloads) {
     await withFetch(async () => jsonResponse(body), async () => {
       const client = new HttpApiClient(BASE, () => 'token-1', () => {});
-      await assert.rejects(client.getSessionSkills('11111111-1111-4111-8111-111111111111'), (error) => {
+      await assert.rejects(client.getAssistantSkills(), (error) => {
         assert.ok(error instanceof ApiError);
         assert.equal(error.status, 502);
-        assert.match(error.message, /服务器没有返回有效会话技能列表/);
+        assert.match(error.message, /服务器没有返回有效助手技能列表/);
         return true;
       });
     });
   }
 });
 
-test('getSessionSkill 遇到坏结构或非法 content 抛 502', async () => {
+test('getAssistantSkill 遇到坏结构或非法 content 抛 502', async () => {
   const invalidDetails = [
     { name: 'a', description: 'b', defaultEnabled: true, enabled: true }, // missing content
     { name: 'a', description: 'b', defaultEnabled: true, enabled: true, content: 123 }, // content not string
@@ -973,7 +965,7 @@ test('getSessionSkill 遇到坏结构或非法 content 抛 502', async () => {
   for (const body of invalidDetails) {
     await withFetch(async () => jsonResponse(body), async () => {
       const client = new HttpApiClient(BASE, () => 'token-1', () => {});
-      await assert.rejects(client.getSessionSkill('11111111-1111-4111-8111-111111111111', 'a'), (error) => {
+      await assert.rejects(client.getAssistantSkill('a'), (error) => {
         assert.ok(error instanceof ApiError);
         assert.equal(error.status, 502);
         assert.match(error.message, /服务器没有返回有效技能正文/);
@@ -983,10 +975,10 @@ test('getSessionSkill 遇到坏结构或非法 content 抛 502', async () => {
   }
 });
 
-test('getSessionSkills diagnostics 字段类型错位时仍抛 502', async () => {
+test('getAssistantSkills diagnostics 字段类型错位时仍抛 502', async () => {
   await withFetch(async () => jsonResponse({ skills: [], diagnostics: [{ path: 9, message: 'oops' }] }), async () => {
     const client = new HttpApiClient(BASE, () => 'token-1', () => {});
-    await assert.rejects(client.getSessionSkills('11111111-1111-4111-8111-111111111111'), (error) => {
+    await assert.rejects(client.getAssistantSkills(), (error) => {
       assert.ok(error instanceof ApiError);
       assert.equal(error.status, 502);
       return true;
@@ -1004,7 +996,7 @@ test('会话配置端点的 signal 取消：调用前取消抛 requestCancelled,
     const client = new HttpApiClient(BASE, () => 'token-1', () => {});
     const controller = new AbortController();
     controller.abort();
-    await assert.rejects(client.getSessionInstructions('11111111-1111-4111-8111-111111111111', controller.signal), (error) => {
+    await assert.rejects(client.getAssistantInstructions(controller.signal), (error) => {
       assert.equal(error.name, 'AbortError');
       return true;
     });
@@ -1015,14 +1007,14 @@ test('会话配置端点的 signal 取消：调用前取消抛 requestCancelled,
   let tailCalls = 0;
   await withFetch(async () => {
     tailCalls += 1;
-    return jsonResponse({ ok: true, removed: { sessions: 0 } });
+    return jsonResponse({ ok: true, removed: { sessions: 0, jobs: 0, monitors: 0 }, moved: { jobs: 0, monitors: 0 } });
   }, async () => {
     const client = new HttpApiClient(BASE, () => 'token-1', () => {});
     const controller = new AbortController();
     setTimeout(() => controller.abort(), 0);
     // 我们让服务端在 abort 之前响应；这里只验证 signal 不会改变业务结果。
     // 之所以不直接断言 abort 生效——信号在 fetch 内部和 promise 解析之间是非确定的——这里更稳。
-    await client.deleteSession('11111111-1111-4111-8111-111111111111', controller.signal);
+    await client.deleteSession('11111111-1111-4111-8111-111111111111', deleteOptions, controller.signal);
   });
   assert.ok(tailCalls >= 0);
 });

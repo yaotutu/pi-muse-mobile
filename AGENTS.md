@@ -33,11 +33,11 @@ node --import ./tests/register-source.mjs --test --test-name-pattern="新闻源 
 客户端不执行模型、不保存服务端业务事实的第二份权威副本。模型、会话、文件和调度均归后端；HTTP/SSE 权威来自当前服务端 `src/http/contracts/` 与匹配版本的 `/docs`、`/openapi.json`。核对 health 身份和相关真实接口，不从旧 HANDOFF 或客户端推测字段。本会话按用户任务范围直接处理两端，不维持“服务端属于其他 Agent、只能等待”的永久分工；若存在他人同时开发的文件，先核对写集，不覆盖或回滚。
 
 - **根与连接**：`src/app/AppRoot.tsx` 组装安全区、主题、错误边界和独立更新。`WorkspaceScreen.tsx` 内的 ConnectedWorkspace 按 `workspaceKey` 创建 ApiProvider/业务 Provider；换服务器销毁整个连接子树。不要按主题或当前页面重建它。
-- **导航与聊天持有者**：本地状态导航，无 Expo Router/react-navigation。一级仅「消息 / 新闻 / 设置」，冷启动的消息根页直接进入唯一 main 主聊天，不等待会话目录成功。正常主聊天保留底栏，文章、设置子页、键盘和覆盖层隐藏底栏。顶部透明人物与真实短状态组成同一入口，围绕持续挂载的同一人物原位展开/收起，保留重置、指令/技能、当前执行/审批/历史；专题会话 UI 暂缓，无列表、新建、切换、改名或删除入口。ConversationHost 切 Tab 隐藏不卸载 main SSE，重置 epoch 或换服仍按原生命周期释放。
+- **导航与聊天持有者**：本地状态导航，无 Expo Router/react-navigation。一级仅「消息 / 新闻 / 设置」，冷启动的消息根页直接进入永久 main 主聊天，不等待会话目录成功。正常聊天保留底栏，文章、设置子页、键盘和覆盖层隐藏底栏。顶部透明人物与真实短状态组成同一入口，围绕持续挂载的同一人物原位展开/收起，打开当前会话的执行、审批和历史。会话按钮负责新建、切换、改名和删除专题会话。ConversationHost 切换会话和 Tab 只更新可见性，每个已打开的会话持有自己的聊天流。
 - **协议层**：`src/api/` 提供 HTTP 与严格响应解析；`src/chat/` 聚合聊天 AG-UI SSE。`RuntimeProvider` 是连接内唯一通知流订阅者，领域 Store 消费通知失效并回读 REST，不各开第二条 SSE 或全局轮询。
 - **Store 生命周期**：领域 Store 负责读取、写入、草稿、未明结果和迟到响应保护，组件订阅并展示。close/隐藏通常只停止读取，dispose 才释放连接状态；不要用页面局部 state 重复持有业务草稿。
-- **会话所有权**：`src/sessions/session-store.ts` 持有权威目录与创建/改名状态，`chat-session-store.ts` 持有每会话草稿、附件、未确认提交、指令/技能与维护锁；公开 sessionId 与重置后变化的 piSessionId 严格区分。
-- **新闻与短信**：`src/news/` 持有全局来源、偏好与阅读状态（明确 `notes` 读写与只读 `learnedNotes` 画像分离）。讨论文章直接向 main 既有草稿追加不可信的领域引用，不自动发送；消息页可「返回文章」，Android Back 也返回原文章，点击消息 Tab 清理旧来源。`src/information/` 的 SmsProvider 在连接层挂载，短信设置在设置页。领域通知元数据仅消费服务端严格 `domainId`（`src/api/contracts.ts`），并在 `src/chat/chat-state.ts` 统一使用 `【领域引用:<domainId>】...【引用结束】` 结构化引用与渲染。
+- **会话所有权**：`src/sessions/session-store.ts` 持有权威目录与创建/改名状态，`chat-session-store.ts` 持有每会话草稿、附件、未确认提交与维护锁，助手设置由连接级 AssistantSettingsStore 持有；公开 sessionId 与重置后变化的 piSessionId 严格区分。
+- **新闻与短信**：`src/news/` 持有全局来源、偏好与阅读状态（明确 `notes` 读写与只读 `learnedNotes` 画像分离）。讨论文章直接向当前会话既有草稿追加不可信的领域引用，不自动发送；消息页可「返回文章」，Android Back 也返回原文章，点击消息 Tab 清理旧来源。`src/information/` 的 SmsProvider 在连接层挂载，短信设置在设置页。领域通知元数据仅消费服务端严格 `domainId`（`src/api/contracts.ts`），并在 `src/chat/chat-state.ts` 统一使用 `【领域引用:<domainId>】...【引用结束】` 结构化引用与渲染。
 - **文件与记忆整理**：所有会话共用扁平工作区，文件 API 只传 path。Dream 是实例全局配置与状态，不按会话切换；待决项保留来源会话引用，不能重建已删会话。
 - **外观与原生能力**：`src/theme/` 维护三主题与 tokens，`src/ui/` 是共享原生控件；业务页面消费语义颜色。浏览器使用原生 WebView 连接后端同一个 Chrome。Expo CNG 管理原生工程，`android/`、`ios/` 是生成目录，不手工维护或提交；原生行为改 `app.json` 与 config plugin。
 - **助手形象包**：`src/companion/` 持有独立设备选择偏好与八状态原子缓存；内置 `builtin:penguin` 使用与品牌相同的 B 企鹅完整八态，来源和哈希在 `assets/images/avatar/manifest.json`，不混用旧 C 图。设置 → 助手形象读取服务端已安装完整包，鉴权下载成功后才替换；同服离线可用本地完整缓存，缺失/删除/不完整时提示回退内置，换服清理缓存与旧选择。形象 Provider 不以选择为 key，不重建 ConversationHost 或 SSE。

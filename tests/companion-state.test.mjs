@@ -49,7 +49,7 @@ test('WorkspaceScreen 用运行事实驱动形象并短暂保留终态', () => {
   assert.match(screen, /const companion = companionState\(\{/);
   assert.match(screen, /phase: activeRun\?\.phase \?\? null/);
   assert.match(screen, /pendingStatus: currentState\.pendingSubmission\?\.status/);
-  assert.match(screen, /lastOutcome: !mainRuntime\.running && recentOutcome \? recentOutcome : undefined/);
+  assert.match(screen, /lastOutcome: !activeRuntime\.running && recentOutcome\?\.sessionId === activeSessionId \? recentOutcome\.status : undefined/);
   assert.match(screen, /clearTimer = setTimeout\(\(\) => setRecentOutcome\(undefined\), COMPANION_OUTCOME_MS\)/);
   // 悬浮形象的接线锚定在 primary-nav（严格超集）；这里只钉状态机事实输入。
 });

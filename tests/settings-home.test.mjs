@@ -10,7 +10,7 @@ const source = readFileSync(new URL('../src/workspace/SettingsHome.tsx', import.
 const expectedTitles = {
   profile: '身份与人设', memory: '长期记忆', dream: 'Dream 记忆整理', goals: '目标',
   jobs: '定时任务', monitors: '网页监控', files: '工作区文件', sms: '短信设置',
-  rules: '会话指令', skills: '会话技能',
+  rules: '助手指令', skills: '助手技能',
   'news-sources': '新闻来源', 'news-preferences': '新闻偏好', appearance: '外观主题', companion: '助手形象',
 };
 
@@ -91,7 +91,7 @@ test('设置首页公开全部页面标题，四组入口完整且无重复', ()
   const cards = nodes(tree).filter((node) => node.type === 'Card');
   assert.deepEqual(cards.map((card) => nodes(card).filter((node) => node.type === 'Pressable')
     .map((row) => row.props.accessibilityLabel)), [
-    ['身份与人设', '会话指令', '会话技能', 'Dream 记忆整理'],
+    ['身份与人设', '助手指令', '助手技能', 'Dream 记忆整理'],
     ['新闻来源', '新闻偏好', '短信设置'],
     ['长期记忆', '目标', '定时任务', '网页监控', '工作区文件'],
     ['外观主题', '助手形象', '浏览器', '服务器连接', '应用更新'],

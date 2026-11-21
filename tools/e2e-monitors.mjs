@@ -2,6 +2,7 @@
  * 真实网页监控 HTTP/状态机验收。专用会话与 URL 标记只清理本轮数据；
  * 不拦截响应、不使用替身，模型创建也走真实 AG-UI SSE 与外部模型。
  */
+import { deleteTestSession } from './session-live-helpers.mjs';
 import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -321,7 +322,7 @@ try {
         });
       }
       if (sessionMayExist) {
-        await api.deleteSession(sessionId).catch((error) => {
+        await deleteTestSession(api, sessionId).catch((error) => {
           if (!(error instanceof ApiError && error.status === 404)) throw error;
         });
       }

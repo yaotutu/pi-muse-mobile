@@ -9,6 +9,7 @@
  *    进行 pause -> resume -> pause 并回读确认持久化状态。
  * 4. 幂等清理：finally 块走 API 删除本轮创建的测试会话（级联清理关联监控与文件），绝不遗留测试数据，脱敏记录日志。
  */
+import { deleteTestSession, temporaryAssistantInstructions } from './session-live-helpers.mjs';
 import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -46,6 +47,7 @@ const api = new HttpApiClient(
     throw new Error('Real authentication failed');
   },
 );
+const assistantInstructions = temporaryAssistantInstructions(api);
 const sessions = new ChatSessionStore(api);
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -113,8 +115,7 @@ try {
 
   // 3. 创建专属会话及指令配置
   sessionId = (await api.createSession(marker)).id;
-  await api.saveSessionInstructions(
-    sessionId,
+  await assistantInstructions.set(
     'Dedicated regression test session. Reply directly to questions. Do not invoke external tools or background schedules.',
   );
   await sessions.loadSettings(sessionId);
@@ -215,11 +216,13 @@ try {
   failure = err;
   console.error('FAIL', err instanceof Error ? err.message : String(err));
 } finally {
+  try { await assistantInstructions.restore(); }
+  catch { console.error('Unable to restore the original assistant instructions'); process.exitCode = 1; }
   sessions.dispose();
   try {
     if (cleanupRequired) {
       // 级联删除专属测试会话（将级联清理该会话关联的监控和对话）
-      await api.deleteSession(sessionId);
+      await deleteTestSession(api, sessionId);
       const remainingSessions = (await api.listSessions()).map((s) => s.id);
       assert.ok(!remainingSessions.includes(sessionId), 'Test session must be removed');
       assert.ok(

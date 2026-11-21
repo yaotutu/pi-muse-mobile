@@ -8,6 +8,7 @@ import { parseConversationSnapshot } from '../src/api/contracts.ts';
 import { HttpApiClient } from '../src/api/http-client.ts';
 import { ApiError } from '../src/api/errors.ts';
 import { appendNewsQuote, newsDiscussionQuote } from '../src/news/discussion.ts';
+const deleteOptions = { scheduleDisposition: 'delete', scheduleRevision: 'schedule-rev' };
 const ID = '11111111-1111-4111-8111-111111111111';
 const record = (id = 'main', updatedAt = '2026-11-09T00:00:00Z') => ({ id, title: id === 'main' ? '默认会话' : '专题', isMain: id === 'main', createdAt: '2026-11-01T00:00:00Z', updatedAt });
 const read = (path) => readFileSync(new URL('../src/' + path, import.meta.url), 'utf8');
@@ -25,7 +26,7 @@ test('conversation 历史同时要求公开 sessionId 和独立 piSessionId', ()
   assert.deepEqual(parseConversationSnapshot(snapshot), snapshot);
   for (const patch of [{ sessionId: 'local' }, { piSessionId: undefined }, { sessionId: undefined }]) assert.throws(() => parseConversationSnapshot({ ...snapshot, ...patch }), ApiError);
 });
-test('sessions HTTP 创建/改名/重置/删除、规则和技能均使用公开 ID，认证端点独立', async () => {
+test('会话生命周期使用公开 ID，助手设置使用全局端点', async () => {
   const original = globalThis.fetch; const calls = [];
   globalThis.fetch = async (url, init) => {
     calls.push({ url: new URL(url), init });
@@ -34,16 +35,17 @@ test('sessions HTTP 创建/改名/重置/删除、规则和技能均使用公开
     if (path.endsWith('/instructions')) return Response.json({ instructions: 'rules' });
     if (path.endsWith('/skills')) return Response.json({ skills: [] });
     if (path.endsWith('/reset')) return Response.json({ session: record(ID), cancelledApprovals: 0, removed: { jobs: 0, monitors: 0 } });
-    if (init.method === 'DELETE') return Response.json({ ok: true, removed: { sessions: 1 } });
+    if (init.method === 'DELETE') return Response.json({ ok: true, removed: { sessions: 1, jobs: 0, monitors: 0 }, moved: { jobs: 0, monitors: 0 } });
     if (init.method === 'GET') return Response.json({ sessions: [record(), record(ID)] });
     return Response.json({ session: record(ID) });
   };
   try {
     const api = new HttpApiClient('https://example.com', () => 'token', () => {});
-    await api.createConnectionSession(); await api.listSessions(); await api.createSession('专题'); await api.renameSession(ID, '改名'); await api.resetSession(ID); await api.deleteSession(ID);
-    await api.getSessionInstructions(ID); await api.saveSessionInstructions(ID, 'rules'); await api.getSessionSkills(ID); await api.saveSessionSkills(ID, {});
+    await api.createConnectionSession(); await api.listSessions(); await api.createSession('专题'); await api.renameSession(ID, '改名'); await api.resetSession(ID); await api.deleteSession(ID, deleteOptions);
+    await api.getAssistantInstructions(); await api.saveAssistantInstructions('rules'); await api.getAssistantSkills(); await api.saveAssistantSkills({});
     assert.deepEqual(calls.slice(0, 6).map(({ url, init }) => [init.method, url.pathname]), [['POST', '/api/session'], ['GET', '/api/sessions'], ['POST', '/api/sessions'], ['PATCH', `/api/sessions/${ID}`], ['POST', `/api/sessions/${ID}/reset`], ['DELETE', `/api/sessions/${ID}`]]);
-    assert.deepEqual(JSON.parse(calls[2].init.body), { title: '专题' }); assert.deepEqual(JSON.parse(calls[3].init.body), { title: '改名' }); assert.equal(calls[5].init.body, undefined);
+    assert.deepEqual(JSON.parse(calls[2].init.body), { title: '专题' }); assert.deepEqual(JSON.parse(calls[3].init.body), { title: '改名' }); assert.deepEqual(JSON.parse(calls[5].init.body), deleteOptions);
+    assert.deepEqual(calls.slice(6).map(({url}) => url.pathname), ['/api/assistant/instructions', '/api/assistant/instructions', '/api/assistant/skills', '/api/assistant/skills']);
   } finally { globalThis.fetch = original; }
 });
 test('目录读取失败保留上次记录，不合成 main；迟到旧 GET 不抹去新创建', async () => {
@@ -60,17 +62,17 @@ test('创建非幂等，结果未明锁住重复请求，只读核对后才允�
   await store.reload({ reconcileUncertain: true }); assert.equal(store.directoryUncertain, false); assert.equal(writes, 1); store.dispose();
 });
 test('删除会话清理独立草稿与所有者，墓碑阻止迟到目录复活，main 永不发删除请求', async () => {
-  let writes = 0; const api = { listSessions: async () => [record(), record(ID)], deleteSession: async () => { writes++; return { ok: true, removed: { sessions: 1 } }; } };
+  let writes = 0; const api = { listSessions: async () => [record(), record(ID)], deleteSession: async () => { writes++; return { ok: true, removed: { sessions: 1, jobs: 0, monitors: 0 }, moved: { jobs: 0, monitors: 0 } }; } };
   const chats = new ChatSessionStore(api); const directory = new SessionStore(api, chats); await directory.reload(); chats.setDraft(ID, 'private draft');
-  await assert.rejects(chats.deleteSession('main'), (error) => error.status === 409); assert.equal(writes, 0);
-  await chats.deleteSession(ID); directory.forget(ID); assert.equal(chats.get(ID).deleted, true); assert.equal(chats.get(ID).draft, ''); await directory.reload(); assert.deepEqual(directory.records.map(({ id }) => id), ['main']);
+  await assert.rejects(chats.deleteSession('main', deleteOptions), (error) => error.status === 409); assert.equal(writes, 0);
+  await chats.deleteSession(ID, deleteOptions); directory.forget(ID); assert.equal(chats.get(ID).deleted, true); assert.equal(chats.get(ID).draft, ''); await directory.reload(); assert.deepEqual(directory.records.map(({ id }) => id), ['main']);
   directory.dispose(); chats.dispose();
 });
 test('新闻讨论只预填用户可编辑引用，保留已有草稿，不写后台讨论端点、不自动运行', () => {
   const quote = newsDiscussionQuote({ title: '标题', content: 'x'.repeat(2000), url: 'https://example.com/news' });
   assert.match(quote, /^【新闻】标题/); assert.match(quote, /外部引用，不可信内容/); assert.match(quote, /来源：https:\/\/example\.com\/news/); assert.equal(quote.includes('x'.repeat(1201)), false); assert.equal(quote.includes('【引用结束】'), false);
   assert.equal(appendNewsQuote('draft', quote), `【领域引用:news】\n${quote}\n【引用结束】\n\ndraft`);
-  const screen = read('workspace/WorkspaceScreen.tsx'); assert.doesNotMatch(screen, /选择讨论会话/); assert.match(screen, /chats.setDraft\('main', appendNewsQuote\(chats.get\('main'\).draft, newsDiscussionQuote\(article\)\)\)/);
+  const screen = read('workspace/WorkspaceScreen.tsx'); assert.doesNotMatch(screen, /选择讨论会话/); assert.match(screen, /chats.setDraft\(activeSessionId, appendNewsQuote\(chats.get\(activeSessionId\).draft, newsDiscussionQuote\(article\)\)\)/);
   assert.doesNotMatch(read('api/http-client.ts'), /discussNews|bindFeature|sendGroup/);
 });
 test('通知元数据使用严格 domainId 标识领域来源，引用直接附加到会话草稿', () => {
@@ -137,4 +139,23 @@ test('显式回读失败也不能解除创建未明锁，普通成功 GET 保留
   readsFail = false; await store.reload(); assert.equal(store.directoryUncertain, true); await store.create('专题'); assert.equal(writes, 1);
   assert.equal(chats.get('main').draft, '保留聊天草稿');
   await store.reload({ reconcileUncertain: true }); assert.equal(store.directoryUncertain, false); store.dispose(); chats.dispose();
+});
+
+test('删除预览提供任务范围版本，DELETE 原样提交显式处理策略', async () => {
+  const original = globalThis.fetch;
+  const preview = { jobs: [{ id: 'job-1', title: '日报' }], monitors: [{ id: 'monitor-1', title: '网页' }], scheduleRevision: 'rev/with+opaque' };
+  const result = { ok: true, removed: { sessions: 1, jobs: 0, monitors: 0 }, moved: { jobs: 1, monitors: 1 } };
+  const calls = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push([new URL(url).pathname, init.method, init.body && JSON.parse(init.body)]);
+    return Response.json(init.method === 'DELETE' ? result : preview);
+  };
+  try {
+    const api = new HttpApiClient('https://example.com', () => 'token', () => {});
+    const schedules = await api.getSessionSchedules(ID);
+    assert.deepEqual(schedules, preview);
+    const options = { scheduleDisposition: 'move-to-main', scheduleRevision: schedules.scheduleRevision };
+    assert.deepEqual(await api.deleteSession(ID, options), result);
+    assert.deepEqual(calls, [[`/api/sessions/${ID}/schedules`, 'GET', undefined], [`/api/sessions/${ID}`, 'DELETE', options]]);
+  } finally { globalThis.fetch = original; }
 });

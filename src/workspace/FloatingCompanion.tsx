@@ -66,7 +66,7 @@ export function FloatingCompanion({ state, images, offline, statusLabel, visible
     <View pointerEvents="box-none" style={styles.anchor}>
       {/* 人物与紧贴的短状态为唯一入口；完整事实只朗读一次，文字可截短但不截断 a11y。 */}
       <Pressable accessibilityRole="button" accessibilityState={{ expanded }}
-        accessibilityLabel={`Pi Muse 形象：${statusLabel}，${expanded ? '收起形象展开态' : '打开主聊天操作'}`}
+        accessibilityLabel={`Pi Muse 形象：${statusLabel}，${expanded ? '收起形象展开态' : '打开当前会话操作'}`}
         onPress={onToggle} style={styles.entry} testID="workspace-avatar-status">
         <View pointerEvents="none" accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
           <MuseCompanion state={state} size={COMPANION_SIZE} offline={offline} images={images} />

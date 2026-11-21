@@ -6,6 +6,7 @@ import ts from 'typescript';
 import * as layout from '../src/workspace/companion-layout.ts';
 import * as tokens from '../src/ui/tokens.ts';
 import { availableThemes } from '../src/theme/registry.ts';
+import { chatReturnForEntry } from '../src/workspace/primary-nav.ts';
 import { mainProgressLabel } from '../src/chat/message-delivery.ts';
 import { companionState } from '../src/workspace/companion-state.ts';
 import { flattenStyle as style, sandboxElement as jsx, transpileTsx } from './helpers/tsx-sandbox.mjs';
@@ -220,7 +221,7 @@ test('实际Muse组件跨姿态保留同一组挂载共享值，减弱动效零t
   const before = cancelled.length; h.unmount(); assert.equal(cancelled.length, before + 4);
 });
 
-function workspaceHarness() {
+function workspaceHarness(sessions = []) {
   const runner = hooks(); const listeners = {}; let back; let dismissed = 0;
   const noop = () => {}; const fakeStore = { setActive: noop, dispose: noop, open: noop, close: noop, invalidate: noop, reload: noop, getSnapshot: () => ({}) };
   const state = { epoch: 0, draft: '保留草稿', resetUncertain: false };
@@ -240,7 +241,8 @@ function workspaceHarness() {
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView', useSafeAreaInsets: () => ({ top: 24 }) },
     '../companion/CompanionProvider': { useCompanion: () => ({ activePack: { images: { idle: 1 } } }) },
     '../api/ApiProvider': { useApi: () => ({}) }, '../connection/ConnectionProvider': { useServiceConnection: () => ({ snapshot: { serverUrl: 'https://test.invalid' } }) },
-    '../sessions/useSessions': { useSessions: () => ({ store: fakeStore }) },
+    '../sessions/useSessions': { useSessions: () => ({ store: fakeStore, sessions }) },
+    '../sessions/types': { MAIN_SESSION_ID: 'main' },
     '../sessions/SessionProvider': { useChatSessionStore: () => fakeStore, useSessionState: () => state },
     '../theme/ThemeProvider': { useTheme: () => ({ colors: availableThemes[0].colors }) }, '../update/UpdateProvider': { useAppUpdate: () => undefined },
     '../runtime/RuntimeProvider': { useRuntimeStore: () => fakeStore, useSessionRuntime: () => runtime },
@@ -251,7 +253,7 @@ function workspaceHarness() {
     '../news/news-preferences-store': { NewsPreferencesStore: class { setActive() {} dispose() {} } },
     '../browser/browser-store': { createBrowserStore: () => fakeStore }, '../chat/message-delivery': { mainProgressLabel },
     '../ui/tokens': tokens, './companion-state': { companionState },
-    './primary-nav': { isRootWorkspacePage: ({ sessionMounted }) => !sessionMounted },
+    './primary-nav': { chatReturnForEntry, isRootWorkspacePage: ({ sessionMounted }) => !sessionMounted },
   });
   const component = load('WorkspaceScreen.tsx', modules, '\nexport { ConnectedWorkspace };').ConnectedWorkspace;
   return { ...runner, state, listeners, render: () => runner.render(component, { openConnection: noop }), back: () => back(), dismissed: () => dismissed };
@@ -306,4 +308,29 @@ test('实际转译Workspace：唯一ConversationHost/稳定Floating无key，审�
   assert.equal(find('FloatingCompanion').props.visible, true); assert.equal(find('ConversationHost').props.chatVisible, true);
   assert.equal(h.back(), true); assert.ok(h.dismissed() > 0); assert.equal(h.state.draft, '保留草稿');
   h.unmount(); assert.deepEqual(Object.keys(h.listeners), []);
+});
+
+
+test('切换专题、返回主聊天时保留已打开的会话所有者', () => {
+  const topic = { id: 'topic', title: '专题', isMain: false };
+  const h = workspaceHarness([{ id: 'main', title: '默认会话', isMain: true }, topic]);
+  let tree = h.render();
+  const find = (type) => nodes(tree).find((node) => node.type === type);
+  const openDirectory = () => {
+    nodes(tree).find((node) => node.props?.testID === 'workspace-session-directory').props.onPress();
+    tree = h.render();
+  };
+  assert.deepEqual(Array.from(find('ConversationHost').props.sessionIds), ['main']);
+  openDirectory();
+  find('SessionDirectory').props.onSelect(topic.id);
+  tree = h.render();
+  assert.equal(find('ConversationHost').props.activeSessionId, topic.id);
+  assert.deepEqual(Array.from(find('ConversationHost').props.sessionIds), ['main', 'topic']);
+  assert.equal(nodes(find('FloatingCompanion')).find((n) => n.type === 'SessionPanel').props.sessionId, topic.id);
+  openDirectory();
+  find('SessionDirectory').props.onSelect('main');
+  tree = h.render();
+  assert.equal(find('ConversationHost').props.activeSessionId, 'main');
+  assert.deepEqual(Array.from(find('ConversationHost').props.sessionIds), ['main', 'topic']);
+  h.unmount();
 });

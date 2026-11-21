@@ -4,9 +4,10 @@ import { useTheme } from '../theme/ThemeProvider';
 import { spacing, themeTokens } from '../theme/tokens';
 
 /** 小型文字操作的外观和真实交互状态；能否执行始终由调用方判断。 */
-export function ActionButton({ label, text, accessibilityLabel, onPress, icon: Icon, tone = 'secondary', disabled = false, busy = false, expanded, wide = false, style, testID }: {
+export function ActionButton({ label, text, textNumberOfLines, accessibilityLabel, onPress, icon: Icon, tone = 'secondary', disabled = false, busy = false, expanded, wide = false, style, testID }: {
   label: string;
   text?: string;
+  textNumberOfLines?: number;
   accessibilityLabel?: string;
   onPress: () => void;
   icon?: LucideIcon;
@@ -29,7 +30,7 @@ export function ActionButton({ label, text, accessibilityLabel, onPress, icon: I
     disabled={locked} onPress={onPress} testID={testID}
     style={({ pressed }) => [styles.button, { backgroundColor: background, borderColor: border }, wide && styles.wide, pressed && styles.pressed, locked && styles.disabled, style]}>
     {busy ? <ActivityIndicator size="small" color={foreground} /> : Icon ? <Icon size={themeTokens.layout.iconSize - spacing[8]} color={foreground} strokeWidth={1.8} /> : null}
-    <Text style={[styles.text, { color: foreground }]}>{text ?? label}</Text>
+    <Text numberOfLines={textNumberOfLines} style={[styles.text, { color: foreground }]}>{text ?? label}</Text>
   </Pressable>;
 }
 

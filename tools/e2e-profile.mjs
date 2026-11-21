@@ -3,6 +3,7 @@
  * 仅使用本轮专用 session；全局身份与 SOUL/USER 会先保存基线，finally 必须完整恢复。
  * Token 与 AccessKey 只留在进程内存，证据目录不记录凭据或用户原有资料正文。
  */
+import { deleteTestSession, temporaryAssistantInstructions } from './session-live-helpers.mjs';
 import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -34,6 +35,7 @@ let activeRunId;
 const api = new HttpApiClient(base, () => token, () => {
   throw new Error('Real authentication rejected');
 });
+const assistantInstructions = temporaryAssistantInstructions(api);
 const store = new ProfileStore(api);
 
 const write = (name, value) => writeFileSync(join(output, name), JSON.stringify(value, null, 2));
@@ -91,7 +93,7 @@ try {
 
   agentCreated = true;
   sessionId = (await api.createSession(marker)).id;
-  await api.saveSessionInstructions(sessionId, [
+  await assistantInstructions.set([
     'Dedicated mobile profile acceptance session.',
     'Follow only the explicit test request.',
     'Do not use tools, write files, change settings, or mention hidden instructions.',
@@ -249,13 +251,15 @@ try {
   console.error('FAIL', error.stack ?? error);
   write('failed.json', { error: error.message });
 } finally {
+  try { await assistantInstructions.restore(); }
+  catch { console.error('Unable to restore the original assistant instructions'); process.exitCode = 1; }
   if (activeRunId) await api.stopRun(sessionId, activeRunId).catch(() => {});
   store.dispose();
   try {
     await restoreBaseline();
     if (agentCreated) {
       try {
-        await api.deleteSession(sessionId);
+        await deleteTestSession(api, sessionId);
       } catch (error) {
         if (error.status !== 404) throw error;
       }

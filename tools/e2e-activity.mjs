@@ -3,6 +3,7 @@
  * 模型只在本轮专用会话内登记工作；finally 通过 DELETE 清理，Token 永不落盘。
  * 运行前启动最终源码的 Metro8082，并让 Expo Go 连接同一个真实服务。
  */
+import { deleteTestSession, temporaryAssistantInstructions } from './session-live-helpers.mjs';
 import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
@@ -25,6 +26,7 @@ const checks = []; const runs = []; const ownActivityIds = [];
 const activityEvents = []; const readySets = [];
 let token; let created = false; let baseline = []; let initialVersion; let failure; let driver; let driverExit;
 const api = new HttpApiClient(base, () => token, () => { throw new Error('Real service rejected authentication'); });
+const assistantInstructions = temporaryAssistantInstructions(api);
 const activities = new ActivityStore(api);
 const runtime = new RuntimeStore(api, { onEvent: (event) => {
   if (event.event === 'ready') readySets.push(event.data.activities.filter((item) => item.sessionId === sessionId));
@@ -83,7 +85,7 @@ try {
   baseline = (await api.listSessions()).map((t) => t.id);
   // 此 API 创建专用会话；不动设备凭据、不改用户已有规则和会话。
   sessionId = (await api.createSession(marker)).id;
-  await api.saveSessionInstructions(sessionId, 'Dedicated mobile activity history acceptance only. Register only the explicitly requested activities. Only use the activity lifecycle tool and currentTime. Never use files, shared workspaces, subagents, jobs, monitors, goals or memories. Stage one must leave work unfinished until an explicit continuation. Never call a completion tool before actually delivering the requested final summary.'); created = true;
+  await assistantInstructions.set('Dedicated mobile activity history acceptance only. Register only the explicitly requested activities. Only use the activity lifecycle tool and currentTime. Never use files, shared workspaces, subagents, jobs, monitors, goals or memories. Stage one must leave work unfinished until an explicit continuation. Never call a completion tool before actually delivering the requested final summary.'); created = true;
   activities.setActive(true); runtime.setActive(true);
   await until(() => runtime.getSnapshot().connection === 'live', 'shared workspace SSE ready', 20_000);
   activities.open({ sessionId }); assert.deepEqual(await storeList(), []); record('dedicated empty list is actual HTTP data');
@@ -138,12 +140,14 @@ try {
 } catch (e) {
   failure = e; phase('failed', { error: e.message }); console.error('FAIL', e.message);
 } finally {
+  try { await assistantInstructions.restore(); }
+  catch { console.error('Unable to restore the original assistant instructions'); process.exitCode = 1; }
   if (driver && driverExit === undefined) { driver.kill('SIGTERM'); await sleep(500); }
   activities.dispose(); runtime.dispose();
   try {
     for (const item of runs) if (!item.settled) { await api.stopRun(sessionId, item.runId); await item.promise; }
     if (created) {
-      const removed = await api.deleteSession(sessionId); assert.equal(removed.ok, true);
+      const removed = await deleteTestSession(api, sessionId); assert.equal(removed.ok, true);
       assert.equal((await api.listActivities({ sessionId })).activities.length, 0);
       for (const id of ownActivityIds) await assert.rejects(api.getActivity(id), (e) => e.status === 404);
       const remaining = (await api.listSessions()).map((t) => t.id);

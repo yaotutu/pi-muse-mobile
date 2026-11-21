@@ -1,4 +1,5 @@
 /** 目标页视觉调整的 prepare|verify|cleanup 真实验收入口。 */
+import { deleteTestSession, temporaryAssistantInstructions } from './session-live-helpers.mjs';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFileSync, statSync, writeFileSync } from 'node:fs';
@@ -20,6 +21,7 @@ const contextPath = join(output, 'context.json');
 let token, context, failure;
 const checks = [];
 const api = new HttpApiClient(base, () => token, () => { throw new Error('Real authentication rejected'); });
+const assistantInstructions = temporaryAssistantInstructions(api);
 const writeJson = (name, value) => writeFileSync(join(output, name), JSON.stringify(value, null, 2));
 const writeContext = () => writeJson('context.json', context);
 const pass = (name, extra = {}) => { checks.push({ name, ...extra }); console.log('PASS', name); };
@@ -150,7 +152,7 @@ async function prepare() {
   pass('docs OpenAPI health version and clean baseline verified');
   const rules = `Dedicated goals UI acceptance ${context.marker}. Do not call tools unless explicitly requested. Never write files or modify goals, memories, schedules, monitors, other sessions or existing resources.`;
   context.sessionId = (await api.createSession(context.marker)).id;
-  await api.saveSessionInstructions(context.sessionId, rules);
+  await assistantInstructions.set(rules);
   await runModel();
   await verifyGoalApi();
   context.phase = 'prepared';
@@ -183,7 +185,7 @@ async function cleanup() {
   const targets = before.goals.filter((goal) => context.resourceIds.goals.includes(goal.id) || markerGoals([goal]).length);
   for (const goal of targets) assert.deepEqual(await api.removeGoal(goal.id), { ok: true, id: goal.id });
   if (before.sessions.some((session) => session.id === context.sessionId)) {
-    try { await api.deleteSession(context.sessionId); } catch (error) { if (!(error instanceof ApiError && error.status === 404)) throw error; }
+    try { await deleteTestSession(api, context.sessionId); } catch (error) { if (!(error instanceof ApiError && error.status === 404)) throw error; }
   }
   const after = await readResources(), baseline = assertBaselineRetained(after);
   assert.equal(markerGoals(after.goals).length, 0);
@@ -210,6 +212,8 @@ try {
   }
   console.error('FAIL', error.stack);
 } finally {
+  try { await assistantInstructions.restore(); }
+  catch { console.error('Unable to restore the original assistant instructions'); process.exitCode = 1; }
   token = undefined;
   if (context) {
     writeJson(`${phase}-results.json`, { passed: !failure, phase, base, marker: context.marker,

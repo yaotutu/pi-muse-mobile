@@ -16,6 +16,8 @@ import type {
   DeleteJobResult,
   DeleteMonitorResult,
   DeleteSessionResult,
+  SessionDeleteOptions,
+  SessionSchedules,
   Goal,
   GoalStatus,
   GoalsQuery,
@@ -54,7 +56,7 @@ import { attachmentUploadOf, validateOutgoingMessage } from '../attachments/vali
 import { ApiError, isRequestCancelled, requestCancelled, responseError } from './errors';
 import { parseSseFrames } from './sse';
 import { assertCompanionPng, isCompanionPackId, isCompanionState, MAX_COMPANION_ASSET_BYTES, parseCompanion, parseCompanions, type CompanionState } from './companion-contracts';
-import { parseSession, parseResetSession, parseSessions } from './session-contracts';
+import { parseSession, parseResetSession, parseSessions, parseSessionSchedules, parseDeleteSession } from './session-contracts';
 import { parseGoal, parseGoals, parseMilestoneToggle, parseGoalRemoval } from './goal-contracts';
 import { parseDeleteMonitorResult, parseMonitor, parseMonitors } from './monitor-contracts';
 import type {
@@ -342,8 +344,8 @@ export class HttpApiClient implements ApiClient {
   async renameSession(sessionId: string, title: string, signal?: AbortSignal): Promise<SessionRecord> {
     return parseSession(await this.request(`/api/sessions/${encodeURIComponent(sessionId)}`, { method: 'PATCH', body: { title }, signal }), sessionId);
   }
-  async resetSession(sessionId: string, options: { clearSchedules?: boolean } = {}, signal?: AbortSignal) {
-    return parseResetSession(await this.request(`/api/sessions/${encodeURIComponent(sessionId)}/reset`, { method: 'POST', body: options, signal }), sessionId);
+  async resetSession(sessionId: string, signal?: AbortSignal) {
+    return parseResetSession(await this.request(`/api/sessions/${encodeURIComponent(sessionId)}/reset`, { method: 'POST', body: {}, signal }), sessionId);
   }
 
   /** 只读活动接口；游标绑定筛选，原样编码传输，绝不解析/拼造游标。 */
@@ -445,63 +447,55 @@ export class HttpApiClient implements ApiClient {
     ));
   }
 
-  // --- 会话配置：响应字段必须存在且类型正确，200 但结构错位报 502（与服务端快照校验一致） ---
+  // --- 助手配置：响应字段必须存在且类型正确，200 但结构错位报 502（与服务端快照校验一致） ---
 
-  async getSessionInstructions(sessionId: string, signal?: AbortSignal): Promise<SessionInstructions> {
-    const path = `/api/sessions/${encodeURIComponent(sessionId)}/instructions`;
+  async getAssistantInstructions(signal?: AbortSignal): Promise<SessionInstructions> {
+    const path = '/api/assistant/instructions';
     const data = await this.request<SessionInstructions>(path, { signal });
     if (typeof data?.instructions !== 'string') {
-      throw new ApiError(502, '服务器没有返回有效会话指令，请确认服务器版本与地址');
+      throw new ApiError(502, '服务器没有返回有效助手指令，请确认服务器版本与地址');
     }
     return data;
   }
 
-  async saveSessionInstructions(sessionId: string, instructions: string, signal?: AbortSignal): Promise<SessionInstructions> {
-    const path = `/api/sessions/${encodeURIComponent(sessionId)}/instructions`;
+  async saveAssistantInstructions(instructions: string, signal?: AbortSignal): Promise<SessionInstructions> {
+    const path = '/api/assistant/instructions';
     const data = await this.request<SessionInstructions>(path, { method: 'PUT', body: { instructions }, signal });
     if (typeof data?.instructions !== 'string') {
-      throw new ApiError(502, '服务器没有返回有效会话指令，请确认服务器版本与地址');
+      throw new ApiError(502, '服务器没有返回有效助手指令，请确认服务器版本与地址');
     }
     return data;
   }
 
   // diagnostics 可缺省；skills 字段必须为条目数组，每条字段类型严格。
-  async getSessionSkills(sessionId: string, signal?: AbortSignal): Promise<SessionSkills> {
-    const path = `/api/sessions/${encodeURIComponent(sessionId)}/skills`;
+  async getAssistantSkills(signal?: AbortSignal): Promise<SessionSkills> {
+    const path = '/api/assistant/skills';
     const data = await this.request<unknown>(path, { signal });
     return parseSessionSkills(data);
   }
 
-  async saveSessionSkills(
-    sessionId: string,
+  async saveAssistantSkills(
     overrides: Record<string, boolean>,
     signal?: AbortSignal,
   ): Promise<SessionSkills> {
-    const path = `/api/sessions/${encodeURIComponent(sessionId)}/skills`;
+    const path = '/api/assistant/skills';
     const data = await this.request<unknown>(path, { method: 'PUT', body: { overrides }, signal });
     return parseSessionSkills(data);
   }
 
   /** GET 技能正文：按技能名读取当前优先来源的完整 SKILL.md。 */
-  async getSessionSkill(sessionId: string, name: string, signal?: AbortSignal): Promise<SessionSkillDetail> {
-    const path = `/api/sessions/${encodeURIComponent(sessionId)}/skills/${encodeURIComponent(name)}`;
+  async getAssistantSkill(name: string, signal?: AbortSignal): Promise<SessionSkillDetail> {
+    const path = `/api/assistant/skills/${encodeURIComponent(name)}`;
     const data = await this.request<unknown>(path, { signal });
     return parseSessionSkillDetail(data);
   }
 
-  // DELETE 必须无 body；服务端 404/409 语义保留，不做自动重试副作用。
-  async deleteSession(sessionId: string, signal?: AbortSignal): Promise<DeleteSessionResult> {
-    const path = `/api/sessions/${encodeURIComponent(sessionId)}`;
-    const data = await this.request<DeleteSessionResult>(path, { method: 'DELETE', signal });
-    const removed = data?.removed;
-    if (
-      data?.ok !== true ||
-      !removed ||
-      !Number.isSafeInteger(removed.sessions) || removed.sessions < 0
-    ) {
-      throw new ApiError(502, '服务器没有返回有效会话删除结果，请确认服务器版本与地址');
-    }
-    return data;
+  async getSessionSchedules(sessionId: string, signal?: AbortSignal): Promise<SessionSchedules> {
+    return parseSessionSchedules(await this.request(`/api/sessions/${encodeURIComponent(sessionId)}/schedules`, { signal }));
+  }
+
+  async deleteSession(sessionId: string, options: SessionDeleteOptions, signal?: AbortSignal): Promise<DeleteSessionResult> {
+    return parseDeleteSession(await this.request(`/api/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE', body: options, signal }));
   }
 
   async runSession(

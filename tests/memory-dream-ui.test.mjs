@@ -26,6 +26,6 @@ test('全局设置子页使用固定返回栏，资料记忆与 Dream 不绑定�
 test('Dream 全局设置和待决项保留完整正文、确认与未明解锁', () => {
  const panel = read('workspace/DreamPanel.tsx');
  assert.match(panel, /<SettingsTextField label="整理指令"/); assert.match(panel, /启用定期记忆整理/); assert.match(panel, /立即整理/);
- assert.match(panel, /<Text selectable.*\{item.text\}/); assert.match(panel, /确认处理建议/); assert.match(panel, /sourceMissing/);
+ assert.match(panel, /<Text selectable.*\{item.text\}/); assert.match(panel, /确认处理建议/); assert.match(panel, /助手全局指令/);
  assert.match(panel, /已回读核对 Dream 结果，解除锁定/);
 });

@@ -6,6 +6,7 @@
  * - 随机图片验证码只存在于图片字节，文本 marker 只存在于文本附件原始 UTF-8；
  * - 证据文件只记录元数据，不落盘完整 Base64 或附件正文。
  */
+import { deleteTestSession, temporaryAssistantInstructions } from './session-live-helpers.mjs';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
@@ -61,6 +62,7 @@ const checks = [];
 const api = new HttpApiClient(base, () => token, () => {
   throw new Error('Real authentication rejected');
 });
+const assistantInstructions = temporaryAssistantInstructions(api);
 
 const pass = (name, data = {}) => {
   checks.push({ name, ...data });
@@ -127,7 +129,7 @@ async function deployment(label) {
     '/api/conversation/run': ['post'],
     '/api/sessions': ['get'],
     '/api/sessions/{sessionId}': ['delete'],
-    '/api/sessions/{sessionId}/instructions': ['get', 'put'],
+    '/api/assistant/instructions': ['get', 'put'],
   })) {
     for (const method of methods) assert.ok(spec.paths[path]?.[method], `${method} ${path} must exist`);
   }
@@ -192,8 +194,7 @@ try {
   assert.equal(baselineSessions.includes(sessionB), false);
   sessionA = (await api.createSession(`${marker}-a`)).id;
   sessionB = (await api.createSession(`${marker}-b`)).id;
-  await api.saveSessionInstructions(
-    sessionA,
+  await assistantInstructions.set(
     'Dedicated attachment E2E session A. Answer directly from attachments. Never use tools, write files, or create memories, reminders, goals, monitors, or subagents.',
   );
   cleanupRequired = true;
@@ -303,8 +304,7 @@ try {
   assert.deepEqual(historySummary(afterConflicts), historySummary(afterReplay));
   pass('run and message identity conflicts reject changed attachment payloads');
 
-  await api.saveSessionInstructions(
-    sessionB,
+  await assistantInstructions.set(
     'Dedicated attachment E2E session B. Follow the sole text attachment instruction. Never use tools, write files, or create memories, reminders, goals, monitors, or subagents.',
   );
   const initialB = await api.getConversation(sessionB);
@@ -369,11 +369,13 @@ try {
   failure = error;
   console.error('FAIL', error instanceof Error ? error.message : String(error));
 } finally {
+  try { await assistantInstructions.restore(); }
+  catch { console.error('Unable to restore the original assistant instructions'); process.exitCode = 1; }
   try {
     if (cleanupRequired) {
       for (const sessionId of [sessionA, sessionB]) {
         try {
-          await api.deleteSession(sessionId);
+          await deleteTestSession(api, sessionId);
         } catch (error) {
           if (!(error instanceof ApiError) || error.status !== 404) throw error;
         }

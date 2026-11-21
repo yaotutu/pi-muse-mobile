@@ -2,6 +2,7 @@
  * 聊天展示纯逻辑的真实回归：专用会话、真实外部模型、currentTime、
  * SSE 聚合与权威历史全部走生产 HttpApiClient；不拦截响应、不使用替身。
  */
+import { deleteTestSession, temporaryAssistantInstructions } from './session-live-helpers.mjs';
 import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -31,6 +32,7 @@ let history;
 let baselineSessions;
 const checks = [];
 const api = new HttpApiClient(base, () => token, () => { throw new Error('Real authentication rejected'); });
+const assistantInstructions = temporaryAssistantInstructions(api);
 
 console.log('OUTPUT', output);
 const write = (name, value) => writeFileSync(join(output, name), JSON.stringify(value, null, 2));
@@ -64,7 +66,7 @@ async function deployment(label) {
     '/api/conversation/run': ['post'],
     '/api/sessions': ['get'],
     '/api/sessions/{sessionId}': ['delete'],
-    '/api/sessions/{sessionId}/instructions': ['get', 'put'],
+    '/api/assistant/instructions': ['get', 'put'],
   })) {
     for (const method of methods) assert.ok(schema.paths[path]?.[method], `${method} ${path}`);
   }
@@ -186,8 +188,7 @@ try {
   assert.ok(!baselineSessions.includes(sessionId), 'Dedicated chat-display session must start absent');
   cleanupRequired = true;
   sessionId = (await api.createSession(marker)).id;
-  await api.saveSessionInstructions(
-    sessionId,
+  await assistantInstructions.set(
     'Dedicated mobile chat display acceptance. Follow the explicit user request. Only use currentTime when requested; never write files or create other resources.',
   );
   phase('model-run');
@@ -200,13 +201,15 @@ try {
   phase('failed', { error: error.message });
   console.error('FAIL', error.stack);
 } finally {
+  try { await assistantInstructions.restore(); }
+  catch { console.error('Unable to restore the original assistant instructions'); process.exitCode = 1; }
   try {
     if (cleanupRequired) {
       if (keepSession) {
         write('keep-session.json', { sessionId, marker, runId });
         pass('dedicated session retained for native acceptance', { sessionId });
       } else if (token) {
-        await api.deleteSession(sessionId).catch((error) => {
+        await deleteTestSession(api, sessionId).catch((error) => {
           if (error?.status !== 404) throw error;
         });
         const remaining = (await api.listSessions()).map((session) => session.id);

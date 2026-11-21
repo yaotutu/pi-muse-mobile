@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import { PRIMARY_TABS, isRootWorkspacePage, chatReturnForEntry } from '../src/workspace/primary-nav.ts';
@@ -28,20 +28,20 @@ function navigation() {
   const state = { page: 'news', chatReturn: 'messages', settingsPage: null, dismissed: 0 };
   const context = {
     chatReturnForEntry, Keyboard: { dismiss: () => state.dismissed++ },
+    setRequestedSessionId: (id) => { state.sessionId = id; }, setStartedSessions: () => {}, setSessionDirectoryOpen: () => {},
     setChatReturn: (value) => { state.chatReturn = value; }, setPage: (value) => { state.page = value; }, setSettingsPage: (value) => { state.settingsPage = value; },
   };
-  return { state, context, openMain: callback('openMain', context), returnToArticle: callback('returnToArticle', context) };
+  return { state, context, openSession: callback('openSession', context), returnToArticle: callback('returnToArticle', context) };
 }
 
 test('一级固定消息/新闻/设置，冷启动直接挂载 main，不依赖目录成功', () => {
   assert.deepEqual(PRIMARY_TABS.map(({ id, label }) => [id, label]), [['messages', '消息'], ['news', '新闻'], ['settings', '设置']]);
   assert.equal(PRIMARY_TABS[0].testID, 'primary-tab-messages');
   assert.match(screen, /useState<PrimaryTabId>\('messages'\)/);
-  assert.match(screen, /<ConversationHost chatVisible=\{page === 'messages'\}/);
+  assert.match(screen, /<ConversationHost sessionIds=\{sessionIds\} activeSessionId=\{activeSessionId\} chatVisible=\{page === 'messages'\}/);
   const host = read('workspace/ConversationHost.tsx');
-  assert.match(host, /return <View style=\{styles.host\}>\s*<SessionConversation sessionId="main" visible=\{chatVisible\}/);
-  assert.doesNotMatch(host, /sessionIds|owners\.map|directory|\.loaded/);
-  assert.doesNotMatch(screen, /directory\.(loaded|sessions|loading)/);
+  assert.match(host, /sessionIds\.map\(\(sessionId\) => <SessionConversation key=\{sessionId\}/);
+  assert.match(screen, /useState<string\[\]>\(\[MAIN_SESSION_ID\]\)/);
   const chat = read('workspace/ConversationView.tsx');
   assert.match(chat, /conversation\.error &&/);
   assert.match(chat, /!conversation\.historyFailed/);
@@ -54,58 +54,46 @@ test('主聊天根页有底栏，键盘、设置子页与所有覆盖层隐藏�
   assert.match(screen, /sessionMounted: panelPresented \|\| browserOpen \|\| !!resetTarget/);
   assert.match(screen, /!keyboardVisible && root && <PrimaryTabBar/);
 });
-test('移除列表/新建/切换/改名/删除入口，Pi Muse 形象居中承担状态与操作入口', () => {
-  for (const file of ['SessionListScreen.tsx', 'SessionSwitcherSheet.tsx']) assert.equal(existsSync(new URL('../src/workspace/' + file, import.meta.url)), false);
-  assert.doesNotMatch(screen, /SessionList|SessionSwitcher|setSwitcher|新建会话|创建会话|重命名会话|删除会话|切换会话|返回消息|deleteSession|store\.(create|rename)/);
-  // 局部悬浮岛：无标题、无三点菜单；形象居中，显示实时状态，点击打开主聊天操作。
-  assert.doesNotMatch(screen, /MoreHorizontal|IconControl/);
-  const floating = read('workspace/FloatingCompanion.tsx');
-  assert.match(floating, /testID="workspace-avatar-status"/);
-  // 悬浮形象的唯一接线锚点；定位/居中/返回按钮行为由 workspace-ui 的组件行为测试覆盖。
-  assert.match(screen, /<FloatingCompanion state=\{companion\} images=\{activePack\.images\} offline=\{!mainRuntime\.synchronized\}/);
-  assert.match(screen, /visible=\{page === 'messages' && !browserOpen && !resetTarget\}/);
-  assert.match(screen, /statusLabel=\{mainStatusLabel\}/);
-  // 打开/关闭与 tab 保留由 companion-presence 的实际回调测试覆盖，不绑定 toggle 的私有写法。
-  // 会话操作全部收在设置：形象展开页只剩名字与动态/审批/历史，不再有操作按钮行。
-  assert.doesNotMatch(screen, /重置会话|编辑此会话指令|管理此会话技能|回读核对会话操作/);
-  assert.match(screen, /onReset=\{\(\) => \{ Keyboard\.dismiss\(\); setResetError\(undefined\); setResetTarget\('main'\); \}\}/);
+test('消息提供会话目录，形象仍负责当前会话的活动与审批', () => {
+  assert.match(screen, /testID="workspace-session-directory"/);
+  assert.match(screen, /<SessionDirectory directory=\{directory\}/);
+  assert.match(screen, /<SessionPanel key=\{activeSessionId\} sessionId=\{activeSessionId\}/);
+  assert.match(read('workspace/FloatingCompanion.tsx'), /testID="workspace-avatar-status"/);
+  assert.match(screen, /chats\.resetSession\(id\)/);
   const settingsHome = read('workspace/SettingsHome.tsx');
-  for (const entry of ['重置主聊天', '会话指令', '会话技能']) assert.ok(settingsHome.includes(entry), entry);
-  assert.match(screen, /<SessionPanel sessionId="main"/);
-  assert.match(screen, /chats\.resetSession\(id, clearSchedules\)/);
-  assert.match(screen, /approvals\.store\.refreshPending\(\)/);
+  for (const entry of ['重置主聊天', '助手指令', '助手技能']) assert.ok(settingsHome.includes(entry), entry);
 });
-test('形象使用单一进度投影，只统计主聊天审批并保留同步状态', () => {
-  const source = screen.slice(screen.indexOf('const mainPendingApprovals'), screen.indexOf('const rootSettings'));
+test('形象使用单一进度投影，只统计当前会话审批并保留同步状态', () => {
+  const source = screen.slice(screen.indexOf('const activePendingApprovals'), screen.indexOf('const rootSettings'));
   assert.match(source, /mainProgressLabel\(\{/);
-  assert.match(source, /synchronized: mainRuntime\.synchronized/);
-  assert.match(source, /sessionId === 'main'.*status === 'pending'/);
+  assert.match(source, /synchronized: activeRuntime\.synchronized/);
+  assert.match(source, /sessionId === activeSessionId.*status === 'pending'/);
   assert.match(source, /pending: currentState\.pendingSubmission\?\.status/);
-  assert.match(source, /mainRuntime\.label/);
-  assert.match(screen, /useSessionRuntime\('main'\)/);
+  assert.match(source, /activeRuntime\.label/);
+  assert.match(screen, /useSessionRuntime\(activeSessionId\)/);
 });
-test('新闻直接追加不可信引用到 main 原稿，不发送、不改变附件或 pending，返回原文章', () => {
+test('新闻直接追加不可信引用到当前会话原稿，不发送、不改变附件或 pending，返回原文章', () => {
   const chats = new ChatSessionStore({});
-  chats.setDraft('main', '原有草稿');
+  chats.setDraft('topic', '原有草稿');
   const attachmentResult = createAttachmentDrafts([{ id: 'text-1', name: 'notes.txt', mimeType: 'text/plain', dataBase64: Buffer.from('附件原文').toString('base64') }]);
   assert.equal(attachmentResult.ok, true);
-  assert.equal(chats.setDraftAttachments('main', 0, attachmentResult.attachments).ok, true);
+  assert.equal(chats.setDraftAttachments('topic', 0, attachmentResult.attachments).ok, true);
   const pending = { messageId: 'pending-1', runId: 'run-1', text: '未明提交', epoch: 0, status: 'unconfirmed', attachments: attachmentResult.attachments };
-  chats.setPendingSubmission('main', 0, pending);
-  const attachments = chats.get('main').draftAttachments;
+  chats.setPendingSubmission('topic', 0, pending);
+  const attachments = chats.get('topic').draftAttachments;
   const article = { id: 'article-1', title: '文章标题', content: '外部指令内容', url: 'https://example.com/article' };
   const newsSnapshot = { selectedArticleId: article.id, article, articles: [article] };
   const nav = navigation();
-  const discuss = callback('onDiscuss', { news: { getSnapshot: () => newsSnapshot }, chats, appendNewsQuote, newsDiscussionQuote, openMain: nav.openMain, setNotice: assert.fail });
+  const discuss = callback('onDiscuss', { news: { getSnapshot: () => newsSnapshot }, chats, appendNewsQuote, newsDiscussionQuote, activeSessionId: 'topic', openSession: nav.openSession, setNotice: assert.fail });
   discuss(article.id);
-  assert.equal(chats.get('main').draft, appendNewsQuote('原有草稿', newsDiscussionQuote(article)));
-  assert.match(chats.get('main').draft, /^【领域引用:news】/);
-  assert.match(chats.get('main').draft, /外部引用，不可信内容/);
-  assert.equal(chats.get('main').draftAttachments, attachments);
-  assert.equal(chats.get('main').pendingSubmission, pending);
-  assert.equal(nav.state.page, 'messages'); assert.equal(nav.state.chatReturn, 'news');
-  chats.setDraft('main', chats.get('main').draft + '\n可继续编辑');
-  assert.match(chats.get('main').draft, /可继续编辑$/);
+  assert.equal(chats.get('topic').draft, appendNewsQuote('原有草稿', newsDiscussionQuote(article)));
+  assert.match(chats.get('topic').draft, /^【领域引用:news】/);
+  assert.match(chats.get('topic').draft, /外部引用，不可信内容/);
+  assert.equal(chats.get('topic').draftAttachments, attachments);
+  assert.equal(chats.get('topic').pendingSubmission, pending);
+  assert.equal(nav.state.sessionId, 'topic'); assert.equal(nav.state.page, 'messages'); assert.equal(nav.state.chatReturn, 'news');
+  chats.setDraft('topic', chats.get('topic').draft + '\n可继续编辑');
+  assert.match(chats.get('topic').draft, /可继续编辑$/);
   nav.returnToArticle();
   assert.equal(nav.state.page, 'news'); assert.equal(newsSnapshot.selectedArticleId, article.id);
   assert.match(screen, /onReturnArticle=\{chatReturn === 'news' \? returnToArticle : undefined\}/);
@@ -114,14 +102,14 @@ test('新闻直接追加不可信引用到 main 原稿，不发送、不改变�
 test('维护或重置未明时新闻引用不丢稿、不悄悄打开聊天', () => {
   const chats = new ChatSessionStore({}); chats.setDraft('main', '保留原稿'); chats.get('main').resetUncertain = true;
   let notice;
-  const discuss = callback('onDiscuss', { news: { getSnapshot: () => ({ article: { id: 'a' } }) }, chats, setNotice: (value) => { notice = value; } });
+  const discuss = callback('onDiscuss', { news: { getSnapshot: () => ({ article: { id: 'a' } }) }, chats, activeSessionId: 'main', setNotice: (value) => { notice = value; } });
   discuss('a'); assert.equal(chats.get('main').draft, '保留原稿'); assert.match(notice, /结果待核对/);
 });
 test('Android Back 从新闻讨论返回原文章，正常消息根页不吞系统退出，点消息清来源', () => {
-  const nav = navigation(); nav.openMain('news');
+  const nav = navigation(); nav.openSession('main', 'news');
   const back = () => callback('back', { keyboardVisible: false, browserOpen: false, panelPresented: false, settingsPage: null, page: nav.state.page, chatReturn: nav.state.chatReturn, newsState: {}, newsManaging: true, returnToArticle: nav.returnToArticle })();
   assert.equal(back(), true); assert.equal(nav.state.page, 'news');
-  nav.openMain('news'); callback('onSelectTab', nav.context)('messages');
+  nav.openSession('main', 'news'); callback('onSelectTab', nav.context)('messages');
   assert.equal(nav.state.page, 'messages'); assert.equal(nav.state.chatReturn, 'messages'); assert.equal(back(), false);
   assert.equal(chatReturnForEntry('notification'), 'messages');
 });

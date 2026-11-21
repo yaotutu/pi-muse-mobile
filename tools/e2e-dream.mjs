@@ -1,5 +1,6 @@
 /** 全局 Dream 的真实 HTTP / 外部模型验收入口，仅限可丢弃隔离实例。
- * node --import ./tests/register-source.mjs tools/e2e-dream.mjs
+ * node --import { deleteTestSession } from './session-live-helpers.mjs';
+import ./tests/register-source.mjs tools/e2e-dream.mjs
  * 必须设置 E2E_ISOLATED_INSTANCE=1、E2E_BASE_URL、E2E_ACCESS_KEY（或 E2E_TOKEN）。
  * 全局整理可能写资料/记忆/游标，因此禁止对真实实例运行；只清理本轮创建会话及其待决项，恢复原设置。
  * 网络结果未明不自动重发 run 或配置写入；本文件存在不代表已完成真实验收。
@@ -29,7 +30,7 @@ finally {
  try {
   const current = await api.getDreamOverview();
   for(const item of current.pending) if(session && item.sourceSessionId === session.id) await api.resolveDreamPending(item.id, { action: 'dismiss' });
-  if(session) await api.deleteSession(session.id);
+  if(session) await deleteTestSession(api, session.id);
   if(settingsChanged) await api.saveDreamSettings({ enabled: baseline.enabled, prompt: baseline.globalPrompt });
  } catch(error) { failure ??= error; }
 }

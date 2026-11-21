@@ -1,3 +1,4 @@
+import type { DeleteSessionResult, SessionSchedules } from './types';
 import { ApiError } from './errors';
 import { isSessionId, orderSessions, type SessionRecord } from '../sessions/types';
 
@@ -23,10 +24,32 @@ export function parseSessions(value: unknown): SessionRecord[] {
 export function parseSession(value: unknown, expectedId?: string): SessionRecord {
   return parseSessionRecord(object(value).session, expectedId);
 }
+const count = (value: unknown): number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : invalid();
+
 export function parseResetSession(value: unknown, expectedId: string) {
-  const item = object(value); const removed = object(item.removed);
-  if (!Number.isSafeInteger(item.cancelledApprovals) || (item.cancelledApprovals as number) < 0 ||
-    !Number.isSafeInteger(removed.jobs) || (removed.jobs as number) < 0 || !Number.isSafeInteger(removed.monitors) || (removed.monitors as number) < 0) return invalid();
-  return { session: parseSessionRecord(item.session, expectedId), cancelledApprovals: item.cancelledApprovals as number,
-    removed: { jobs: removed.jobs as number, monitors: removed.monitors as number } };
+  const item = object(value);
+  return { session: parseSessionRecord(item.session, expectedId), cancelledApprovals: count(item.cancelledApprovals) };
+}
+
+export function parseSessionSchedules(value: unknown): SessionSchedules {
+  const data = object(value);
+  const entries = (items: unknown) => {
+    if (!Array.isArray(items)) return invalid();
+    return items.map((value) => {
+      const item = object(value);
+      if (typeof item.id !== 'string' || !item.id || typeof item.title !== 'string') return invalid();
+      return { id: item.id, title: item.title };
+    });
+  };
+  if (typeof data.scheduleRevision !== 'string' || !data.scheduleRevision) return invalid();
+  return { scheduleRevision: data.scheduleRevision, jobs: entries(data.jobs), monitors: entries(data.monitors) };
+}
+
+export function parseDeleteSession(value: unknown): DeleteSessionResult {
+  const data = object(value);
+  if (data.ok !== true) return invalid();
+  const removed = object(data.removed);
+  const moved = object(data.moved);
+  return { ok: true, removed: { sessions: count(removed.sessions), jobs: count(removed.jobs), monitors: count(removed.monitors) },
+    moved: { jobs: count(moved.jobs), monitors: count(moved.monitors) } };
 }

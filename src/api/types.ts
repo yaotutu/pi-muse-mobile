@@ -14,7 +14,7 @@ import type { MessageFeedback } from '../feedback/types';
 // ---------------------------------------------------------------------------
 
 export type { SessionRecord } from '../sessions/types';
-export type ResetSessionResult = { session: import('../sessions/types').SessionRecord; cancelledApprovals: number; removed: { jobs: number; monitors: number } };
+export type ResetSessionResult = { session: import('../sessions/types').SessionRecord; cancelledApprovals: number };
 
 export type ChatRole = 'user' | 'assistant' | 'tool';
 
@@ -205,7 +205,6 @@ export type UpdateJobInput = {
   prompt?: string;
   daily?: boolean;
   at?: string;
-  originSessionId?: string;
 };
 
 /** DELETE /api/jobs/:id 响应契约 */
@@ -280,41 +279,49 @@ export type DeleteMonitorResult = {
   id: string;
 };
 
-/** 会话专属规则；重置聊天会话时保留，空串表示清空规则内容。 */
+/** 全局助手指令；重置聊天会话时保留，空串表示清空规则内容。 */
 export type SessionInstructions = { instructions: string };
 
-/** 会话技能来源：builtin=随服务端发布的内置自有，user=实例自建自有，shared=服务端共享目录通用。 */
+/** 助手技能来源：builtin=随服务端发布的内置自有，user=实例自建自有，shared=服务端共享目录通用。 */
 export type SessionSkillSource = 'builtin' | 'user' | 'shared';
 
 /**
- * 单条会话级技能。id 是来源绑定身份（source/name），开关选择绑定该身份，
- * 不随同名来源替换转移；旧服务端不返回 id 时回退为 name。
+ * 单条助手技能。id 是来源绑定身份（source/name），开关选择绑定该身份，
+ * 不随同名来源替换转移。
  */
 export type SessionSkill = {
   id: string;
   name: string;
   description: string;
-  /** 生效来源；旧服务端未声明时按 builtin（自有）处理。 */
   source: SessionSkillSource;
-  /** 服务端是否显式声明来源；旧服务端为 false，界面据此不显示来源标签。 */
-  sourceDeclared: boolean;
   defaultEnabled: boolean;
   enabled: boolean;
 };
 
-/** GET /api/sessions/:id/skills 返回结果：技能列表 + 服务端可选诊断（如本地 YAML 读取失败等） */
+/** GET /api/assistant/skills 返回结果：技能列表 + 服务端可选诊断（如本地 YAML 读取失败等） */
 export type SessionSkills = {
   skills: SessionSkill[];
   diagnostics?: { path: string; message: string }[];
 };
 
-/** GET /api/sessions/:id/skills/:name 返回结果：技能条目 + 当前优先来源的完整 SKILL.md 正文。 */
+/** GET /api/assistant/skills/:name 返回结果：技能条目 + 当前优先来源的完整 SKILL.md 正文。 */
 export type SessionSkillDetail = SessionSkill & { content: string };
 
 /** 删除会话的响应仅清点级联移除的定时任务与监控，不代表只删除这两类数据。 */
+export type SessionSchedules = {
+  scheduleRevision: string;
+  jobs: { id: string; title: string }[];
+  monitors: { id: string; title: string }[];
+};
+export type SessionDeleteOptions = {
+  scheduleDisposition: 'delete' | 'move-to-main';
+  scheduleRevision: string;
+};
+
 export type DeleteSessionResult = {
   ok: true;
-  removed: { sessions: number };
+  removed: { sessions: number; jobs: number; monitors: number };
+  moved: { jobs: number; monitors: number };
 };
 
 export type MemoryItem = {

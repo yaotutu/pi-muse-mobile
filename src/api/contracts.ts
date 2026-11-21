@@ -10,6 +10,8 @@ import type {
   DeleteJobResult,
   DeleteMonitorResult,
   DeleteSessionResult,
+  SessionDeleteOptions,
+  SessionSchedules,
   Goal,
   GoalStatus,
   GoalsQuery,
@@ -299,39 +301,20 @@ export function parseMessagesSnapshotEvent(event: AgUiEvent): AgUiEvent {
   return { ...event, messages: parseConversationMessages(event.messages) };
 }
 
-// --- 会话技能 ---
+// --- 助手技能 ---
 
-const invalidSessionSkills = () => new ApiError(502, '服务器没有返回有效会话技能列表，请确认服务器版本与地址');
+const invalidSessionSkills = () => new ApiError(502, '服务器没有返回有效助手技能列表，请确认服务器版本与地址');
 const invalidSessionSkillDetail = () => new ApiError(502, '服务器没有返回有效技能正文，请确认服务器版本与地址');
 const SESSION_SKILL_SOURCES: readonly SessionSkillSource[] = ['builtin', 'user', 'shared'];
 
-/** 缺失 source 的旧服务端按 builtin（自有）处理，同时保留“来源未知”以便界面不显示来源标签。 */
-function parseSkillSource(value: unknown, invalid: () => ApiError): { source: SessionSkillSource; declared: boolean } {
-  if (value === undefined || value === null) return { source: 'builtin', declared: false };
-  if (typeof value === 'string' && SESSION_SKILL_SOURCES.includes(value as SessionSkillSource)) {
-    return { source: value as SessionSkillSource, declared: true };
-  }
-  throw invalid();
-}
-
-/** 技能条目严格解析：id 缺省回退 name，source 缺省回退 builtin，非法来源视为响应无效。 */
 function parseSkillFields(value: unknown, invalid: () => ApiError) {
   if (!isRecord(value)) throw invalid();
   const { id, name, description, source, defaultEnabled, enabled } = value;
-  if (typeof name !== 'string' || !name) throw invalid();
-  if (typeof description !== 'string') throw invalid();
+  if (typeof name !== 'string' || !name || typeof description !== 'string') throw invalid();
+  if (typeof source !== 'string' || !SESSION_SKILL_SOURCES.includes(source as SessionSkillSource) ||
+    typeof id !== 'string' || id !== `${source}/${name}`) throw invalid();
   if (typeof defaultEnabled !== 'boolean' || typeof enabled !== 'boolean') throw invalid();
-  if (id !== undefined && id !== null && (typeof id !== 'string' || !id)) throw invalid();
-  const declared = parseSkillSource(source, invalid);
-  return {
-    id: typeof id === 'string' && id ? id : name,
-    name,
-    description,
-    source: declared.source,
-    sourceDeclared: declared.declared,
-    defaultEnabled,
-    enabled,
-  };
+  return { id, name, description, source: source as SessionSkillSource, defaultEnabled, enabled };
 }
 
 export function parseSessionSkills(value: unknown): SessionSkills {
@@ -367,7 +350,7 @@ export interface ApiClient extends CompanionClient, DreamClient, ApprovalClient,
   createSession(title?: string, signal?: AbortSignal): Promise<SessionRecord>;
   renameSession(sessionId: string, title: string, signal?: AbortSignal): Promise<SessionRecord>;
   /** 重置只替换聊天绑定；默认保留规则、技能、文件、定时任务和监控。副作用绝不自动重试。 */
-  resetSession(sessionId: string, options?: { clearSchedules?: boolean }, signal?: AbortSignal): Promise<ResetSessionResult>;
+  resetSession(sessionId: string, signal?: AbortSignal): Promise<ResetSessionResult>;
   /** GET /api/conversation?sessionId= 权威历史；empty 不代表会话存在，存在性以会话列表为准。 */
   getConversation(sessionId: string, signal?: AbortSignal): Promise<ConversationSnapshot>;
   /** GET 消息当前反馈；读取失败由调用方保留旧值，不用空反馈冒充。 */
@@ -430,22 +413,22 @@ export interface ApiClient extends CompanionClient, DreamClient, ApprovalClient,
 
   // --- 会话配置与生命周期 ---
 
-  /** GET /api/sessions/:id/instructions 读取会话规则 */
-  getSessionInstructions(sessionId: string, signal?: AbortSignal): Promise<SessionInstructions>;
-  /** PUT /api/sessions/:id/instructions 保存会话规则；空串允许（等价"清空"） */
-  saveSessionInstructions(sessionId: string, instructions: string, signal?: AbortSignal): Promise<SessionInstructions>;
-  /** GET /api/sessions/:id/skills 读取会话级技能生效值；diagnostics 缺省视为无诊断 */
-  getSessionSkills(sessionId: string, signal?: AbortSignal): Promise<SessionSkills>;
-  /** GET /api/sessions/:id/skills/:name 按名称读取当前优先来源的完整 SKILL.md 正文 */
-  getSessionSkill(sessionId: string, name: string, signal?: AbortSignal): Promise<SessionSkillDetail>;
-  /** PUT /api/sessions/:id/skills 用来源身份 id→启用态覆盖写入；空对象等价"恢复默认" */
-  saveSessionSkills(
-    sessionId: string,
+  /** GET /api/assistant/instructions 读取助手指令 */
+  getAssistantInstructions(signal?: AbortSignal): Promise<SessionInstructions>;
+  /** PUT /api/assistant/instructions 保存助手指令；空串允许（等价"清空"） */
+  saveAssistantInstructions(instructions: string, signal?: AbortSignal): Promise<SessionInstructions>;
+  /** GET /api/assistant/skills 读取全局技能生效值；diagnostics 缺省视为无诊断 */
+  getAssistantSkills(signal?: AbortSignal): Promise<SessionSkills>;
+  /** GET /api/assistant/skills/:name 按名称读取当前优先来源的完整 SKILL.md 正文 */
+  getAssistantSkill(name: string, signal?: AbortSignal): Promise<SessionSkillDetail>;
+  /** PUT /api/assistant/skills 用来源身份 id→启用态覆盖写入；空对象等价"恢复默认" */
+  saveAssistantSkills(
     overrides: Record<string, boolean>,
     signal?: AbortSignal,
   ): Promise<SessionSkills>;
   /** DELETE /api/sessions/:id 彻底删除会话并清点副作用；服务端 401/404/409 语义保留 */
-  deleteSession(sessionId: string, signal?: AbortSignal): Promise<DeleteSessionResult>;
+  getSessionSchedules(sessionId: string, signal?: AbortSignal): Promise<SessionSchedules>;
+  deleteSession(sessionId: string, options: SessionDeleteOptions, signal?: AbortSignal): Promise<DeleteSessionResult>;
 
   // --- 定时任务（GET /api/jobs, GET /api/jobs/:id, POST /api/jobs/:id/control, PATCH /api/jobs/:id, DELETE /api/jobs/:id） ---
 

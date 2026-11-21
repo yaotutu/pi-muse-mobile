@@ -5,6 +5,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 const { ChatSessionStore } = await import('../src/sessions/chat-session-store.ts');
+const deleteOptions = { scheduleDisposition: 'delete', scheduleRevision: 'schedule-rev' };
+const { AssistantSettingsStore } = await import('../src/sessions/assistant-settings-store.ts');
 const { ApiError } = await import('../src/api/errors.ts');
 const { MAIN_SESSION_ID } = await import('../src/sessions/types.ts');
 
@@ -24,57 +26,52 @@ test('删除 500 保留草稿并锁住发送，不伪成功或自动重试', asy
   const stub = makeStub();
   const store = new ChatSessionStore(stub.api);
   store.setDraft('a', '消息草稿');
-  store.setInstructions('a', '规则草稿');
   const epoch = store.get('a').epoch;
   stub.enqueue('deleteSession', rejectWith(new ApiError(500, '删除部分失败')));
-  await assert.rejects(store.deleteSession('a'), (error) => error.status === 500);
+  await assert.rejects(store.deleteSession('a', deleteOptions), (error) => error.status === 500);
   assert.equal(store.canWrite('a'), false);
   assert.equal(store.isCurrent('a', epoch), false);
   assert.equal(store.get('a').deleted, false);
   assert.equal(store.get('a').draft, '消息草稿');
-  assert.equal(store.get('a').instructions.draft, '规则草稿');
   assert.equal(stub.callCount('deleteSession'), 1);
 });
 
 test('技能保存 500 保留全部修改并释放写锁', async () => {
   const stub = makeStub();
-  const store = new ChatSessionStore(stub.api);
-  stub.enqueue('getSessionSkills', resolveWith({ skills: [makeSkill('web', true, true), makeSkill('write', true, true)] }));
-  await store.loadSkills('a');
-  store.setSkill('a', 'web', false);
-  store.setSkill('a', 'write', false);
-  stub.enqueue('saveSessionSkills', rejectWith(new ApiError(500, '保存失败')));
-  assert.equal(await store.saveSkills('a'), false);
-  assert.deepEqual(store.get('a').skills.draft, { web: false, write: false });
-  assert.equal(store.hasSettingsWrite('a'), false);
-  assert.equal(store.get('a').skills.error, '保存失败');
-  assert.equal(stub.callCount('saveSessionSkills'), 1);
+  const store = new AssistantSettingsStore(stub.api);
+  stub.enqueue('getAssistantSkills', resolveWith({ skills: [makeSkill('web', true, true), makeSkill('write', true, true)] }));
+  await store.loadSkills();
+  store.setSkill('builtin/web', false);
+  store.setSkill('builtin/write', false);
+  stub.enqueue('saveAssistantSkills', rejectWith(new ApiError(500, '保存失败')));
+  assert.equal(await store.saveSkills(), false);
+  assert.deepEqual(store.state.skills.draft, { 'builtin/web': false, 'builtin/write': false });
+  assert.equal(store.hasSettingsWrite(), false);
+  assert.equal(store.state.skills.error, '保存失败');
+  assert.equal(stub.callCount('saveAssistantSkills'), 1);
 });
 
-test('连接暂停后禁止设置读写与删除，消息草稿仍可保留', async () => {
+test('连接暂停后禁止网络写入，仍可保留消息草稿', async () => {
   let calls = 0;
-  const api = new Proxy({}, { get: () => async () => { calls++; throw new Error('不应发出请求'); } });
+  const api = new Proxy({}, { get: () => async () => { calls++; } });
   const store = new ChatSessionStore(api);
-  store.get('a').instructions.loaded = true;
-  store.get('a').skills.loaded = true;
-  store.setEnabled(false);
+  const settings = new AssistantSettingsStore(api);
+  store.setEnabled(false); settings.setEnabled(false);
   store.setDraft('a', '离线草稿');
-  store.setInstructions('a', '离线规则草稿');
-  await store.loadSettings('a');
-  assert.equal(await store.saveInstructions('a'), false);
-  assert.equal(await store.saveSkills('a'), false);
-  assert.equal(await store.deleteSession('a'), undefined);
+  await settings.loadSettings();
+  assert.equal(await settings.saveInstructions(), false);
+  assert.equal(await settings.saveSkills(), false);
+  assert.equal(await store.deleteSession('a', deleteOptions), undefined);
   assert.equal(calls, 0);
   assert.equal(store.get('a').draft, '离线草稿');
-  assert.equal(store.get('a').instructions.draft, '离线规则草稿');
 });
 
 const METHODS = [
-  'getSessionInstructions',
-  'saveSessionInstructions',
-  'getSessionSkills',
-  'getSessionSkill',
-  'saveSessionSkills',
+  'getAssistantInstructions',
+  'saveAssistantInstructions',
+  'getAssistantSkills',
+  'getAssistantSkill',
+  'saveAssistantSkills',
   'deleteSession',
   'resetSession',
 ];
@@ -86,8 +83,9 @@ function makeStub() {
   for (const name of METHODS) {
     api[name] = async (...rest) => {
       const signal = rest.at(-1) instanceof AbortSignal ? rest.pop() : undefined;
-      const id = rest[0];
-      const args = rest.slice(1);
+      const assistant = name.includes('Assistant');
+      const id = assistant ? undefined : rest[0];
+      const args = assistant ? rest : rest.slice(1);
       const queue = queues[name];
       if (queue.length === 0) {
         throw new Error(`No queued stub for ${name}; ensure tests enqueue enough handlers.`);
@@ -142,7 +140,7 @@ function makeStub() {
 }
 
 const makeSkill = (name, enabled = false, defaultEnabled = false) =>
-  ({ name, description: `${name} desc`, defaultEnabled, enabled });
+  ({ id: `builtin/${name}`, name, source: 'builtin', description: `${name} desc`, defaultEnabled, enabled });
 
 // 列表 handler：自动 resolve 一个值
 const resolveWith = (value) => (ctx) => ctx.resolve(value);
@@ -150,263 +148,179 @@ const rejectWith = (error) => (ctx) => ctx.reject(error);
 
 // --- 1. A/B 草稿隔离 + 消息 draft 隔离 ---
 
-test('不同会话的 settings 草稿与消息草稿彼此隔离', async () => {
-  const stub = makeStub();
-  const store = new ChatSessionStore(stub.api);
-  store.setDraft('a', 'A 草稿消息');
-  store.setDraft('b', 'B 草稿消息');
-  assert.equal(store.get('a').draft, 'A 草稿消息');
-  assert.equal(store.get('b').draft, 'B 草稿消息');
-  // 互改不影响对方。
-  store.setDraft('a', 'A 草稿消息 2');
-  assert.equal(store.get('a').draft, 'A 草稿消息 2');
-  assert.equal(store.get('b').draft, 'B 草稿消息');
-
-  // settings 草稿也隔离。
-  store.setInstructions('a', 'A rules');
-  store.setInstructions('b', 'B rules');
-  assert.equal(store.get('a').instructions.draft, 'A rules');
-  assert.equal(store.get('b').instructions.draft, 'B rules');
-  // 一个会话在保存中，另一个仍可继续修改自己的草稿。
-  stub.enqueue('getSessionInstructions', resolveWith({ instructions: '' }));
-  await store.loadInstructions('a');
-  // 让 a 进入 saving：直接通过 stub 模拟一次成功保存。
-  stub.enqueue('saveSessionInstructions', resolveWith({ instructions: 'A rules' }));
-  const saveA = store.saveInstructions('a');
-  store.setInstructions('b', 'B rules 改');
-  // a 的草稿被允许修改（因为是另一会话）；b 的草稿也已更新。
-  assert.equal(store.get('b').instructions.draft, 'B rules 改');
-  await saveA;
-  // a 保存后 draft=saved 即被对齐。
-  assert.equal(store.get('a').instructions.draft, 'A rules');
-  assert.equal(store.get('a').instructions.saved, 'A rules');
+test('不同会话仅隔离聊天草稿，助手设置跨会话共享', () => {
+  const chats = new ChatSessionStore({});
+  const settings = new AssistantSettingsStore({});
+  chats.setDraft('a', 'A'); chats.setDraft('b', 'B');
+  settings.setInstructions('所有会话使用的规则');
+  chats.clear('a');
+  assert.equal(chats.get('a').draft, '');
+  assert.equal(chats.get('b').draft, 'B');
+  assert.equal(settings.state.instructions.draft, '所有会话使用的规则');
 });
-
-// --- 2. delayed A read 切 B 不污染 B ---
-
-test('A 的延迟读返回时切到 B，不能把 A 的内容应用到 B', async () => {
-  const stub = makeStub();
-  const store = new ChatSessionStore(stub.api);
-
-  // A 第一条 read：延迟但故意忽略 signal，等 store 切到 B 后才 resolve。
-  let resolveA;
-  const gateA = new Promise((res) => { resolveA = res; });
-  stub.enqueue('getSessionInstructions', () => gateA);
-  const loadA = store.loadInstructions('a');
-
-  // 第二步：切到 B，读自己的内容。
-  stub.enqueue('getSessionInstructions', resolveWith({ instructions: 'B rules' }));
-  await store.loadInstructions('b');
-  assert.equal(store.get('b').instructions.draft, 'B rules');
-  assert.equal(store.get('b').instructions.saved, 'B rules');
-
-  // 第三步：A 的延迟终于回来——不污染 B。
-  resolveA({ instructions: 'A rules' });
-  await loadA;
-  // A 自身的状态已收尾：被 abort / 已删除 epoch —— 让我们看 A 的内容。
-  assert.equal(store.get('a').instructions.saved, 'A rules');
-  // B 的内容依然只有 B 自己的。
-  assert.equal(store.get('b').instructions.saved, 'B rules');
-  assert.equal(store.get('b').instructions.draft, 'B rules');
-});
-
-// --- 3. read 最新规则保留 dirty draft（saved 回读更新） ---
-
 test('loadSkills 回读时若草稿已偏离 saved，则保留草稿字段（去掉已移除项）', async () => {
   const stub = makeStub();
-  const store = new ChatSessionStore(stub.api);
+  const store = new AssistantSettingsStore(stub.api);
 
   // 第一次拉取目录：A、B 都在。
-  stub.enqueue('getSessionSkills', resolveWith({
+  stub.enqueue('getAssistantSkills', resolveWith({
     skills: [makeSkill('a', true), makeSkill('b', false)],
   }));
-  await store.loadSkills('a');
+  await store.loadSkills();
   // 草稿与 saved 对齐：开 a 关 b。
-  assert.deepEqual(store.get('a').skills.saved, { a: true, b: false });
-  assert.deepEqual(store.get('a').skills.draft, { a: true, b: false });
+  assert.deepEqual(store.state.skills.saved, { 'builtin/a': true, 'builtin/b': false });
+  assert.deepEqual(store.state.skills.draft, { 'builtin/a': true, 'builtin/b': false });
 
   // 用户改 dirty 草稿：关 a。
-  store.setSkill('a', 'a', false);
-  assert.deepEqual(store.get('a').skills.draft, { a: false, b: false });
-  assert.equal(store.hasDirtySettings('a'), true);
+  store.setSkill('builtin/a', false);
+  assert.deepEqual(store.state.skills.draft, { 'builtin/a': false, 'builtin/b': false });
 
   // 服务端目录变化：b 不再注册，新增 c。
-  stub.enqueue('getSessionSkills', resolveWith({
+  stub.enqueue('getAssistantSkills', resolveWith({
     skills: [makeSkill('a', true, true), makeSkill('c', false, false)],
   }));
-  await store.loadSkills('a');
+  await store.loadSkills();
 
   // saved 更新成 {a: true, c: false}；草稿 a 字段保留、b（已移除）丢弃、c 用默认值。
-  assert.deepEqual(store.get('a').skills.saved, { a: true, c: false });
-  assert.deepEqual(store.get('a').skills.draft, { a: false, c: false });
+  assert.deepEqual(store.state.skills.saved, { 'builtin/a': true, 'builtin/c': false });
+  assert.deepEqual(store.state.skills.draft, { 'builtin/a': false, 'builtin/c': false });
   // 已移除项触发 notice。
-  assert.ok(store.get('a').skills.notice?.includes('b'), `expected notice to mention b, got: ${store.get('a').skills.notice}`);
+  assert.ok(store.state.skills.notice?.includes('b'), `expected notice to mention b, got: ${store.state.skills.notice}`);
 });
 
 // --- 4. save 返回 trim 服务端结果回填 / 超 20k 本地阻止 ---
 
 test('saveInstructions 回填服务端值；超长时不发起请求', async () => {
   const stub = makeStub();
-  const store = new ChatSessionStore(stub.api);
+  const store = new AssistantSettingsStore(stub.api);
 
   // 先 load，让 target.loaded=true。
-  stub.enqueue('getSessionInstructions', resolveWith({ instructions: 'orig' }));
-  await store.loadInstructions('a');
+  stub.enqueue('getAssistantInstructions', resolveWith({ instructions: 'orig' }));
+  await store.loadInstructions();
   // store 直发 draft，不在本层 trim；调用方有责任交给服务端前自己 trim。
-  store.setInstructions('a', '   新规则 ');
+  store.setInstructions('   新规则 ');
 
   let sentInstructions;
-  stub.enqueue('saveSessionInstructions', ({ args, resolve }) => {
+  stub.enqueue('saveAssistantInstructions', ({ args, resolve }) => {
     sentInstructions = args[0];
     // 服务端代表 trim 两侧空白。
     resolve({ instructions: '新规则' });
   });
-  const ok = await store.saveInstructions('a');
+  const ok = await store.saveInstructions();
   assert.equal(ok, true);
   // 客户端按原样提交 draft，trim 是调用方职责。
   assert.equal(sentInstructions, '   新规则 ');
   // 回填后 saved/draft 都与服务端响应一致。
-  assert.equal(store.get('a').instructions.saved, '新规则');
-  assert.equal(store.get('a').instructions.draft, '新规则');
+  assert.equal(store.state.instructions.saved, '新规则');
+  assert.equal(store.state.instructions.draft, '新规则');
 
-  // 超长：本地拦截，不调用 saveSessionInstructions。
+  // 超长：本地拦截，不调用 saveAssistantInstructions。
   const longText = 'x'.repeat(20_001);
-  store.setInstructions('a', longText);
-  const before = stub.callCount('saveSessionInstructions');
-  const ok2 = await store.saveInstructions('a');
-  const after = stub.callCount('saveSessionInstructions');
+  store.setInstructions(longText);
+  const before = stub.callCount('saveAssistantInstructions');
+  const ok2 = await store.saveInstructions();
+  const after = stub.callCount('saveAssistantInstructions');
   assert.equal(ok2, false);
-  assert.equal(after, before, '超长不能调用 api.saveSessionInstructions');
-  assert.ok(store.get('a').instructions.error?.includes('20,000') || store.get('a').instructions.error?.includes('20000'), 'err 应包含数字限制');
+  assert.equal(after, before, '超长不能调用 api.saveAssistantInstructions');
+  assert.ok(store.state.instructions.error?.includes('20,000') || store.state.instructions.error?.includes('20000'), 'err 应包含数字限制');
 });
 
 // --- 5. save skills 完整目录包含 false / restore (defaults) 空表 ---
 
 test('saveSkills 普通保存提交整个目录；defaults=true 提交空覆盖表', async () => {
   const stub = makeStub();
-  const store = new ChatSessionStore(stub.api);
+  const store = new AssistantSettingsStore(stub.api);
 
-  stub.enqueue('getSessionSkills', resolveWith({
+  stub.enqueue('getAssistantSkills', resolveWith({
     skills: [makeSkill('a', false), makeSkill('b', true)],
   }));
-  await store.loadSkills('a');
-  store.setSkill('a', 'a', true);
+  await store.loadSkills();
+  store.setSkill('builtin/a', true);
 
   let sentOverrides;
-  stub.enqueue('saveSessionSkills', ({ args, resolve }) => {
+  stub.enqueue('saveAssistantSkills', ({ args, resolve }) => {
     sentOverrides = args[0];
     resolve({
       skills: [makeSkill('a', true, false), makeSkill('b', true, true)],
     });
   });
-  const ok = await store.saveSkills('a');
+  const ok = await store.saveSkills();
   assert.equal(ok, true);
-  assert.deepEqual(sentOverrides, { a: true, b: true }, '普通保存覆盖整个目录，每个开关显式表达');
+  assert.deepEqual(sentOverrides, { 'builtin/a': true, 'builtin/b': true }, '普通保存覆盖整个目录，每个开关显式表达');
 
   // restore：发送空覆盖表。
-  const before = stub.callCount('saveSessionSkills');
+  const before = stub.callCount('saveAssistantSkills');
   let restoreOverrides;
-  stub.enqueue('saveSessionSkills', ({ args, resolve }) => {
+  stub.enqueue('saveAssistantSkills', ({ args, resolve }) => {
     restoreOverrides = args[0];
     resolve({
       skills: [makeSkill('a', false, false), makeSkill('b', true, true)],
     });
   });
-  const okRestore = await store.saveSkills('a', true);
+  const okRestore = await store.saveSkills(true);
   assert.equal(okRestore, true);
   assert.deepEqual(restoreOverrides, {}, 'defaults=true 应发送 overrides: {}');
-  assert.equal(stub.callCount('saveSessionSkills'), before + 1);
+  assert.equal(stub.callCount('saveAssistantSkills'), before + 1);
 });
 
 // --- 6. 400 保留现存草稿且刷新移除未知名，不无限重试 ---
 
 test('saveSkills 收到 400 时本地草稿保留、自动刷新目录移除未知名、且不无限重试', async () => {
   const stub = makeStub();
-  const store = new ChatSessionStore(stub.api);
+  const store = new AssistantSettingsStore(stub.api);
 
-  stub.enqueue('getSessionSkills', resolveWith({
+  stub.enqueue('getAssistantSkills', resolveWith({
     skills: [makeSkill('a', true), makeSkill('b', false)],
   }));
-  await store.loadSkills('a');
+  await store.loadSkills();
   // 用户改 a → false。
-  store.setSkill('a', 'a', false);
-  assert.deepEqual(store.get('a').skills.draft, { a: false, b: false });
+  store.setSkill('builtin/a', false);
+  assert.deepEqual(store.state.skills.draft, { 'builtin/a': false, 'builtin/b': false });
 
-  stub.enqueue('saveSessionSkills', rejectWith(new ApiError(400, '技能不可写')));
+  stub.enqueue('saveAssistantSkills', rejectWith(new ApiError(400, '技能不可写')));
   // 紧随其后，被 400 触发的内部 loadSkills。
-  stub.enqueue('getSessionSkills', resolveWith({
+  stub.enqueue('getAssistantSkills', resolveWith({
     skills: [makeSkill('a', true), makeSkill('c', false)],
   }));
 
-  const callsBefore = stub.callCount('saveSessionSkills');
-  const loadsBefore = stub.callCount('getSessionSkills');
-  const ok = await store.saveSkills('a');
-  const callsAfter = stub.callCount('saveSessionSkills');
-  const loadsAfter = stub.callCount('getSessionSkills');
+  const callsBefore = stub.callCount('saveAssistantSkills');
+  const loadsBefore = stub.callCount('getAssistantSkills');
+  const ok = await store.saveSkills();
+  const callsAfter = stub.callCount('saveAssistantSkills');
+  const loadsAfter = stub.callCount('getAssistantSkills');
   assert.equal(ok, false);
   assert.equal(callsAfter, callsBefore + 1, '只发生一次 400，不再重试');
   assert.equal(loadsAfter, loadsBefore + 1, '刷新一次以移除未知名');
   // 等待内部 finally 中可能串起的 loadSkills 完成（refreshCatalog）。
   await new Promise(setImmediate);
-  assert.equal(stub.callCount('getSessionSkills'), loadsBefore + 1, '不无限重试，只一次刷新');
+  assert.equal(stub.callCount('getAssistantSkills'), loadsBefore + 1, '不无限重试，只一次刷新');
   // draft 中 a=false 仍保留；b 被从目录中移除。
-  assert.deepEqual(store.get('a').skills.draft, { a: false, c: false });
+  assert.deepEqual(store.state.skills.draft, { 'builtin/a': false, 'builtin/c': false });
   // error 内容是原始 400 文本。
-  assert.equal(store.get('a').skills.error, '技能不可写');
+  assert.equal(store.state.skills.error, '技能不可写');
 });
 
 // --- 7. delete 同步锁：saving 中禁保存/重复 delete；清除草稿缓存 ---
 
-test('deleteSession 在 hasSettingsWrite 时返回 undefined；inFlight 后第二次直接拒绝', async () => {
+test('会话删除进行中拒绝重复请求，成功才清理草稿', async () => {
   const stub = makeStub();
   const store = new ChatSessionStore(stub.api);
-
-  stub.enqueue('getSessionInstructions', resolveWith({ instructions: '' }));
-  await store.loadInstructions('a');
-
-  // 把 a 推进 saving 中：用一个永不 resolve 的 save 来保持锁。
-  let resolveSave;
-  const gate = new Promise((res) => { resolveSave = res; });
-  stub.enqueue('saveSessionInstructions', () => gate);
-  const savePromise = store.saveInstructions('a');
-  // 微任务推进后再断言状态。
-  await new Promise(setImmediate);
-  assert.equal(store.hasSettingsWrite('a'), true);
-
-  // deleteSession 在 saving 时拒绝。
-  const result = await store.deleteSession('a');
-  assert.equal(result, undefined, 'saving 中 delete 直接 undefined');
-  assert.equal(stub.callCount('deleteSession'), 0, '不应发 delete 请求');
-
-  // 释放 save 让其完成。
-  resolveSave({ instructions: 'noop' });
-  await savePromise;
-
-  // 现在发起真正的 delete。
-  let resolveDelete;
-  const gateDel = new Promise((res) => { resolveDelete = res; });
-  stub.enqueue('deleteSession', ({ resolve }) => resolve({ ok: true, removed: { sessions: 0 } }));
-  const firstDelete = store.deleteSession('a');
-
-  // 等待 deleting=true 后，第二次 delete 进入应观察到 deleting=true 路径。
-  await new Promise(setImmediate);
-  const secondDelete = await store.deleteSession('a');
-  assert.equal(secondDelete, undefined, 'deleting 中重复请求返回 undefined');
-  // 并没有发第二条 delete 请求——canWrite 在 deleting 时也 false。
-  await firstDelete;
+  store.setDraft('a', '保留到成功');
+  const pending = defer();
+  stub.enqueue('deleteSession', () => pending.promise);
+  const first = store.deleteSession('a', deleteOptions);
+  assert.equal(await store.deleteSession('a', deleteOptions), undefined);
+  assert.equal(store.get('a').draft, '保留到成功');
+  pending.resolve({ ok: true, removed: { sessions: 1, jobs: 0, monitors: 0 }, moved: { jobs: 0, monitors: 0 } });
+  await first;
   assert.equal(stub.callCount('deleteSession'), 1);
-
-  // delete 完成后旧 entry 在 canWrite 视图上是 deleted，新 get 给出 deleted 状态，setDraft/setInstructions 都会被 canWrite 拦截。
-  assert.equal(store.canWrite('a'), false);
-  store.setDraft('a', '幽灵 draft');
-  // setDraft 拒绝 silently，已删 entry 的 draft 仍保留以前值。
   assert.equal(store.get('a').deleted, true);
+  assert.equal(store.get('a').draft, '');
 });
-
 test('MAIN_SESSION_ID (main) 删除时直接抛 409；保留可写', async () => {
   const stub = makeStub();
   const store = new ChatSessionStore(stub.api);
-  await assert.rejects(store.deleteSession(MAIN_SESSION_ID), (error) => {
+  await assert.rejects(store.deleteSession(MAIN_SESSION_ID, deleteOptions), (error) => {
     assert.ok(error instanceof ApiError);
     assert.equal(error.status, 409);
     return true;
@@ -424,8 +338,8 @@ test('deleteSession 收到 404 时也清空 entry', async () => {
   // 触发 entry 出现。
   store.setDraft('a', 'placeholder');
   stub.enqueue('deleteSession', rejectWith(new ApiError(404, '会话不存在')));
-  const result = await store.deleteSession('a');
-  assert.deepEqual(result, { ok: true, removed: { sessions: 0 } });
+  const result = await store.deleteSession('a', deleteOptions);
+  assert.deepEqual(result, { ok: true, removed: { sessions: 0, jobs: 0, monitors: 0 }, moved: { jobs: 0, monitors: 0 } });
   assert.equal(store.canWrite('a'), false);
 });
 
@@ -433,47 +347,43 @@ test('删除中的 409 保留草稿和代次，不把冲突当作删除成功或
   const stub = makeStub();
   const store = new ChatSessionStore(stub.api);
   store.setDraft('a', '待发送消息');
-  store.setInstructions('a', '未保存规则');
   const epoch = store.get('a').epoch;
   stub.enqueue('deleteSession', rejectWith(new ApiError(409, '会话正在删除', 'AGENT_DELETING')));
-  await assert.rejects(store.deleteSession('a'), (error) => error.status === 409 && error.code === 'AGENT_DELETING');
+  await assert.rejects(store.deleteSession('a', deleteOptions), (error) => error.status === 409 && error.code === 'AGENT_DELETING');
   assert.equal(stub.callCount('deleteSession'), 1);
   assert.equal(store.get('a').deleting, false);
   assert.equal(store.get('a').deleted, false);
   assert.equal(store.isCurrent('a', epoch), true);
   assert.equal(store.get('a').draft, '待发送消息');
-  assert.equal(store.get('a').instructions.draft, '未保存规则');
 });
 
 for (const kind of ['instructions', 'skills']) {
   test(`${kind} 保存遇到删除中的 409 保留草稿，不刷新目录或自动重试`, async () => {
     const stub = makeStub();
-    const store = new ChatSessionStore(stub.api);
-    const load = kind === 'instructions' ? 'getSessionInstructions' : 'getSessionSkills';
-    const save = kind === 'instructions' ? 'saveSessionInstructions' : 'saveSessionSkills';
+    const store = new AssistantSettingsStore(stub.api);
+    const load = kind === 'instructions' ? 'getAssistantInstructions' : 'getAssistantSkills';
+    const save = kind === 'instructions' ? 'saveAssistantInstructions' : 'saveAssistantSkills';
     stub.enqueue(load, resolveWith(kind === 'instructions'
       ? { instructions: '原规则' }
       : { skills: [makeSkill('web', true, true)] }));
     if (kind === 'instructions') {
-      await store.loadInstructions('a');
-      store.setInstructions('a', '新规则');
+      await store.loadInstructions();
+      store.setInstructions('新规则');
     } else {
-      await store.loadSkills('a');
-      store.setSkill('a', 'web', false);
+      await store.loadSkills();
+      store.setSkill('builtin/web', false);
     }
-    const draft = structuredClone(store.get('a')[kind].draft);
-    const saved = structuredClone(store.get('a')[kind].saved);
-    const epoch = store.get('a').epoch;
+    const draft = structuredClone(store.state[kind].draft);
+    const saved = structuredClone(store.state[kind].saved);
     stub.enqueue(save, rejectWith(new ApiError(409, '会话正在删除，请刷新会话列表后重新选择', 'AGENT_DELETING')));
-    const result = kind === 'instructions' ? await store.saveInstructions('a') : await store.saveSkills('a');
+    const result = kind === 'instructions' ? await store.saveInstructions() : await store.saveSkills();
     assert.equal(result, false);
     assert.equal(stub.callCount(load), 1);
     assert.equal(stub.callCount(save), 1);
-    assert.equal(store.hasSettingsWrite('a'), false);
-    assert.equal(store.isCurrent('a', epoch), true);
-    assert.deepEqual(store.get('a')[kind].draft, draft);
-    assert.deepEqual(store.get('a')[kind].saved, saved);
-    assert.match(store.get('a')[kind].error, /刷新会话列表后重新选择/);
+    assert.equal(store.hasSettingsWrite(), false);
+    assert.deepEqual(store.state[kind].draft, draft);
+    assert.deepEqual(store.state[kind].saved, saved);
+    assert.match(store.state[kind].error, /刷新会话列表后重新选择/);
   });
 }
 
@@ -481,103 +391,34 @@ for (const kind of ['instructions', 'skills']) {
 
 test('saveInstructions 500 时草稿保留、saving=false、返回 false', async () => {
   const stub = makeStub();
-  const store = new ChatSessionStore(stub.api);
-  stub.enqueue('getSessionInstructions', resolveWith({ instructions: 'orig' }));
-  await store.loadInstructions('a');
-  store.setInstructions('a', '新指令');
-  stub.enqueue('saveSessionInstructions', rejectWith(new ApiError(500, '服务器开小差')));
-  const ok = await store.saveInstructions('a');
+  const store = new AssistantSettingsStore(stub.api);
+  stub.enqueue('getAssistantInstructions', resolveWith({ instructions: 'orig' }));
+  await store.loadInstructions();
+  store.setInstructions('新指令');
+  stub.enqueue('saveAssistantInstructions', rejectWith(new ApiError(500, '服务器开小差')));
+  const ok = await store.saveInstructions();
   assert.equal(ok, false, '不能伪成功');
-  assert.equal(store.get('a').instructions.saving, false, '保存结束应清 saving 锁');
-  assert.equal(store.get('a').instructions.draft, '新指令', '草稿保留');
-  assert.equal(store.get('a').instructions.saved, 'orig', 'saved 未更新');
-  assert.equal(store.get('a').instructions.error, '服务器开小差');
+  assert.equal(store.state.instructions.saving, false, '保存结束应清 saving 锁');
+  assert.equal(store.state.instructions.draft, '新指令', '草稿保留');
+  assert.equal(store.state.instructions.saved, 'orig', 'saved 未更新');
+  assert.equal(store.state.instructions.error, '服务器开小差');
 
   // 同会话再次提交仍可走：saving 锁已释放。
-  stub.enqueue('saveSessionInstructions', resolveWith({ instructions: '新指令' }));
-  const ok2 = await store.saveInstructions('a');
+  stub.enqueue('saveAssistantInstructions', resolveWith({ instructions: '新指令' }));
+  const ok2 = await store.saveInstructions();
   assert.equal(ok2, true);
-  assert.equal(store.get('a').instructions.saved, '新指令');
+  assert.equal(store.state.instructions.saved, '新指令');
 });
 
 // --- 10. delete 与晚到 GET（忽略 signal 的 promise）不得复活 ---
 
-test('deleteSession 期间 read 已经中途发出、忽略 signal 仍 resolve 时，不能复活 entry', async () => {
-  const stub = makeStub();
-  const store = new ChatSessionStore(stub.api);
-
-  // 第一条 getSessionInstructions：模拟忽略 signal 的服务端（不监听 abort，且仍 resolve）。
-  let resolveLate;
-  const gate = new Promise((res) => { resolveLate = res; });
-  stub.enqueue('getSessionInstructions', ({ resolve }) => {
-    // 不读 signal，直接 resolve。
-    resolve(gate.then(() => ({ instructions: '路上迟到的旧读' })));
-  });
-  const loadingPromise = store.loadInstructions('a');
-  await new Promise(setImmediate);
-
-  // 启动 delete：delete 把 in-flight reads abort+移除。
-  stub.enqueue('deleteSession', ({ resolve }) => {
-    // 等到 GET 完全 resolve 后再继续，避免读到 epoch 旧状态。
-    setTimeout(() => resolve({ ok: true, removed: { sessions: 0 } }), 0);
-  });
-  const result = await store.deleteSession('a');
-  assert.deepEqual(result, { ok: true, removed: { sessions: 0 } });
-  assert.equal(store.canWrite('a'), false);
-
-  // 晚到的 GET 终于返回。
-  resolveLate();
-  await loadingPromise;
-
-  // 迟到的内容不应"复活" a：canWrite 仍 false，entry 应处于 deleted 状态，saved 不应是旧读内容。
-  assert.equal(store.canWrite('a'), false);
-  const entry = store.get('a');
-  assert.equal(entry.deleted, true);
-  // 不会被错误地写入 instructions.saved（loadInstructions 的 apply 会因为 isCurrent=false 被拒绝）。
-  assert.notEqual(entry.instructions.saved, '路上迟到的旧读');
-});
-
-// --- 11. saving 未完成禁止 delete ---
-
-test('saveSkills 进行中触发 deleteSession 应直接 undefined', async () => {
-  const stub = makeStub();
-  const store = new ChatSessionStore(stub.api);
-
-  stub.enqueue('getSessionSkills', resolveWith({
-    skills: [makeSkill('a', true)],
-  }));
-  await store.loadSkills('a');
-  store.setSkill('a', 'a', false);
-
-  let resolveSave;
-  const gate = new Promise((res) => { resolveSave = res; });
-  stub.enqueue('saveSessionSkills', () => gate);
-  const savePromise = store.saveSkills('a');
-  await new Promise(setImmediate);
-  assert.equal(store.hasSettingsWrite('a'), true);
-
-  const result = await store.deleteSession('a');
-  assert.equal(result, undefined, 'saving 中 delete 拒绝');
-  assert.equal(stub.callCount('deleteSession'), 0);
-
-  // 释放 save。
-  resolveSave({ skills: [makeSkill('a', false)] });
-  await savePromise;
-  // 再发起 delete 应成功（不残留 settings write 锁）。
-  stub.enqueue('deleteSession', ({ resolve }) => resolve({ ok: true, removed: { sessions: 0 } }));
-  const ok2 = await store.deleteSession('a');
-  assert.deepEqual(ok2, { ok: true, removed: { sessions: 0 } });
-});
-
-// --- 12. dispose 取消所有进行中的 GET ---
-
 test('dispose 取消正在 loading 的 read；dispose 后 AbortController 应被 abort', async () => {
   const stub = makeStub();
-  const store = new ChatSessionStore(stub.api);
+  const store = new AssistantSettingsStore(stub.api);
 
   let observedAbort = false;
   // 真实路径的服务端应响应 abort 抛 AbortError；这里从 ctx.reject 直接拒绝。
-  stub.enqueue('getSessionInstructions', ({ signal, reject }) => {
+  stub.enqueue('getAssistantInstructions', ({ signal, reject }) => {
     signal?.addEventListener('abort', () => {
       observedAbort = true;
       const e = new Error('Aborted');
@@ -585,7 +426,7 @@ test('dispose 取消正在 loading 的 read；dispose 后 AbortController 应被
       reject(e);
     });
   });
-  const loading = store.loadInstructions('a');
+  const loading = store.loadInstructions();
   // 让 controller 注册与 stub handler 跑完。
   await new Promise(setImmediate);
 
@@ -666,11 +507,11 @@ test('discardFailedSubmission 在真实删除、重置不确定与销毁生命�
   });
   let finishDelete;
   deleting.enqueue('deleteSession', () => new Promise((resolve) => { finishDelete = resolve; }));
-  const deletePromise = deletingStore.deleteSession('deleting-agent');
+  const deletePromise = deletingStore.deleteSession('deleting-agent', deleteOptions);
   await new Promise(setImmediate);
   assert.equal(deletingStore.get('deleting-agent').deleting, true);
   assert.equal(deletingStore.discardFailedSubmission('deleting-agent', deletingEpoch, 'deleting-message'), false);
-  finishDelete({ ok: true, removed: { sessions: 0 } });
+  finishDelete({ ok: true, removed: { sessions: 0, jobs: 0, monitors: 0 }, moved: { jobs: 0, monitors: 0 } });
   await deletePromise;
   assert.equal(deletingStore.canWrite('deleting-agent'), false);
   assert.equal(deletingStore.discardFailedSubmission('deleting-agent', deletingEpoch, 'deleting-message'), false);
@@ -698,24 +539,24 @@ test('discardFailedSubmission 在真实删除、重置不确定与销毁生命�
 
 test('saveSkills 优先以 id 身份（source/name）作为键发送 overrides', async () => {
   const stub = makeStub();
-  const store = new ChatSessionStore(stub.api);
+  const store = new AssistantSettingsStore(stub.api);
 
   const skills = [
-    { id: 'builtin/web', name: 'web', description: 'web desc', source: 'builtin', sourceDeclared: true, defaultEnabled: true, enabled: true },
-    { id: 'shared/git', name: 'git', description: 'git desc', source: 'shared', sourceDeclared: true, defaultEnabled: false, enabled: false },
+    { id: 'builtin/web', name: 'web', description: 'web desc', source: 'builtin', defaultEnabled: true, enabled: true },
+    { id: 'shared/git', name: 'git', description: 'git desc', source: 'shared', defaultEnabled: false, enabled: false },
   ];
-  stub.enqueue('getSessionSkills', resolveWith({ skills }));
-  await store.loadSkills('a');
+  stub.enqueue('getAssistantSkills', resolveWith({ skills }));
+  await store.loadSkills();
 
-  assert.deepEqual(store.get('a').skills.saved, { 'builtin/web': true, 'shared/git': false });
-  assert.deepEqual(store.get('a').skills.draft, { 'builtin/web': true, 'shared/git': false });
+  assert.deepEqual(store.state.skills.saved, { 'builtin/web': true, 'shared/git': false });
+  assert.deepEqual(store.state.skills.draft, { 'builtin/web': true, 'shared/git': false });
 
-  // 既可通过 id 设置，也可通过 name 设置
-  store.setSkill('a', 'git', true);
-  assert.deepEqual(store.get('a').skills.draft, { 'builtin/web': true, 'shared/git': true });
+  // 使用来源身份设置，避免同名技能混用。
+  store.setSkill('shared/git', true);
+  assert.deepEqual(store.state.skills.draft, { 'builtin/web': true, 'shared/git': true });
 
   let sentOverrides;
-  stub.enqueue('saveSessionSkills', ({ args, resolve }) => {
+  stub.enqueue('saveAssistantSkills', ({ args, resolve }) => {
     sentOverrides = args[0];
     resolve({
       skills: [
@@ -724,92 +565,98 @@ test('saveSkills 优先以 id 身份（source/name）作为键发送 overrides',
       ],
     });
   });
-  const ok = await store.saveSkills('a');
+  const ok = await store.saveSkills();
   assert.equal(ok, true);
   assert.deepEqual(sentOverrides, { 'builtin/web': true, 'shared/git': true });
 });
 
 test('同名来源切换不继承草稿，并取消旧来源在途正文和缓存', async () => {
   const stub = makeStub();
-  const store = new ChatSessionStore(stub.api);
-  const shared = { ...makeSkill('demo'), id: 'shared/demo', source: 'shared', sourceDeclared: true };
+  const store = new AssistantSettingsStore(stub.api);
+  const shared = { ...makeSkill('demo'), id: 'shared/demo', source: 'shared' };
   const own = { ...shared, id: 'user/demo', source: 'user' };
-  stub.enqueue('getSessionSkills', resolveWith({ skills: [shared] }));
-  await store.loadSkills('a');
-  store.setSkill('a', shared.id, true);
-  store.get('a').skills.details.demo = { content: '旧来源正文', loading: false };
+  stub.enqueue('getAssistantSkills', resolveWith({ skills: [shared] }));
+  await store.loadSkills();
+  store.setSkill(shared.id, true);
+  store.state.skills.details.demo = { content: '旧来源正文', loading: false };
   let complete;
   let requestSignal;
-  stub.enqueue('getSessionSkill', ({ resolve, signal }) => { complete = resolve; requestSignal = signal; });
-  const pending = store.loadSkillDetail('a', 'demo');
+  stub.enqueue('getAssistantSkill', ({ resolve, signal }) => { complete = resolve; requestSignal = signal; });
+  const pending = store.loadSkillDetail('demo');
   await new Promise(setImmediate);
-  stub.enqueue('getSessionSkills', resolveWith({ skills: [own] }));
-  await store.loadSkills('a');
+  stub.enqueue('getAssistantSkills', resolveWith({ skills: [own] }));
+  await store.loadSkills();
   assert.equal(requestSignal.aborted, true);
   complete({ ...shared, content: '迟到的旧来源正文' });
   await pending;
-  assert.deepEqual(store.get('a').skills.draft, { 'user/demo': false });
-  assert.equal(store.get('a').skills.details.demo, undefined);
-});
-
-test('旧名称草稿升级为来源身份时不自动授权新通用来源', async () => {
-  const stub = makeStub();
-  const store = new ChatSessionStore(stub.api);
-  stub.enqueue('getSessionSkills', resolveWith({ skills: [makeSkill('demo')] }));
-  await store.loadSkills('a');
-  store.setSkill('a', 'demo', true);
-  stub.enqueue('getSessionSkills', resolveWith({ skills: [{ ...makeSkill('demo'), id: 'shared/demo', source: 'shared', sourceDeclared: true }] }));
-  await store.loadSkills('a');
-  assert.deepEqual(store.get('a').skills.draft, { 'shared/demo': false });
-  assert.match(store.get('a').skills.notice, /目录已变化/);
+  assert.deepEqual(store.state.skills.draft, { 'user/demo': false });
+  assert.equal(store.state.skills.details.demo, undefined);
 });
 
 test('技能正文返回不同来源时不挂到旧标签下', async () => {
   const stub = makeStub();
-  const store = new ChatSessionStore(stub.api);
-  const shared = { ...makeSkill('demo'), id: 'shared/demo', source: 'shared', sourceDeclared: true };
-  stub.enqueue('getSessionSkills', resolveWith({ skills: [shared] }));
-  await store.loadSkills('a');
-  stub.enqueue('getSessionSkill', resolveWith({ ...shared, id: 'user/demo', source: 'user', content: '另一个来源' }));
-  await store.loadSkillDetail('a', 'demo');
-  assert.equal(store.get('a').skills.details.demo.content, undefined);
-  assert.match(store.get('a').skills.details.demo.error, /来源已变化/);
+  const store = new AssistantSettingsStore(stub.api);
+  const shared = { ...makeSkill('demo'), id: 'shared/demo', source: 'shared' };
+  stub.enqueue('getAssistantSkills', resolveWith({ skills: [shared] }));
+  await store.loadSkills();
+  stub.enqueue('getAssistantSkill', resolveWith({ ...shared, id: 'user/demo', source: 'user', content: '另一个来源' }));
+  await store.loadSkillDetail('demo');
+  assert.equal(store.state.skills.details.demo.content, undefined);
+  assert.match(store.state.skills.details.demo.error, /来源已变化/);
 });
 
 test('loadSkillDetail 成功加载正文，404 映射为技能正文不可用', async () => {
   const stub = makeStub();
-  const store = new ChatSessionStore(stub.api);
+  const store = new AssistantSettingsStore(stub.api);
 
   // 成功分支
-  stub.enqueue('getSessionSkill', resolveWith({
+  stub.enqueue('getAssistantSkill', resolveWith({
     id: 'builtin/web',
     name: 'web',
     description: 'web desc',
     source: 'builtin',
-    sourceDeclared: true,
     defaultEnabled: true,
     enabled: true,
     content: '# Web 技能说明',
   }));
 
-  const promise = store.loadSkillDetail('a', 'web');
-  assert.equal(store.get('a').skills.details.web?.loading, true);
+  const promise = store.loadSkillDetail('web');
+  assert.equal(store.state.skills.details.web?.loading, true);
   await promise;
 
-  assert.equal(store.get('a').skills.details.web?.loading, false);
-  assert.equal(store.get('a').skills.details.web?.content, '# Web 技能说明');
-  assert.equal(store.get('a').skills.details.web?.error, undefined);
+  assert.equal(store.state.skills.details.web?.loading, false);
+  assert.equal(store.state.skills.details.web?.content, '# Web 技能说明');
+  assert.equal(store.state.skills.details.web?.error, undefined);
 
   // 404 分支
-  stub.enqueue('getSessionSkill', rejectWith(new ApiError(404, 'Skill not found', 'SKILL_NOT_FOUND')));
-  await store.loadSkillDetail('a', 'missing');
-  assert.equal(store.get('a').skills.details.missing?.loading, false);
-  assert.equal(store.get('a').skills.details.missing?.content, undefined);
-  assert.equal(store.get('a').skills.details.missing?.error, '技能正文不可用');
+  stub.enqueue('getAssistantSkill', rejectWith(new ApiError(404, 'Skill not found', 'SKILL_NOT_FOUND')));
+  await store.loadSkillDetail('missing');
+  assert.equal(store.state.skills.details.missing?.loading, false);
+  assert.equal(store.state.skills.details.missing?.content, undefined);
+  assert.equal(store.state.skills.details.missing?.error, '技能正文不可用');
 
   // 通用 500 错误分支
-  stub.enqueue('getSessionSkill', rejectWith(new ApiError(500, '读取技能失败')));
-  await store.loadSkillDetail('a', 'fail');
-  assert.equal(store.get('a').skills.details.fail?.loading, false);
-  assert.equal(store.get('a').skills.details.fail?.error, '读取技能失败');
+  stub.enqueue('getAssistantSkill', rejectWith(new ApiError(500, '读取技能失败')));
+  await store.loadSkillDetail('fail');
+  assert.equal(store.state.skills.details.fail?.loading, false);
+  assert.equal(store.state.skills.details.fail?.error, '读取技能失败');
+});
+
+test('离开助手技能页面取消读取，重新打开可再次读取正文', async () => {
+  const stub = makeStub();
+  const settings = new AssistantSettingsStore(stub.api);
+  const skill = makeSkill('web');
+  stub.enqueue('getAssistantSkills', resolveWith({ skills: [skill] }));
+  await settings.loadSkills();
+  let pending;
+  stub.enqueue('getAssistantSkill', (request) => { pending = request; });
+  const first = settings.loadSkillDetail(skill.name);
+  settings.cancelReads();
+  assert.equal(pending.signal.aborted, true);
+  assert.equal(settings.state.skills.details.web.loading, false);
+  stub.enqueue('getAssistantSkill', resolveWith({ ...skill, content: '新正文' }));
+  await settings.loadSkillDetail(skill.name);
+  pending.resolve({ ...skill, content: '旧正文' });
+  await first;
+  assert.equal(settings.state.skills.details.web.content, '新正文');
 });

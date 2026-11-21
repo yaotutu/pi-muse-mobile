@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Alert, AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
+import { MessagesSquare } from 'lucide-react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ApiProvider, useApi } from '../api/ApiProvider';
 import { ConnectionProvider, useServiceConnection } from '../connection/ConnectionProvider';
 import { useConnection } from '../connection/useConnection';
 import { RuntimeProvider, useRuntimeStore, useSessionRuntime } from '../runtime/RuntimeProvider';
 import { SessionProvider, useSessionState, useChatSessionStore } from '../sessions/SessionProvider';
+import { MAIN_SESSION_ID } from '../sessions/types';
+import type { SessionDeleteOptions } from '../api/types';
 import { useSessions } from '../sessions/useSessions';
 import { SmsProvider } from '../information/SmsProvider';
 import { SmsSettingsCard } from '../information/SmsSettingsCard';
@@ -34,7 +37,8 @@ import { ConnectionPanel } from './ConnectionPanel';
 import { ConversationHost } from './ConversationHost';
 import { PageHeader } from './PageHeader';
 import { PrimaryTabBar } from './PrimaryTabBar';
-import { SessionSettings } from './SessionSettings';
+import { AssistantSettings } from './AssistantSettings';
+import { SessionDirectory } from './SessionDirectory';
 import { SessionPanel, type SessionTab } from './SessionPanel';
 import { ResetSessionDialog } from './ResetSessionDialog';
 import { NewsPage, NewsSourcesPage } from './NewsPage';
@@ -106,23 +110,34 @@ function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) 
   const [browser] = useState(() => createBrowserStore(api, connection?.snapshot.serverUrl ?? '')); const [browserOpen, setBrowserOpen] = useState(false);
   const [page, setPage] = useState<PrimaryTabId>('messages'); const [chatReturn, setChatReturn] = useState<ChatReturn>('messages');
   // 新近终态：运行从 running 回落时短时驱动成功/失败/停止姿态，随后清除；setState 全部异步调度避免级联渲染。
-  const [recentOutcome, setRecentOutcome] = useState<'succeeded' | 'failed' | 'cancelled'>();
-  const currentState = useSessionState('main'); const mainRuntime = useSessionRuntime('main'); const [settingsPage, setSettingsPage] = useState<SettingsPage | null>(null);
+  const [recentOutcome, setRecentOutcome] = useState<{ sessionId: string; status: 'succeeded' | 'failed' | 'cancelled' }>();
+  const [requestedSessionId, setRequestedSessionId] = useState(MAIN_SESSION_ID);
+  const [startedSessions, setStartedSessions] = useState<string[]>([MAIN_SESSION_ID]);
+  const [sessionDirectoryOpen, setSessionDirectoryOpen] = useState(false);
+  const selectedSession = directory.sessions.find((item) => item.id === requestedSessionId);
+  const activeSessionId = selectedSession?.id ?? MAIN_SESSION_ID;
+  const sessionTitle = selectedSession?.isMain === false ? selectedSession.title : '主聊天';
+  const titleChars = Array.from(sessionTitle);
+  const directoryLabel = activeSessionId === MAIN_SESSION_ID ? '会话' : titleChars.length > 6 ? `${titleChars.slice(0, 6).join('')}…` : sessionTitle;
+  const sessionIds = startedSessions.filter((id) => id === MAIN_SESSION_ID || directory.sessions.some((item) => item.id === id));
+  const mainState = useSessionState(MAIN_SESSION_ID);
+  const currentState = useSessionState(activeSessionId); const activeRuntime = useSessionRuntime(activeSessionId); const [settingsPage, setSettingsPage] = useState<SettingsPage | null>(null);
   const smsBackRef = useRef<(() => boolean) | null>(null);
-  const wasRunning = useRef(false);
+  const previousRuntime = useRef({ id: activeSessionId, running: false });
   useEffect(() => {
-    const falling = wasRunning.current && !mainRuntime.running;
-    wasRunning.current = mainRuntime.running;
+    const previous = previousRuntime.current;
+    const falling = previous.id === activeSessionId && previous.running && !activeRuntime.running;
+    previousRuntime.current = { id: activeSessionId, running: activeRuntime.running };
     if (!falling) return;
-    const outcome = mainRuntime.runs.at(-1)?.status;
+    const outcome = activeRuntime.runs.at(-1)?.status;
     if (outcome !== 'succeeded' && outcome !== 'failed' && outcome !== 'cancelled') return;
     let clearTimer: ReturnType<typeof setTimeout> | undefined;
     const setTimer = setTimeout(() => {
-      setRecentOutcome(outcome);
+      setRecentOutcome({ sessionId: activeSessionId, status: outcome });
       clearTimer = setTimeout(() => setRecentOutcome(undefined), COMPANION_OUTCOME_MS);
     }, 0);
     return () => { clearTimeout(setTimer); if (clearTimer) clearTimeout(clearTimer); };
-  }, [mainRuntime.running, mainRuntime.runs]);
+  }, [activeRuntime.running, activeRuntime.runs, activeSessionId]);
   const [newsManaging, setNewsManaging] = useState(false); const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [notice, setNotice] = useState<string>();
   const [resetTarget, setResetTarget] = useState<string>(); const [resetError, setResetError] = useState<string>();
@@ -153,8 +168,20 @@ function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) 
     const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false)); return () => { show.remove(); hide.remove(); };
   }, []);
   // main 由服务端常驻保证；进入主聊天不等待会话目录，历史错误由聊天视图展示。
-  const openMain = (source: 'messages' | 'news' | 'notification') => {
+  const openSession = (sessionId: string, source: 'messages' | 'news' | 'notification') => {
+    setRequestedSessionId(sessionId);
+    setStartedSessions((ids) => ids.includes(sessionId) ? ids : [...ids, sessionId]);
+    setSessionDirectoryOpen(false);
     setChatReturn(chatReturnForEntry(source)); setSettingsPage(null); setPage('messages'); Keyboard.dismiss();
+  };
+  const removeSession = async (id: string, options: SessionDeleteOptions) => {
+    const result = await chats.deleteSession(id, options);
+    if (!result) return false;
+    store.forget(id); runtime.forgetSession(id);
+    setStartedSessions((ids) => ids.filter((item) => item !== id));
+    if (requestedSessionId === id) openSession(MAIN_SESSION_ID, 'messages');
+    jobs.invalidate(); monitors.invalidate(); void approvals.store.refreshPending();
+    return true;
   };
   const returnToArticle = () => { Keyboard.dismiss(); setChatReturn('messages'); setPage('news'); };
   const backSettings = () => {
@@ -179,26 +206,26 @@ function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) 
     try { await chats.verifyReset('main'); } catch (error) { setNotice(error instanceof Error ? error.message : '重置结果核对失败'); }
   };
   let settingsContent: ReactNode;
-  // 过程只集中到形象；仅统计当前主聊天的审批，断线不把缓存当成新事实。
-  const mainPendingApprovals = approvals.snapshot.pendingIds
-    .filter((id) => approvals.snapshot.records[id]?.sessionId === 'main' && approvals.snapshot.records[id]?.status === 'pending').length;
-  const mainStatusLabel = mainProgressLabel({
-    synchronized: mainRuntime.synchronized,
-    running: mainRuntime.running,
-    label: mainRuntime.label,
-    pendingApprovals: mainPendingApprovals,
+  // 过程只集中到形象；仅统计当前会话的审批，断线不把缓存当成新事实。
+  const activePendingApprovals = approvals.snapshot.pendingIds
+    .filter((id) => approvals.snapshot.records[id]?.sessionId === activeSessionId && approvals.snapshot.records[id]?.status === 'pending').length;
+  const activeStatusLabel = mainProgressLabel({
+    synchronized: activeRuntime.synchronized,
+    running: activeRuntime.running,
+    label: activeRuntime.label,
+    pendingApprovals: activePendingApprovals,
     pending: currentState.pendingSubmission?.status,
-    runObserved: mainRuntime.runs.some((run) => run.runId === currentState.pendingSubmission?.runId),
+    runObserved: activeRuntime.runs.some((run) => run.runId === currentState.pendingSubmission?.runId),
   }) || '就绪';
   // 形象状态机直接消费同一路运行事实；终态姿态只在新近结束时短暂出现。
-  const activeRun = mainRuntime.runs.find((run) => run.status === 'running');
+  const activeRun = activeRuntime.runs.find((run) => run.status === 'running');
   const companion = companionState({
-    synchronized: mainRuntime.synchronized,
-    running: mainRuntime.running,
+    synchronized: activeRuntime.synchronized,
+    running: activeRuntime.running,
     phase: activeRun?.phase ?? null,
-    pendingApprovals: mainPendingApprovals,
+    pendingApprovals: activePendingApprovals,
     pendingStatus: currentState.pendingSubmission?.status,
-    lastOutcome: !mainRuntime.running && recentOutcome ? recentOutcome : undefined,
+    lastOutcome: !activeRuntime.running && recentOutcome?.sessionId === activeSessionId ? recentOutcome.status : undefined,
   });
   if (settingsPage === 'appearance') settingsContent = <ThemePicker />;
   else if (settingsPage === 'companion') settingsContent = <CompanionPicker />;
@@ -208,46 +235,53 @@ function ConnectedWorkspace({ openConnection }: { openConnection: () => void }) 
   else if (settingsPage === 'dream') settingsContent = <DreamPanel />;
   else if (settingsPage === 'goals') settingsContent = <GoalsPanel />;
   else if (settingsPage === 'jobs' || settingsPage === 'monitors') settingsContent = <SchedulePanel kind={settingsPage} />;
-  else if (settingsPage === 'rules' || settingsPage === 'skills') settingsContent = <SessionSettings key={settingsPage} sessionId="main" section={settingsPage} />;
+  else if (settingsPage === 'rules' || settingsPage === 'skills') settingsContent = <AssistantSettings key={settingsPage} section={settingsPage} />;
   const rootSettings = <SettingsHome onOpen={setSettingsPage} onConnection={openConnection}
     onBrowser={() => { Keyboard.dismiss(); browser.open(); setBrowserOpen(true); }} onUpdate={update?.open}
     onReset={() => { Keyboard.dismiss(); setResetError(undefined); setResetTarget('main'); }}
-    resetUncertain={currentState.resetUncertain} onVerifyReset={() => void checkReset()}
-    onAcknowledgeReset={currentState.resetReviewed ? () => chats.acknowledgeReset('main') : undefined} />;
+    resetUncertain={mainState.resetUncertain} onVerifyReset={() => void checkReset()}
+    onAcknowledgeReset={mainState.resetReviewed ? () => chats.acknowledgeReset('main') : undefined} />;
   const otherPage = page === 'settings' ? settingsPage === 'files' ? <FilesScreen onBack={backSettings} /> : settingsPage === 'news-sources' ? <NewsSourcesPage store={news} onBack={backSettings} />
-      : settingsPage === 'sms' ? <SmsSettingsCard backRef={smsBackRef} onBack={backSettings} onOpenChat={() => openMain('messages')} />
+      : settingsPage === 'sms' ? <SmsSettingsCard backRef={smsBackRef} onBack={backSettings} onOpenChat={() => openSession(MAIN_SESSION_ID, 'notification')} />
       : settingsPage ? <><PageHeader title={SETTINGS_PAGE_TITLES[settingsPage]} backLabel="返回设置" onBack={backSettings} />
         {(settingsPage === 'goals' || settingsPage === 'rules' || settingsPage === 'skills') ? settingsContent : <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: spacing[20], gap: spacing[12] }}>{settingsContent}</ScrollView>}</> : rootSettings : null;
-  const root = isRootWorkspacePage({ page, settingsSubpage: settingsPage, newsDetailOpen: !!newsState.selectedArticleId, newsManaging, sessionMounted: panelPresented || browserOpen || !!resetTarget });
+  const root = isRootWorkspacePage({ page, settingsSubpage: settingsPage, newsDetailOpen: !!newsState.selectedArticleId, newsManaging, sessionMounted: panelPresented || browserOpen || !!resetTarget || sessionDirectoryOpen });
   return <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} testID="workspace-screen"><ThemeStatusBar />
     {/* 普通相对容器位于安全区内容内，避免绝对定位直接相对 SafeAreaView 边界压进状态栏。 */}
     <View style={{ flex: 1 }} testID="workspace-safe-content">
     {/* 键盘 screenY 是窗口坐标，避让布局在 SafeAreaView 内；补上顶部安全区才能对齐，不能在 composer 再减一次键盘高度。 */}
     <View style={{ flex: 1 }} pointerEvents={browserOpen || panelPresented ? 'none' : 'auto'} accessibilityElementsHidden={browserOpen || panelPresented} importantForAccessibility={browserOpen || panelPresented ? 'no-hide-descendants' : 'auto'}><KeyboardAvoidingView style={{ flex: 1 }} keyboardVerticalOffset={insets.top} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled={Platform.OS !== 'web'}>
-      <View style={{ flex: 1, display: page === 'news' ? 'none' : 'flex' }}><ConversationHost chatVisible={page === 'messages'} otherPage={otherPage} refreshVersions={refreshVersions}
+      <View style={{ flex: 1, display: page === 'news' ? 'none' : 'flex' }}><ConversationHost sessionIds={sessionIds} activeSessionId={activeSessionId} chatVisible={page === 'messages'} otherPage={otherPage} refreshVersions={refreshVersions}
         onSettled={settled} onBindingMismatch={store.reload} openConnection={openConnection} onOpenApprovals={() => openCompanion('approvals')} /></View>
       <View style={{ flex: 1, display: page === 'news' ? 'flex' : 'none' }} pointerEvents={page === 'news' ? 'auto' : 'none'} accessibilityElementsHidden={page !== 'news'} importantForAccessibility={page === 'news' ? 'auto' : 'no-hide-descendants'}>
         <NewsPage store={news} visible={page === 'news'} managing={newsManaging} onManaging={setNewsManaging} onDiscuss={(id) => {
           const snapshot = news.getSnapshot(); const article = snapshot.article?.id === id ? snapshot.article : snapshot.articles.find((item) => item.id === id);
           if (!article) { setNotice('文章已不存在，请刷新核对。'); return; }
-          if (!chats.canWrite('main')) { setNotice('主聊天正在维护或结果待核对，暂不能追加文章引用。'); return; }
-          chats.setDraft('main', appendNewsQuote(chats.get('main').draft, newsDiscussionQuote(article))); openMain('news');
+          if (!chats.canWrite(activeSessionId)) { setNotice('会话正在维护或结果待核对，暂不能追加文章引用。'); return; }
+          chats.setDraft(activeSessionId, appendNewsQuote(chats.get(activeSessionId).draft, newsDiscussionQuote(article))); openSession(activeSessionId, 'news');
         }} />
       </View>
       {notice && <View style={{ padding: spacing[12] }}><Text accessibilityRole="alert" style={{ color: colors.warning }}>{notice}</Text><ActionButton label="关闭提示" onPress={() => setNotice(undefined)} /></View>}
       {companionNotice && page !== 'settings' && <Text accessibilityLiveRegion="polite" style={{ padding: spacing[12], color: colors.warning }}>{companionNotice}</Text>}
       {!keyboardVisible && root && <PrimaryTabBar currentTab={page} onSelectTab={(tab) => { Keyboard.dismiss(); setChatReturn('messages'); setSettingsPage(null); setPage(tab); }} />}
     </KeyboardAvoidingView></View>
-    <FloatingCompanion state={companion} images={activePack.images} offline={!mainRuntime.synchronized}
+    {page === 'messages' && !panelPresented && !browserOpen && !resetTarget && <ActionButton
+      icon={MessagesSquare} label={`会话列表，当前：${sessionTitle}`}
+      text={directoryLabel} testID="workspace-session-directory"
+      style={{ position: 'absolute', right: spacing[12], top: spacing[12], zIndex: 2, maxWidth: '34%' }}
+      onPress={() => { Keyboard.dismiss(); setSessionDirectoryOpen(true); void store.reload(); }} />}
+    <FloatingCompanion state={companion} images={activePack.images} offline={!activeRuntime.synchronized}
       visible={page === 'messages' && !browserOpen && !resetTarget} expanded={panelOpen} presented={panelPresented}
-      statusLabel={mainStatusLabel} onToggle={toggleCompanion} onCollapsed={onCompanionCollapsed}
+      statusLabel={activeStatusLabel} onToggle={toggleCompanion} onCollapsed={onCompanionCollapsed}
       onReturnArticle={chatReturn === 'news' ? returnToArticle : undefined}>
       {/* 展开页内容：固定锚点下直接是动态/审批/历史；无标题、无操作按钮。 */}
-      <View style={{ flex: 1, minHeight: 300 }}><SessionPanel sessionId="main" tab={sessionTab} onTab={setSessionTab} /></View>
+      <View style={{ flex: 1, minHeight: 300 }}><SessionPanel key={activeSessionId} sessionId={activeSessionId} tab={sessionTab} onTab={setSessionTab} /></View>
     </FloatingCompanion>
     </View>
-    {resetTarget && <ResetSessionDialog sessionId={resetTarget} available={!!connection?.enabled} error={resetError} onCancel={() => setResetTarget(undefined)} onConfirm={async (id, clearSchedules) => {
-      try { const result = await chats.resetSession(id, clearSchedules); if (!result) return; store.update(result.session); runtime.forgetSession(id); jobs.invalidate(); monitors.invalidate(); await approvals.store.refreshPending(); setResetTarget(undefined); refresh(id); }
+    {sessionDirectoryOpen && <SessionDirectory directory={directory} selectedId={activeSessionId}
+      onClose={() => setSessionDirectoryOpen(false)} onSelect={(id) => openSession(id, 'messages')} onDelete={removeSession} />}
+    {resetTarget && <ResetSessionDialog sessionId={resetTarget} available={!!connection?.enabled} error={resetError} onCancel={() => setResetTarget(undefined)} onConfirm={async (id) => {
+      try { const result = await chats.resetSession(id); if (!result) return; store.update(result.session); runtime.forgetSession(id); await approvals.store.refreshPending(); setResetTarget(undefined); refresh(id); }
       catch (error) { setResetError(error instanceof Error ? error.message : '重置失败'); }
     }} />}
     {browserOpen && <BrowserPanel store={browser} baseUrl={connection?.snapshot.serverUrl ?? ''} onClose={() => { browser.close(); setBrowserOpen(false); }} />}
