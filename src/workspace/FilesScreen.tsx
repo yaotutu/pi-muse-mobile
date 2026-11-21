@@ -4,6 +4,7 @@ import { ActivityIndicator, Image as RNImage, Keyboard, Modal, Pressable, Scroll
 import { ChevronLeft, Download, File, Folder, Info, Plus, RefreshCw, Trash2 } from 'lucide-react-native';
 import { MAX_WORKSPACE_TEXT_BYTES, utf8ByteLength, validateWorkspaceWritePath } from '../files/contracts';
 import { useFiles } from '../files/FilesProvider';
+import { isManagedWorkspaceFile, workspaceCreateDirectory, workspaceDisplayEntries, workspaceEntryLabel } from '../files/presentation';
 import { saveWorkspaceFileToDevice, type NativeDownloadResult } from '../files/native-download';
 import type { WorkspaceFileDetail } from '../files/types';
 import { useTheme } from '../theme/ThemeProvider';
@@ -78,7 +79,12 @@ export function FilesScreen({ onBack }: { onBack: () => void }) {
   if (infoState.store !== store || infoState.owner !== menuOwner) setInfoState({ store, owner: menuOwner });
   const info = infoState.info;
   const fileOpen = !!snapshot.selectedPath && snapshot.writing === false && !snapshot.uncertain && !snapshot.savePreview && !snapshot.deleteTarget && snapshot.editor?.mode !== 'create';
-  const title = snapshot.uncertain ? '核对文件操作' : snapshot.savePreview ? '确认保存' : snapshot.editor?.mode === 'create' ? '新建文件' : snapshot.deleteTarget ? '确认删除' : snapshot.selectedPath?.split('/').pop() ?? '文件';
+  const currentDirectory = snapshot.directoryPath;
+  const directoryTitle = currentDirectory === '.' ? '文件' : workspaceEntryLabel(currentDirectory, 'directory');
+  const createDirectory = workspaceCreateDirectory(currentDirectory);
+  const selectedLabel = snapshot.selectedPath ? workspaceEntryLabel(snapshot.selectedPath, 'file') : undefined;
+  const title = snapshot.uncertain ? '核对文件操作' : snapshot.savePreview ? '确认保存'
+    : snapshot.editor?.mode === 'create' ? '新建文件' : snapshot.deleteTarget ? '确认删除' : selectedLabel ?? directoryTitle;
   const parent = snapshot.selectedPath?.split('/').slice(0, -1).join('/') || snapshot.directoryPath;
   const caption = parent === '.' ? '工作区' : `工作区 · ${parent}`;
   const closeInfo = () => { measureSequence.current += 1; setInfoState({ store, owner: menuOwner }); };
@@ -169,9 +175,9 @@ export function FilesScreen({ onBack }: { onBack: () => void }) {
       <Text accessibilityRole="header" style={styles.cardTitle}>新建文本文件</Text>
       <Text selectable style={styles.body}>归属：{scopeLabel}</Text>
       <>
-        <Text style={styles.fieldLabel}>相对当前范围根目录的完整路径</Text>
+        <Text style={styles.fieldLabel}>相对工作区根目录的完整路径</Text>
         <FormInput accessibilityLabel="新建文件相对路径" value={snapshot.editor.path} onChangeText={store.setDraftPath} editable={snapshot.writing === false && !snapshot.uncertain}
-          autoCapitalize="none" autoCorrect={false} placeholder="例如 notes/today.txt" placeholderTextColor={colors.faint} style={styles.input} />
+          autoCapitalize="none" autoCorrect={false} placeholder="例如 files/notes/today.txt" placeholderTextColor={colors.faint} style={styles.input} />
         <Text style={styles.caption}>路径每段仅可用 ASCII 字母、数字、点、连字符、下划线；可用 / 分隔已有目录。</Text>
       </>
       <Text style={styles.fieldLabel}>文本全文</Text>
@@ -198,20 +204,22 @@ export function FilesScreen({ onBack }: { onBack: () => void }) {
         <ActionButton label="刷新工作区目录" text="刷新" icon={RefreshCw} onPress={() => void store.refresh()} disabled={!canNavigate || snapshot.loading} />
         {snapshot.directoryPath !== '.' && <ActionButton label="返回工作区根目录" text="根目录" onPress={() => store.openDirectory('.')} disabled={!canNavigate} />}
         {snapshot.directoryPath !== '.' && <ActionButton label="返回工作区上级目录" text="上级" icon={ChevronLeft} onPress={store.goUp} disabled={!canNavigate} />}
-        <ActionButton label="新建工作区文本文件" text="新建文本" icon={Plus} onPress={() => { store.beginCreate(); if (snapshot.directoryPath !== '.') store.setDraftPath(`${snapshot.directoryPath}/`); }} disabled={!canWrite} />
+        {createDirectory && <ActionButton label="新建工作区文本文件" text="新建文本" icon={Plus}
+          onPress={() => { store.beginCreate(); store.setDraftPath(`${createDirectory}/`); }} disabled={!canWrite} />}
       </View>
       {snapshot.directoryPath !== '.' && <Text selectable style={styles.path}>目录：{snapshot.directoryPath}</Text>}
       {snapshot.loading && <View style={styles.loading}><ActivityIndicator accessibilityLabel="正在读取工作区目录" color={colors.blue} /><Text style={styles.caption}>正在读取目录…</Text></View>}
       {!snapshot.loaded && !snapshot.loading && <Text style={styles.caption}>尚未读取目录。请刷新后重试。</Text>}
       {snapshot.loaded && !snapshot.stale && snapshot.entries.length === 0 && !snapshot.loading && <Text style={styles.caption}>当前目录没有文件或子目录。</Text>}
-      {snapshot.entries.map((entry) => {
+      {workspaceDisplayEntries(currentDirectory, snapshot.entries).map((entry) => {
         const Icon = entry.kind === 'directory' ? Folder : File;
-        return <Pressable key={entry.path} accessibilityRole="button" accessibilityLabel={`${entry.kind === 'directory' ? '打开目录' : '打开文件'} ${entry.path}`}
+        const label = workspaceEntryLabel(entry.path, entry.kind);
+        return <Pressable key={entry.path} accessibilityRole="button" accessibilityLabel={`${entry.kind === 'directory' ? '打开目录' : '打开文件'} ${label}`}
           accessibilityState={{ disabled: !canNavigate, selected: snapshot.selectedPath === entry.path }} disabled={!canNavigate}
           onPress={() => { if (entry.kind === 'directory') store.openDirectory(entry.path); else void store.openFile(entry.path); }}
           style={({ pressed }) => [styles.fileRow, pressed && styles.pressed, !canNavigate && styles.disabled]}>
           <Icon size={sizing.iconMedium} color={colors.blue} /><View style={styles.flexText}>
-            <Text style={styles.fileName}>{entry.name}</Text>
+            <Text style={styles.fileName}>{label}</Text>
             <Text style={styles.caption}>{entry.kind === 'directory' ? '目录' : formatSize(entry.size)} · {formatTime(entry.updatedAt)}</Text>
           </View>
         </Pressable>;
@@ -255,7 +263,7 @@ export function FilesScreen({ onBack }: { onBack: () => void }) {
                   current.selectedPath === detailKey;
               });
             }} disabled={busyDownload} />
-            <FeedbackMenuRow icon={Trash2} label={`准备删除工作区文件 ${detail.path}`} text="删除文件…" onPress={() => { closeInfo(); store.requestDelete(detail.path); }} disabled={!canWrite || !!sourceDraft || !snapshot.entries.some((entry) => entry.kind === 'file' && entry.path === detail.path)} />
+            {!isManagedWorkspaceFile(detail.path) && <FeedbackMenuRow icon={Trash2} label={`准备删除工作区文件 ${detail.path}`} text="删除文件…" onPress={() => { closeInfo(); store.requestDelete(detail.path); }} disabled={!canWrite || !!sourceDraft || !snapshot.entries.some((entry) => entry.kind === 'file' && entry.path === detail.path)} />}
         </FeedbackMenuRows></ScrollView>
       </AnchoredFeedbackMenu>
     </Modal>}

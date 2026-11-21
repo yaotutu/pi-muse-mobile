@@ -1,4 +1,5 @@
 import { ApiError, isRequestCancelled } from '../api/errors';
+import { isManagedWorkspaceFile } from './presentation';
 import {
   MAX_WORKSPACE_TEXT_BYTES,
   assertWorkspaceTextForWrite,
@@ -399,6 +400,10 @@ export class FilesStore {
 
   requestDelete = (path: string): boolean => {
     if (!this.canWrite()) return false;
+    if (isManagedWorkspaceFile(path)) {
+      this.publish({ error: '助手资料和领域规则不可删除，可在文件详情中编辑。' });
+      return false;
+    }
     try {
       validateWorkspaceWritePath(path);
     } catch {
